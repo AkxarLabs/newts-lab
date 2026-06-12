@@ -1,6 +1,6 @@
 # (Spawned project repos live OUTSIDE the hub at lab.projects_root — nothing to ignore here.)
 
-# MkDocs build output
+# Docs build output (ProperDocs)
 site/
 
 # Runtime compute-slot ledger (tools/run_slots.py)

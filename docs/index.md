@@ -1,6 +1,12 @@
 # AutoScientist
 
-**A research lab for an AI agent.** AutoScientist takes a research direction from ideation through literature review, proposal, experimentation, analysis and ablations, to a finished LaTeX paper — driven by an agent (Claude Code), with you as the PI at three explicit gates.
+<div class="as-hero" markdown>
+<p class="as-kicker">A research lab for an AI agent</p>
+<p class="as-lede">AutoScientist takes a research direction from <strong>ideation</strong> through literature review, proposal, experimentation, analysis and ablations, to a <strong>finished LaTeX paper</strong> — driven by an agent, with you as the PI at three explicit gates.</p>
+
+[Getting started](getting-started.md){ .md-button }
+[Autonomy & modes](autonomy.md){ .md-button .md-button--secondary }
+</div>
 
 It is a *template*, not a framework: procedures are Markdown skills the agent executes with judgment, state is plain files and git, and nothing here assumes a research domain. The design distills what worked across the autonomous-research literature — Sakana's AI Scientist, Karpathy's autoresearch, Google's co-scientist, Kosmos, Meta's AIRA — and hard-codes defenses against their documented failure modes. The full reasoning lives in [Design rationale](DESIGN.md).
 
@@ -43,10 +49,54 @@ Everything between gates runs autonomously. Everything at a gate stops for you.
 
 ## Where to go next
 
-- [Getting started](getting-started.md) — instantiate the template, `/setup-lab`, first session
-- [Autonomy & modes](autonomy.md) — `/autopilot`: one command before bed, reviewed drafts in the morning — plus the stage-gated and partial modes
-- [The workflow](workflow.md) — lifecycle states, gates, and protocols in detail
-- [Skills reference](skills.md) — all 20 procedures
-- [Configuration](configuration.md) — the 3-layer config system and every key
-- [Projects](projects.md) — anatomy of a spawned project and guidelines for extending one
-- [Tools](tools.md) — the mechanical helpers
+<div class="grid cards" markdown>
+
+-   **Getting started**
+
+    ---
+
+    Instantiate the template, run the `/setup-lab` interview, pick your on-ramp.
+
+    [Getting started →](getting-started.md)
+
+-   **Autonomy & modes**
+
+    ---
+
+    Manual, stage-gated (`/advance`), project loops, or full `/autopilot` — and how they compose with the built-in `/loop`.
+
+    [Autonomy & modes →](autonomy.md)
+
+-   **The workflow**
+
+    ---
+
+    Lifecycle states, the three gates, the paper-refinement loop and its safeguards — plus how to start anywhere with `/adopt`.
+
+    [The workflow →](workflow.md)
+
+-   **Skills reference**
+
+    ---
+
+    All 20 procedures: what each does, what it reads, where it stops.
+
+    [Skills reference →](skills.md)
+
+-   **Configuration**
+
+    ---
+
+    The 3-layer config system and every key, with per-key ownership (PI vs agent).
+
+    [Configuration →](configuration.md)
+
+-   **Projects & tools**
+
+    ---
+
+    Anatomy of a spawned project, the reproducibility contract, and the mechanical helpers.
+
+    [Projects →](projects.md) · [Tools →](tools.md)
+
+</div>

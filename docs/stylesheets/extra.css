@@ -1,124 +1,379 @@
 /* ============================================================================
-   AutoScientist docs — warm palette
-   off-white paper · brown ink accents · near-black type
+   AutoScientist docs — warm editorial theme
+   paper off-white · brown ink · clay accents · booktabs tables
+   Display type: Fraunces · Body: Source Serif 4 · Code: JetBrains Mono
    ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,450;9..144,560;9..144,640&display=swap");
 
 [data-md-color-scheme="autoscientist"] {
   /* ---- core palette ---- */
   --as-paper:        #FAF6EF;  /* page background — warm off-white */
-  --as-paper-deep:   #F1EAE0;  /* surfaces: code blocks, cards */
-  --as-paper-edge:   #E4D9CA;  /* hairline borders */
+  --as-paper-deep:   #F2EBDF;  /* surfaces: code blocks, cards */
+  --as-paper-edge:   #E3D8C8;  /* hairline borders */
   --as-ink:          #221C16;  /* body text — warm near-black */
   --as-ink-soft:     #5C4F43;  /* secondary text */
-  --as-brown:        #6E4F38;  /* primary — header, links, emphasis */
-  --as-brown-deep:   #503823;  /* hover / active */
-  --as-clay:         #A8714A;  /* accent — highlights, markers */
+  --as-brown:        #6E4F38;  /* primary — links, emphasis */
+  --as-brown-deep:   #503823;  /* hover / active / headings */
+  --as-clay:         #A8714A;  /* accent — rules, markers */
+  --as-clay-soft:    rgba(168, 113, 74, 0.14);
 
   /* ---- Material variable mapping ---- */
-  --md-default-bg-color:        var(--as-paper);
-  --md-default-fg-color:        var(--as-ink);
-  --md-default-fg-color--light: var(--as-ink-soft);
+  --md-default-bg-color:          var(--as-paper);
+  --md-default-fg-color:          var(--as-ink);
+  --md-default-fg-color--light:   var(--as-ink-soft);
   --md-default-fg-color--lighter: #8A7B6B;
   --md-default-fg-color--lightest: var(--as-paper-edge);
 
-  --md-primary-fg-color:        var(--as-brown);
-  --md-primary-fg-color--dark:  var(--as-brown-deep);
-  --md-primary-bg-color:        #FBF8F2;
-  --md-accent-fg-color:         var(--as-clay);
+  --md-primary-fg-color:          var(--as-brown);
+  --md-primary-fg-color--dark:    var(--as-brown-deep);
+  --md-primary-bg-color:          #FBF8F2;
+  --md-accent-fg-color:           var(--as-clay);
 
-  --md-typeset-color:           var(--as-ink);
-  --md-typeset-a-color:         var(--as-brown);
+  --md-typeset-color:             var(--as-ink);
+  --md-typeset-a-color:           var(--as-brown);
 
-  --md-code-bg-color:           var(--as-paper-deep);
-  --md-code-fg-color:           #4A3526;
-  --md-code-hl-color:           rgba(168, 113, 74, 0.18);
+  --md-code-bg-color:             var(--as-paper-deep);
+  --md-code-fg-color:             #4A3526;
+  --md-code-hl-color:             var(--as-clay-soft);
 
-  --md-typeset-table-color:     rgba(110, 79, 56, 0.16);
-  --md-typeset-mark-color:      rgba(168, 113, 74, 0.25);
+  --md-typeset-table-color:       rgba(110, 79, 56, 0.16);
+  --md-typeset-mark-color:        rgba(168, 113, 74, 0.25);
 
-  --md-footer-bg-color:         var(--as-brown-deep);
-  --md-footer-bg-color--dark:   #3E2B1B;
-  --md-footer-fg-color:         #F3ECE2;
+  --md-footer-bg-color:           var(--as-brown-deep);
+  --md-footer-bg-color--dark:     #3E2B1B;
+  --md-footer-fg-color:           #F3ECE2;
 }
 
-/* ---- type ---- */
+::selection { background: rgba(168, 113, 74, 0.30); }
+
+/* ============================ type ======================================= */
+
 .md-typeset {
-  font-size: 0.82rem;
-  line-height: 1.65;
+  font-size: 0.83rem;
+  line-height: 1.72;
 }
-.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 {
+  font-family: "Fraunces", "Source Serif 4", Georgia, serif;
   color: var(--as-brown-deep);
-  font-weight: 600;
+  letter-spacing: 0.005em;
 }
 .md-typeset h1 {
-  border-bottom: 2px solid var(--as-paper-edge);
-  padding-bottom: 0.35em;
+  font-size: 2.1em;
+  font-weight: 560;
+  color: var(--as-ink);
+  margin-bottom: 0.9em;
+}
+/* short clay rule under page titles instead of a full-width gray line */
+.md-typeset h1::after {
+  content: "";
+  display: block;
+  width: 3.2rem;
+  height: 3px;
+  margin-top: 0.42em;
+  background: var(--as-clay);
+  border-radius: 2px;
 }
 .md-typeset h2 {
-  border-bottom: 1px solid var(--as-paper-edge);
+  font-size: 1.42em;
+  font-weight: 560;
+  margin-top: 2em;
   padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--as-paper-edge);
 }
+.md-typeset h3 { font-size: 1.12em; font-weight: 640; }
+.md-typeset strong { color: var(--as-brown-deep); }
 
-/* ---- header & nav ---- */
+/* heading permalinks — quiet until wanted */
+.md-typeset .headerlink {
+  color: var(--as-paper-edge);
+  transition: color 0.15s;
+}
+.md-typeset :hover > .headerlink { color: var(--as-clay); }
+
+/* links — clay underline, ink on hover */
+.md-typeset a {
+  text-decoration: underline;
+  text-decoration-color: rgba(168, 113, 74, 0.45);
+  text-underline-offset: 3px;
+  transition: color 0.12s, text-decoration-color 0.12s;
+}
+.md-typeset a:hover {
+  color: var(--as-brown-deep);
+  text-decoration-color: var(--as-brown-deep);
+}
+.md-typeset a code { color: inherit; }
+
+/* ====================== header & masthead ================================ */
+
+/* light paper header with a clay masthead rule — not a solid color bar */
 .md-header {
-  background-color: var(--as-brown);
-  box-shadow: 0 1px 0 var(--as-brown-deep);
+  background: rgba(250, 246, 239, 0.92);
+  color: var(--as-ink);
+  box-shadow: 0 1px 0 var(--as-paper-edge);
+  backdrop-filter: blur(8px);
+  border-top: 3px solid var(--as-clay);
 }
-.md-tabs { background-color: var(--as-brown-deep); }
-.md-nav__item .md-nav__link--active { color: var(--as-clay); font-weight: 600; }
-.md-search__form { background-color: rgba(250, 246, 239, 0.18); }
+.md-header[data-md-state="shadow"],
+.md-header--shadow {
+  box-shadow: 0 1px 0 var(--as-paper-edge), 0 6px 16px rgba(80, 56, 35, 0.06);
+}
+.md-header__title {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 640;
+  font-size: 0.95rem;
+  color: var(--as-brown-deep);
+}
+.md-header__button.md-logo svg { fill: var(--as-clay); }
+.md-header__button { color: var(--as-brown-deep); }
 
-/* ---- code ---- */
-.md-typeset code {
+/* search — a quiet bordered field on paper */
+.md-search__form {
+  background: #FFFDF8;
   border: 1px solid var(--as-paper-edge);
-  border-radius: 3px;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.md-search__form:hover { background: #FFFFFF; }
+.md-search__input { color: var(--as-ink); }
+.md-search__input::placeholder { color: #8A7B6B; }
+.md-search__icon { color: #8A7B6B; }
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form {
+  border-radius: 12px 12px 0 0;
+}
+.md-search__output {
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 12px 32px rgba(80, 56, 35, 0.18);
+}
+
+/* ============================ sidebar nav ================================ */
+
+.md-nav { font-size: 0.68rem; }
+.md-nav__title { color: var(--as-ink-soft); }
+/* section labels — small caps, letterspaced */
+.md-nav--primary > .md-nav__list .md-nav__item--section > label.md-nav__link,
+.md-nav__item--section > .md-nav__link {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 0.62rem;
+  font-weight: 640;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--as-ink-soft);
+}
+.md-nav__link { transition: color 0.12s; }
+.md-nav__link:hover { color: var(--as-clay); }
+.md-nav__item .md-nav__link--active,
+.md-nav__item .md-nav__link--active code {
+  color: var(--as-brown-deep);
+  font-weight: 700;
+}
+
+/* ============================== code ===================================== */
+
+.md-typeset code {
+  background: var(--as-paper-deep);
+  border: 1px solid rgba(227, 216, 200, 0.8);
+  border-radius: 4px;
+  padding: 0.07em 0.35em;
+  font-size: 0.82em;
 }
 .md-typeset pre > code {
+  border: none;
+  border-radius: 0;
+  padding: 0.9em 1.1em;
+  font-size: 0.78em;
+  line-height: 1.62;
+}
+.md-typeset pre {
   border: 1px solid var(--as-paper-edge);
   border-left: 3px solid var(--as-clay);
+  border-radius: 8px;
+  background: var(--as-paper-deep);
+  overflow: hidden;
 }
+.md-clipboard { color: #B7A888; }
+.md-clipboard:hover { color: var(--as-clay); }
 
-/* ---- tables ---- */
+/* ====================== tables — booktabs ================================ */
+
 .md-typeset table:not([class]) {
-  border: 1px solid var(--as-paper-edge);
-  background: #FCF9F4;
+  border: none;
+  border-top: 2px solid var(--as-ink);
+  border-bottom: 2px solid var(--as-ink);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.76rem;
 }
 .md-typeset table:not([class]) th {
-  background: var(--as-paper-deep);
+  background: transparent;
   color: var(--as-brown-deep);
+  border-bottom: 1px solid var(--as-ink);
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 640;
+  font-size: 0.70rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.7em 1em;
 }
-.md-typeset table:not([class]) tr:hover {
-  background: rgba(168, 113, 74, 0.06);
+.md-typeset table:not([class]) td {
+  border-top: 1px solid rgba(227, 216, 200, 0.7);
+  padding: 0.62em 1em;
+  vertical-align: top;
+}
+.md-typeset table:not([class]) tbody tr:hover {
+  background: rgba(168, 113, 74, 0.05);
+  box-shadow: none;
 }
 
-/* ---- admonitions: warm, bordered, no neon ---- */
+/* ========================= admonitions =================================== */
+
 .md-typeset .admonition, .md-typeset details {
-  border-color: var(--as-paper-edge);
-  background: #FCF9F4;
+  border: 1px solid var(--as-paper-edge);
+  border-left: 3px solid var(--as-clay);
+  border-radius: 8px;
+  background: #FCF9F3;
+  box-shadow: none;
+  font-size: 0.74rem;
 }
 .md-typeset .admonition-title, .md-typeset summary {
-  background: var(--as-paper-deep) !important;
+  background: transparent !important;
   color: var(--as-brown-deep);
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 640;
+  letter-spacing: 0.02em;
 }
 .md-typeset .admonition-title::before, .md-typeset summary::before {
   background-color: var(--as-clay) !important;
 }
+.md-typeset .admonition.warning, .md-typeset details.warning {
+  border-left-color: #9C5530;
+}
 
-/* ---- links & buttons ---- */
-.md-typeset a:hover { color: var(--as-brown-deep); }
+/* ===================== blockquotes as marginalia ========================= */
+
+.md-typeset blockquote {
+  border-left: 3px solid var(--as-clay);
+  border-radius: 0 8px 8px 0;
+  color: var(--as-ink-soft);
+  background: rgba(242, 235, 223, 0.55);
+  padding: 0.6em 1em;
+}
+
+/* ============================ buttons ==================================== */
+
 .md-typeset .md-button {
   background-color: var(--as-brown);
-  border-color: var(--as-brown);
+  border: 1px solid var(--as-brown);
+  border-radius: 999px;
   color: #FBF8F2;
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  padding: 0.5em 1.5em;
+  transition: all 0.15s;
 }
 .md-typeset .md-button:hover {
   background-color: var(--as-brown-deep);
   border-color: var(--as-brown-deep);
+  color: #FBF8F2;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(80, 56, 35, 0.22);
+}
+.md-typeset .md-button--secondary {
+  background: transparent;
+  color: var(--as-brown);
+}
+.md-typeset .md-button--secondary:hover {
+  background: var(--as-clay-soft);
+  color: var(--as-brown-deep);
+  box-shadow: none;
 }
 
-/* ---- blockquotes as marginalia ---- */
-.md-typeset blockquote {
-  border-left: 3px solid var(--as-clay);
-  color: var(--as-ink-soft);
-  background: rgba(241, 234, 224, 0.5);
+/* ====================== landing page (index.md) ========================== */
+
+.as-hero {
+  margin: 1.4rem 0 2.2rem;
+  text-align: left;
 }
+.as-hero h1 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.9em;
+  font-weight: 560;
+  line-height: 1.12;
+  color: var(--as-ink);
+  margin: 0 0 0.35em;
+}
+.as-hero h1::after { display: none; }
+.as-hero .as-kicker {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 0.66rem;
+  font-weight: 640;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--as-clay);
+  margin-bottom: 1.1rem;
+}
+.as-hero .as-lede {
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: var(--as-ink-soft);
+  max-width: 34rem;
+  margin-bottom: 1.4rem;
+}
+.as-hero .as-lede strong { color: var(--as-ink); }
+
+/* ============================ grid cards ================================= */
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border: 1px solid var(--as-paper-edge);
+  border-radius: 12px;
+  background: #FCF9F3;
+  box-shadow: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--as-clay);
+  box-shadow: 0 8px 22px rgba(80, 56, 35, 0.10);
+  transform: translateY(-2px);
+}
+.md-typeset .grid.cards > ul > li > hr {
+  margin: 0.6em 0;
+  border-bottom: 1px solid var(--as-paper-edge);
+}
+.md-typeset .grid.cards > ul > li > p > .twemoji svg,
+.md-typeset .grid.cards > ul > li svg {
+  fill: var(--as-clay);
+}
+
+/* ============================ footer ===================================== */
+
+.md-footer { background: var(--as-brown-deep); }
+.md-footer-meta { background: #3E2B1B; }
+.md-footer__title { font-family: "Fraunces", Georgia, serif; }
+
+/* ======================== scrollbar & misc =============================== */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--as-paper); }
+::-webkit-scrollbar-thumb {
+  background: var(--as-paper-edge);
+  border-radius: 5px;
+  border: 2px solid var(--as-paper);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--as-clay); }
+
+.md-typeset hr {
+  border: none;
+  border-top: 1px solid var(--as-paper-edge);
+}
+
+/* "back to top" pill */
+.md-top {
+  background: #FCF9F3;
+  color: var(--as-brown-deep);
+  border: 1px solid var(--as-paper-edge);
+  box-shadow: 0 4px 14px rgba(80, 56, 35, 0.12);
+}
+.md-top:hover { background: var(--as-clay); color: #FBF8F2; }

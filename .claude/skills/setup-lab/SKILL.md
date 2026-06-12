@@ -47,8 +47,9 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
 
 1. Write the answers into `lab/config.yaml`.
 2. Environment check: `git --version`, `uv --version`, `uv run --with pyyaml python
-   tools/check_lab.py` (should pass on an empty lab), `uv run --with mkdocs-material
-   mkdocs build` (docs build). Report anything missing with the install command.
+   tools/check_lab.py` (should pass on an empty lab), `uv run --with properdocs
+   --with mkdocs-material properdocs build --strict` (docs build). Report anything
+   missing with the install command.
 3. Smoke the project template once in a temp copy (run + tests) so the first real
    spawn is never the first test.
 

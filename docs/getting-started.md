@@ -54,11 +54,11 @@ You'll be stopped at the gates and otherwise left to read the notebook.
 
 ## Serving these docs
 
-No installation needed — uv runs MkDocs ephemerally:
+No installation needed — uv runs [ProperDocs](https://properdocs.org/) (the maintained MkDocs successor; the Material theme runs on top of it) ephemerally:
 
 ```bash
-uv run --with mkdocs-material mkdocs serve    # http://127.0.0.1:8000
-uv run --with mkdocs-material mkdocs build    # static site into site/
+uv run --with properdocs --with mkdocs-material properdocs serve    # http://127.0.0.1:8000
+uv run --with properdocs --with mkdocs-material properdocs build    # static site into site/
 ```
 
 ## A typical week with the lab

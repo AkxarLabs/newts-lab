@@ -9,7 +9,7 @@ The repo is domain-agnostic by design: nothing here assumes a particular researc
 Full docs live in [docs/](docs/) and serve as a styled site (search, nav, warm theme) with zero installation:
 
 ```bash
-uv run --with mkdocs-material mkdocs serve     # → http://127.0.0.1:8000
+uv run --with properdocs --with mkdocs-material properdocs serve     # → http://127.0.0.1:8000
 ```
 
 Start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md).
