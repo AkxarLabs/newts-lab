@@ -13,7 +13,7 @@ Views the effective 3-layer config with provenance (`tools/show_config.py`) or e
 ## Ideation → proposal
 
 ### `/ideate [direction]`
-Mines `lab/knowledge/` (failures are fuel), generates 6–10 mechanism-diverse candidates, **tournament-ranks** them pairwise (more robust than absolute scores), persists the top 1–3 to `ideas/<slug>/` in state `triaged`. Reads: `critique` is not involved; tournament size is judgment.
+Phased pipeline (depth from `ideation.*` config): **research** (knowledge mining + focused web scan) → **generate** (`ideation.candidates` mechanism-diverse candidates) → **reflect** (parallel fresh-context critic subagents per idea — novelty/feasibility/value skeptics) → **evolve** (revise or kill against critiques, `reflection_rounds` cycles) → **combine** (crossovers of complementary survivors) → **tournament** (pairwise ranking) → **triage** (top 1–3 persisted with their strongest surviving critique). Mirrors the co-scientist Generate/Reflect/Evolve/Rank loop.
 
 ### `/lit-review <slug>`
 Iterative search (logged query-by-query, loop-until-dry), per-paper notes recording what each paper *actually shows* — these notes become the only permitted citation source later. Ends with an adversarial **novelty verdict** that gates progression. For load-bearing papers, calls `/critique-paper` in external mode.
@@ -21,8 +21,11 @@ Iterative search (logged query-by-query, loop-until-dry), per-paper notes record
 ### `/critique-paper <arXiv|URL|PDF|slug>`
 Adversarial multi-lens critique of **any** paper. Spawns `fresh-context-reviewer` subagents — one per lens (novelty is always one, and must web-search the claimed contributions), each receiving *only* the paper's file path, never a summary. Scores anchored to the human mean (5.4); median aggregation; **minority veto** — any documented fatal flaw blocks accept unless refuted in writing. Ensemble size: `critique.ensemble_external` (3) for triage, `critique.ensemble_own_draft` (5) for our drafts.
 
+### `/scope <slug>`
+Deep design deliberation between lit review and proposal (state `scoping`). Enumerates every design-decision branch (framing, dataset, scale, baselines, metric/eval, recipe, ablation axes, compute), generates `scoping.options_per_decision` options per branch, deliberates each — optionally with one parallel **advocate subagent per option** — and records an ADR-style `decisions.md` (decision, rationale, rejected-because, revisit-if). Ends with an adversarial **value re-verification** (still novel/valuable/feasible?) — the cheapest kill checkpoint in the lifecycle. At most `scoping.max_open_questions` decisions may stay OPEN, each tied to the pilot that settles it.
+
 ### `/propose <slug>`
-Full proposal: frozen eval protocol (validation selects, held-out test reports), strongest fair baseline, staged experiment table with promotion criteria written in advance, ablation plan, budgets, kill criteria. Presents at **Gate 1** and stops; offers the optional Gate 2 envelope.
+Assembles the proposal **from `decisions.md`**: frozen eval protocol (validation selects, held-out test reports), strongest fair baseline, staged experiment table with promotion criteria written in advance (OPEN decisions become pilot rows), ablation plan, budgets, kill criteria. Presents at **Gate 1** and stops; offers the optional Gate 2 envelope.
 
 ## Experimentation
 

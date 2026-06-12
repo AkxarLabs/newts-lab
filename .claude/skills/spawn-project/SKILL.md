@@ -17,9 +17,10 @@ stays lean and the project is independently cloneable.
    one-paragraph README ("Projects spawned by the AutoScientist lab at <hub path>; each
    is an independent git repo — see the hub's lab/REGISTRY.md for the index").
 3. Copy `templates/project/` → `<projects_root>/<slug>`. Substitute `{{slug}}`,
-   `{{title}}`, `{{date}}` in README.md, pyproject.toml, PLAN.md, EXPERIMENT_LOG.md,
-   **control.yaml**. (Keep the `project_pkg` package name unless the project will be
-   published standalone — renaming is optional polish, not required.)
+   `{{title}}`, `{{date}}`, `{{hub_path}}` in README.md, pyproject.toml, PLAN.md,
+   EXPERIMENT_LOG.md, **control.yaml**, **AGENTS.md**. (Keep the `project_pkg` package
+   name unless the project will be published standalone — renaming is optional polish,
+   not required.)
 4. **Configure `control.yaml`** (this IS the project's end-to-end run config, created at
    setup): fill budgets/seeds/loop values from the approved proposal; if the PI approved
    a Gate 2 envelope at Gate 1, record it in `gate2_envelope` (with `pi_signed: true`)

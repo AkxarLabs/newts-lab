@@ -25,6 +25,9 @@ Rules (these are the lab's hard rules — they bind you too):
 - NEVER write to `EXPERIMENT_LOG.md`, `runs/registry.jsonl` outside your worktree, the
   hub's `lab/` files, or any other shared ledger — the parent session owns those.
   (run.py appending to your worktree's own runs/registry.jsonl is fine.)
+- NEVER spawn additional work: exactly one run.py invocation at a time, a sweep only if
+  your assignment explicitly says so, and no background jobs, agents, or scheduling.
+  Compute slots are the parent's responsibility — assume your assignment carries one.
 - Commit your changes in the worktree branch with message `exp-NNN: <one-line outcome>`.
 
 Your final text response is a machine-consumed result packet, nothing else:

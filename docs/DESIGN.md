@@ -119,3 +119,19 @@ The v2 upgrade added three capability clusters plus mechanical tooling, each gro
 **Operator iteration (`/improve`).** AIRA's central finding — operators dominate search policy — encoded directly: draft/debug/improve/crossover operators with **scoped memory** (draft/improve see a sibling table for diversity pressure; debug sees only its ancestral chain, preventing oscillation), complexity-adaptive prompting (ambition scales with how explored a node is), worktree-isolated parallel variants, and merge-back **through the journal** (subagents return result packets; only the parent writes shared ledgers — append-only purity preserved, zero merge-conflict surface). `EXPERIMENT_LOG.md` gained optional `Parent:`/operator lineage fields, turning the existing ledger into the experiment tree.
 
 All tunables (ensemble sizes, debug depth, seed counts, backoff, staleness) centralize in `lab/config.yaml`.
+
+## 8. Gap analysis vs the field (2026-06, v4)
+
+Where AutoScientist now stands against the systems surveyed in §2, and what remains deliberately or temporarily missing.
+
+**Covered, with the field's best mechanism:** lifecycle decomposition + gated autonomy (Agent Laboratory's copilot data); template-free but contract-ful experimentation with journals, debug caps, multi-seed (Sakana v2, AIDE); operator-quality focus with scoped memory (AIRA); git-as-memory + budgets-as-facts (autoresearch); fresh-context ensemble review with calibration + minority veto (OpenReviewer/CCR/Sakana reviewer lineage); claim→artifact mechanical audit (Kosmos's traceability, mechanized); compounding knowledge store (Kosmos world model, minimized); multi-agent ideation with reflection/evolution/combination + tournament ranking (co-scientist's Generate/Reflect/Evolve/Rank, v4); ADR-style design deliberation before commitment (`/scope`, v4 — no surveyed system does this explicitly; closest is CodeScientist's human plan-editing); cross-project compute slots (v4); cross-agent operability via AGENTS.md (autoresearch's any-agent stance, v4).
+
+**Known gaps, by choice or for later:**
+
+1. **Persistent idea Elo** — tournament results are per-session; co-scientist maintains a standing ranked population. Add when idea volume justifies it (registry column + tournament history file).
+2. **Multi-lab sharing (AgentRxiv)** — collaborating lab instances exchanging reports gave +13.7% on MATH-500. A future `lab/exchange/` + a fetch procedure could replicate it; single-lab for now.
+3. **Literature API tooling** — lit review uses general web search; a Semantic Scholar/OpenAlex helper (`tools/s2.py`) would make search logs machine-replayable. PaperQA2-class contradiction detection is further out.
+4. **Benchmark harness (AstaBench/MLE-bench-class)** — no standardized self-evaluation of the lab itself; the procedure retrospective in `/finalize` is the lightweight substitute.
+5. **VLM figure review** — Sakana v2's dedicated figure-critique loop; partially covered since reviewers read the compiled PDF (multimodal), but no dedicated figure-quality lens. Cheap to add as a 6th lens if figures prove weak.
+6. **Domain template** (`templates/project-slm/`) — still pending the first real SLM project stabilizing its patterns (deliberate: extract, don't speculate).
+7. **Cost telemetry** — token/$ accounting per stage (CodeScientist's hard cost caps); currently only compute budgets are enforced, not API spend.

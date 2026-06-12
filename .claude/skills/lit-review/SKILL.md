@@ -17,4 +17,4 @@ Input: an idea in state `triaged`. Output: `ideas/<slug>/lit-review.md` (from `t
    - `incremental` → flag to PI: proceed only if the increment is cheap and useful.
    - `novel` → proceed.
 5. **Positioning**: list the baselines the field will demand, expected metrics/benchmarks, and pitfalls reported by the closest works (these feed the proposal's risks section).
-6. Update IDEA.md state log and `lab/REGISTRY.md` (next action = "/propose" or the kill/park outcome). Report the verdict + the 3 most load-bearing papers to the user.
+6. Update IDEA.md state log and `lab/REGISTRY.md` (next action = "/scope" or the kill/park outcome). Report the verdict + the 3 most load-bearing papers to the user.

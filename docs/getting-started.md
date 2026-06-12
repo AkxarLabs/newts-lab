@@ -2,9 +2,15 @@
 
 ## Prerequisites
 
-- [Claude Code](https://claude.com/claude-code) — the agent that drives the lab
+- [Claude Code](https://claude.com/claude-code) — the first-class agent driver
 - [uv](https://docs.astral.sh/uv/) — Python env/deps for projects and the lab tools
 - git
+
+!!! tip "Other agents (Codex, Cursor, …)"
+    The lab is drivable by any agent that reads `AGENTS.md` — the root one carries the
+    protocol and how to follow the `.claude/skills/` procedures manually (including how
+    to approximate the multi-agent steps); every spawned project ships its own
+    `AGENTS.md` so any agent can run experiments in it directly.
 
 ## Instantiate your lab
 

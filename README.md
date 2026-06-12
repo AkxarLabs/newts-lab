@@ -46,7 +46,7 @@ To pull template improvements into a running lab later: `git remote add template
 
 Every idea moves through a state machine, tracked in [lab/REGISTRY.md](lab/REGISTRY.md):
 
-`seed → triaged → lit-review → proposal → [PI gate] → active → analysis → writing → internal-review → [PI gate] → final`
+`seed → triaged → lit-review → scoping → proposal → [PI gate] → active → analysis → writing → internal-review → [PI gate] → final`
 
 …with `parked` and `killed` available from any state. Killing ideas early and often is a feature: kill criteria are written into every proposal before experiments start.
 
@@ -57,8 +57,9 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | Command | What it does |
 |---|---|
 | `/lab-status` | Orient: registry + notebook + `tools/check_lab.py` lint; recommend next action |
-| `/ideate` | Generate, score, and tournament-rank candidate ideas into `ideas/` |
+| `/ideate` | Phased pipeline: research → generate → multi-agent reflection → evolve → combine → tournament |
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |
+| `/scope` | Deliberate every design decision branch (advocate subagents) → ADR-style `decisions.md` + value re-check |
 | `/critique-paper` | Adversarial fresh-context reviewer ensemble on ANY paper — external (lit triage) or our own drafts |
 | `/propose` | Write a full proposal with staged experiment plan, budgets, kill criteria (+ optional Gate 2 envelope) |
 | `/spawn-project` | Instantiate `templates/project/` at `<projects_root>/<slug>` (own git repo + control.yaml) |

@@ -14,6 +14,27 @@ lab:                            # ── hub behavior · PI-owned ──
   projects_root: "../AutoScientist-Projects"  # where /spawn-project creates project repos (relative to hub)
   stale_days: 14                # registry rows older than this get flagged by check_lab.py
 
+compute:                        # ── CROSS-project run coordination · PI-owned ──
+  max_concurrent_runs: 1        # training campaigns allowed at once across ALL projects
+                                # (one slot = one run.py run or one sweep; tools/run_slots.py)
+  stale_slot_minutes: 360       # slots older than this are presumed crashed and reclaimed
+
+agents:                         # ── subagent settings · PI-owned ──
+  reviewer_model: inherit       # fresh-context-reviewer (inherit = session model; or sonnet | opus | haiku)
+  runner_model: inherit         # experiment-runner
+  critic_model: inherit         # ideation critics / scoping advocates
+
+ideation:                       # ── /ideate pipeline depth ──
+  candidates: 8                 # initial mechanism-diverse candidates
+  reflection_rounds: 2          # reflect -> evolve cycles per surviving idea
+  critics_per_idea: 2           # parallel fresh-context critic subagents in each reflect pass
+  enable_combination: true      # propose crossovers of complementary survivors
+
+scoping:                        # ── /scope deliberation depth ──
+  options_per_decision: 3       # alternatives generated per design-decision branch
+  advocate_subagents: true      # one parallel advocate per option argues its strongest case
+  max_open_questions: 3         # decisions allowed to stay open (resolved by pilots) before /propose
+
 critique:                       # ── /critique-paper · /review-paper · PI-owned ──
   ensemble_external: 3          # reviewer lenses for external-paper triage
   ensemble_own_draft: 5         # reviewer lenses for our own paper drafts

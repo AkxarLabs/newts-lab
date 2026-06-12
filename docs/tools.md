@@ -29,6 +29,16 @@ uv run --with pyyaml python tools/check_lab.py [--stale-days N] [--strict]
 
 Checks registry↔IDEA.md state agreement, orphan idea/project/paper dirs (projects scanned at `lab.projects_root`; transient `-wt-` worktrees ignored), and stale rows. Exit 1 on real inconsistencies. `/lab-status` runs it every session.
 
+### `run_slots.py` — cross-project compute coordination
+
+```bash
+uv run --with pyyaml python tools/run_slots.py acquire <project> <label>   # exit 1 = denied
+uv run --with pyyaml python tools/run_slots.py release <slot-id>
+uv run --with pyyaml python tools/run_slots.py status
+```
+
+Within a project, the experiment loop controls its own runs; the hub-level risk is two projects (or a loop plus an interactive session) launching training on the same GPU. One slot = one training campaign (a run **or** a sweep — the sweep manages its own internal parallelism); the cap is `compute.max_concurrent_runs`. Slots are files under `lab/.slots/` (atomic create, stale-reclaimed after `compute.stale_slot_minutes`). Hard rule 13: acquire before any PILOT/FULL campaign, release when the ledger entry is written; SMOKE is exempt; subagents never manage slots — the parent does.
+
 ### `show_config.py` — 3-layer config with provenance
 
 ```bash

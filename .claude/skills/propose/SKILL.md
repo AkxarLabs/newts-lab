@@ -5,11 +5,11 @@ description: Write a full research proposal (staged experiment plan, budgets, ki
 
 # Propose
 
-Input: idea in state `lit-review` with a novel/incremental verdict. Output: `ideas/<slug>/proposal.md` presented for **PI Gate 1**.
+Input: idea in state `scoping` with a completed `decisions.md` (from `/scope`). Output: `ideas/<slug>/proposal.md` presented for **PI Gate 1**.
 
 ## Procedure
 
-1. Read `IDEA.md` and `lit-review.md`. Set state → `proposal`.
+1. Read `IDEA.md`, `lit-review.md`, and `decisions.md`. Set state → `proposal`. The proposal is assembled FROM the settled decisions: §3 Method and §4 Experimental design follow decisions.md directly; OPEN decisions become explicit pilot rows whose criterion is "settles D-NNN".
 2. Fill `templates/idea/proposal.md`. The non-negotiables:
    - **Frozen eval protocol**: primary metric, validation (selection) vs held-out test (reporting) defined now. The experiment loop will never read test — design the split so that's physically easy to honor.
    - **Strongest fair baseline** from the lit review's positioning section — not the convenient one.

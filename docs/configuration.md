@@ -33,6 +33,18 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `experiment.multi_seed_n` | 3 | agent-readable | seeds required before a number is paper-grade (project may override) |
 | `loop.no_progress_backoff_cycles` | 3 | agent-readable | no-progress cycles before a loop stops (project may override) |
 | `loop.monitor_poll_seconds` | 300 | agent-readable | zero-token polling cadence (project may override) |
+| `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
+| `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
+| `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` subagents (`inherit` \| `sonnet` \| `opus` \| `haiku`) |
+| `agents.runner_model` | inherit | PI | model for `experiment-runner` subagents |
+| `agents.critic_model` | inherit | PI | model for ideation critics / scoping advocates |
+| `ideation.candidates` | 8 | agent-readable | initial candidates `/ideate` generates |
+| `ideation.reflection_rounds` | 2 | agent-readable | reflect→evolve cycles per surviving idea |
+| `ideation.critics_per_idea` | 2 | agent-readable | parallel critic subagents per idea per reflect pass |
+| `ideation.enable_combination` | true | agent-readable | propose crossovers of complementary survivors |
+| `scoping.options_per_decision` | 3 | agent-readable | alternatives generated per design-decision branch in `/scope` |
+| `scoping.advocate_subagents` | true | agent-readable | one parallel advocate per option argues its case |
+| `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 

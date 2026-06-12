@@ -2,7 +2,7 @@
 
 Single source of truth for everything in the lab. Every procedure that changes an idea/project's state updates this file in the same session.
 
-**States:** `seed` · `triaged` · `lit-review` · `proposal` · `active` · `analysis` · `writing` · `internal-review` · `final` · `parked` · `killed`
+**States:** `seed` · `triaged` · `lit-review` · `scoping` · `proposal` · `active` · `analysis` · `writing` · `internal-review` · `final` · `parked` · `killed`
 
 | ID | Title | State | Idea | Project | Paper | Updated | Next action |
 |----|-------|-------|------|---------|-------|---------|-------------|

@@ -1,32 +1,76 @@
 ---
 name: ideate
-description: Generate, tournament-rank, and triage research ideas into ideas/<slug>/. Takes an optional direction/topic as argument; otherwise mines lab knowledge for directions.
+description: Phased idea pipeline — research, generate, multi-agent reflection, evolve, combine, tournament-rank, triage into ideas/<slug>/. Takes an optional direction/topic; otherwise mines lab knowledge. Depth controlled by lab/config.yaml (ideation.*).
 ---
 
-# Ideate
+# Ideate (phased pipeline)
 
-Goal: end with 1–3 ideas in state `triaged` worth a lit review — not a long list of shallow ones.
+Goal: end with 1–3 ideas in state `triaged` that have already survived adversarial
+reflection — not a long list of shallow ones. Depth knobs: `ideation.*` in
+`lab/config.yaml` (`candidates`, `reflection_rounds`, `critics_per_idea`,
+`enable_combination`); critic model: `agents.critic_model`.
 
-## 1. Gather fuel
+## Phase 0 — Fuel
 
-- Read `lab/knowledge/OPEN-QUESTIONS.md`, `FINDINGS.md`, `FAILURES.md` — the lab's compounding pipeline. Failures are fuel: "X failed because Y" suggests "avoid Y" ideas.
+- Read `lab/knowledge/OPEN-QUESTIONS.md`, `FINDINGS.md`, `FAILURES.md` — the lab's
+  compounding pipeline. Failures are fuel: "X failed because Y" suggests "avoid Y" ideas.
 - Read `lab/REGISTRY.md` to avoid duplicating live or killed ideas.
-- If the user gave a direction, treat it as the brief. Optionally do a quick web/arXiv scan of the direction for very recent developments (this is NOT the lit review — 15 minutes max).
+- **Research scan**: if the user gave a direction, do a focused web/arXiv sweep of it
+  (recent papers, what's saturated vs open — 15–25 minutes, logged queries); this is
+  fuel, NOT the lit review.
 
-## 2. Generate candidates (target 6–10)
+## Phase 1 — Generate
 
-For each candidate, force the discipline of the IDEA template *before* falling in love with it: one-sentence falsifiable hypothesis, cheapest decisive experiment, how it fails fast. Discard anything that can't produce all three. Seek diversity: vary the mechanism, not just the parameters (candidates that differ only in degree count as one).
+Produce `ideation.candidates` candidates. For each, force the IDEA-template discipline
+*before* falling in love: one-sentence falsifiable hypothesis, cheapest decisive
+experiment, how it fails fast. Discard anything that can't produce all three. Seek
+**mechanism diversity** — candidates that differ only in degree count as one.
 
-## 3. Tournament ranking
+## Phase 2 — Reflect (multi-agent self-feedback)
 
-Absolute scoring is unreliable; pairwise comparison is robust (Google co-scientist's Elo result). Run a single-elimination-with-consolation bracket or round-robin if ≤6:
+For each candidate, spawn `ideation.critics_per_idea` critic subagents **in parallel**
+(fresh context — each receives only the candidate's hypothesis/sketch text, never your
+enthusiasm for it). Distinct charges:
 
-- For each pair, argue both sides briefly (novelty, feasibility on available compute, impact, cost-to-signal), then pick a winner. Record win/loss counts.
-- Rank by record; break ties on **cost-to-signal** (cheaper decisive experiments win — RE-bench: many cheap shots beat one long run).
+- **Novelty skeptic**: "Assume someone has done this. Search for them. Name the closest
+  work and what delta, if any, survives."
+- **Feasibility skeptic**: "Find the reason this fails in practice on a solo-researcher
+  compute budget: data unavailable, effect too small to detect at pilot scale, baseline
+  impossible to reproduce, metric confounded."
+- (3rd+ critic if configured: **Value skeptic** — "who would care, and would they care
+  enough to change what they do?")
 
-## 4. Triage & persist
+Record each critique in the candidate's working notes.
 
-- For the top 1–3: create `ideas/<slug>/IDEA.md` from `templates/idea/IDEA.md`, fill scores + tournament record + triage notes, state `triaged`.
-- For promising-but-not-now candidates: add one-line entries to `lab/knowledge/OPEN-QUESTIONS.md` instead of creating directories.
-- Update `lab/REGISTRY.md` (new rows, next action = "/lit-review").
-- Report the ranking and rationale to the user; recommend which idea to take to lit review first.
+## Phase 3 — Evolve
+
+Revise each candidate to answer its critiques (sharpen the hypothesis, swap the
+infeasible component, narrow the claim). A candidate whose core is refuted — not just
+bruised — is killed now; harvest any surviving thread into `OPEN-QUESTIONS.md`.
+**Repeat Phases 2–3 `ideation.reflection_rounds` times** (later rounds reuse cheaper
+single critics; stop early if a round produces no substantive critique).
+
+## Phase 4 — Combine (crossover)
+
+If `ideation.enable_combination`: look for complementary survivors (mechanism from A +
+evaluation insight from B; A's method on B's underexplored setting). Propose up to 2–3
+combinations as new candidates; each gets ONE reflect pass (combinations inherit their
+parents' known critiques — check those first). Mark parentage in their notes.
+
+## Phase 5 — Tournament
+
+Pairwise comparison of all survivors (round-robin if ≤6, bracket otherwise): argue both
+sides briefly (novelty, feasibility on available compute, impact, cost-to-signal), pick
+a winner, record win/loss. Rank by record; break ties on **cost-to-signal** (cheaper
+decisive experiments win).
+
+## Phase 6 — Triage & persist
+
+- Top 1–3: create `ideas/<slug>/IDEA.md` from `templates/idea/IDEA.md` — scores,
+  tournament record, AND a "Reflection summary" in the triage notes (the strongest
+  surviving critique of each idea, so /lit-review and /scope start with eyes open).
+  State `triaged`.
+- Promising-but-not-now: one-line entries in `OPEN-QUESTIONS.md` (no directories).
+- Update `lab/REGISTRY.md` (next action = "/lit-review").
+- Report: the ranking, each finalist's hypothesis + strongest surviving critique, and
+  which to take to lit review first.

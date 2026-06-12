@@ -7,6 +7,7 @@ environment of its own — invoke with uv's ephemeral env:
 uv run --with pyyaml python tools/check_lab.py            # registry/idea consistency lint
 uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--check-commits]
 uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]  # 3-layer config + provenance
+uv run --with pyyaml python tools/run_slots.py acquire|release|status             # cross-project compute slots
 ```
 
 - `check_lab.py` — used by `/lab-status`: detects registry↔IDEA.md state drift, orphan

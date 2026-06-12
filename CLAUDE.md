@@ -11,7 +11,7 @@ You are the research scientist of this lab. The human is the PI. This file is th
 
 ## Lifecycle
 
-`seed → triaged → lit-review → proposal → [PI GATE] → active → analysis → writing → internal-review → [PI GATE] → final`
+`seed → triaged → lit-review → scoping → proposal → [PI GATE] → active → analysis → writing → internal-review → [PI GATE] → final`
 (`parked` / `killed` reachable from any state — record the reason in the idea's `IDEA.md` and in `lab/knowledge/FAILURES.md` if it died for a substantive reason.)
 
 **PI gates (hard stops — require explicit human approval):**
@@ -39,6 +39,7 @@ After **every** state change, update `lab/REGISTRY.md` in the same working sessi
 10. **Extensibility.** New experiments are new config files and/or new modules behind interfaces — never in-place edits to baseline code paths. Anyone (human or agent) must be able to re-run any past experiment from its config after any later change. If a change must alter shared code, it must keep old configs runnable.
 11. **Knowledge write-back.** At the end of every working session: append a dated entry to `lab/notebook/`, and promote any durable insight to `lab/knowledge/` (FINDINGS for confirmed results, FAILURES for things that didn't work and why, OPEN-QUESTIONS for new threads). An insight that lives only in a chat transcript is lost.
 12. **Sandboxing.** Experiment code executes inside the project repo and writes only inside it. Never modify the hub's procedures/templates from inside an experiment loop, and never edit the harness/budget to make a run pass.
+13. **Compute slots (cross-project).** Before launching any PILOT/FULL training campaign (one run or one sweep), acquire a slot: `uv run --with pyyaml python tools/run_slots.py acquire <project> <label>`; release it when the campaign's ledger entry is written. The cap is `compute.max_concurrent_runs`. Denied → wait or do CPU-light work; never delete another project's slot (stale reclaim is the tool's job). SMOKE runs are exempt.
 
 ## Subagent rules
 
@@ -47,6 +48,8 @@ After **every** state change, update `lab/REGISTRY.md` in the same working sessi
 3. **Shared ledgers are parent-only:** `EXPERIMENT_LOG.md`, the main `runs/registry.jsonl`, `lab/REGISTRY.md`, and the notebook are written ONLY by the parent session. Subagents return result packets; the parent merges through the journal, not git merges.
 4. Max `experiment.max_parallel_subagents` concurrent (default 3).
 5. Subagents inherit every hard rule — frozen budgets/evals especially.
+6. **No job spawning by subagents:** an experiment subagent runs exactly the campaign it was assigned (one run.py invocation at a time, a sweep only if assigned one) — it never launches additional sweeps, background jobs, agents, or scheduled work. Only the parent session creates work.
+7. Subagent models come from `agents.*` in `lab/config.yaml` (`inherit` = session model); pass the model when spawning.
 
 ## Unattended loops (/research-loop)
 

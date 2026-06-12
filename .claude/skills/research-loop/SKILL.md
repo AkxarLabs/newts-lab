@@ -29,7 +29,9 @@ For overnight/long sessions where the PI is away. Tunables from the project's
    d. `/improve` operators (draft/debug/improve within this cycle's budget slice).
    FULL-stage work is permitted only within the brief's envelope; outside it, write the
    run as a **PI note** in the Loop Log and continue with other work.
-3. **Launch** via `scripts/run.py` (or `sweep.py`) as a background process.
+3. **Launch** via `scripts/run.py` (or `sweep.py`) as a background process. PILOT/FULL
+   campaigns acquire a compute slot first (hard rule 13); a DENIED slot is not idleness —
+   log it, do CPU-light work (analysis, planning, ledger hygiene), and retry next cycle.
 4. **Monitor at zero tokens:** while the run is alive, the ONLY check is
    `python scripts/status.py <run_id>` every `loop.monitor_poll_seconds`. No log
    reading, no reasoning about partial curves — the run.py watchdog enforces the

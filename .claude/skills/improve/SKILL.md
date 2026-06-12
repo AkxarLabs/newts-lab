@@ -49,9 +49,11 @@ the mechanism."
   1. Per variant: `git -C <projects_root>/<slug> worktree add ../<slug>-wt-exp-NNN -b exp-NNN`
      (worktrees are siblings inside the projects root, next to the project repo;
      check_lab.py ignores `-wt-` dirs).
-  2. Spawn one `experiment-runner` subagent per variant with: the worktree path, the
-     operator type, the context packet, and the stage budget. Subagents commit in their
-     branch and return a result packet; they never touch shared ledgers.
+  2. Spawn one `experiment-runner` subagent per variant (model: `agents.runner_model`)
+     with: the worktree path, the operator type, the context packet, and the stage
+     budget. PILOT-running variants each need a compute slot (hard rule 13) — acquire
+     them as the parent before spawning; subagents never manage slots, commit in their
+     branch, return a result packet, and never touch shared ledgers.
   3. **Merge through the journal, not git merges:** for each packet — append its
      `ledger_draft` to `EXPERIMENT_LOG.md` (keep AND revert decisions both get entries);
      for kept variants, merge the branch (configs + new modules only — conflict-free if

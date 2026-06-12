@@ -5,11 +5,11 @@
 Every idea moves through states tracked in `lab/REGISTRY.md` (the single source of truth) and mirrored in its `IDEA.md` frontmatter — `tools/check_lab.py` lints them against each other.
 
 ```
-seed → triaged → lit-review → proposal ──[GATE 1]──→ active → analysis
-                                                          ↑       │
-                                                          └───────┤ (more ablations)
-                                                                  ▼
-        final ←──[GATE 3]── internal-review ←── writing ←─────────┘
+seed → triaged → lit-review → scoping → proposal ──[GATE 1]──→ active → analysis
+                                                                    ↑       │
+                                                                    └───────┤ (more ablations)
+                                                                            ▼
+                  final ←──[GATE 3]── internal-review ←── writing ←─────────┘
 ```
 
 `parked` and `killed` are reachable from any state. **Killing early is a feature** — kill criteria are written into every proposal *before* experiments start, and `/research-loop` checks them every cycle.
@@ -19,7 +19,8 @@ seed → triaged → lit-review → proposal ──[GATE 1]──→ active → 
 | `seed` | raw idea captured | `/ideate` triage |
 | `triaged` | scored + tournament-ranked, worth a lit review | `/lit-review` |
 | `lit-review` | literature grounding in progress | novelty verdict |
-| `proposal` | full proposal drafted | **PI Gate 1** |
+| `scoping` | design decisions deliberated branch-by-branch (`decisions.md`) | value re-verification |
+| `proposal` | full proposal drafted from settled decisions | **PI Gate 1** |
 | `active` | project spawned, experiments running | plan complete / kill |
 | `analysis` | results interrogated, ablations decided | `/analyze` routing |
 | `writing` | paper drafted from artifacts | `/write-paper` done |
