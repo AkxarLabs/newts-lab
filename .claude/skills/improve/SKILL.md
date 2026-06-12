@@ -9,7 +9,8 @@ Iterates on the project repo at `<projects_root>/<slug>` to push the primary met
 AIDE/AIRA-style: the quality lives in the **operators**, not in clever search.
 Defaults from the project's `control.yaml` (`parallelism.*`, `seeds.*`), falling back
 to `lab/config.yaml` (`experiment.*`): `max_debug_depth`, `num_drafts`,
-`max_parallel_subagents`, `multi_seed_n`.
+`max_parallel_subagents`, `multi_seed_n`. If the project has a `SYSTEM.md`, its machine
+constraints bind every variant (and are passed to runner subagents' context packets).
 
 ## The journal is the tree
 

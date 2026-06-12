@@ -18,9 +18,13 @@ stays lean and the project is independently cloneable.
    is an independent git repo — see the hub's lab/REGISTRY.md for the index").
 3. Copy `templates/project/` → `<projects_root>/<slug>`. Substitute `{{slug}}`,
    `{{title}}`, `{{date}}`, `{{hub_path}}` in README.md, pyproject.toml, PLAN.md,
-   EXPERIMENT_LOG.md, **control.yaml**, **AGENTS.md**. (Keep the `project_pkg` package
-   name unless the project will be published standalone — renaming is optional polish,
-   not required.)
+   EXPERIMENT_LOG.md, **control.yaml**, **CLAUDE.md**, **AGENTS.md** — the last two
+   make the project directory autonomously operable: a session started inside it gets
+   the full project protocol. (Keep the `project_pkg` package name unless the project
+   will be published standalone — renaming is optional polish, not required.)
+   If `lab/SYSTEM.md` exists in the hub, copy it to the project root as `SYSTEM.md`
+   (the PI may tailor the copy per-project); otherwise mention to the PI that one can
+   be created from `templates/SYSTEM.md` any time.
 4. **Configure `control.yaml`** (this IS the project's end-to-end run config, created at
    setup): fill budgets/seeds/loop values from the approved proposal; if the PI approved
    a Gate 2 envelope at Gate 1, record it in `gate2_envelope` (with `pi_signed: true`)
@@ -32,7 +36,8 @@ stays lean and the project is independently cloneable.
 7. Initialize: `git init`, then `uv sync`, then run the smoke pipeline:
    - `uv run python scripts/run.py --config configs/experiments/exp-001-smoke.yaml`
    - `uv run pytest tests/`
-   Commit only once both pass ("scaffold: spawn from AutoScientist template, smoke green"). Commit the `uv.lock`.
+   - `uv run --with pyyaml python scripts/check_project.py` (readiness lint — exit 0)
+   Commit only once all pass ("scaffold: spawn from AutoScientist template, smoke green"). Commit the `uv.lock`.
 8. Update hub state: IDEA.md → `active`, registry row's Project column = the relative
    path (e.g. `../AutoScientist-Projects/<slug>`), next action = "/experiment exp-002".
    Append a lab notebook entry.

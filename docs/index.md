@@ -44,9 +44,9 @@ Everything between gates runs autonomously. Everything at a gate stops for you.
 ## Where to go next
 
 - [Getting started](getting-started.md) — instantiate the template, `/setup-lab`, first session
-- [Autonomous operation](autonomy.md) — `/overnight`: one command before bed, reviewed drafts in the morning
+- [Autonomy & modes](autonomy.md) — `/autopilot`: one command before bed, reviewed drafts in the morning — plus the stage-gated and partial modes
 - [The workflow](workflow.md) — lifecycle states, gates, and protocols in detail
-- [Skills reference](skills.md) — all 14 procedures
+- [Skills reference](skills.md) — all 20 procedures
 - [Configuration](configuration.md) — the 3-layer config system and every key
 - [Projects](projects.md) — anatomy of a spawned project and guidelines for extending one
 - [Tools](tools.md) — the mechanical helpers

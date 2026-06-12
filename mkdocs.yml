@@ -33,7 +33,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - The workflow: workflow.md
-  - Autonomous operation: autonomy.md
+  - Autonomy & modes: autonomy.md
   - Skills reference: skills.md
   - Configuration: configuration.md
   - Projects: projects.md

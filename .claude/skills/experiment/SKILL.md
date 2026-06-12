@@ -9,7 +9,7 @@ Operates inside the project repo at `<projects_root>/<slug>` (path in the regist
 
 ## Before each experiment: read memory
 
-`PLAN.md` (what's next + its pre-written criterion), the tail of `EXPERIMENT_LOG.md`, `runs/registry.jsonl`, and `git log --oneline -20`. Never re-run something already tried without saying why.
+`PLAN.md` (what's next + its pre-written criterion), `SYSTEM.md` if present (the PI's machine constraints — binding like control.yaml, never edited), the tail of `EXPERIMENT_LOG.md`, `runs/registry.jsonl`, and `git log --oneline -20`. Never re-run something already tried without saying why.
 
 ## Per experiment attempt
 

@@ -72,6 +72,9 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 !!! warning "PI-owned keys"
     `/configure` refuses to change PI-owned keys unless the request comes explicitly from you in-session. `gate2_envelope.pi_signed: true` and `eval_frozen: false` are PI-only by hard rule, not convention.
 
+!!! note "Not config, but binding: `SYSTEM.md`"
+    Alongside `control.yaml`, a project may carry a PI-written `SYSTEM.md` — a prose description of the machine it runs on (hardware reality, data locations, scheduling rules, forbidden actions). It's not merged into any config layer, but agents treat its constraints as binding like control.yaml and never edit it. Lab default at `lab/SYSTEM.md` (template: `templates/SYSTEM.md`, offered by `/setup-lab`), copied into each project at spawn. See [Autonomy & modes](autonomy.md#autonomy-inside-the-project-directory).
+
 ## Layer 3 — `configs/experiments/*.yaml` (one per experiment)
 
 The unit of experimentation. **Immutable once run** — a variant is a *new* file, which is what keeps every past experiment re-runnable forever. Anything set here (including `budget.max_minutes`) beats the layers below. `configs/base.yaml` holds the project's shared *domain* defaults (model, data, eval definition) between control.yaml and the experiment files.

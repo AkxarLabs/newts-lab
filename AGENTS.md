@@ -13,12 +13,18 @@ as PI at three gates. **Read `CLAUDE.md` first — it is the lab protocol and bi
 fully** (lifecycle, the three PI gates, the 13 hard rules, subagent rules, write-back
 duties). This file only adds what's specific to non-Claude agents.
 
+**Cold start:** if `lab/REGISTRY.md` is empty, the lab is fresh — run the `setup-lab`
+procedure (a configuration interview) and offer the PI their on-ramp: `ideate` from
+nothing, `adopt` for work they already have, `advance` for one verified stage at a
+time, `autopilot` for a signed unattended campaign.
+
 ## Procedures
 
 The workflow lives in `.claude/skills/<name>/SKILL.md` — plain-Markdown procedures
 (`setup-lab`, `lab-status`, `configure`, `ideate`, `lit-review`, `critique-paper`,
 `scope`, `propose`, `spawn-project`, `experiment`, `improve`, `research-loop`,
-`overnight`, `analyze`, `make-figures`, `write-paper`, `review-paper`, `finalize`).
+`autopilot`, `advance`, `adopt`, `analyze`, `make-figures`, `write-paper`,
+`review-paper`, `finalize`).
 They are written as instructions to an agent and contain no Claude-specific syntax:
 **open the file and follow it step by step.** When the PI says "/ideate X", that
 means: execute `.claude/skills/ideate/SKILL.md` with argument X.

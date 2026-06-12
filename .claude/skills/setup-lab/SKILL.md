@@ -36,6 +36,13 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
 **Projects location**
 - Keep `lab.projects_root` at `../AutoScientist-Projects` or elsewhere?
 
+**The machine itself (optional)**
+- Anything the implementation agent should know about the machine(s) experiments run
+  on — data/cache locations, scheduling etiquette, forbidden actions, known quirks?
+  → if yes, create `lab/SYSTEM.md` from `templates/SYSTEM.md` with their answers
+  (PI-owned; copied into every spawned project, where it binds the agent like
+  control.yaml). If no, skip — absence means "no constraints beyond the protocol".
+
 ## 2. Apply & verify
 
 1. Write the answers into `lab/config.yaml`.
@@ -49,4 +56,6 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
 
 Report the configuration summary, then offer the two on-ramps:
 - Interactive: `/ideate <first direction>` — walk the lifecycle with gates.
-- Unattended: `/overnight` — authorize a campaign and let the lab run while you sleep.
+- Unattended: `/autopilot` — authorize a campaign and let the lab run while you sleep.
+- Somewhere between: `/advance <slug>` — one lifecycle stage at a time, you verify
+  between stages. Have an existing idea or codebase? `/adopt` enters mid-lifecycle.

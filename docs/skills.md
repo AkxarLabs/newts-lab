@@ -5,10 +5,16 @@ The procedures of the lab, invoked as slash commands in Claude Code. Source of t
 ## Setup & autonomy
 
 ### `/setup-lab`
-One-time interview (re-runnable): research directions → `OPEN-QUESTIONS.md` seeds; compute reality → `compute.*`; autonomy appetite → envelope/oversight defaults; models and API keys. Writes `lab/config.yaml`, verifies the environment (git/uv/tools/docs/template smoke), hands off to `/ideate` or `/overnight`.
+One-time interview (re-runnable): research directions → `OPEN-QUESTIONS.md` seeds; compute reality → `compute.*`; autonomy appetite → envelope/oversight defaults; models and API keys. Writes `lab/config.yaml`, verifies the environment (git/uv/tools/docs/template smoke), hands off to `/ideate`, `/adopt`, `/advance`, or `/autopilot`.
 
-### `/overnight`
-The unattended end-to-end campaign: one authorization conversation → a signed campaign brief (`lab/campaigns/`) that delegates Gate 1 *within bounds*, derives Gate 2 envelopes, and **never delegates Gate 3** — then runs ideation → … → internal-review for a portfolio of ideas, finishing with a morning report. See [Autonomous operation](autonomy.md).
+### `/autopilot`
+The unattended end-to-end campaign: one authorization conversation → a signed campaign brief (`lab/campaigns/`) that delegates Gate 1 *within bounds*, derives Gate 2 envelopes, and **never delegates Gate 3** — then runs ideation → … → internal-review for a portfolio of ideas, finishing with a morning report. Wrap in the built-in scheduler for crash-resilience: `/loop 30m /autopilot continue <campaign-file>`. See [Autonomy & modes](autonomy.md).
+
+### `/advance [slug]`
+The stage-gated (semi-autonomous) mode: runs **exactly the next lifecycle stage** for one idea, then stops with a verification summary — what changed, what to review, what the next `/advance` would do. Never crosses a PI gate (at a gate it presents and stops). Your loop: review → `/advance` → review → …
+
+### `/adopt`
+Enter the lifecycle anywhere: a short interview scaffolds the prerequisite files for your starting point — an idea you already have (skip ideation), known literature (PI-waived lit review), a settled design, or an **existing code/results repo** registered as a project. Skipped stages are recorded as PI-waived in `IDEA.md`; pre-existing numbers without artifacts still can't enter papers (hard rule 1) — they become planned reproduction experiments.
 
 ## Orientation
 

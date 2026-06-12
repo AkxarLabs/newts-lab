@@ -21,7 +21,8 @@ For overnight/long sessions where the PI is away. Tunables from the project's
 ## Cycle (repeat until a stop condition)
 
 1. **Read memory:** `EXPERIMENT_LOG.md` tail, `runs/registry.jsonl`, `git log -20`,
-   the Loop Log. Never repeat a tried variant.
+   the Loop Log (+ `SYSTEM.md` once at loop start, if present — machine constraints
+   bind every cycle). Never repeat a tried variant.
 2. **Pick the next action** by fixed priority:
    a. unfinished planned experiments in `PLAN.md` (in order),
    b. ablation-plan rows,

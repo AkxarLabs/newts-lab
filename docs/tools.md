@@ -106,6 +106,14 @@ uv run python scripts/status.py [<run_id>] [--log-interval 60]
 
 One line: `alive | stalled | done | failed | timeout · elapsed/budget · last metric`. The **only** check `/research-loop` makes while a run is in flight — liveness from `meta.json` + `metrics.jsonl` mtime, no log dumps, no judgment about partial curves. Exit 3 on `stalled` (two in a row → treat the run as failed).
 
+### `check_project.py` — readiness lint + orientation
+
+```bash
+uv run --with pyyaml python scripts/check_project.py
+```
+
+The project-side analogue of `check_lab.py`: required files present, no unfilled template placeholders, `control.yaml` parses (budgets + envelope blocks), `registry.jsonl` readable — then an orientation block regardless: runs recorded, last run + status, envelope signed or not, SYSTEM.md present or not, and a **suggested next procedure**. Exit 0 ready, 1 not. Run it on any fresh clone, after `/spawn-project`, or whenever an agent cold-starts in the project directory.
+
 ## Design note
 
 There is deliberately **no orchestrator binary and no pip package**. The tools are boring on purpose: each one reads files a human can read, prints markdown a human can paste, and exits with a code a script can branch on. The agent's judgment plus these deterministic checks is the architecture.

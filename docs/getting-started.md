@@ -31,12 +31,20 @@ AutoScientist is a **template repository** — each lab is a living instance of 
 cd your-lab
 claude
 > /setup-lab                               # 5-minute interview: compute, autonomy, models, directions
-> /ideate efficient small-LM post-training # walk the lifecycle with gates...
-> /overnight                               # ...or authorize a campaign and go to sleep
 ```
 
-`/setup-lab` configures everything interactively (it writes `lab/config.yaml` for you);
-see [Autonomous operation](autonomy.md) for the one-command overnight mode.
+`/setup-lab` configures everything interactively (it writes `lab/config.yaml` for you).
+Then pick your on-ramp — there is one for every starting point and autonomy appetite:
+
+| You have / you want | Start with |
+|---|---|
+| Nothing yet — explore a direction | `/ideate <direction>` — walk the lifecycle with gates |
+| An idea, a known literature, or an existing codebase | `/adopt` — scaffold the right files and enter mid-lifecycle |
+| One stage at a time, verifying between stages | `/advance <slug>` — runs exactly the next stage, then stops for you |
+| Hands-off: sign once, read drafts in the morning | `/autopilot` — authorize a campaign and go to sleep |
+
+See [Autonomy & modes](autonomy.md) for how the modes differ and how the unattended
+ones compose with Claude Code's built-in `/loop` scheduler.
 
 The agent generates and tournament-ranks candidate ideas, then walks the lifecycle:
 `/lit-review` → `/propose` → **Gate 1 (you)** → `/spawn-project` → `/experiment` →

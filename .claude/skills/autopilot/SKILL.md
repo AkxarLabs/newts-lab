@@ -1,13 +1,14 @@
 ---
-name: overnight
-description: Authorize and run an unattended end-to-end campaign — multiple ideas carried from ideation through experiments to reviewed paper drafts while the PI sleeps. One setup conversation, then the lab runs itself within a signed brief.
+name: autopilot
+description: Authorize and run an unattended end-to-end campaign — multiple ideas carried from ideation through experiments to reviewed paper drafts while the PI is away. One setup conversation, then the lab runs itself within a signed brief.
 ---
 
-# Overnight Campaign
+# Autopilot Campaign
 
-"One command before bed, drafts in the morning." Honest semantics up front: the
-campaign delivers papers at **`internal-review`** — fully drafted, claims-audited,
-ensemble-reviewed — for your morning Gate 3 read. Gate 3 is never delegated; that's
+The full-autonomy mode: "one command before bed, drafts in the morning" — though a
+campaign can just as well run a weekend. Honest semantics up front: the campaign
+delivers papers at **`internal-review`** — fully drafted, claims-audited,
+ensemble-reviewed — for the PI's Gate 3 read. Gate 3 is never delegated; that's
 what keeps the lab's name worth something.
 
 ## 1. Authorization conversation (10 minutes, the only interactive part)
@@ -58,6 +59,8 @@ Then the standard write-back (registry, knowledge promotion) for everything touc
 ## Keeping it running
 
 Within one session this skill just runs. For resilience across a long night, pair it
-with the harness's looping: `/loop /overnight continue <campaign-file>` re-enters the
-campaign on an interval and each entry resumes from the Campaign Log (the brief +
-logs make every step recoverable — that's why they're append-only).
+with Claude Code's built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`
+re-enters the campaign on an interval and each entry resumes from the Campaign Log
+(the brief + logs make every step recoverable — that's why they're append-only).
+The session must stay open with a permission mode that won't prompt mid-night —
+see docs/autonomy.md for the exact invocation and its limits.

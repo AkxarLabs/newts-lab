@@ -57,7 +57,9 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | Command | What it does |
 |---|---|
 | `/setup-lab` | First-run interview → writes `lab/config.yaml`, verifies env, seeds directions |
-| `/overnight` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a signed brief |
+| `/autopilot` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a signed brief |
+| `/advance` | Stage-gated mode: run exactly the next lifecycle stage, then stop for PI verification |
+| `/adopt` | Enter the lifecycle anywhere — scaffold prerequisites for an existing idea, design, or code repo |
 | `/lab-status` | Orient: registry + notebook + `tools/check_lab.py` lint; recommend next action |
 | `/ideate` | Phased pipeline: research → generate → multi-agent reflection → evolve → combine → tournament |
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |
@@ -82,7 +84,7 @@ AutoScientist/
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
 ├── .claude/skills/      # The procedures above
-├── .claude/agents/      # Scoped subagents: fresh-context-reviewer, experiment-runner
+├── .claude/agents/      # Scoped subagents: fresh-context-reviewer, experiment-runner, overseer
 ├── lab/
 │   ├── REGISTRY.md      # Single source of truth for all ideas/projects + states
 │   ├── config.yaml      # Lab-wide tunables (ensemble sizes, debug depth, backoff, ...)
@@ -100,11 +102,20 @@ AutoScientist/
 ```bash
 cd AutoScientist
 claude        # start the agent
-> /lab-status                 # orient
+> /setup-lab                  # first time: 5-minute configuration interview
 > /ideate efficient small-LM post-training   # or any direction
 ```
 
 The agent takes it from there, pausing at the PI gates (proposal approval, full-scale launch, finalization) for your sign-off.
+
+**Pick your level of autonomy** — same procedures, same gates, different pace ([full guide](docs/autonomy.md)):
+
+- **Manual** — invoke each procedure yourself (`/ideate` → `/lit-review` → …).
+- **Stage-gated** — `/advance`: one lifecycle stage per command, verified by you between stages.
+- **Project loop** — `/research-loop <slug>`: unattended experiments under a signed brief.
+- **Full autopilot** — `/autopilot`: sign one campaign brief, wake up to reviewed drafts (wrap with the built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`).
+
+Already have an idea, a design, or a codebase? `/adopt` enters the lifecycle mid-stream.
 
 ## Principles (short version — full version in CLAUDE.md)
 

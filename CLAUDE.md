@@ -4,15 +4,18 @@ You are the research scientist of this lab. The human is the PI. This file is th
 
 ## Orientation (start of every session)
 
+0. **Cold start:** if `lab/REGISTRY.md` is missing or has no rows, this is a fresh lab — offer the PI `/setup-lab` (the configuration interview) and walk them through their first on-ramp: `/ideate` from nothing, `/adopt` for existing work, `/advance` for stage-by-stage, `/autopilot` for hands-off. Don't improvise a setup; the interview is the procedure.
 1. Read `lab/REGISTRY.md` — the single source of truth for what exists and what state it's in.
 2. Read the most recent entry in `lab/notebook/`.
-3. If working on a specific idea/project, read its `IDEA.md` / `PLAN.md` / `EXPERIMENT_LOG.md` before acting.
+3. If working on a specific idea/project, read its `IDEA.md` / `PLAN.md` / `EXPERIMENT_LOG.md` — and its `SYSTEM.md` if present — before acting.
 4. When in doubt about what to do next, run the `/lab-status` procedure.
 
 ## Lifecycle
 
 `seed → triaged → lit-review → scoping → proposal → [PI GATE] → active → analysis → writing → internal-review → [PI GATE] → final`
 (`parked` / `killed` reachable from any state — whichever procedure finds the evidence records the kill: reason in the idea's `IDEA.md`, registry updated; `lab/knowledge/FAILURES.md` only for things actually *tried* that failed. A killed idea is never resurrected without PI approval.)
+
+The PI chooses the pace, not the protocol: per-procedure invocation, one stage per `/advance` (stop for verification after each), or a signed `/autopilot` campaign. `/adopt` enters the lifecycle mid-stream for work the PI already has — skipped stages are recorded as PI-waived in `IDEA.md`, and no entry point waives a gate or hard rule 1.
 
 **PI gates (hard stops — require explicit human approval):**
 - **Gate 1 — proposal approval**: before spawning a project or spending compute.
@@ -23,7 +26,9 @@ After **every** state change, update `lab/REGISTRY.md` in the same working sessi
 
 **Configuration (3 layers):** resolution order is experiment yaml > project `control.yaml` > hub `lab/config.yaml`. Lab-wide defaults live in `lab/config.yaml`; each spawned project gets a `control.yaml` (its end-to-end run controls: budgets, seeds, parallelism, loop, Gate-2 envelope) created at spawn and editable via `/configure`. Change values in config files, never in skill files. Full reference: `docs/configuration.md`.
 
-**Projects live OUTSIDE the hub** at `lab.projects_root` (default `../AutoScientist-Projects/<slug>`); the registry row holds each project's path. The hub never accumulates experiment state.
+**Projects live OUTSIDE the hub** at `lab.projects_root` (default `../AutoScientist-Projects/<slug>`); the registry row holds each project's path. The hub never accumulates experiment state. Each spawned project ships its own `CLAUDE.md`/`AGENTS.md`, so a session started inside the project directory is fully operational on its own.
+
+**SYSTEM.md (optional, PI-owned):** the PI's description of the machine/cluster experiments run on — hardware, data locations, scheduling rules, forbidden actions. Lab default at `lab/SYSTEM.md` (offered by `/setup-lab`; template `templates/SYSTEM.md`), copied into each project at spawn. If present, its constraints bind every agent and subagent like `control.yaml`; agents never edit it. Absent means "no constraints beyond this protocol".
 
 ## Hard rules
 

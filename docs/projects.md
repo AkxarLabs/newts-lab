@@ -21,6 +21,9 @@ Each project is **its own git repository**: independently cloneable, publishable
 
 ```
 <slug>/
+├── CLAUDE.md                # project protocol — a session started HERE is fully operational
+├── AGENTS.md                # the same for any other agent + cold-start checklist
+├── SYSTEM.md                # optional, PI-owned: the machine's ground truth (copied from lab/SYSTEM.md)
 ├── control.yaml             # end-to-end run controls — created at spawn, editable (see Configuration)
 ├── PLAN.md                  # approved experiment plan: frozen eval protocol, staged table, kill criteria
 ├── EXPERIMENT_LOG.md        # append-only narrative ledger with lineage fields — read this first
@@ -33,10 +36,13 @@ Each project is **its own git repository**: independently cloneable, publishable
 │   ├── sweep.py             # multi-seed / grid launcher
 │   ├── compare.py           # registry queries (best, seeds, experiments)
 │   ├── status.py            # zero-token run monitor
+│   ├── check_project.py     # readiness lint + suggested next procedure
 │   └── figures/             # every paper figure/table is generated here from artifacts
 ├── runs/                    # per-run artifact dirs (gitignored) + committed registry.jsonl
 └── tests/                   # smoke + watchdog tests — keep green forever
 ```
+
+A project is **autonomously operable from inside**: `cd <slug> && claude` reads the project's `CLAUDE.md` and gives the agent everything — orientation order, autonomy bounds (`control.yaml`), machine constraints (`SYSTEM.md`, if you wrote one), when to parallelize with subagents, and pointers to the hub procedures it follows. `scripts/check_project.py` is the cold-start lint: it verifies the repo is runnable and suggests the next procedure. See [Autonomy & modes](autonomy.md#autonomy-inside-the-project-directory).
 
 ## The reproducibility contract
 

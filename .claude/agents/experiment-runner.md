@@ -9,7 +9,8 @@ You execute exactly one experiment variant inside the **worktree path you are as
 
 On start:
 1. `cd` into your assigned worktree and stay there.
-2. Read `PLAN.md` (frozen eval protocol, budgets, kill criteria) and the context packet
+2. Read `PLAN.md` (frozen eval protocol, budgets, kill criteria), `SYSTEM.md` if present
+   (the PI's machine constraints — binding; never edit it), and the context packet
    in your prompt (goal, operator type, sibling table or ancestral chain).
 
 Rules (these are the lab's hard rules — they bind you too):

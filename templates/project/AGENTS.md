@@ -1,16 +1,26 @@
 # AGENTS.md — {{title}}
 
-Operating manual for ANY coding agent working in this project repo (spawned from the
-AutoScientist lab at `{{hub_path}}`; full protocol in the hub's `CLAUDE.md`/`AGENTS.md`).
+Operating notes for ANY coding agent working in this project repo (spawned from the
+AutoScientist lab at `{{hub_path}}`). **Read `CLAUDE.md` in this directory first — it
+is the project protocol and binds you fully** (orientation order, autonomy bounds,
+subagent policy, the extensibility rules, session write-back). This file adds the
+command crib and what's specific to non-Claude agents.
 
-## Orientation (always, before acting)
+## Cold-start readiness checklist
 
-1. `PLAN.md` — the approved experiment plan: frozen eval protocol, staged experiment
-   table with pre-written success criteria, kill criteria.
-2. `control.yaml` — this project's run controls: stage budgets (watchdog-enforced),
-   seeds, parallelism, the Gate-2 envelope. PI-owned keys are marked; never change them.
-3. `EXPERIMENT_LOG.md` tail + `runs/registry.jsonl` + `git log --oneline -20` — what
-   was already tried. Never repeat an attempt without saying why.
+Before the first experiment in a fresh clone or a just-spawned project, verify:
+
+- [ ] `PLAN.md` filled from the approved proposal (not template placeholders)
+- [ ] `control.yaml` parses; budgets set; if FULL work is expected, `gate2_envelope.pi_signed: true`
+- [ ] `SYSTEM.md` read, if present (machine constraints — binding)
+- [ ] `uv sync` clean, then smoke green:
+      `uv run python scripts/run.py --config configs/experiments/exp-001-smoke.yaml` + `uv run pytest`
+
+…or just run the lint, which checks all of this and suggests the next action:
+
+```bash
+uv run --with pyyaml python scripts/check_project.py
+```
 
 ## Running experiments
 
@@ -23,20 +33,10 @@ uv run python scripts/status.py                                    # check a liv
 uv run pytest                                                      # keep green forever
 ```
 
-## The rules (these make the project extensible — follow exactly)
+## Without a subagent mechanism
 
-1. **A new experiment is a NEW yaml** in `configs/experiments/` — experiment configs
-   are immutable once run. New behavior goes behind a config switch; baseline code
-   paths stay runnable forever.
-2. **Stages:** SMOKE (pipeline check) → PILOT (decisive small run) → FULL (requires PI
-   approval or the signed envelope in `control.yaml`). Budgets are enforced by the
-   run watchdog — never raise a budget, seed, or eval setting to make a result look
-   better; flag the PI instead.
-3. **Record every attempt** in `EXPERIMENT_LOG.md` (format at the top of that file,
-   including failures), then ONE git commit: `exp-NNN: <one-line outcome>`.
-4. **Multi-seed before claiming:** a result is a finding only at ≥ `seeds.multi_seed_n`
-   seeds (use sweep.py), reported mean ± spread.
-5. **Debug cap:** 3 consecutive fix attempts, then record the failure and move on.
-6. **Never touch:** the eval protocol, test split, `runs/registry.jsonl` history, or
-   anything in the hub repo from inside this project.
-7. **Figures are scripts** in `scripts/figures/`, reading only `runs/` artifacts.
+`CLAUDE.md`'s subagent policy assumes parallel worktree subagents. Without them, run
+variants **sequentially in this checkout** — one at a time, same journal discipline
+(one config, one ledger entry, one commit per attempt). Skip the worktree machinery
+rather than half-following it. The procedures themselves are plain Markdown at
+`{{hub_path}}/.claude/skills/<name>/SKILL.md` — open and follow step by step.

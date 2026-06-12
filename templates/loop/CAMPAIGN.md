@@ -1,6 +1,6 @@
 # Campaign Brief — {{date}}-{{slug}}
 
-*Created by `/overnight` · Everything above the Campaign Log is FROZEN once signed.*
+*Created by `/autopilot` · Everything above the Campaign Log is FROZEN once signed.*
 
 ## Direction & targets
 
