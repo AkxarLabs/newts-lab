@@ -45,6 +45,9 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `scoping.options_per_decision` | 3 | agent-readable | alternatives generated per design-decision branch in `/scope` |
 | `scoping.advocate_subagents` | true | agent-readable | one parallel advocate per option argues its case |
 | `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
+| `writing.max_reflection_rounds` | 3 | agent-readable | verifier-gated revision rounds in `/write-paper` (gains plateau ~3) |
+| `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
+| `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 

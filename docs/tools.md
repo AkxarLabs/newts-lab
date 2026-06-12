@@ -39,6 +39,16 @@ uv run --with pyyaml python tools/run_slots.py status
 
 Within a project, the experiment loop controls its own runs; the hub-level risk is two projects (or a loop plus an interactive session) launching training on the same GPU. One slot = one training campaign (a run **or** a sweep — the sweep manages its own internal parallelism); the cap is `compute.max_concurrent_runs`. Slots are files under `lab/.slots/` (atomic create, stale-reclaimed after `compute.stale_slot_minutes`). Hard rule 13: acquire before any PILOT/FULL campaign, release when the ledger entry is written; SMOKE is exempt; subagents never manage slots — the parent does.
 
+### `s2.py` — literature search, BibTeX, citation verification
+
+```bash
+uv run --with pyyaml python tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
+uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066
+uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib [--threshold 0.85]
+```
+
+Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit). `bibtex` returns the canonical entry for a paper id — no hand-typed bibliography. `verify` is the zero-assumption citation audit `/review-paper` runs: every bib entry title-matched against the real record (threshold from `writing.citation_match_threshold`), year-checked, and retraction-checked via OpenAlex `is_retracted`. Free-generated LLM citations are fabricated at ~18% base rate — this check is blocking, not advisory. Optional env keys: `S2_API_KEY` (keyless S2 shares a saturated global pool; backoff built in), `OPENALEX_API_KEY`.
+
 ### `show_config.py` — 3-layer config with provenance
 
 ```bash
@@ -75,6 +85,18 @@ uv run python scripts/compare.py list --last 20
 ```
 
 Reads only `runs/registry.jsonl`; markdown output with seed-aggregated mean ± std and deltas.
+
+### `figures.py` — the paper-grade figure & table library (`src/project_pkg/`)
+
+Not a CLI — the module every `scripts/figures/` script imports, so figure code in projects stays a few lines and all figures are consistent by construction:
+
+- `new_fig(width="single"|"double")` — axes at **final printed width** (3.3 in / 6.9 in), warm-free venue-neutral style: vector PDF, TrueType fonts (`fonttype 42` — Type 3 fails camera-ready checks), 7–8 pt labels, Okabe-Ito colorblind-safe cycle, constrained layout.
+- `save_fig(fig, name, consumed_runs=[...])` — PDF + review PNG, printing the run ids consumed (provenance for `claims.yaml`).
+- `load_registry()` / `metric_curve(run_id, metric)` / `seed_stats(rows, metric)` — artifact access; headline comparisons must go through `seed_stats`.
+- `format_measurement(mean, std, n)` — sig-fig discipline (std to 2 sig figs, mean to match: `71.28 ± 0.39`).
+- `emit_table(headers, rows, path)` — booktabs `.tex` files the paper `\input`s, so **result numbers never pass through prose generation** (the single most effective anti-transcription-error mechanism in the surveyed systems).
+
+`/make-figures` orchestrates these per paper; matplotlib is imported lazily (add it to the project's pyproject when plotting starts).
 
 ### `status.py` — zero-token run monitor
 

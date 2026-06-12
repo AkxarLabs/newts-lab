@@ -35,6 +35,11 @@ scoping:                        # ── /scope deliberation depth ──
   advocate_subagents: true      # one parallel advocate per option argues its strongest case
   max_open_questions: 3         # decisions allowed to stay open (resolved by pilots) before /propose
 
+writing:                        # ── /write-paper · /make-figures ──
+  max_reflection_rounds: 3      # verifier-gated revision rounds (gains plateau ~3, regress after)
+  citation_match_threshold: 0.85 # title-similarity gate for tools/s2.py verify
+  page_limit: 9                 # target main-text pages; over-length trimmed gradually
+
 critique:                       # ── /critique-paper · /review-paper · PI-owned ──
   ensemble_external: 3          # reviewer lenses for external-paper triage
   ensemble_own_draft: 5         # reviewer lenses for our own paper drafts

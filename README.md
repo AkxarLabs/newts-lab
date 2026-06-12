@@ -68,7 +68,8 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/improve` | Operator-driven iteration (draft/debug/improve/crossover) with parallel worktree subagents |
 | `/research-loop` | Unattended autonomous loop under a PI-signed `LOOP_BRIEF.md` — never-stop-within-budget, zero-token monitoring |
 | `/analyze` | Analyze results, decide ablations/follow-ups, write findings |
-| `/write-paper` | Draft the LaTeX paper in `papers/<slug>/`; every number traced via `claims.yaml` |
+| `/make-figures` | Figures/tables mechanically from run artifacts (shared figure library) + multimodal self-review |
+| `/write-paper` | Evidence-first LaTeX drafting; placeholder-resolved verified citations; claims re-audited every revision round |
 | `/review-paper` | Mechanical claims audit (`tools/audit_claims.py`) + fresh-context critique ensemble with minority veto |
 | `/finalize` | Close out: archive, write-back to lab knowledge, update registry |
 

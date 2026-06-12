@@ -126,12 +126,23 @@ Where AutoScientist now stands against the systems surveyed in §2, and what rem
 
 **Covered, with the field's best mechanism:** lifecycle decomposition + gated autonomy (Agent Laboratory's copilot data); template-free but contract-ful experimentation with journals, debug caps, multi-seed (Sakana v2, AIDE); operator-quality focus with scoped memory (AIRA); git-as-memory + budgets-as-facts (autoresearch); fresh-context ensemble review with calibration + minority veto (OpenReviewer/CCR/Sakana reviewer lineage); claim→artifact mechanical audit (Kosmos's traceability, mechanized); compounding knowledge store (Kosmos world model, minimized); multi-agent ideation with reflection/evolution/combination + tournament ranking (co-scientist's Generate/Reflect/Evolve/Rank, v4); ADR-style design deliberation before commitment (`/scope`, v4 — no surveyed system does this explicitly; closest is CodeScientist's human plan-editing); cross-project compute slots (v4); cross-agent operability via AGENTS.md (autoresearch's any-agent stance, v4).
 
-**Known gaps, by choice or for later:**
+**Known gaps, by choice or for later** *(updated v5, 2026-06-13)*:
 
 1. **Persistent idea Elo** — tournament results are per-session; co-scientist maintains a standing ranked population. Add when idea volume justifies it (registry column + tournament history file).
 2. **Multi-lab sharing (AgentRxiv)** — collaborating lab instances exchanging reports gave +13.7% on MATH-500. A future `lab/exchange/` + a fetch procedure could replicate it; single-lab for now.
-3. **Literature API tooling** — lit review uses general web search; a Semantic Scholar/OpenAlex helper (`tools/s2.py`) would make search logs machine-replayable. PaperQA2-class contradiction detection is further out.
+3. ~~Literature API tooling~~ — **closed (v5)**: `tools/s2.py` (S2 search/bulk with OpenAlex fallback, mechanical BibTeX, zero-assumption citation verification incl. retraction checks). PaperQA2-class claim-level contradiction detection remains future work.
 4. **Benchmark harness (AstaBench/MLE-bench-class)** — no standardized self-evaluation of the lab itself; the procedure retrospective in `/finalize` is the lightweight substitute.
-5. **VLM figure review** — Sakana v2's dedicated figure-critique loop; partially covered since reviewers read the compiled PDF (multimodal), but no dedicated figure-quality lens. Cheap to add as a 6th lens if figures prove weak.
+5. ~~VLM figure review~~ — **closed by PI decision (v5)**: no dedicated lens; current models are natively multimodal, so figure inspection is folded into `/make-figures` self-review and the reviewers reading the compiled PDF.
 6. **Domain template** (`templates/project-slm/`) — still pending the first real SLM project stabilizing its patterns (deliberate: extract, don't speculate).
 7. **Cost telemetry** — token/$ accounting per stage (CodeScientist's hard cost caps); currently only compute budgets are enforced, not API spend.
+
+### v5 addendum — the writing layer (research pass 2026-06-13)
+
+A dedicated survey of paper-writing systems (PaperOrchestra/Google 2026, Jr. AI Scientist, freephdlabor, aiXiv, CycleResearcher, APRES, PaperRecon; plus the citation-auditing literature) reshaped `/write-paper` and added `/make-figures`:
+
+- **Evidence-first ordering** (Jr. AI Scientist's ablated finding): bib seeding → Method first → outline → results sections → Related Work last. Whole-paper single passes measurably degrade the Method section; early Related Work invites invention.
+- **Numbers never pass through prose**: result tables are emitted as `.tex` from artifacts (`figures.emit_table`) and `\input` — the mechanism that eliminated numerical transcription errors in Jr. AI Scientist.
+- **Citations: placeholder → mechanical resolution** (freephdlabor's pattern): `[cite: description]` inline, resolved via S2 with a title-match gate (PaperOrchestra used 0.7 Levenshtein; we verify the final bib at 0.85), then a blocking zero-assumption audit (the citation-auditing protocol hit 91.7% verification on real papers; LLM free-generation fabricates ~18%).
+- **Verifier-gated reflection, ≤3 rounds, claims re-audit every round**: refinement gains plateau by round 3 and regress after; worse, **revision is when fabrication happens** — Jr. AI Scientist documented the writer inventing ablations in response to reviewer feedback (and the review score going *up*), with phantom experiments hiding in ablation/analysis subsections. Hence: `audit_claims.py` after every revision round, and a phantom-experiment sweep in `/review-paper`.
+- **Interpretation hedging**: Kosmos's audit found interpretive statements ~3× more error-prone than data statements (57.9% vs 85.5% accuracy) — discussion claims must point at evidence or be marked conjecture.
+- **Reviewer-in-the-loop revision is worth it when audited**: aiXiv measured 10%→70% acceptance through revise-and-respond cycles; LLM-REVal +0.3–0.4 score from review-guided revision — the existing `/review-paper` cycle matches this evidence, now with the fabrication guard.
