@@ -32,6 +32,13 @@ HUB = Path(__file__).resolve().parents[1]
 FLOAT_RE = re.compile(r"-?\d+\.?\d*(?:[eE][-+]?\d+)?")
 
 
+def projects_root() -> Path:
+    """Resolve lab.projects_root from lab/config.yaml (relative paths anchor at the hub)."""
+    config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8")) or {}
+    root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
+    return (HUB / root).resolve()
+
+
 def numeric_leaves(node, prefix: str = "") -> list[tuple[str, float]]:
     """Recursively collect (key_path, value) numeric leaves from JSON data."""
     out = []
@@ -73,7 +80,7 @@ def leaf_key(path: str) -> str:
 
 
 def audit_claim(claim: dict, rel_tol: float, check_commits: bool) -> tuple[str, str]:
-    project_dir = HUB / "projects" / str(claim.get("project", ""))
+    project_dir = projects_root() / str(claim.get("project", ""))
     artifacts = claim.get("artifacts") or []
     numbers = claim.get("numbers") or []
 

@@ -16,7 +16,7 @@ in `lab/config.yaml`.
    - Any **MANUAL** → verify each by hand against the stated derivation now; an
      unresolvable MANUAL is a FAIL.
 2. Manual checks the script can't do:
-   - Figure/table scripts exist in `projects/<slug>/scripts/figures/`, are committed,
+   - Figure/table scripts exist in the project repo's `scripts/figures/`, are committed,
      and regenerate the paper's figures (spot-check ≥2).
    - Multi-seed coverage (`experiment.multi_seed_n`) for all headline numbers, variance reported.
    - Every citation has a corresponding note in `ideas/<slug>/lit-review.md`.

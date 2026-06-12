@@ -1,0 +1,124 @@
+/* ============================================================================
+   AutoScientist docs — warm palette
+   off-white paper · brown ink accents · near-black type
+   ========================================================================== */
+
+[data-md-color-scheme="autoscientist"] {
+  /* ---- core palette ---- */
+  --as-paper:        #FAF6EF;  /* page background — warm off-white */
+  --as-paper-deep:   #F1EAE0;  /* surfaces: code blocks, cards */
+  --as-paper-edge:   #E4D9CA;  /* hairline borders */
+  --as-ink:          #221C16;  /* body text — warm near-black */
+  --as-ink-soft:     #5C4F43;  /* secondary text */
+  --as-brown:        #6E4F38;  /* primary — header, links, emphasis */
+  --as-brown-deep:   #503823;  /* hover / active */
+  --as-clay:         #A8714A;  /* accent — highlights, markers */
+
+  /* ---- Material variable mapping ---- */
+  --md-default-bg-color:        var(--as-paper);
+  --md-default-fg-color:        var(--as-ink);
+  --md-default-fg-color--light: var(--as-ink-soft);
+  --md-default-fg-color--lighter: #8A7B6B;
+  --md-default-fg-color--lightest: var(--as-paper-edge);
+
+  --md-primary-fg-color:        var(--as-brown);
+  --md-primary-fg-color--dark:  var(--as-brown-deep);
+  --md-primary-bg-color:        #FBF8F2;
+  --md-accent-fg-color:         var(--as-clay);
+
+  --md-typeset-color:           var(--as-ink);
+  --md-typeset-a-color:         var(--as-brown);
+
+  --md-code-bg-color:           var(--as-paper-deep);
+  --md-code-fg-color:           #4A3526;
+  --md-code-hl-color:           rgba(168, 113, 74, 0.18);
+
+  --md-typeset-table-color:     rgba(110, 79, 56, 0.16);
+  --md-typeset-mark-color:      rgba(168, 113, 74, 0.25);
+
+  --md-footer-bg-color:         var(--as-brown-deep);
+  --md-footer-bg-color--dark:   #3E2B1B;
+  --md-footer-fg-color:         #F3ECE2;
+}
+
+/* ---- type ---- */
+.md-typeset {
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+  color: var(--as-brown-deep);
+  font-weight: 600;
+}
+.md-typeset h1 {
+  border-bottom: 2px solid var(--as-paper-edge);
+  padding-bottom: 0.35em;
+}
+.md-typeset h2 {
+  border-bottom: 1px solid var(--as-paper-edge);
+  padding-bottom: 0.25em;
+}
+
+/* ---- header & nav ---- */
+.md-header {
+  background-color: var(--as-brown);
+  box-shadow: 0 1px 0 var(--as-brown-deep);
+}
+.md-tabs { background-color: var(--as-brown-deep); }
+.md-nav__item .md-nav__link--active { color: var(--as-clay); font-weight: 600; }
+.md-search__form { background-color: rgba(250, 246, 239, 0.18); }
+
+/* ---- code ---- */
+.md-typeset code {
+  border: 1px solid var(--as-paper-edge);
+  border-radius: 3px;
+}
+.md-typeset pre > code {
+  border: 1px solid var(--as-paper-edge);
+  border-left: 3px solid var(--as-clay);
+}
+
+/* ---- tables ---- */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--as-paper-edge);
+  background: #FCF9F4;
+}
+.md-typeset table:not([class]) th {
+  background: var(--as-paper-deep);
+  color: var(--as-brown-deep);
+}
+.md-typeset table:not([class]) tr:hover {
+  background: rgba(168, 113, 74, 0.06);
+}
+
+/* ---- admonitions: warm, bordered, no neon ---- */
+.md-typeset .admonition, .md-typeset details {
+  border-color: var(--as-paper-edge);
+  background: #FCF9F4;
+}
+.md-typeset .admonition-title, .md-typeset summary {
+  background: var(--as-paper-deep) !important;
+  color: var(--as-brown-deep);
+}
+.md-typeset .admonition-title::before, .md-typeset summary::before {
+  background-color: var(--as-clay) !important;
+}
+
+/* ---- links & buttons ---- */
+.md-typeset a:hover { color: var(--as-brown-deep); }
+.md-typeset .md-button {
+  background-color: var(--as-brown);
+  border-color: var(--as-brown);
+  color: #FBF8F2;
+}
+.md-typeset .md-button:hover {
+  background-color: var(--as-brown-deep);
+  border-color: var(--as-brown-deep);
+}
+
+/* ---- blockquotes as marginalia ---- */
+.md-typeset blockquote {
+  border-left: 3px solid var(--as-clay);
+  color: var(--as-ink-soft);
+  background: rgba(241, 234, 224, 0.5);
+}

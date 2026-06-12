@@ -1,6 +1,7 @@
-# Spawned project repos are independent git repos — the hub tracks them via lab/REGISTRY.md only
-projects/*
-!projects/README.md
+# (Spawned project repos live OUTSIDE the hub at lab.projects_root — nothing to ignore here.)
+
+# MkDocs build output
+site/
 
 # Python
 __pycache__/

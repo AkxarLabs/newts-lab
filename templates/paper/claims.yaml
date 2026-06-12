@@ -2,7 +2,8 @@
 # /review-paper verifies each one mechanically; a claim without a verifiable artifact
 # may not appear in the paper. Append entries as claims are written.
 #
-# project: projects/<slug> repo; commit: git SHA in that repo at which the artifact was produced.
+# project: the project slug (repo lives at lab.projects_root/<slug>); commit: git SHA in
+# that repo at which the artifact was produced.
 
 # - id: C001
 #   claim: "Our method improves val_bpb by 2.3% over the tuned baseline"

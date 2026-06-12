@@ -4,7 +4,7 @@
 
 Checks:
   1. Every ideas/<slug>/IDEA.md frontmatter `state` matches its lab/REGISTRY.md row.
-  2. Orphans: idea dirs / projects/<slug> / papers/<slug> without a registry row,
+  2. Orphans: idea dirs / <projects_root>/<slug> / papers/<slug> without a registry row,
      and registry rows pointing at missing idea dirs.
   3. Stale: non-terminal rows not updated in --stale-days (default lab/config.yaml
      lab.stale_days, else 14) or with an empty "Next action".
@@ -59,11 +59,11 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    stale_days = args.stale_days
-    if stale_days is None:
-        config_path = HUB / "lab" / "config.yaml"
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-        stale_days = ((config or {}).get("lab") or {}).get("stale_days", 14)
+    config_path = HUB / "lab" / "config.yaml"
+    config = (yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}) if config_path.exists() else {}
+    lab_cfg = config.get("lab") or {}
+    stale_days = args.stale_days if args.stale_days is not None else lab_cfg.get("stale_days", 14)
+    projects_root = (HUB / (lab_cfg.get("projects_root") or "../AutoScientist-Projects")).resolve()
 
     rows = {r["id"]: r for r in parse_registry()}
     problems, stale = [], []
@@ -81,14 +81,16 @@ def main() -> int:
         elif str(fm.get("state")) != rows[slug]["state"]:
             problems.append(f"{slug}: IDEA.md state '{fm.get('state')}' != registry '{rows[slug]['state']}'")
 
-    # 2. Orphans.
+    # 2. Orphans. Worktree dirs (<slug>-wt-*) in the projects root are transient — skip them.
     for slug, row in rows.items():
         if slug not in idea_dirs:
             problems.append(f"registry row '{slug}' has no ideas/{slug}/ dir")
-    for root in ("projects", "papers"):
-        for slug in sorted(slug_dirs(HUB / root)):
-            if slug not in rows:
-                problems.append(f"{root}/{slug}/ has no registry row")
+    for slug in sorted(slug_dirs(projects_root)):
+        if slug not in rows and "-wt-" not in slug:
+            problems.append(f"{projects_root.name}/{slug}/ has no registry row")
+    for slug in sorted(slug_dirs(HUB / "papers")):
+        if slug not in rows:
+            problems.append(f"papers/{slug}/ has no registry row")
 
     # 3. Staleness.
     today = date.today()

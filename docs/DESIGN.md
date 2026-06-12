@@ -28,7 +28,7 @@ The field's consensus failure modes are: hallucinated results, metric gaming, un
 ### 3.1 Hub and spoke
 
 - **Hub (this repo):** ideation, lit reviews, proposals, papers, lab knowledge, procedures, templates, registry. One git repo.
-- **Spokes (`projects/<slug>/`):** one per approved proposal, instantiated from `templates/project/`, each **its own git repo** (the hub gitignores them). Rationale: (a) a project must be independently cloneable/reproducible by others — that's a stated goal; (b) experiment-per-commit history would drown the hub's history; (c) projects can be archived/published independently.
+- **Spokes (`<projects_root>/<slug>/`, default `../AutoScientist-Projects/`):** one per approved proposal, instantiated from `templates/project/`, each **its own git repo, outside the hub entirely** (v3 change — previously a gitignored `projects/` subdir). Rationale: (a) a project must be independently cloneable/reproducible by others — that's a stated goal; (b) experiment-per-commit history and run artifacts would bloat the hub; (c) projects can be archived/published independently. The location is a config key (`lab.projects_root`).
 - The hub's `lab/REGISTRY.md` is the single index linking ideas ↔ projects ↔ papers ↔ states.
 
 ### 3.2 Procedures as skills, not orchestration code

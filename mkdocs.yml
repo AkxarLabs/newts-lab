@@ -1,0 +1,40 @@
+site_name: AutoScientist
+site_description: A research lab for an AI agent — ideation to publication, with the human as PI.
+docs_dir: docs
+theme:
+  name: material
+  palette:
+    scheme: autoscientist
+  font:
+    text: Source Serif 4
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.integrate
+    - content.code.copy
+  icon:
+    logo: material/flask-outline
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: "§"
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - The workflow: workflow.md
+  - Skills reference: skills.md
+  - Configuration: configuration.md
+  - Projects: projects.md
+  - Tools: tools.md
+  - Design rationale: DESIGN.md

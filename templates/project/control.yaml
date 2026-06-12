@@ -1,0 +1,41 @@
+# ============================================================================
+# {{slug}} — project control file (layer 2 of 3)
+#
+# Created automatically at spawn; THE end-to-end run controls for this project.
+# Resolution order:  experiment yaml  >  THIS FILE  >  hub lab/config.yaml
+#
+# Edit anytime via /configure or by hand — EXCEPT keys marked PI-owned, which
+# require explicit PI approval to change after Gate 1. The gate2_envelope block
+# is the canonical machine-readable record of pre-authorized FULL runs (the
+# proposal and LOOP_BRIEF carry the human signature and point here).
+# ============================================================================
+
+project: "{{slug}}"
+
+budgets:                        # PI-owned after Gate 1 — enforced by the run.py watchdog.
+  smoke_max_minutes: 10         # applied per-stage when an experiment yaml doesn't set
+  pilot_max_minutes: 60         # budget.max_minutes itself
+  full_max_minutes: 240
+  total_note: ""                # free-text total compute cap from the proposal (informational)
+
+seeds:
+  list: [0, 1, 2]               # default seeds for sweeps
+  multi_seed_n: 3               # seeds required before a number is paper-grade
+
+parallelism:
+  max_parallel_subagents: 3     # concurrent worktree subagents (/improve)
+  sweep_parallel: 1             # default --parallel for scripts/sweep.py
+
+loop:                           # /research-loop overrides for this project
+  no_progress_backoff_cycles: 3
+  monitor_poll_seconds: 300
+
+gate2_envelope:                 # PI-owned. Pre-authorized FULL runs; all zeros/null = no envelope,
+  full_runs: 0                  # every FULL run needs fresh PI approval.
+  per_run_max_minutes: 0
+  total_max_minutes: 0
+  expires: null                 # YYYY-MM-DD
+  pi_signed: false              # flipped true only by the PI (via /propose Gate 1 or /configure)
+
+eval_frozen: true               # the eval protocol in PLAN.md/base.yaml is frozen.
+                                # The agent may NEVER set this false.

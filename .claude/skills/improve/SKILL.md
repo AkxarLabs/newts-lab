@@ -5,9 +5,10 @@ description: Operator-driven iteration on a project after initial implementation
 
 # Improve (operator loop)
 
-Iterates on `projects/<slug>/` to push the primary metric, AIDE/AIRA-style: the
-quality lives in the **operators**, not in clever search. Defaults from
-`lab/config.yaml` (`experiment.*`): `max_debug_depth`, `num_drafts`,
+Iterates on the project repo at `<projects_root>/<slug>` to push the primary metric,
+AIDE/AIRA-style: the quality lives in the **operators**, not in clever search.
+Defaults from the project's `control.yaml` (`parallelism.*`, `seeds.*`), falling back
+to `lab/config.yaml` (`experiment.*`): `max_debug_depth`, `num_drafts`,
 `max_parallel_subagents`, `multi_seed_n`.
 
 ## The journal is the tree
@@ -45,8 +46,9 @@ the mechanism."
   (new config, smoke→pilot, ledger entry with `Parent:` fields, one commit).
 - **Parallel** (independent variants, e.g. several drafts or disjoint improves): up to
   `max_parallel_subagents` at once —
-  1. Per variant: `git -C projects/<slug> worktree add ../<slug>-wt-exp-NNN -b exp-NNN`
-     (sibling dirs under `projects/` — already hub-gitignored).
+  1. Per variant: `git -C <projects_root>/<slug> worktree add ../<slug>-wt-exp-NNN -b exp-NNN`
+     (worktrees are siblings inside the projects root, next to the project repo;
+     check_lab.py ignores `-wt-` dirs).
   2. Spawn one `experiment-runner` subagent per variant with: the worktree path, the
      operator type, the context packet, and the stage budget. Subagents commit in their
      branch and return a result packet; they never touch shared ledgers.

@@ -5,12 +5,13 @@ description: Unattended autonomous experiment loop on a project — never-stop-w
 
 # Research Loop (unattended operation)
 
-For overnight/long sessions where the PI is away. Tunables from `lab/config.yaml`
-(`loop.*`, `experiment.*`).
+For overnight/long sessions where the PI is away. Tunables from the project's
+`control.yaml` (`loop.*`, `budgets.*`, `gate2_envelope`), falling back to
+`lab/config.yaml`.
 
 ## 0. Entry gate — the brief IS the approval
 
-- `projects/<slug>/LOOP_BRIEF.md` must exist with the PI authorization box checked.
+- The project's `LOOP_BRIEF.md` (at `<projects_root>/<slug>/`) must exist with the PI authorization box checked; its envelope numbers live in the project's `control.yaml` (`gate2_envelope`, `pi_signed: true`).
 - If missing: instantiate `templates/loop/LOOP_BRIEF.md`, fill it from the proposal
   (goal/metric, kill criteria verbatim, proposed envelope), present it to the PI, and
   **STOP**. A loop never authorizes itself.

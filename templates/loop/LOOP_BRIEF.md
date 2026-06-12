@@ -1,6 +1,6 @@
 # Loop Brief — {{title}}
 
-*Project: `projects/{{slug}}` · Created: {{date}} · Everything above the Loop Log is
+*Project: `{{slug}}` · Created: {{date}} · Everything above the Loop Log is
 FROZEN once authorized — changes require fresh PI sign-off.*
 
 ## Goal (frozen)
@@ -13,9 +13,9 @@ FROZEN once authorized — changes require fresh PI sign-off.*
 - **Total wall-clock for the loop:** <!-- e.g. 8 hours -->
 - **Max cycles:** <!-- e.g. 40 -->
 - **Max runs:** <!-- e.g. 60 -->
-- **FULL-stage authorization:** <!-- "N runs of <= X minutes each, total <= Y GPU-hours,
-  expires YYYY-MM-DD" — or "none: FULL work queues as a PI note". This line IS Gate 2
-  for unattended operation. -->
+- **FULL-stage authorization:** see `control.yaml` → `gate2_envelope` (the canonical
+  machine-readable record; the PI signature below covers those values as of signing).
+  "No envelope" (all zeros) means FULL work queues as a PI note.
 
 ## Stop conditions (any one stops the loop)
 

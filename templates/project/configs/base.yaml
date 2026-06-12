@@ -1,12 +1,13 @@
-# Shared defaults. Experiment configs under configs/experiments/ are deep-merged on top.
+# Shared DOMAIN defaults (layer between ../control.yaml and configs/experiments/*).
+# Resolution: experiment yaml > this file > ../control.yaml > hub lab/config.yaml.
 # The `eval` block is FROZEN once the proposal is approved (see PLAN.md).
+# Run-control values (budgets, seeds policy, parallelism) belong in ../control.yaml —
+# budget.max_minutes is normally mapped per-stage from control.yaml's budgets block
+# and ENFORCED by the scripts/run.py watchdog (exit 2, status=timeout).
 
 experiment_name: base
 stage: SMOKE            # SMOKE | PILOT | FULL — FULL requires PI Gate 2
 seed: 0
-
-budget:
-  max_minutes: 10       # wall-clock cap; ENFORCED by the scripts/run.py watchdog (exit 2, status=timeout)
 
 eval:
   primary_metric: toy_abs_error   # replace with the project's frozen metric

@@ -4,9 +4,29 @@ A self-contained **research lab for an AI agent**. This repo holds the procedure
 
 The repo is domain-agnostic by design: nothing here assumes a particular research area. Domain focus (e.g., small language models) lives in the ideas and projects you create with it.
 
+## Documentation
+
+Full docs live in [docs/](docs/) and serve as a styled site (search, nav, warm theme) with zero installation:
+
+```bash
+uv run --with mkdocs-material mkdocs serve     # → http://127.0.0.1:8000
+```
+
+Start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md).
+
+## Use as a template
+
+AutoScientist is a **template repository** — each lab is a living instance:
+
+1. **Use this template** on GitHub (or `npx degit`/clone) → your own lab repo.
+2. Check `lab/config.yaml` (`lab.projects_root` is the one key worth a look on day one).
+3. `claude` → `/lab-status` → `/ideate <your direction>`. Lab state starts empty and compounds from there.
+
+To pull template improvements into a running lab later: `git remote add template <url>` and cherry-pick — your lab state lives in files the template never touches.
+
 ## The model
 
-**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo** under `projects/` from a reproducible template — that's where all code and experiments live. Results flow back to the hub for analysis, writing, and knowledge accumulation.
+**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo outside the hub** — at `lab.projects_root` (default `../AutoScientist-Projects/<slug>`) — from a reproducible template; that's where all code and experiments live, so the hub never bloats with experiment state. Results flow back to the hub for analysis, writing, and knowledge accumulation.
 
 ```
         ┌────────────────────────  HUB (this repo)  ────────────────────────┐
@@ -15,10 +35,11 @@ The repo is domain-agnostic by design: nothing here assumes a particular researc
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │
-                │            ┌──────── SPOKE (projects/<slug>) ──┴───┐
-                └── findings │  /spawn-project → /experiment → /analyze │
-                             │  (own git repo, own env, reproducible)  │
-                             └─────────────────────────────────────────┘
+                │   ┌── SPOKE (../AutoScientist-Projects/<slug>) ┴───┐
+                └── │  /spawn-project → /experiment → /improve →     │
+          findings  │  /analyze   (own git repo, own env, own        │
+                    │  control.yaml — independently reproducible)    │
+                    └────────────────────────────────────────────────┘
 ```
 
 ## Lifecycle states
@@ -40,7 +61,8 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |
 | `/critique-paper` | Adversarial fresh-context reviewer ensemble on ANY paper — external (lit triage) or our own drafts |
 | `/propose` | Write a full proposal with staged experiment plan, budgets, kill criteria (+ optional Gate 2 envelope) |
-| `/spawn-project` | Instantiate `templates/project/` into `projects/<slug>/` (own git repo) |
+| `/spawn-project` | Instantiate `templates/project/` at `<projects_root>/<slug>` (own git repo + control.yaml) |
+| `/configure` | View the effective 3-layer config with provenance; edit lab or project values |
 | `/experiment` | Run the experiment loop: smoke → pilot → full, ledger + git as memory |
 | `/improve` | Operator-driven iteration (draft/debug/improve/crossover) with parallel worktree subagents |
 | `/research-loop` | Unattended autonomous loop under a PI-signed `LOOP_BRIEF.md` — never-stop-within-budget, zero-token monitoring |
@@ -63,10 +85,10 @@ AutoScientist/
 │   ├── knowledge/       # Lab world model: FINDINGS, FAILURES, OPEN-QUESTIONS
 │   └── notebook/        # Dated lab-notebook entries (one per working session)
 ├── ideas/<slug>/        # IDEA.md, lit-review.md, proposal.md, critiques/ per idea
-├── projects/<slug>/     # Spawned experiment repos (each its own git repo; not tracked by hub)
 ├── papers/<slug>/       # LaTeX papers + claims.yaml (claim → artifact mapping)
 ├── templates/           # project/, paper/, idea/, review/, loop/ templates
-└── tools/               # audit_claims.py (claims→artifacts), check_lab.py (registry lint)
+├── tools/               # audit_claims.py, check_lab.py, show_config.py
+└── (projects live at ../AutoScientist-Projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
 ## Quickstart
