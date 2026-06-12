@@ -15,13 +15,13 @@ duties). This file only adds what's specific to non-Claude agents.
 
 ## Procedures
 
-The workflow lives in `.claude/skills/<name>/SKILL.md` — fourteen plain-Markdown
-procedures (`lab-status`, `ideate`, `lit-review`, `critique-paper`, `scope`, `propose`,
-`spawn-project`, `experiment`, `improve`, `research-loop`, `analyze`, `write-paper`,
-`review-paper`, `finalize`, plus `configure`). They are written as instructions to an
-agent and contain no Claude-specific syntax: **open the file and follow it step by
-step.** When the PI says "/ideate X", that means: execute
-`.claude/skills/ideate/SKILL.md` with argument X.
+The workflow lives in `.claude/skills/<name>/SKILL.md` — plain-Markdown procedures
+(`setup-lab`, `lab-status`, `configure`, `ideate`, `lit-review`, `critique-paper`,
+`scope`, `propose`, `spawn-project`, `experiment`, `improve`, `research-loop`,
+`overnight`, `analyze`, `make-figures`, `write-paper`, `review-paper`, `finalize`).
+They are written as instructions to an agent and contain no Claude-specific syntax:
+**open the file and follow it step by step.** When the PI says "/ideate X", that
+means: execute `.claude/skills/ideate/SKILL.md` with argument X.
 
 ## Approximating the multi-agent steps
 
@@ -43,6 +43,11 @@ parallelism:
 - **ideation critics / scoping advocates**: argue each charge yourself *in writing,
   separately, before* synthesizing — the discipline is per-role separation, not
   parallelism.
+- **overseer** (verification checks): the contract is *evidence-only judgment* — take
+  the quoted statement and read ONLY the pointed evidence files, then grade
+  (SUPPORTED/OVERREACH/UNSUPPORTED, or the critique-taste grades) before letting the
+  statement drive any change. Doable inline if done before, and separately from,
+  acting on the statement.
 
 ## Tools & environment
 

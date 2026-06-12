@@ -43,10 +43,16 @@ you've seen it written; that's exactly the bias the ensemble exists to remove.
    every action item gets ACCEPT / REBUT / NEEDS-EXPERIMENT **with evidence**. Feedback
    is validated, never obeyed — reviewers confabulate too, and revising to satisfy a
    wrong critique (or inventing support for a demanded ablation) is the documented
-   failure mode of review-driven revision. Rebuttals without evidence don't count;
-   items rebutted twice but re-raised, and anything touching frozen settings, escalate
-   to the PI.
-3. Route on the triage:
+   failure mode of review-driven revision. Apply the taste rubric
+   (`critique-lenses.md`): GENERIC and MISDIRECTED items earn no action. Rebuttals
+   without evidence don't count; items rebutted twice but re-raised, and anything
+   touching frozen settings, escalate to the PI.
+3. **Oversight pass** (`oversight.level` ≠ off): spawn one `overseer` subagent per
+   triage verdict — `critique-taste` on the original item, `support` on the verdict's
+   evidence (paths only, never your reasoning). An overseer-rejected verdict is redone
+   against the cited evidence or escalated; this is the circuit-breaker between a wrong
+   review point and a wrong "improvement".
+4. Route on the triage:
    - Any **NEEDS-EXPERIMENT** items → append them as PLAN.md rows (criteria written
      now), state → `active`, next action "/experiment" — then `/analyze` →
      `/write-paper` and the next review cycle. New claims require new runs; nothing
@@ -56,4 +62,4 @@ you've seen it written; that's exactly the bias the ensemble exists to remove.
      PDF + meta-review to the user for final sign-off (state stays `internal-review`
      until then; `/finalize` sets `final`); on approval, next action "/finalize".
    - After `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
-4. Update registry + notebook with scores, the triage tally, and the route.
+5. Update registry + notebook with scores, the triage tally, and the route.

@@ -34,6 +34,10 @@ Lens definitions + the calibration block live in `templates/review/critique-lens
 
 Fill `templates/review/meta-review.md` yourself from the reviewers' files:
 - Scores aggregate as **median (min–max)** per dimension — never mean.
+- Grade every weakness against the **taste rubric** (`critique-lenses.md`): GENERIC and
+  MISDIRECTED points are noted but carry no action items; only LOAD-BEARING points
+  drive decisions. (`oversight.level: strict`: spawn an `overseer` `critique-taste`
+  check per fatal flaw and `support` check per refutation.)
 - Collect every `FATAL FLAW:` line into the veto table. **Any unrefuted fatal flaw
   blocks accept**; an override requires a written refutation with specific evidence.
 - Synthesize agreements/conflicts; produce numbered action items (own-draft mode).

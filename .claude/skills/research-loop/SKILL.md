@@ -59,7 +59,8 @@ For overnight/long sessions where the PI is away. Tunables from the project's
 
 1. Final Loop Log row with the stop reason.
 2. `EXPERIMENT_LOG.md` summary: what the loop tried, kept, abandoned; current best with
-   run ids.
+   run ids. (`oversight.level: strict`: spawn an `overseer` `support` check on each
+   Loop Log row claiming progress — the claim + its run-artifact paths.)
 3. Hub write-back (hard rule 11): notebook entry, registry update (state AND a fresh
    "next action" — never leave the loop's stale one), promote durable insights to
    `lab/knowledge/`.

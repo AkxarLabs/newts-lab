@@ -56,6 +56,8 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 
 | Command | What it does |
 |---|---|
+| `/setup-lab` | First-run interview → writes `lab/config.yaml`, verifies env, seeds directions |
+| `/overnight` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a signed brief |
 | `/lab-status` | Orient: registry + notebook + `tools/check_lab.py` lint; recommend next action |
 | `/ideate` | Phased pipeline: research → generate → multi-agent reflection → evolve → combine → tournament |
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |

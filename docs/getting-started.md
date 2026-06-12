@@ -30,9 +30,13 @@ AutoScientist is a **template repository** — each lab is a living instance of 
 ```text
 cd your-lab
 claude
-> /lab-status                              # orient (empty lab: it will say so)
-> /ideate efficient small-LM post-training # or any direction you care about
+> /setup-lab                               # 5-minute interview: compute, autonomy, models, directions
+> /ideate efficient small-LM post-training # walk the lifecycle with gates...
+> /overnight                               # ...or authorize a campaign and go to sleep
 ```
+
+`/setup-lab` configures everything interactively (it writes `lab/config.yaml` for you);
+see [Autonomous operation](autonomy.md) for the one-command overnight mode.
 
 The agent generates and tournament-ranks candidate ideas, then walks the lifecycle:
 `/lit-review` → `/propose` → **Gate 1 (you)** → `/spawn-project` → `/experiment` →

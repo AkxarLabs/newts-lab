@@ -38,6 +38,8 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` subagents (`inherit` \| `sonnet` \| `opus` \| `haiku`) |
 | `agents.runner_model` | inherit | PI | model for `experiment-runner` subagents |
 | `agents.critic_model` | inherit | PI | model for ideation critics / scoping advocates |
+| `agents.overseer_model` | inherit | PI | model for overseer verification checks |
+| `oversight.level` | standard | PI | `off` · `standard` (author-response + analysis checks) · `strict` (+ meta-review flaws, loop progress claims) |
 | `ideation.candidates` | 8 | agent-readable | initial candidates `/ideate` generates |
 | `ideation.reflection_rounds` | 2 | agent-readable | reflect→evolve cycles per surviving idea |
 | `ideation.critics_per_idea` | 2 | agent-readable | parallel critic subagents per idea per reflect pass |

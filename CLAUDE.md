@@ -50,6 +50,7 @@ After **every** state change, update `lab/REGISTRY.md` in the same working sessi
 5. Subagents inherit every hard rule — frozen budgets/evals especially.
 6. **No job spawning by subagents:** an experiment subagent runs exactly the campaign it was assigned (one run.py invocation at a time, a sweep only if assigned one) — it never launches additional sweeps, background jobs, agents, or scheduled work. Only the parent session creates work.
 7. Subagent models come from `agents.*` in `lab/config.yaml` (`inherit` = session model); pass the model when spawning.
+8. **Oversight:** at the checkpoints set by `oversight.level`, an `overseer` subagent verifies statements/critiques against their evidence (paths only) before they propagate — author-response verdicts and analysis interpretations at `standard`; meta-review flaws/refutations and loop progress claims at `strict`. An overseer rejection is acted on, not argued with in-context.
 
 ## Unattended loops (/research-loop)
 

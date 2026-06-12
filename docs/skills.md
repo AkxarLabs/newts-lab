@@ -2,6 +2,14 @@
 
 The procedures of the lab, invoked as slash commands in Claude Code. Source of truth: `.claude/skills/<name>/SKILL.md` — these summaries link the pieces together.
 
+## Setup & autonomy
+
+### `/setup-lab`
+One-time interview (re-runnable): research directions → `OPEN-QUESTIONS.md` seeds; compute reality → `compute.*`; autonomy appetite → envelope/oversight defaults; models and API keys. Writes `lab/config.yaml`, verifies the environment (git/uv/tools/docs/template smoke), hands off to `/ideate` or `/overnight`.
+
+### `/overnight`
+The unattended end-to-end campaign: one authorization conversation → a signed campaign brief (`lab/campaigns/`) that delegates Gate 1 *within bounds*, derives Gate 2 envelopes, and **never delegates Gate 3** — then runs ideation → … → internal-review for a portfolio of ideas, finishing with a morning report. See [Autonomous operation](autonomy.md).
+
 ## Orientation
 
 ### `/lab-status`
@@ -64,3 +72,4 @@ Reproducibility pass on the project repo (fresh `uv sync` → tests green → fi
 |---|---|---|
 | `fresh-context-reviewer` | /critique-paper, /review-paper | gets file path + lens only; writes its own review file; no Bash |
 | `experiment-runner` | /improve, /research-loop | confined to its git worktree; returns a result packet; never touches shared ledgers |
+| `overseer` | /review-paper, /analyze, /critique-paper, /research-loop (per `oversight.level`) | gets a quoted statement + evidence paths only; verifies, never fixes; returns a verdict packet |

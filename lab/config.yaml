@@ -23,6 +23,14 @@ agents:                         # ── subagent settings · PI-owned ──
   reviewer_model: inherit       # fresh-context-reviewer (inherit = session model; or sonnet | opus | haiku)
   runner_model: inherit         # experiment-runner
   critic_model: inherit         # ideation critics / scoping advocates
+  overseer_model: inherit       # overseer verification checks
+
+oversight:                      # ── confabulation circuit-breakers (overseer agent) ──
+  level: standard               # off | standard | strict
+  # standard: verifies author-response verdicts (/review-paper) and headline
+  #           interpretations (/analyze) against their evidence
+  # strict:   also grades every fatal flaw + refutation in meta-reviews and
+  #           audits /research-loop "progress" claims at loop exit
 
 ideation:                       # ── /ideate pipeline depth ──
   candidates: 8                 # initial mechanism-diverse candidates

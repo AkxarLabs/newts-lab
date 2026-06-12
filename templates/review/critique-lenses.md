@@ -58,3 +58,24 @@ weakness would make a human reviewer hesitate, your score must reflect it.
 **Fatal flaw flag:** if you find one (per your lens definition), say `FATAL FLAW:` on
 its own line with one-sentence justification — this triggers the minority veto in the
 meta-review and blocks acceptance until explicitly refuted in writing.
+
+## What makes critique worth acting on (the taste rubric)
+
+Used by meta-reviews, author responses, and overseer `critique-taste` checks. A
+critique earns action only if it is ALL of:
+
+1. **Specific** — names the claim/table/section/decision it attacks; a critique that
+   fits any paper fits no paper.
+2. **Evidenced** — points at something checkable (an artifact, a cited work, an
+   internal contradiction), not at a feeling.
+3. **Material** — if true, it changes the work's validity, novelty, or a reader's
+   decision — not just its polish.
+4. **In scope** — within the work's stated claims and the frozen protocol; "you should
+   have done a different project" is a new idea for OPEN-QUESTIONS, not a flaw.
+
+Anti-patterns that earn NO action (rebut or ignore, with one line of why):
+generic completeness demands ("more baselines/datasets/discussion") without naming
+which and why they'd change the conclusion; preference-as-flaw (style choices framed
+as errors); unfalsifiable doubts ("results seem too good"); demands to change frozen
+settings; and **critique that would be satisfied by fabrication** (asking for evidence
+that doesn't exist is a NEEDS-EXPERIMENT route, never a writing edit).

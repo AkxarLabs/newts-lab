@@ -15,6 +15,10 @@ Input: project in state `analysis` (or mid-`active` for an interim read). Output
    - Alternative explanations: could the gain come from a confound (extra compute/params/data, eval artifact, lucky seeds)?
    - Which ablations from the plan are now load-bearing? Are any kept-but-unablated changes stacked in the winning config?
    - What's the cheapest experiment that could *break* the favored interpretation?
+   - **Oversight pass** (`oversight.level` ≠ off): spawn one `overseer` subagent
+     (`support` check) per headline interpretation, giving it the statement + artifact
+     paths only. OVERREACH → adopt its supported version verbatim; UNSUPPORTED →
+     it is not a finding, whatever it felt like.
 4. **Decide and route:**
    - Missing ablations / confound checks → add rows to PLAN.md and return to `/experiment`. (Ablations are complete when every row of PLAN.md's ablation plan has a multi-seed result or a recorded failure — no kept change without its removal test.)
    - Hypothesis confirmed with honest effect → state → `writing`, next action "/write-paper".
