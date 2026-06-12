@@ -14,9 +14,11 @@ to `lab/config.yaml` (`experiment.*`): `max_debug_depth`, `num_drafts`,
 ## The journal is the tree
 
 `EXPERIMENT_LOG.md` entries with `Parent:`/operator fields + `runs/registry.jsonl` +
-`git log` form the experiment tree. Before every operator decision, reconstruct from
-them: the solution **lines** (chains of kept changes), each line's best node, and which
-attempts failed. Never act without reading the journal first.
+`git log` form the experiment tree — **one namespace shared with `/experiment`**: every
+attempt from either skill is a node here, so sibling tables and "already tried" checks
+see everything. Before every operator decision, reconstruct from the journal: the
+solution **lines** (chains of kept changes), each line's best node, and which attempts
+failed. Never act without reading the journal first.
 
 ## Operator selection (per cycle)
 

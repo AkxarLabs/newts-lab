@@ -74,7 +74,15 @@ OpenAlex). NOT-FOUND or RETRACTED entries are fixed or removed before review;
 free-generated citations are fabricated at ~18% base rate, which is why this is
 mechanical and blocking.
 
-## 5. Hand off
+## 5. Revision entry (cycles after the first review)
+
+When entering from a review cycle, the worklist is `reviews/response-N.md` — **ACCEPT
+items only**. REBUT items change nothing. NEEDS-EXPERIMENT items may only be written up
+once their experiments have actually run (artifacts exist; claims.yaml entries first).
+Then the full reflection gate (§3) runs again — the claims re-audit each round exists
+precisely because revision is when fabrication happens.
+
+## 6. Hand off
 
 Update registry (state → `internal-review`, next action "/review-paper") + notebook.
 Report: PDF path, page count, claim count, citation-verification summary, and anything

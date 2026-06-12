@@ -59,9 +59,11 @@ With all decisions on the table, step back and re-ask — adversarially:
 - **Still feasible?** Do the compute plan and budgets actually cover the experiment
   table this implies?
 
-Any "no" → kill or park NOW (record in IDEA.md + `FAILURES.md`/`OPEN-QUESTIONS.md`,
-update registry). This checkpoint is the cheapest place in the whole lifecycle to stop
-a doomed project — killing here is success, not failure.
+Any "no" → kill or park NOW: record the reason in IDEA.md, harvest surviving threads
+into `OPEN-QUESTIONS.md`, update the registry. (`FAILURES.md` only if the scoping
+itself produced a substantive negative finding worth transferring.) This checkpoint is
+the cheapest place in the whole lifecycle to stop a doomed project — killing here is
+success, not failure.
 
 ## 4. Hand off
 

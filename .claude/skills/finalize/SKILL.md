@@ -13,7 +13,7 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
 2. **Reproducibility pass on the project repo** (this is what makes "others can build on it" true):
    - `uv run pytest` green; smoke config runs clean from a fresh `uv sync`.
    - README's Reproduce section accurate; every paper-cited run id present in `runs/registry.jsonl`; figure scripts regenerate the paper's figures.
-   - Final commit + tag `paper-v1`. If publishing, this repo + the tag are the artifact.
+   - Final commit + tag `paper-v1` **in the project repo**. If publishing, this repo + the tag are the artifact.
 3. **Hub close-out:**
    - `FINDINGS.md`: final confirmed findings with evidence pointers (paper section + run ids).
    - `FAILURES.md` / `OPEN-QUESTIONS.md`: harvest everything the project learned that didn't make the paper — future-work threads are next cycle's `/ideate` fuel.

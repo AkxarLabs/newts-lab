@@ -16,7 +16,7 @@ Input: project in state `analysis` (or mid-`active` for an interim read). Output
    - Which ablations from the plan are now load-bearing? Are any kept-but-unablated changes stacked in the winning config?
    - What's the cheapest experiment that could *break* the favored interpretation?
 4. **Decide and route:**
-   - Missing ablations / confound checks → add rows to PLAN.md and return to `/experiment`.
+   - Missing ablations / confound checks → add rows to PLAN.md and return to `/experiment`. (Ablations are complete when every row of PLAN.md's ablation plan has a multi-seed result or a recorded failure — no kept change without its removal test.)
    - Hypothesis confirmed with honest effect → state → `writing`, next action "/write-paper".
    - Null/negative → that can still be a paper (decide with the PI); otherwise kill/park with reasons.
 5. **Write it down:** `analysis-YYYY-MM-DD.md` in the project root (claims → run ids throughout). Distill to the hub: `FINDINGS.md` (confirmed, with evidence pointers), `FAILURES.md` (what didn't work + diagnosis), `OPEN-QUESTIONS.md` (new threads). Update registry + notebook.

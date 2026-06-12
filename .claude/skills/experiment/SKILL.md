@@ -36,4 +36,6 @@ Independent configs (e.g., a seed sweep, disjoint ablations) may run as parallel
 
 ## Exit
 
-When the planned table for the current stage is done (or kill criteria fired), summarize state in `EXPERIMENT_LOG.md`, update hub registry (state `active` → `analysis` if the program is complete; next action = "/analyze"), append a lab notebook entry.
+When the planned table for the current stage is done (or kill criteria fired), summarize state in `EXPERIMENT_LOG.md`, append a lab notebook entry, and route:
+- Planned questions answered but the headline metric still needs pushing → `/improve` (same ledger, same rules — its operators just generate the next attempts).
+- Program complete (or killed) → registry state `active` → `analysis`, next action "/analyze".

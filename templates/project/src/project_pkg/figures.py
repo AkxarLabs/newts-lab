@@ -25,10 +25,47 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# Okabe-Ito, colorblind-safe (skip black; <=7 series — beyond that, rethink the figure)
-PALETTE = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#F0E442"]
 LINESTYLES = ["-", "--", "-.", ":"]
 MARKERS = ["o", "s", "^", "D", "v", "P", "X"]
+
+# Themes: same metrology (sizes, fonts, vector output) — different vibe. Pick per
+# project in control.yaml (figures.theme) or per figure via new_fig(theme=...).
+THEMES = {
+    # Okabe-Ito, colorblind-safe — the neutral default for any venue
+    "clean": {
+        "palette": ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#F0E442"],
+        "rc": {},
+    },
+    # warm editorial: brown/clay/teal/gold on white, serif labels
+    "warm": {
+        "palette": ["#6E4F38", "#A8714A", "#2F6B5E", "#C99700", "#9C3D2E", "#7A8B8B"],
+        "rc": {"font.family": "serif", "axes.edgecolor": "#5C4F43",
+               "xtick.color": "#5C4F43", "ytick.color": "#5C4F43",
+               "axes.labelcolor": "#221C16", "text.color": "#221C16"},
+    },
+    # Paul Tol bright, heavier strokes — talks/posters and dense comparison plots
+    "bold": {
+        "palette": ["#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE", "#AA3377"],
+        "rc": {"lines.linewidth": 1.4, "lines.markersize": 4, "axes.linewidth": 0.8},
+    },
+    # grayscale + forced linestyle/marker cycling — survives B/W printing
+    "mono": {
+        "palette": ["#000000", "#4D4D4D", "#8C8C8C", "#BFBFBF"],
+        "rc": {"_cycle_styles": True},
+    },
+}
+
+
+def resolve_theme(theme: str | None = None) -> str:
+    """Explicit arg > control.yaml figures.theme > 'clean'."""
+    if theme:
+        return theme
+    control = REPO / "control.yaml"
+    if control.exists():
+        import yaml
+        cfg = yaml.safe_load(control.read_text(encoding="utf-8")) or {}
+        return (cfg.get("figures") or {}).get("theme", "clean")
+    return "clean"
 
 # Final printed widths (inches): single column / full text width for common ML venues
 WIDTHS = {"single": 3.3, "double": 6.9}
@@ -54,15 +91,27 @@ RC = {
 }
 
 
-def new_fig(width: str = "single", height_ratio: float = 0.66, ncols: int = 1):
-    """Create (fig, ax) at final print size with the lab style applied."""
+def new_fig(width: str = "single", height_ratio: float = 0.66, ncols: int = 1,
+            theme: str | None = None):
+    """Create (fig, ax) at final print size with the lab style + theme applied."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from cycler import cycler
 
+    matplotlib.rcdefaults()  # themes must not leak between figures in one process
+    spec = THEMES[resolve_theme(theme)]
     rc = {k: v for k, v in RC.items() if v is not None}
-    rc["axes.prop_cycle"] = cycler(color=PALETTE)
+    theme_rc = dict(spec["rc"])
+    cycle_styles = theme_rc.pop("_cycle_styles", False)
+    rc.update(theme_rc)
+    palette = spec["palette"]
+    if cycle_styles:
+        n = len(palette)
+        rc["axes.prop_cycle"] = (cycler(color=palette) + cycler(linestyle=LINESTYLES[:n])
+                                 + cycler(marker=MARKERS[:n]))
+    else:
+        rc["axes.prop_cycle"] = cycler(color=palette)
     plt.rcParams.update(rc)
 
     w = WIDTHS[width]

@@ -60,8 +60,9 @@ For overnight/long sessions where the PI is away. Tunables from the project's
 1. Final Loop Log row with the stop reason.
 2. `EXPERIMENT_LOG.md` summary: what the loop tried, kept, abandoned; current best with
    run ids.
-3. Hub write-back (hard rule 11): notebook entry, registry update, promote durable
-   insights to `lab/knowledge/`.
+3. Hub write-back (hard rule 11): notebook entry, registry update (state AND a fresh
+   "next action" — never leave the loop's stale one), promote durable insights to
+   `lab/knowledge/`.
 4. Leave a "PI morning report" at the top of the notebook entry: best result, decisions
    queued for the PI (unauthorized FULL runs, budget flags), and the recommended next
    command.

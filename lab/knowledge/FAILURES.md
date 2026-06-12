@@ -1,6 +1,6 @@
 # Failures
 
-What didn't work, and the diagnosed reason. This file is what makes the next project smarter — record failures with the same care as findings. Append-only; newest first.
+What was **tried** and didn't work, with the diagnosed reason — experiments, approaches, investigations. Ideas killed before any experiment (non-novel, out of scope) belong in their IDEA.md + OPEN-QUESTIONS, not here. This file is what makes the next project smarter — record failures with the same care as findings. Append-only; newest first.
 
 Entry format:
 

@@ -146,3 +146,24 @@ A dedicated survey of paper-writing systems (PaperOrchestra/Google 2026, Jr. AI 
 - **Verifier-gated reflection, ≤3 rounds, claims re-audit every round**: refinement gains plateau by round 3 and regress after; worse, **revision is when fabrication happens** — Jr. AI Scientist documented the writer inventing ablations in response to reviewer feedback (and the review score going *up*), with phantom experiments hiding in ablation/analysis subsections. Hence: `audit_claims.py` after every revision round, and a phantom-experiment sweep in `/review-paper`.
 - **Interpretation hedging**: Kosmos's audit found interpretive statements ~3× more error-prone than data statements (57.9% vs 85.5% accuracy) — discussion claims must point at evidence or be marked conjecture.
 - **Reviewer-in-the-loop revision is worth it when audited**: aiXiv measured 10%→70% acceptance through revise-and-respond cycles; LLM-REVal +0.3–0.4 score from review-guided revision — the existing `/review-paper` cycle matches this evidence, now with the fabrication guard.
+
+## 9. External code policy & the autoresearch comparison (v6)
+
+### Using other systems' code directly — verdicts (licenses checked 2026-06)
+
+Policy: AutoScientist stays a content-and-protocol template with stdlib+pyyaml tools; external systems are sources of *mechanisms* first, dependencies only when a piece is clean, light, and load-bearing.
+
+| System | Public / license | Verdict |
+|---|---|---|
+| **PaperOrchestra** (Google, `google-research/paper-orchestra`) | yes / Apache-2.0 | Mechanisms adopted (outline-as-work-order, S2 citation gate, ≤3 review-driven cycles). Running it directly would bolt a 5-agent Gemini-locked orchestrator onto a no-orchestrator lab — consult its code/prompts, don't depend on it. |
+| **PaperVizAgent / PaperBanana** | yes / Apache-2.0 | Diagram generation needs paid image-gen APIs; optional future helper for conceptual figures. |
+| **Sakana AI-Scientist-v2** | yes / **RAIL-style license** (use restrictions + disclosure duties) | **Prompts and mechanisms only** — which is exactly what we did (staged tree search ideas, reviewer form, chktex loop, plot aggregation). Vendoring code would import the license restrictions. |
+| **freephdlabor** | yes / MIT top-level, but embeds AI-Scientist-v2-derived parts | Mechanisms only (citation placeholders, PDF acceptance gate — both adopted). |
+| **SemanticCite** (claim↔citation support classification) | yes / MIT, small Qwen3 weights public | **Best direct-adoption candidate** when claim-level citation checking matters (runs locally via Ollama, ~4 GB). Deferred until bib-metadata verification proves insufficient. |
+| **OpenReviewer** (Llama-OpenReviewer-8B) | yes / Llama 3.1 license | Liftable as a local second-opinion reviewer; for now its *calibration findings* are in our anchor table, which captures most of the value at zero weight-hosting cost. |
+| **scienceplots** | yes / MIT | Compatible with our rcParams approach (`no-latex` variant required); optional per-project add — our `figures.py` themes cover the default need without the LaTeX-install dependency. |
+| **chktex** | GPL, bundled with TeX Live | Used by `/write-paper`'s reflection gate; requires a TeX distribution on the machine (not present here yet — install TeX Live when the first paper compiles). |
+
+### How AutoScientist compares to Karpathy's autoresearch
+
+They solve different problems and agree on the physics. **autoresearch** is one experiment loop perfected: one editable file, one metric, a fixed per-run budget, git as keep/discard memory, an overnight never-stop loop — and *no* lit review, no hypothesis management, no paper, no gates, single-project by construction. **AutoScientist** is the surrounding research organization: ideation through publication with the human at three gates — and its inner experiment loop (`/research-loop` + `/improve` + watchdog + ledgers) is essentially autoresearch's invariants generalized: git-as-memory → per-attempt commits + append-only ledgers; one metric → a frozen eval protocol per project; 5-minute budget → watchdog-enforced per-stage budgets; `program.md` → `CLAUDE.md`/`AGENTS.md` + `control.yaml`; never-stop → never-stop-within-envelope with anti-burn backoff (his loops' observed micro-tweak spiral is why the backoff exists). What autoresearch has that we deliberately preserve as an ideal: radical smallness — when a project really is "optimize one number in one file," a spawned AutoScientist project *degenerates gracefully into exactly that shape* (one config axis, one metric, `/research-loop`), which is the correct relationship: autoresearch is our special case, not our competitor.

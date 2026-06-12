@@ -37,7 +37,8 @@ In `projects/.../scripts/figures/`, one script per artifact (`fig_main_result.py
   for `claims.yaml`.
 
 Run every script; commit scripts in the project repo; copy outputs (`.pdf`, `.tex`) to
-`papers/<slug>/figures/`.
+`papers/<slug>/figures/` (create `papers/<slug>/` from `templates/paper/` if it doesn't
+exist yet — running standalone before `/write-paper` is fine).
 
 ## 3. Self-review (multimodal — you can see)
 

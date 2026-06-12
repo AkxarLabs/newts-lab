@@ -35,13 +35,25 @@ Invoke `/critique-paper <slug>` (own-draft mode: full ensemble, meta-review with
 median scores and minority veto). Do not review the paper yourself in this session —
 you've seen it written; that's exactly the bias the ensemble exists to remove.
 
-## Part C — Consolidate & route
+## Part C — Author response & route
 
 1. Write `papers/<slug>/reviews/review-N.md`: pointer to the critique directory, the
    meta-review's score table, decision, veto table, and its action items verbatim.
-2. Route:
+2. **Author-response triage** (`templates/review/response.md` → `reviews/response-N.md`):
+   every action item gets ACCEPT / REBUT / NEEDS-EXPERIMENT **with evidence**. Feedback
+   is validated, never obeyed — reviewers confabulate too, and revising to satisfy a
+   wrong critique (or inventing support for a demanded ablation) is the documented
+   failure mode of review-driven revision. Rebuttals without evidence don't count;
+   items rebutted twice but re-raised, and anything touching frozen settings, escalate
+   to the PI.
+3. Route on the triage:
+   - Any **NEEDS-EXPERIMENT** items → append them as PLAN.md rows (criteria written
+     now), state → `active`, next action "/experiment" — then `/analyze` →
+     `/write-paper` and the next review cycle. New claims require new runs; nothing
+     gets "addressed" in prose that needed an experiment.
+   - Only ACCEPT items remain → state → `writing` with that worklist.
    - Meta-review **accept** AND zero unrefuted fatal flaws → **PI Gate 3**: present the
-     PDF + meta-review to the user for final sign-off; on approval, next action "/finalize".
-   - Otherwise → state back to `writing` with the action items; after
-     `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
-3. Update registry + notebook with scores and route.
+     PDF + meta-review to the user for final sign-off (state stays `internal-review`
+     until then; `/finalize` sets `final`); on approval, next action "/finalize".
+   - After `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
+4. Update registry + notebook with scores, the triage tally, and the route.

@@ -30,6 +30,10 @@ loop:                           # /research-loop overrides for this project
   no_progress_backoff_cycles: 3
   monitor_poll_seconds: 300
 
+figures:
+  theme: clean                  # clean | warm | bold | mono — see src/project_pkg/figures.py
+                                # (same sizing/fonts/vector rules; different palette & vibe)
+
 gate2_envelope:                 # PI-owned. Pre-authorized FULL runs; all zeros/null = no envelope,
   full_runs: 0                  # every FULL run needs fresh PI approval.
   per_run_max_minutes: 0

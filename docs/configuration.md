@@ -62,6 +62,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `parallelism.max_parallel_subagents` | agent | project override for `/improve` |
 | `parallelism.sweep_parallel` | agent | default `--parallel` for sweeps |
 | `loop.no_progress_backoff_cycles` / `monitor_poll_seconds` | agent | project overrides for `/research-loop` |
+| `figures.theme` | agent | figure vibe: `clean` (Okabe-Ito default) · `warm` (brown/clay editorial) · `bold` (Tol bright, talks) · `mono` (grayscale + linestyle cycling, B/W-safe) |
 | `gate2_envelope.full_runs` / `per_run_max_minutes` / `total_max_minutes` / `expires` | **PI only** | the pre-authorized FULL-run envelope — the canonical machine-readable record Gate 2 checks |
 | `gate2_envelope.pi_signed` | **PI only** | only the PI may flip this true |
 | `eval_frozen` | **PI only** | the eval protocol is frozen; the agent may *never* set this false |
