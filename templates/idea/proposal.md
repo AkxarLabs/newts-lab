@@ -43,6 +43,14 @@
 - **Time:** <!-- calendar budget before mandatory go/kill review. -->
 - These budgets are frozen; changing them requires PI approval, not an edit.
 
+### Gate 2 envelope (optional — pre-authorized FULL runs)
+
+<!-- Default is per-FULL-run approval. To enable unattended loops or batch FULL work,
+     the PI may pre-authorize an envelope here (or later in a LOOP_BRIEF.md): -->
+- **Envelope:** none / up to ___ FULL runs, each ≤ ___ min, total ≤ ___, expires ___
+- **PI sign-off:** ______ · **Date:** ______
+- Runs outside this scope always require fresh approval.
+
 ## 6. Kill criteria (checked after every pilot)
 
 <!-- Concrete conditions under which this project is killed or parked, e.g.

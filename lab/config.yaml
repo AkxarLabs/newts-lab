@@ -1,0 +1,21 @@
+# Lab-wide tunables. Skills read this file for defaults; CLAUDE.md hard rules reference
+# these keys. Change values here, not inside skill files. PI-owned.
+
+critique:
+  ensemble_external: 3        # reviewer lenses for external-paper triage (/critique-paper)
+  ensemble_own_draft: 5       # reviewer lenses for our own paper drafts
+  score_anchor_human_mean: 5.4  # calibration anchor — the human-review average Overall
+  max_review_cycles: 3        # revision cycles before escalating to the PI
+
+experiment:
+  max_debug_depth: 3          # consecutive debug attempts before record-and-move-on
+  num_drafts: 3               # distinct solution lines /improve maintains
+  max_parallel_subagents: 3   # concurrent worktree subagents
+  multi_seed_n: 3             # seeds required before a number is paper-grade
+
+loop:                          # /research-loop (unattended operation)
+  no_progress_backoff_cycles: 3  # consecutive no-progress cycles before the loop stops
+  monitor_poll_seconds: 300   # default cadence for zero-token status.py polling
+
+lab:
+  stale_days: 14              # registry rows older than this get flagged by check_lab.py

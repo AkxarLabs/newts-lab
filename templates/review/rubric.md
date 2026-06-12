@@ -1,6 +1,7 @@
 # Internal Review — {{title}}
 
 *Paper: `papers/{{slug}}/` · Reviewer pass: {{n}} · Date: {{date}}*
+*Reviewer lens: {{lens}} · Context: {{fresh-subagent | same-session}}*
 
 ## Part A — Claims audit (mechanical; blocks everything else)
 

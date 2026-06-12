@@ -8,7 +8,9 @@ Loads config, seeds, creates the run artifact dir, executes, records — success
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import threading
 import traceback
 from pathlib import Path
 
@@ -34,15 +36,33 @@ def main() -> int:
     cfg = load_config(args.config, overrides)
     set_seed(int(cfg.get("seed", 0)))
     ctx = RunContext(cfg)
-    print(f"[run] {ctx.run_id} -> {ctx.run_dir}")
+    print(f"[run] {ctx.run_id} -> {ctx.run_dir}", flush=True)
+
+    # Budget watchdog: budget.max_minutes is ENFORCED, not advisory. Daemon thread +
+    # Event (works on Windows; no SIGALRM). On breach: record timeout in the run
+    # artifacts and registry, then hard-exit 2 — arbitrary experiment code cannot be
+    # stopped gracefully in-process. sweep.py's subprocess timeout is the outer net.
+    done = threading.Event()
+    max_minutes = (cfg.get("budget") or {}).get("max_minutes")
+    if max_minutes:
+
+        def _watchdog() -> None:
+            if not done.wait(timeout=float(max_minutes) * 60):
+                ctx.breach_budget()
+                print(f"[run] TIMEOUT — budget.max_minutes={max_minutes} breached", flush=True)
+                os._exit(2)
+
+        threading.Thread(target=_watchdog, daemon=True).start()
 
     try:
         final_metrics = run_experiment(cfg, ctx)
     except Exception:
+        done.set()
         ctx.fail(traceback.format_exc())
         print(f"[run] FAILED — see {ctx.run_dir / 'error.txt'}")
         return 1
 
+    done.set()
     ctx.finish(final_metrics)
     print(f"[run] completed: {final_metrics}")
     return 0

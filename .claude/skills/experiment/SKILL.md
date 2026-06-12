@@ -17,7 +17,7 @@ Operates inside `projects/<slug>/`. The operators below are the quality bottlene
 2. **Stage discipline.**
    - SMOKE: minutes; proves pipeline + artifacts. Required for any new code path.
    - PILOT: smallest run that can meet/fail the pre-written criterion.
-   - FULL: **PI Gate 2 — stop and get explicit approval before launching.** Confirm budget, expected wall-clock, and what decision the run will inform.
+   - FULL: **PI Gate 2 — stop and get explicit approval before launching**, UNLESS the run is covered by a recorded, PI-signed envelope (proposal §5 or `LOOP_BRIEF.md`) and fits its scope/caps. Either way, confirm budget, expected wall-clock, and what decision the run will inform; runs outside an envelope's scope always need fresh approval.
 3. **Run** via `scripts/run.py` (long runs: background with output capture). Respect the budget caps in PLAN.md — a run that needs more budget is a PI flag, not a config tweak.
 4. **Record** in `EXPERIMENT_LOG.md` (template's entry format): outcome with run ids, decision (keep/revert/debug/move on), reasoning. Then **one git commit per attempt** — message `exp-NNN: <one-line outcome>`. If the change isn't kept, revert the code but keep the ledger entry and registry line.
 5. **Update PLAN.md** experiment table (status, result run ids).

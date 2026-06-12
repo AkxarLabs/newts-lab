@@ -48,3 +48,21 @@ def test_seed_reproducibility():
     lines = [json.loads(l) for l in registry.read_text(encoding="utf-8").strip().splitlines()]
     a, b = lines[-2], lines[-1]
     assert a["metrics"]["estimate"] == b["metrics"]["estimate"], "same seed must reproduce"
+
+
+def test_budget_watchdog():
+    result = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "run.py"),
+         "--config", str(REPO / "configs" / "experiments" / "exp-001-smoke.yaml"),
+         "-o", "budget.max_minutes=0.02", "-o", "toy.sleep_seconds=30"],
+        capture_output=True, text=True, cwd=REPO, timeout=60,
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+
+    registry = REPO / "runs" / "registry.jsonl"
+    last = json.loads(registry.read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert last["status"] == "timeout"
+
+    meta = json.loads((REPO / "runs" / last["run_id"] / "meta.json").read_text(encoding="utf-8"))
+    assert meta["budget"]["breached"] is True
+    assert (REPO / "runs" / last["run_id"] / "error.txt").exists()

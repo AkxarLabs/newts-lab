@@ -8,10 +8,14 @@ Entry format:
 ```markdown
 ## exp-NNN attempt N — YYYY-MM-DD HH:MM
 **Config:** configs/experiments/exp-NNN-<name>.yaml · **Run id(s):** <run_id> · **Commit:** <sha>
+**Parent:** exp-MMM (operator: draft | debug | improve | crossover)   <!-- optional; lineage for /improve -->
 **Hypothesis/question:** what this attempt tests.
 **Outcome:** key metric(s) with values, or the failure mode (error class + one-line diagnosis).
-**Decision:** keep / revert / debug (attempt k of 3) / move on — and why.
+**Decision:** keep / revert / debug (attempt k of max_debug_depth) / move on — and why.
 ```
+
+The `Parent`/operator fields turn this ledger into the experiment lineage journal used
+by `/improve` (sibling tables for diversity, ancestral chains for debugging).
 
 ---
 

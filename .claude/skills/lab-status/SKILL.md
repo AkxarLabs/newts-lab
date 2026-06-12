@@ -7,7 +7,7 @@ description: Orient in the lab — read the registry, knowledge, and notebook; r
 
 1. Read `lab/REGISTRY.md`, the latest 1–2 entries in `lab/notebook/`, and skim `lab/knowledge/OPEN-QUESTIONS.md`.
 2. For any idea in an active state (`active`, `analysis`, `writing`, `internal-review`), read its `IDEA.md` state log and — if a project exists — the tail of `projects/<slug>/EXPERIMENT_LOG.md`.
-3. Check for inconsistencies: idea frontmatter state vs registry state, projects with no registry row, items stalled past their proposal time budget. Fix registry drift immediately; flag budget overruns to the PI.
+3. Run `uv run --with pyyaml python tools/check_lab.py` — fix any registry/IDEA.md drift and orphans it reports immediately; flag stale items and budget overruns to the PI.
 4. Report to the user:
    - One line per non-final item: state, last activity, what unblocks it.
    - Items waiting at a **PI gate** (call these out first — they block on the human).

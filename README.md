@@ -35,15 +35,18 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 
 | Command | What it does |
 |---|---|
-| `/lab-status` | Orient: read registry + notebook, report lab state, recommend next action |
+| `/lab-status` | Orient: registry + notebook + `tools/check_lab.py` lint; recommend next action |
 | `/ideate` | Generate, score, and tournament-rank candidate ideas into `ideas/` |
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |
-| `/propose` | Write a full proposal with staged experiment plan, budgets, kill criteria |
+| `/critique-paper` | Adversarial fresh-context reviewer ensemble on ANY paper — external (lit triage) or our own drafts |
+| `/propose` | Write a full proposal with staged experiment plan, budgets, kill criteria (+ optional Gate 2 envelope) |
 | `/spawn-project` | Instantiate `templates/project/` into `projects/<slug>/` (own git repo) |
 | `/experiment` | Run the experiment loop: smoke → pilot → full, ledger + git as memory |
+| `/improve` | Operator-driven iteration (draft/debug/improve/crossover) with parallel worktree subagents |
+| `/research-loop` | Unattended autonomous loop under a PI-signed `LOOP_BRIEF.md` — never-stop-within-budget, zero-token monitoring |
 | `/analyze` | Analyze results, decide ablations/follow-ups, write findings |
 | `/write-paper` | Draft the LaTeX paper in `papers/<slug>/`; every number traced via `claims.yaml` |
-| `/review-paper` | Internal NeurIPS-style review + claim/artifact audit |
+| `/review-paper` | Mechanical claims audit (`tools/audit_claims.py`) + fresh-context critique ensemble with minority veto |
 | `/finalize` | Close out: archive, write-back to lab knowledge, update registry |
 
 ## Directory map
@@ -53,14 +56,17 @@ AutoScientist/
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
 ├── .claude/skills/      # The procedures above
+├── .claude/agents/      # Scoped subagents: fresh-context-reviewer, experiment-runner
 ├── lab/
 │   ├── REGISTRY.md      # Single source of truth for all ideas/projects + states
+│   ├── config.yaml      # Lab-wide tunables (ensemble sizes, debug depth, backoff, ...)
 │   ├── knowledge/       # Lab world model: FINDINGS, FAILURES, OPEN-QUESTIONS
 │   └── notebook/        # Dated lab-notebook entries (one per working session)
-├── ideas/<slug>/        # IDEA.md, lit-review.md, proposal.md per idea
+├── ideas/<slug>/        # IDEA.md, lit-review.md, proposal.md, critiques/ per idea
 ├── projects/<slug>/     # Spawned experiment repos (each its own git repo; not tracked by hub)
 ├── papers/<slug>/       # LaTeX papers + claims.yaml (claim → artifact mapping)
-└── templates/           # project/, paper/, idea/, review/ templates
+├── templates/           # project/, paper/, idea/, review/, loop/ templates
+└── tools/               # audit_claims.py (claims→artifacts), check_lab.py (registry lint)
 ```
 
 ## Quickstart

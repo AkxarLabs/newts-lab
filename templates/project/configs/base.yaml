@@ -6,7 +6,7 @@ stage: SMOKE            # SMOKE | PILOT | FULL — FULL requires PI Gate 2
 seed: 0
 
 budget:
-  max_minutes: 10       # wall-clock cap for this run; the runner enforces awareness, not bypass
+  max_minutes: 10       # wall-clock cap; ENFORCED by the scripts/run.py watchdog (exit 2, status=timeout)
 
 eval:
   primary_metric: toy_abs_error   # replace with the project's frozen metric
@@ -19,3 +19,4 @@ toy:
   n_samples: 100
   true_mean: 3.14
   noise_std: 1.0
+  sleep_seconds: 0      # artificial slowdown; exists so the budget watchdog is testable

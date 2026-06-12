@@ -14,6 +14,7 @@ verifiable end-to-end before any domain code lands.
 from __future__ import annotations
 
 import random
+import time
 from typing import Any
 
 from .tracking import RunContext
@@ -21,6 +22,8 @@ from .tracking import RunContext
 
 def run(cfg: dict[str, Any], ctx: RunContext) -> dict[str, Any]:
     toy = cfg["toy"]
+    if toy.get("sleep_seconds"):
+        time.sleep(float(toy["sleep_seconds"]))
     samples = [random.gauss(toy["true_mean"], toy["noise_std"]) for _ in range(toy["n_samples"])]
 
     estimate = 0.0
