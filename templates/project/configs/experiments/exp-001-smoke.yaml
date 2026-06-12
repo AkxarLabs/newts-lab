@@ -1,0 +1,9 @@
+# exp-001: SMOKE — verify the pipeline end-to-end (run, artifacts, metrics, registry).
+# Experiment configs are immutable after first run: new variant = new file.
+
+experiment_name: exp-001-smoke
+stage: SMOKE
+seed: 0
+
+toy:
+  n_samples: 50

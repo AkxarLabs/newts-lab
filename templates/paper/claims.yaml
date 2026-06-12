@@ -1,0 +1,19 @@
+# Claim → artifact mapping. Every quantitative claim in main.tex gets an entry.
+# /review-paper verifies each one mechanically; a claim without a verifiable artifact
+# may not appear in the paper. Append entries as claims are written.
+#
+# project: projects/<slug> repo; commit: git SHA in that repo at which the artifact was produced.
+
+# - id: C001
+#   claim: "Our method improves val_bpb by 2.3% over the tuned baseline"
+#   numbers: [2.3]
+#   location: "Sec 4.1, Table 2"
+#   project: {{slug}}
+#   commit: <sha>
+#   artifacts:
+#     - runs/exp-004-r1-s0/metrics.json
+#     - runs/exp-004-r2-s1/metrics.json
+#     - runs/exp-004-r3-s2/metrics.json
+#   derivation: "mean over 3 seeds of (baseline.val_bpb - ours.val_bpb)/baseline.val_bpb"
+
+claims: []

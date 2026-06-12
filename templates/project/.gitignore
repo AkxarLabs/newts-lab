@@ -1,0 +1,10 @@
+# Run artifacts are local; the committed record is runs/registry.jsonl + EXPERIMENT_LOG.md
+runs/*
+!runs/README.md
+!runs/registry.jsonl
+
+data/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

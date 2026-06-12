@@ -1,0 +1,22 @@
+# Spawned project repos are independent git repos — the hub tracks them via lab/REGISTRY.md only
+projects/*
+!projects/README.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# LaTeX build artifacts
+papers/**/*.aux
+papers/**/*.bbl
+papers/**/*.blg
+papers/**/*.fdb_latexmk
+papers/**/*.fls
+papers/**/*.log
+papers/**/*.out
+papers/**/*.synctex.gz
+
+# OS
+.DS_Store
+Thumbs.db

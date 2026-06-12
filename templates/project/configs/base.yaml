@@ -1,0 +1,21 @@
+# Shared defaults. Experiment configs under configs/experiments/ are deep-merged on top.
+# The `eval` block is FROZEN once the proposal is approved (see PLAN.md).
+
+experiment_name: base
+stage: SMOKE            # SMOKE | PILOT | FULL — FULL requires PI Gate 2
+seed: 0
+
+budget:
+  max_minutes: 10       # wall-clock cap for this run; the runner enforces awareness, not bypass
+
+eval:
+  primary_metric: toy_abs_error   # replace with the project's frozen metric
+  # validation/test definitions live here once the domain is set; the experiment loop
+  # may read validation, never test.
+
+# Domain config goes below (model, data, training...). Every value an experiment varies
+# must be a config key — no hardcoded variants in code.
+toy:
+  n_samples: 100
+  true_mean: 3.14
+  noise_std: 1.0
