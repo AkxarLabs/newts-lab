@@ -47,8 +47,9 @@ See [Autonomy & modes](autonomy.md) for how the modes differ and how the unatten
 ones compose with Claude Code's built-in `/loop` scheduler.
 
 The agent generates and tournament-ranks candidate ideas, then walks the lifecycle:
-`/lit-review` → `/propose` → **Gate 1 (you)** → `/spawn-project` → `/experiment` →
-`/analyze` → `/write-paper` → `/review-paper` → **Gate 3 (you)** → `/finalize`.
+`/lit-review` → `/scope` → `/propose` → **Gate 1 (you)** → `/spawn-project` →
+`/experiment` → `/analyze` → `/make-figures` → `/write-paper` → `/review-paper` →
+**Gate 3 (you)** → `/finalize`.
 
 You'll be stopped at the gates and otherwise left to read the notebook.
 

@@ -1,22 +1,12 @@
 # Internal Review — {{title}}
 
 *Paper: `papers/{{slug}}/` · Reviewer pass: {{n}} · Date: {{date}}*
-*Reviewer lens: {{lens}} · Context: {{fresh-subagent | same-session}}*
+*Reviewer lens: {{lens}}*
 
-## Part A — Claims audit (mechanical; blocks everything else)
-
-For EVERY entry in `claims.yaml`: open the referenced artifact and verify the number appears there (within rounding stated in the claim).
-
-| Claim ID | Number in paper | Artifact | Verified? | Notes |
-|----------|----------------|----------|-----------|-------|
-
-- [ ] All claims verified against artifacts
-- [ ] All figures/tables regenerated from committed scripts (spot-check at least 2)
-- [ ] Multi-seed requirement met for all headline numbers (≥3 seeds, variance reported)
-- [ ] Every citation checked against `lit-review.md` notes (no from-memory citations)
-- [ ] Val/test discipline: nothing in the paper was selected on the test set
-
-**A paper with ANY unverified claim is returned to /write-paper before qualitative review.**
+> The claims audit is performed mechanically and blockingly by `/review-paper` Part A
+> (`tools/audit_claims.py` + `s2.py verify`) *before* this review runs — do not attempt it
+> here. As a fresh-context reviewer you are given only the paper, your lens, and an output
+> path; you have no access to the project artifacts. Fill Parts B and C only.
 
 ## Part B — Qualitative review (NeurIPS-form)
 
@@ -51,4 +41,6 @@ Do the conclusions actually follow from the results shown? Are effect sizes hone
 
 ## Part C — Action items
 
-<!-- Numbered, concrete, each mapped to a section/claim. /write-paper consumes this list. -->
+<!-- Numbered, concrete, each mapped to a section/claim. These feed the /review-paper Part C
+     author-response triage (ACCEPT / REBUT / NEEDS-EXPERIMENT) — they are validated, not
+     obeyed; only ACCEPT items reach /write-paper. -->

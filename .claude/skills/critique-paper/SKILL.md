@@ -12,10 +12,16 @@ Lens definitions + the calibration block live in `templates/review/critique-lens
 
 - **Own-draft mode** (argument is an idea slug with `papers/<slug>/`): the paper file is
   the compiled PDF (preferred) or `papers/<slug>/main.tex`. Reviews go to
-  `papers/<slug>/reviews/critique-<date>/`.
-- **External mode** (arXiv id / URL / PDF path): fetch the paper and save it to
-  `ideas/<slug>/critiques/sources/<bibkey>.md` (or note the local PDF path). Critique
-  output goes to `ideas/<slug>/critiques/<bibkey>.md`. If no idea context, use
+  `papers/<slug>/reviews/critique-<date>/`. For a lifecycle paper the canonical entry is
+  `/review-paper` (its blocking Part A claims audit runs first); a standalone own-draft
+  critique is advisory and never advances state.
+- **External mode** (arXiv id / URL / PDF path): download the actual artifact — for an
+  arXiv id, the PDF (`https://arxiv.org/pdf/<id>`) to
+  `ideas/<slug>/critiques/sources/<bibkey>.pdf`; fall back to saved extracted text
+  (`<bibkey>.md`) only when no PDF is obtainable, and note in the critique header that the
+  source was extracted text (reviewers must read the paper, not a lossy summary). Reviewer
+  files + meta-review go to `ideas/<slug>/critiques/<bibkey>/` (one file per lens); the
+  distilled verdict goes to the lit-review note. If no idea context, use
   `lab/reviews/<bibkey>/`.
 
 ## 2. Spawn the reviewer ensemble (fresh-context invariant)
@@ -25,7 +31,9 @@ Lens definitions + the calibration block live in `templates/review/critique-lens
   own drafts.
 - Spawn one `fresh-context-reviewer` subagent per lens, **in parallel**. Each prompt
   contains ONLY: the paper file path, the lens name + its definition and the calibration
-  block (paste both verbatim from `critique-lenses.md`), and the output file path.
+  block (paste both from `critique-lenses.md`, **substituting the anchor value with
+  `critique.score_anchor_human_mean`** so a re-tuned anchor actually takes effect), and the
+  output file path.
 - **HARD RULE: never include your own summary, opinion, or context about the paper in a
   reviewer prompt.** The reviewers' value is that they read cold. (This is the
   fresh-context invariant — same-session review measurably underperforms.)
@@ -36,10 +44,15 @@ Fill `templates/review/meta-review.md` yourself from the reviewers' files:
 - Scores aggregate as **median (min–max)** per dimension — never mean.
 - Grade every weakness against the **taste rubric** (`critique-lenses.md`): GENERIC and
   MISDIRECTED points are noted but carry no action items; only LOAD-BEARING points
-  drive decisions. (`oversight.level: strict`: spawn an `overseer` `critique-taste`
-  check per fatal flaw and `support` check per refutation.)
+  drive decisions.
 - Collect every `FATAL FLAW:` line into the veto table. **Any unrefuted fatal flaw
   blocks accept**; an override requires a written refutation with specific evidence.
+- **Oversight** (own-draft mode): a fatal-flaw refutation is written by the same session
+  that wrote the paper, yet it unlocks accept — so at `oversight.level` ≠ off, spawn an
+  `overseer` `support` check on **every refutation that would flip a fatal flaw to
+  refuted** (statement = the refutation; evidence = the cited artifact paths). At `strict`,
+  additionally grade each fatal flaw itself with an `overseer` `critique-taste` check. An
+  overseer-rejected refutation does not override the veto.
 - Synthesize agreements/conflicts; produce numbered action items (own-draft mode).
 - Write the meta-review file beside the reviewer files.
 

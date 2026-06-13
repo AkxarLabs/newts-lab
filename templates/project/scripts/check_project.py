@@ -22,6 +22,9 @@ from pathlib import Path
 
 import yaml
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -46,16 +49,18 @@ def main() -> int:
         problems.append("no experiment configs in configs/experiments/")
 
     # Unfilled template placeholders ({{slug}} etc. — not the figure library's {{{...}}}).
-    for rel in ("PLAN.md", "control.yaml"):
+    # All files /spawn-project substitutes, so an unfilled CLAUDE.md/AGENTS.md is caught too.
+    for rel in ("PLAN.md", "control.yaml", "CLAUDE.md", "AGENTS.md", "README.md",
+                "EXPERIMENT_LOG.md", "pyproject.toml"):
         path = ROOT / rel
-        if path.exists() and re.search(r"\{\{(?!\{)[a-z_]+\}\}", path.read_text(encoding="utf-8")):
+        if path.exists() and re.search(r"\{\{(?!\{)[a-z_]+\}\}", path.read_text(encoding="utf-8-sig")):
             problems.append(f"{rel} still contains template placeholders — spawn incomplete")
 
     control: dict = {}
     control_path = ROOT / "control.yaml"
     if control_path.exists():
         try:
-            control = yaml.safe_load(control_path.read_text(encoding="utf-8")) or {}
+            control = yaml.safe_load(control_path.read_text(encoding="utf-8-sig")) or {}
             for block in ("budgets", "gate2_envelope"):
                 if block not in control:
                     problems.append(f"control.yaml has no `{block}` block")
@@ -66,7 +71,7 @@ def main() -> int:
     registry = ROOT / "runs" / "registry.jsonl"
     n_runs = 0
     if registry.exists():
-        for i, line in enumerate(registry.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(registry.read_text(encoding="utf-8-sig").splitlines(), 1):
             if not line.strip():
                 continue
             try:
@@ -101,7 +106,7 @@ def main() -> int:
     elif n_runs == 0:
         suggestion = "run the smoke config (`experiment` procedure, exp-001-smoke) to verify the pipeline"
     elif last_run and last_run.get("status") in ("failed", "timeout"):
-        suggestion = "last run did not complete — `experiment` procedure (debug, max 3 attempts, then record and move on)"
+        suggestion = "last run did not complete — `experiment` procedure (debug up to experiment.max_debug_depth attempts, then record and move on)"
     else:
         suggestion = "next planned row in PLAN.md via `experiment`; if the baseline is established, `improve`; if the plan is done, `analyze`"
     print(f"- Suggested next: {suggestion}")

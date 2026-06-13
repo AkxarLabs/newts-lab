@@ -72,13 +72,15 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
    including failures), then ONE git commit: `exp-NNN: <one-line outcome>`.
 4. **Multi-seed before claiming:** a result is a finding only at ≥ `seeds.multi_seed_n`
    seeds (use sweep.py), reported mean ± spread.
-5. **Debug cap:** 3 consecutive fix attempts, then record the failure and move on.
+5. **Debug cap:** `experiment.max_debug_depth` (default 3) consecutive fix attempts, then record the failure and move on.
 6. **Never touch:** the eval protocol, test split, `runs/registry.jsonl` history,
    `SYSTEM.md`, or anything in the hub repo except the write-back below.
 7. **Figures are scripts** in `scripts/figures/`, reading only `runs/` artifacts.
 8. **Zero-token monitoring:** while a run is in flight, the only check is
-   `uv run python scripts/status.py` on a fixed cadence — no log reading, no partial-
-   curve reasoning; the watchdog enforces the budget.
+   `uv run python scripts/status.py <run_id> --watch --log-interval
+   <monitoring.log_interval_seconds> --poll <loop.monitor_poll_seconds>` (omit `<run_id>`
+   for a sweep) — no log reading, no partial-curve reasoning; the watchdog enforces the
+   budget. Pass `--log-interval` so a healthy sparse-logging run isn't flagged stalled.
 
 ## Session end (write-back)
 

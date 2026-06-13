@@ -15,6 +15,9 @@ Keys (optional but recommended — keyless S2 shares a saturated global pool):
     OPENALEX_API_KEY  param api_key (free account: openalex.org; required since 2026-02)
 
 Exit codes (verify): 0 all verified · 2 title/year mismatches only · 1 not-found or retracted.
+Exit codes (search): 0 results (or a genuinely empty literature) · 3 BOTH backends
+unreachable — an empty result then is NOT evidence of absence (matters for /lit-review's
+novelty verdict).
 stdlib only (urllib); pyyaml unused but kept for uniform tool invocation.
 """
 
@@ -30,6 +33,9 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 S2 = "https://api.semanticscholar.org/graph/v1"
 OPENALEX = "https://api.openalex.org"
@@ -81,6 +87,13 @@ def cmd_search(args) -> int:
         print("[s2] no S2 results/unreachable — falling back to OpenAlex", file=sys.stderr)
         oa = http_get(openalex_url("/works", {"search": args.query, "per-page": args.limit,
                                               "select": "title,publication_year,doi,cited_by_count,primary_location"}))
+        # Distinguish a genuine empty literature from both backends being unreachable:
+        # http_get returns None on request failure, {} (truthy-empty .get) on a real empty hit.
+        if data is None and oa is None:
+            print("\n**BOTH BACKENDS UNREACHABLE — this empty result is NOT evidence of "
+                  "absence.** Do not issue a novelty verdict from it; record the search as "
+                  "blocked and retry, or fall back to web search.", flush=True)
+            return 3
         for w in (oa or {}).get("results") or []:
             venue = ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or ""
             print(f"- **{w.get('title')}** ({w.get('publication_year')}, {venue}; "
@@ -111,8 +124,58 @@ def cmd_bibtex(args) -> int:
 
 # ── verify ──────────────────────────────────────────────────────────────────
 
-BIB_ENTRY = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,(.*?)\n\}", re.DOTALL)
-BIB_FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.+?)[}\"]\s*,?\s*\n", re.DOTALL)
+def parse_bib_fields(body: str) -> dict:
+    """Parse `key = {value}, key = "value", key = 2024` tolerating multi-line, brace-balanced
+    values (a regex that stops at the first `}` truncates wrapped titles → false MISMATCH)."""
+    fields, i, n = {}, 0, len(body)
+    while i < n:
+        m = re.match(r"\s*(\w+)\s*=\s*", body[i:])
+        if not m:
+            i += 1
+            continue
+        key = m.group(1).lower()
+        i += m.end()
+        if i >= n:
+            break
+        if body[i] == "{":
+            depth, j = 0, i
+            while j < n:
+                if body[j] == "{":
+                    depth += 1
+                elif body[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            val, i = body[i + 1:j], j + 1
+        elif body[i] == '"':
+            j = body.find('"', i + 1)
+            val, i = (body[i + 1:j], j + 1) if j != -1 else (body[i + 1:], n)
+        else:
+            j = i
+            while j < n and body[j] not in ",\n":
+                j += 1
+            val, i = body[i:j], j
+        fields[key] = re.sub(r"\s+", " ", val).strip()
+        while i < n and body[i] in ", \n\t":
+            i += 1
+    return fields
+
+
+def parse_bib(text: str) -> list[dict]:
+    """Brace-count each @entry so a `}` inside an abstract/note doesn't end it early."""
+    entries = []
+    for m in re.finditer(r"@\w+\s*\{", text):
+        depth, j = 1, m.end()
+        while j < len(text) and depth:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+            j += 1
+        key, _, rest = text[m.end():j - 1].partition(",")
+        entries.append({"key": key.strip(), **parse_bib_fields(rest)})
+    return entries
 
 
 def normalize(title: str) -> str:
@@ -125,11 +188,8 @@ def check_retracted(doi: str) -> bool | None:
 
 
 def cmd_verify(args) -> int:
-    text = open(args.bibfile, encoding="utf-8").read()
-    entries = []
-    for match in BIB_ENTRY.finditer(text):
-        fields = {k.lower(): re.sub(r"\s+", " ", v).strip() for k, v in BIB_FIELD.findall(match.group(2) + "\n")}
-        entries.append({"key": match.group(1), **fields})
+    text = open(args.bibfile, encoding="utf-8-sig").read()
+    entries = parse_bib(text)
     if not entries:
         print("no bib entries found")
         return 0
@@ -139,7 +199,9 @@ def cmd_verify(args) -> int:
     print("| key | status | detail |")
     print("|---|---|---|")
     worst = 0
-    for e in entries:
+    for idx, e in enumerate(entries):
+        if idx:  # client-side rate limit, paid on EVERY iteration incl. the continue paths
+            time.sleep(1.1 if os.environ.get("S2_API_KEY") else 2.0)
         title = e.get("title", "")
         if not title:
             print(f"| {e['key']} | **NOT-FOUND** | entry has no title |")
@@ -172,7 +234,6 @@ def cmd_verify(args) -> int:
             worst = max(worst, 1)
         else:
             print(f"| {e['key']} | verified | sim {ratio:.2f} |")
-        time.sleep(1.1 if os.environ.get("S2_API_KEY") else 2.0)  # client-side rate limit
 
     return {0: 0, 1: 2, 2: 1}[worst]
 

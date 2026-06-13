@@ -134,9 +134,10 @@ campaigns:
    NEEDS-EXPERIMENT author response; the taste rubric strips generic and misdirected
    critique of any force; new claims require new runs.
 4. **Overseers** (`oversight.level`) — dedicated verification subagents that check a
-   statement against its evidence files before it propagates: author-response verdicts
-   and analysis interpretations at `standard`; meta-review flaws and loop progress
-   claims at `strict`.
+   statement against its evidence files before it propagates: at `standard`,
+   author-response verdicts, analysis interpretations, `/autopilot` Gate-1 self-approvals,
+   the phantom-experiment sweep, and any meta-review refutation that would unlock accept;
+   at `strict`, also grading meta-review fatal flaws and loop progress claims.
 5. **Hard stops** — kill criteria checked every cycle; anti-burn backoff; frozen
    settings untouchable by any feedback; PI escalation for stalemates.
 

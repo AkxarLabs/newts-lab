@@ -36,12 +36,16 @@ def _deep_merge(base: dict, override: dict) -> dict:
 def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
 
 
 def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None) -> dict[str, Any]:
     """Load control.yaml + base.yaml + experiment yaml + dotted overrides ("seed=1")."""
     exp_path = Path(experiment_yaml).resolve()
+    if not exp_path.exists():
+        # A typo'd --config must fail loudly, not silently run an empty config that then
+        # KeyErrors deep in experiment.run and records a misleading 'failed' run.
+        raise FileNotFoundError(f"experiment config not found: {exp_path}")
     base_path = exp_path.parent.parent / "base.yaml"          # configs/base.yaml
     control_path = exp_path.parent.parent.parent / "control.yaml"  # project root
 
@@ -60,10 +64,12 @@ def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None)
             node = node.setdefault(part, {})
         node[parts[-1]] = yaml.safe_load(raw)
 
-    # Stage-budget mapping: control.yaml's per-stage cap applies unless the experiment
-    # yaml or a CLI override set budget.max_minutes explicitly.
-    explicit = ("max_minutes" in (exp_cfg.get("budget") or {})) or any(
-        o.partition("=")[0].strip() == "budget.max_minutes" for o in overrides
+    # Stage-budget mapping: control.yaml's per-stage cap applies unless a higher layer
+    # (experiment yaml, base.yaml, or a CLI override) set budget.max_minutes explicitly.
+    explicit = (
+        "max_minutes" in (exp_cfg.get("budget") or {})
+        or "max_minutes" in (_load_yaml(base_path).get("budget") or {})
+        or any(o.partition("=")[0].strip() == "budget.max_minutes" for o in overrides)
     )
     stage = str(cfg.get("stage", "SMOKE")).lower()
     stage_cap = (control_cfg.get("budgets") or {}).get(f"{stage}_max_minutes")

@@ -19,13 +19,16 @@ from pathlib import Path
 
 import yaml
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 HUB = Path(__file__).resolve().parents[1]
 
 
 def load(path: Path) -> dict:
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
 
 
 def flatten(node, prefix: str = "") -> dict[str, object]:
@@ -112,8 +115,9 @@ def main() -> int:
             for key, value in flatten(layer).items():
                 merged[key] = value
                 sources[key] = name
-        # Stage-budget mapping (mirrors project_pkg.config.load_config)
-        if "budget.max_minutes" not in flatten(exp):
+        # Stage-budget mapping (mirrors project_pkg.config.load_config: explicit if set in
+        # the experiment yaml OR base.yaml)
+        if "budget.max_minutes" not in flatten(exp) and "budget.max_minutes" not in flatten(base):
             stage = str(merged.get("stage", "SMOKE")).lower()
             cap = flatten(control).get(f"budgets.{stage}_max_minutes")
             if cap is not None:

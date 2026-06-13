@@ -14,6 +14,9 @@ import threading
 import traceback
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from project_pkg.config import load_config
@@ -41,7 +44,12 @@ def main() -> int:
     # Budget watchdog: budget.max_minutes is ENFORCED, not advisory. Daemon thread +
     # Event (works on Windows; no SIGALRM). On breach: record timeout in the run
     # artifacts and registry, then hard-exit 2 — arbitrary experiment code cannot be
-    # stopped gracefully in-process. sweep.py's subprocess timeout is the outer net.
+    # stopped gracefully in-process. NOTE: os._exit kills only THIS process; if your
+    # experiment code spawns subprocesses (torchrun, an external trainer), launch them in
+    # a killable process group so the watchdog/your harness can reap them — otherwise they
+    # outlive the breach. sweep.py launches run.py in its own process group and kills the
+    # whole tree on timeout, so sweep-driven runs are covered; a bare backgrounded run.py
+    # is not.
     done = threading.Event()
     max_minutes = (cfg.get("budget") or {}).get("max_minutes")
     if max_minutes:

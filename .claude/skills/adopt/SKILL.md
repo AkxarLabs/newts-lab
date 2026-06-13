@@ -37,13 +37,16 @@ and log the entry in the notebook. Then per entry point:
 **Adopting a repo** (registering external code as the project):
 1. Registry row's Project column = its path (it may live anywhere; `lab.projects_root`
    is only the default for *spawned* projects).
-2. Retrofit the project contract — copy from `templates/project/` whatever is missing:
-   `control.yaml` (fill budgets with the PI), `CLAUDE.md` + `AGENTS.md` (substitute
+2. Retrofit the project contract — copy from `templates/project/` **everything
+   `scripts/check_project.py` requires** that is missing (it gates step 4, so the list must
+   match): `control.yaml` (fill budgets with the PI), `CLAUDE.md` + `AGENTS.md` (substitute
    placeholders), `PLAN.md` (write it WITH the PI: frozen eval, kill criteria, what's
-   already done vs planned), `runs/registry.jsonl` + `scripts/` if absent. Don't
-   restructure their code — the contract wraps it; runs just need to land in
-   `runs/<run_id>/` with a registry line (adapt `scripts/run.py` to call their
-   entry point).
+   already done vs planned), `EXPERIMENT_LOG.md` (the template's entry-format header),
+   `configs/base.yaml` + one smoke experiment yaml adapted to their entry point, a minimal
+   `pyproject.toml` if absent, an empty `runs/registry.jsonl` (the tracker appends to it),
+   and `scripts/`. Don't restructure their code — the contract wraps it; runs just need to
+   land in `runs/<run_id>/` with a registry line (adapt `scripts/run.py` to call their
+   entry point — this is also where the smoke yaml points).
 3. State: `active` if experiments remain, `analysis` if they claim results are in.
 4. `uv run --with pyyaml python scripts/check_project.py` must exit 0 before routing on.
 

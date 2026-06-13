@@ -58,9 +58,9 @@ parallelism:
 ## Tools & environment
 
 - All helpers are plain Python (stdlib + pyyaml): hub `tools/` (`check_lab.py`,
-  `audit_claims.py`, `show_config.py`, `run_slots.py`), project `scripts/` (`run.py`,
-  `sweep.py`, `compare.py`, `status.py`). Invoke hub tools via
-  `uv run --with pyyaml python tools/<script>.py`.
+  `audit_claims.py`, `show_config.py`, `run_slots.py`, `s2.py`), project `scripts/`
+  (`run.py`, `sweep.py`, `compare.py`, `status.py`, `check_project.py`). Invoke hub tools
+  via `uv run --with pyyaml python tools/<script>.py`.
 - Configuration is 3-layered (experiment yaml > project `control.yaml` >
   `lab/config.yaml`) — see `docs/configuration.md`.
 - Projects live OUTSIDE this repo at `lab.projects_root` (default

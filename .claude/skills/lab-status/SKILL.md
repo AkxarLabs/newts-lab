@@ -9,8 +9,8 @@ description: Orient in the lab — read the registry, knowledge, and notebook; r
    (then `/ideate`, `/adopt`, `/advance`, or `/autopilot` as the on-ramp) and stop here.
 1. Read `lab/REGISTRY.md`, the latest 1–2 entries in `lab/notebook/`, and skim `lab/knowledge/OPEN-QUESTIONS.md`.
 2. For any idea in an active state (`active`, `analysis`, `writing`, `internal-review`), read its `IDEA.md` state log and — if a project exists — the tail of its `EXPERIMENT_LOG.md` (project path in the registry row; projects live at `lab.projects_root`, outside the hub).
-3. Run `uv run --with pyyaml python tools/check_lab.py` — fix any registry/IDEA.md drift and orphans it reports immediately; flag stale items and budget overruns to the PI.
+3. Run `uv run --with pyyaml python tools/check_lab.py` — fix any registry/IDEA.md drift and orphans it reports immediately; flag the stale items it reports to the PI. For budget: `check_lab.py` does no budget check — compare each active project's `runs/registry.jsonl` spend against its `control.yaml` `budgets`/`gate2_envelope` yourself and flag overruns.
 4. Report to the user:
    - One line per non-final item: state, last activity, what unblocks it.
    - Items waiting at a **PI gate** (call these out first — they block on the human).
-   - A single recommended next action (the highest-leverage one), with the command to run it.
+   - A single recommended next action (the highest-leverage one), with the command to run it — for "advance the lab", the non-terminal idea furthest along the lifecycle that isn't gate-blocked (the rule `/advance` uses).

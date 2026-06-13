@@ -15,12 +15,17 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 import re
+import signal
 import statistics
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
@@ -28,6 +33,46 @@ sys.path.insert(0, str(REPO / "src"))
 from project_pkg.config import load_config
 
 RUN_ID_RE = re.compile(r"^\[run\] (\S+) ->", re.MULTILINE)
+_NEW_GROUP = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
+    else {"start_new_session": True}
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Kill the run.py process AND its children (a SIGKILL/TerminateProcess on the parent
+    leaves grandchild training procs — e.g. torchrun — running and the GPU busy)."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                           capture_output=True, check=False)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        proc.kill()
+
+
+def _finalize_orphan(run_id: str | None, status: str) -> None:
+    """A killed run.py never ran ctx.finish, so its meta.json is stuck 'running' with no
+    registry row. Reconcile the mechanical record so it matches reality (append-only)."""
+    if not run_id:
+        return
+    run_dir = REPO / "runs" / run_id
+    meta_path = run_dir / "meta.json"
+    if not meta_path.exists():
+        return
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return
+    if meta.get("status") != "running":
+        return  # it finalized after all — leave it
+    meta["status"] = status
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    row = {"run_id": run_id, "experiment_name": meta.get("experiment_name"),
+           "stage": meta.get("stage"), "seed": meta.get("seed"),
+           "commit": meta.get("commit"), "dirty": meta.get("dirty"),
+           "status": status, "wall_seconds": None, "metrics": {}}
+    with (REPO / "runs" / "registry.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
 
 
 def parse_grid(items: list[str]) -> list[list[tuple[str, str]]]:
@@ -45,17 +90,28 @@ def run_job(config: str, seed: int, combo: list[tuple[str, str]], timeout: float
         cmd += ["-o", f"{key}={value}"]
     label = ", ".join(f"{k}={v}" for k, v in combo) or "(base)"
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=REPO)
     try:
-        out, _ = proc.communicate(timeout=timeout)
-        status = {0: "completed", 2: "timeout"}.get(proc.returncode, "failed")
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        out, _ = proc.communicate()
-        status = "killed-by-sweep"
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace", cwd=REPO,
+                                **_NEW_GROUP)
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+            status = {0: "completed", 2: "timeout"}.get(proc.returncode, "failed")
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)
+            try:
+                out, _ = proc.communicate(timeout=30)  # bounded drain; a surviving child
+            except subprocess.TimeoutExpired:           # holding the pipe can't hang us
+                out = ""
+            status = "killed-by-sweep"
+    except Exception as e:  # one bad job must not abort the pool (pool.map propagates raises)
+        print(f"[sweep] {label} seed={seed} -> sweep-error: {e}", flush=True)
+        return {"label": label, "seed": seed, "status": "sweep-error", "run_id": None}
 
     match = RUN_ID_RE.search(out or "")
     run_id = match.group(1) if match else None
+    if status in ("timeout", "killed-by-sweep"):
+        _finalize_orphan(run_id, "timeout" if status == "timeout" else "killed")
     print(f"[sweep] {label} seed={seed} -> {status} ({run_id})", flush=True)
     return {"label": label, "seed": seed, "status": status, "run_id": run_id}
 
@@ -63,23 +119,31 @@ def run_job(config: str, seed: int, combo: list[tuple[str, str]], timeout: float
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    parser.add_argument("--seeds", default="0,1,2", help="comma-separated seeds")
+    parser.add_argument("--seeds", default=None,
+                        help="comma-separated seeds (default: control.yaml seeds.list, else 0,1,2)")
     parser.add_argument("--grid", action="append", default=[], help="dotted key=v1,v2 (repeatable)")
-    parser.add_argument("--parallel", type=int, default=1, help="concurrent jobs")
+    parser.add_argument("--parallel", type=int, default=None,
+                        help="concurrent jobs (default: control.yaml parallelism.sweep_parallel, else 1)")
     parser.add_argument("--grace", type=float, default=60.0, help="seconds beyond budget before hard kill")
     args = parser.parse_args()
 
-    seeds = [int(s) for s in args.seeds.split(",")]
     combos = parse_grid(args.grid)
     cfg = load_config(args.config)
+    # Defaults come from the merged config so a PI editing control.yaml actually takes effect.
+    if args.seeds is not None:
+        seeds = [int(s) for s in args.seeds.split(",")]
+    else:
+        seeds = [int(s) for s in ((cfg.get("seeds") or {}).get("list") or [0, 1, 2])]
+    parallel = args.parallel if args.parallel is not None \
+        else int((cfg.get("parallelism") or {}).get("sweep_parallel") or 1)
     max_minutes = (cfg.get("budget") or {}).get("max_minutes") or 60
     timeout = float(max_minutes) * 60 + args.grace
 
     jobs = [(args.config, seed, combo, timeout) for combo in combos for seed in seeds]
     print(f"[sweep] {len(jobs)} jobs ({len(combos)} combos x {len(seeds)} seeds), "
-          f"timeout {timeout:.0f}s/job, parallel={args.parallel}", flush=True)
+          f"timeout {timeout:.0f}s/job, parallel={parallel}", flush=True)
 
-    with ThreadPoolExecutor(max_workers=max(1, args.parallel)) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
         results = list(pool.map(lambda j: run_job(*j), jobs))
 
     # Aggregate completed runs per combo: mean +/- std for every numeric final metric.

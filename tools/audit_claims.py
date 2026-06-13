@@ -8,10 +8,21 @@ For every claim, each number must be found in the referenced artifacts:
                (covers the canonical "mean over N seeds" case)
   MANUAL       no match, but the claim states a derivation — a human must verify it;
                never silently passed
-  FAIL         artifact missing, or no match anywhere (closest value reported)
+  FAIL         artifact missing, no match anywhere (closest value reported), or a
+               malformed claim entry
 
-Tolerance per number = half-ULP of its printed precision (claim says 2.3 -> +/-0.05),
-or |value| * --rel-tol, whichever is looser.
+An optional `metric:` field per claim restricts matching to artifact leaves whose final
+key equals it (e.g. metric: val_acc) — without it, any leaf within tolerance matches,
+which can produce coincidental PASSes.
+
+Tolerance per number = half-ULP of its printed precision. QUOTE numbers in claims.yaml to
+preserve trailing zeros ("71.30" -> +/-0.005; the bare float 71.30 parses to 71.3 ->
++/-0.05, 10x looser), or |value| * --rel-tol, whichever is looser.
+
+Completeness scan (unless --no-coverage): every measurement-like numeral (a decimal or a
+percentage) in main.tex body prose must carry a `% CNNN` annotation — an unannotated one
+is a number typed into the paper without a claims entry, which the per-claim audit can
+never see. Each is a FAIL.
 
 Exit codes: 0 all PASS/PASS-derived · 2 MANUAL items remain · 1 any FAIL.
 """
@@ -28,15 +39,46 @@ from pathlib import Path
 
 import yaml
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 HUB = Path(__file__).resolve().parents[1]
 FLOAT_RE = re.compile(r"-?\d+\.?\d*(?:[eE][-+]?\d+)?")
+# A measurement-like token for the coverage scan: a decimal (3.14) or a percentage (42%).
+MEASUREMENT_RE = re.compile(r"-?\d+\.\d+|-?\d+\s*\\?%")
+CLAIM_ANNOT_RE = re.compile(r"%.*\bC\d+\b")
 
 
 def projects_root() -> Path:
     """Resolve lab.projects_root from lab/config.yaml (relative paths anchor at the hub)."""
-    config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8")) or {}
+    config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
     root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
     return (HUB / root).resolve()
+
+
+def coverage_scan(paper_dir: Path) -> list[str]:
+    """Flag measurement-like numerals in main.tex body prose with no `% CNNN` annotation.
+    Returns a list of 'Lnn: <line>' findings (empty = clean / no main.tex)."""
+    main_tex = paper_dir / "main.tex"
+    if not main_tex.exists():
+        return []
+    findings, in_body = [], False
+    for i, raw in enumerate(main_tex.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if "\\begin{document}" in raw:
+            in_body = True
+            continue
+        if not in_body:
+            continue
+        # Split code from comment (first unescaped %); the annotation, if any, is in the comment.
+        m = re.search(r"(?<!\\)%", raw)
+        code = raw[:m.start()] if m else raw
+        annotated = bool(CLAIM_ANNOT_RE.search(raw))
+        # Skip structural lines whose numbers aren't prose measurements.
+        if re.search(r"\\(input|include|includegraphics|cite\w*|ref|label|section|subsection|subsubsection|url|href|usepackage)", code):
+            continue
+        if MEASUREMENT_RE.search(code) and not annotated:
+            findings.append(f"L{i}: {raw.strip()[:90]}")
+    return findings
 
 
 def numeric_leaves(node, prefix: str = "") -> list[tuple[str, float]]:
@@ -56,7 +98,7 @@ def numeric_leaves(node, prefix: str = "") -> list[tuple[str, float]]:
 
 
 def extract_numbers(path: Path) -> list[tuple[str, float]]:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     if path.suffix == ".json":
         return numeric_leaves(json.loads(text))
     if path.suffix == ".jsonl":
@@ -100,12 +142,19 @@ def audit_claim(claim: dict, rel_tol: float, check_commits: bool) -> tuple[str, 
         except (json.JSONDecodeError, ValueError) as e:
             return "FAIL", f"unreadable artifact {rel}: {e}"
 
-    direct = [v for art in per_artifact for _, v in art]
+    # Optional metric: restricts matching to leaves whose final key equals it, so a number
+    # can't pass on a coincidental match against an unrelated leaf.
+    want = str(claim.get("metric", "")).strip()
+    def keep(key: str) -> bool:
+        return not want or leaf_key(key) == want
+
+    direct = [v for art in per_artifact for k, v in art if keep(k)]
     # Derived candidates: mean/std of each leaf key across the artifact list.
     by_key: dict[str, list[float]] = {}
     for art in per_artifact:
         for key, v in art:
-            by_key.setdefault(leaf_key(key), []).append(v)
+            if keep(key):
+                by_key.setdefault(leaf_key(key), []).append(v)
     derived = []
     for vals in by_key.values():
         derived.append(statistics.mean(vals))
@@ -139,30 +188,43 @@ def main() -> int:
     parser.add_argument("paper_dir", help="e.g. papers/<slug>")
     parser.add_argument("--rel-tol", type=float, default=1e-3)
     parser.add_argument("--check-commits", action="store_true")
+    parser.add_argument("--no-coverage", action="store_true",
+                        help="skip the main.tex unannotated-numeral completeness scan")
     args = parser.parse_args()
 
-    claims_path = (HUB / args.paper_dir / "claims.yaml") if not Path(args.paper_dir).is_absolute() \
-        else Path(args.paper_dir) / "claims.yaml"
+    paper_dir = (HUB / args.paper_dir) if not Path(args.paper_dir).is_absolute() else Path(args.paper_dir)
+    claims_path = paper_dir / "claims.yaml"
     if not claims_path.exists():
         print(f"no claims.yaml at {claims_path}")
         return 1
-    claims = (yaml.safe_load(claims_path.read_text(encoding="utf-8")) or {}).get("claims") or []
+    claims = (yaml.safe_load(claims_path.read_text(encoding="utf-8-sig")) or {}).get("claims") or []
     if not claims:
         print("claims.yaml has no claims — nothing to audit (a results paper with zero claims is suspicious)")
-        return 0
 
     print(f"## Claims audit — {args.paper_dir} ({len(claims)} claims)\n")
     print("| id | status | detail | location |")
     print("|---|---|---|---|")
     counts = {"PASS": 0, "PASS-derived": 0, "MANUAL": 0, "FAIL": 0}
     for claim in claims:
-        status, detail = audit_claim(claim, args.rel_tol, args.check_commits)
+        try:
+            status, detail = audit_claim(claim, args.rel_tol, args.check_commits)
+        except Exception as e:  # one malformed entry is a FAIL row, never a crashed audit
+            status, detail = "FAIL", f"malformed claim entry: {e}"
         counts[status] += 1
-        print(f"| {claim.get('id')} | **{status}** | {detail} | {claim.get('location', '')} |")
+        cid = claim.get("id") if isinstance(claim, dict) else "(non-mapping)"
+        loc = claim.get("location", "") if isinstance(claim, dict) else ""
+        print(f"| {cid} | **{status}** | {detail} | {loc} |")
+
+    coverage = [] if args.no_coverage else coverage_scan(paper_dir)
+    if coverage:
+        print(f"\n**Completeness FAIL — {len(coverage)} unannotated numeral(s) in main.tex "
+              f"(no `% CNNN`):**")
+        for f in coverage:
+            print(f"- {f}")
 
     print(f"\n{counts['PASS']} pass · {counts['PASS-derived']} derived · "
-          f"{counts['MANUAL']} manual · {counts['FAIL']} fail")
-    if counts["FAIL"]:
+          f"{counts['MANUAL']} manual · {counts['FAIL']} fail · {len(coverage)} uncovered")
+    if counts["FAIL"] or coverage:
         return 1
     if counts["MANUAL"]:
         return 2

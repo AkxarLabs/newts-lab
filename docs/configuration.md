@@ -15,7 +15,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-proj exp-004.yaml
 ```
 
-…or just run `/configure` and let the agent present it. Edits go through `/configure set key=value [slug]` (or by hand — they're YAML files).
+…or just run `/configure` and let the agent present it. Edits go through `/configure [slug] set key=value` (or by hand — they're YAML files).
 
 ## Layer 1 — `lab/config.yaml` (lab-wide defaults)
 
@@ -25,7 +25,8 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |
-| `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor injected into every reviewer prompt |
+| `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor `/critique-paper` substitutes into every reviewer prompt |
+| `critique.accept_bar` | 7 | PI | median Overall at/above this (+ zero unrefuted fatal flaws) = accept |
 | `critique.max_review_cycles` | 3 | PI | revision cycles before escalating to the PI |
 | `experiment.max_debug_depth` | 3 | agent-readable | consecutive debug attempts before record-and-move-on |
 | `experiment.num_drafts` | 3 | agent-readable | distinct solution lines `/improve` maintains |
@@ -35,11 +36,11 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `loop.monitor_poll_seconds` | 300 | agent-readable | zero-token polling cadence (project may override) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
-| `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` subagents (`inherit` \| `sonnet` \| `opus` \| `haiku`) |
-| `agents.runner_model` | inherit | PI | model for `experiment-runner` subagents |
-| `agents.critic_model` | inherit | PI | model for ideation critics / scoping advocates |
-| `agents.overseer_model` | inherit | PI | model for overseer verification checks |
-| `oversight.level` | standard | PI | `off` · `standard` (author-response + analysis checks) · `strict` (+ meta-review flaws, loop progress claims) |
+| `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` (applied via the `model:` frontmatter of `.claude/agents/fresh-context-reviewer.md`; `inherit` \| `sonnet` \| `opus` \| `haiku`) |
+| `agents.runner_model` | inherit | PI | model for `experiment-runner` (→ its agent-file frontmatter) |
+| `agents.critic_model` | inherit | PI | ideation critics / scoping advocates — **inline subagents with no agent file, so this value cannot be applied** (they run at the session model) |
+| `agents.overseer_model` | inherit | PI | model for `overseer` (→ its agent-file frontmatter) |
+| `oversight.level` | standard | PI | `off` · `standard` (author-response + analysis checks, autopilot Gate-1 self-approval, phantom-experiment sweep, accept-unlocking refutations) · `strict` (+ grading meta-review fatal flaws, loop progress claims) |
 | `ideation.candidates` | 8 | agent-readable | initial candidates `/ideate` generates |
 | `ideation.reflection_rounds` | 2 | agent-readable | reflect→evolve cycles per surviving idea |
 | `ideation.critics_per_idea` | 2 | agent-readable | parallel critic subagents per idea per reflect pass |
@@ -64,13 +65,15 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `parallelism.max_parallel_subagents` | agent | project override for `/improve` |
 | `parallelism.sweep_parallel` | agent | default `--parallel` for sweeps |
 | `loop.no_progress_backoff_cycles` / `monitor_poll_seconds` | agent | project overrides for `/research-loop` |
+| `monitoring.log_interval_seconds` | agent | expected seconds between `ctx.log()` calls — passed to `status.py --log-interval` so a sparse-logging run isn't flagged stalled |
 | `figures.theme` | agent | figure vibe: `clean` (Okabe-Ito default) · `warm` (brown/clay editorial) · `bold` (Tol bright, talks) · `mono` (grayscale + linestyle cycling, B/W-safe) |
-| `gate2_envelope.full_runs` / `per_run_max_minutes` / `total_max_minutes` / `expires` | **PI only** | the pre-authorized FULL-run envelope — the canonical machine-readable record Gate 2 checks |
-| `gate2_envelope.pi_signed` | **PI only** | only the PI may flip this true |
+| `gate2_envelope.full_runs` / `per_run_max_minutes` / `total_max_minutes` / `expires` | **PI only** | the pre-authorized FULL-run envelope — the canonical machine-readable record Gate 2 checks (`expires` checked before each FULL launch) |
+| `gate2_envelope.pi_signed` | **PI authority** | set directly by the PI, **or** transitively under a PI-signed `/autopilot` campaign brief whose bounds cover it |
+| `gate2_envelope.signed_via` | provenance | `null` = signed directly by the PI; else the path of the campaign brief carrying the signature |
 | `eval_frozen` | **PI only** | the eval protocol is frozen; the agent may *never* set this false |
 
 !!! warning "PI-owned keys"
-    `/configure` refuses to change PI-owned keys unless the request comes explicitly from you in-session. `gate2_envelope.pi_signed: true` and `eval_frozen: false` are PI-only by hard rule, not convention.
+    `/configure` refuses to change PI-owned keys unless the request comes explicitly from you in-session. `gate2_envelope.pi_signed: true` and `eval_frozen: false` carry PI authority by hard rule, not convention — set directly when you ask in-session, or (for `pi_signed`) transitively under a PI-signed `/autopilot` campaign brief, which records its path in `signed_via`. The agent never sets them on its own initiative.
 
 !!! note "Not config, but binding: `SYSTEM.md`"
     Alongside `control.yaml`, a project may carry a PI-written `SYSTEM.md` — a prose description of the machine it runs on (hardware reality, data locations, scheduling rules, forbidden actions). It's not merged into any config layer, but agents treat its constraints as binding like control.yaml and never edit it. Lab default at `lab/SYSTEM.md` (template: `templates/SYSTEM.md`, offered by `/setup-lab`), copied into each project at spawn. See [Autonomy & modes](autonomy.md#autonomy-inside-the-project-directory).
@@ -81,12 +84,12 @@ The unit of experimentation. **Immutable once run** — a variant is a *new* fil
 
 ### Stage-budget mapping
 
-If an experiment yaml doesn't set `budget.max_minutes` itself, the loader maps it from `control.yaml → budgets.<stage>_max_minutes` for the run's stage — so per-stage caps apply automatically without repeating them in every experiment file. The fully resolved config (provenance included) is dumped into every run's artifact dir as `config.resolved.yaml`.
+If neither the experiment yaml nor `base.yaml` sets `budget.max_minutes`, the loader maps it from `control.yaml → budgets.<stage>_max_minutes` for the run's stage — so per-stage caps apply automatically without repeating them in every experiment file. The fully resolved config is dumped into every run's artifact dir as `config.resolved.yaml`; per-key provenance (which layer set each key) is available via `tools/show_config.py`.
 
 ## How configs flow through a project's life
 
 1. **Gate 1**: PI approves budgets (+ optional envelope) in the proposal.
-2. **Spawn**: `control.yaml` is generated from the template and filled from the proposal; envelope recorded with `pi_signed: true` if granted.
+2. **Spawn**: `control.yaml` is generated from the template and filled from the proposal; envelope recorded with `pi_signed: true` if granted (`signed_via` = the campaign brief, when an `/autopilot` campaign authorizes it).
 3. **Any time**: `/configure` (or hand-edit) adjusts agent-owned values; PI-owned values need you.
-4. **Every run**: experiment yaml → control → base resolve into one artifact-dumped config; the watchdog enforces the resulting budget.
+4. **Every run**: experiment yaml → base → control resolve into one artifact-dumped config; the watchdog enforces the resulting budget.
 5. **Loops**: `/research-loop` reads `gate2_envelope` + `loop.*` from control.yaml; the LOOP_BRIEF carries your signature and points here for numbers.

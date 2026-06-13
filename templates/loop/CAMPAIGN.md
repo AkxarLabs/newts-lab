@@ -28,6 +28,11 @@ Anything outside these bounds queues for the PI and the campaign moves to the ne
 - **Total wall-clock:** ___ (e.g. "tonight, 8h") · **Total compute:** ___
 - Stops when: budget exhausted · all target ideas reach internal-review/killed ·
   `loop.no_progress_backoff_cycles` applied campaign-wide · environment failure.
+- **Campaign cycle / progress (so the backoff is measurable):** one campaign cycle = one
+  `/autopilot continue` (re-)entry, i.e. one full portfolio pass. *Progress* in that cycle =
+  any idea advanced a lifecycle state, OR any project loop logged `progress=yes`, OR an idea
+  was killed (a kill is knowledge, not a stall). `loop.no_progress_backoff_cycles`
+  consecutive cycles with none of those → stop with a written diagnosis.
 
 ## PI authorization
 
@@ -35,5 +40,5 @@ Anything outside these bounds queues for the PI and the campaign moves to the ne
 
 ## Campaign Log (append-only)
 
-| time | idea | lifecycle step | outcome / route | note |
-|---|---|---|---|---|
+| time | idea | lifecycle step | outcome / route | progress? | note |
+|---|---|---|---|---|---|

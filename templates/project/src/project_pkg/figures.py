@@ -136,7 +136,14 @@ def load_registry(repo: Path | None = None) -> list[dict]:
     path = (repo or REPO) / "runs" / "registry.jsonl"
     if not path.exists():
         return []
-    rows = [json.loads(l) for l in path.read_text(encoding="utf-8").strip().splitlines() if l.strip()]
+    rows = []
+    for l in path.read_text(encoding="utf-8-sig").strip().splitlines():
+        if not l.strip():
+            continue
+        try:
+            rows.append(json.loads(l))
+        except json.JSONDecodeError:
+            continue  # tolerate a partially-written line rather than crash a figure build
     return [r for r in rows if r.get("status") == "completed"]
 
 
@@ -167,11 +174,15 @@ def seed_stats(rows: list[dict], metric: str) -> tuple[float, float, int]:
 
 def format_measurement(mean: float, std: float, n: int | None = None, sig: int = 2) -> str:
     """Sig-fig discipline: round std to `sig` significant figures, mean to match.
-    71.2847 ± 0.3912 -> '71.28 ± 0.39'. std==0 -> mean at 4 sig figs."""
+    71.2847 ± 0.3912 -> '$71.28 \\pm 0.39$'. std==0 -> mean at 4 sig figs.
+
+    The `\\pm` is wrapped in inline math `$...$` because emit_table places cells raw into
+    a text-mode booktabs tabular — a bare `\\pm` there is a 'Missing $ inserted' compile
+    error. The `(n)` count stays outside the math span."""
     if std <= 0:
         return f"{mean:.4g}"
     decimals = max(0, sig - 1 - int(math.floor(math.log10(abs(std)))))
-    out = f"{mean:.{decimals}f} \\pm {std:.{decimals}f}"
+    out = f"${mean:.{decimals}f} \\pm {std:.{decimals}f}$"
     return f"{out} ({n})" if n is not None else out
 
 

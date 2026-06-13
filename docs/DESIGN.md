@@ -37,7 +37,7 @@ Each pipeline stage is a Claude Code skill (`.claude/skills/<name>/SKILL.md`) �
 
 ### 3.3 State machine + registry
 
-States: `seed → triaged → lit-review → proposal → active → analysis → writing → internal-review → final`, plus `parked`/`killed` from anywhere. State lives in two places, deliberately redundant: each idea's `IDEA.md` frontmatter (local truth) and `lab/REGISTRY.md` (global index). Every procedure ends by syncing both.
+States: `seed → triaged → lit-review → scoping → proposal → active → analysis → writing → internal-review → final`, plus `parked`/`killed` from anywhere. State lives in two places, deliberately redundant: each idea's `IDEA.md` frontmatter (local truth) and `lab/REGISTRY.md` (global index). Every procedure ends by syncing both.
 
 ### 3.4 Three PI gates
 

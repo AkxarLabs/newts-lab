@@ -36,7 +36,7 @@ implied or hand-waved refutation does not count.
 ## Decision
 
 **accept / minor revision / major revision / reject**
-(accept requires: median Overall at decision bar AND zero unrefuted fatal flaws)
+(accept requires: median Overall ≥ `critique.accept_bar` AND zero unrefuted fatal flaws)
 
 ## Action items
 

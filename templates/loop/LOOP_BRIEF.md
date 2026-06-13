@@ -32,8 +32,11 @@ FROZEN once authorized — changes require fresh PI sign-off.*
 ## Monitoring contract
 
 - While a run is in flight, the only permitted check is
-  `python scripts/status.py <run_id>` every `loop.monitor_poll_seconds` — no log
-  reading, no reasoning about partial curves (the run.py watchdog enforces the budget).
+  `python scripts/status.py <run_id> --watch --log-interval <monitoring.log_interval_seconds>
+  --poll <loop.monitor_poll_seconds>` (omit `<run_id>` for a sweep) — no log reading, no
+  reasoning about partial curves (the run.py watchdog enforces the budget). `--watch`
+  returns on terminal status or two consecutive stalls; `--log-interval` must match the
+  experiment's logging cadence so a healthy sparse-logging run isn't killed.
 - **Progress** = best-primary-metric improvement beyond seed noise, OR a planned
   question resolved (a clean negative counts; a crash does not).
 
@@ -41,6 +44,10 @@ FROZEN once authorized — changes require fresh PI sign-off.*
 
 - [ ] Authorized as scoped above
 - **PI:** ______ · **Date:** ______ · **Scope notes:**
+  <!-- Signed directly by the PI, OR — under a PI-signed /autopilot campaign — record
+       "PI via campaign brief lab/campaigns/<file>" here and set the same path in
+       control.yaml gate2_envelope.signed_via. The campaign brief carries PI authority
+       within its delegation bounds; a loop never authorizes itself. -->
 
 ## Loop Log (append-only)
 

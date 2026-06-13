@@ -14,24 +14,27 @@ the protocol: the same procedures run, the same gates stop; this skill only adds
 ## 1. Select the idea
 
 - With `<slug>`: use its registry row.
-- Without: pick the non-terminal idea **closest to a paper** that is not waiting on a
-  PI gate or a PI-queued decision (the same choice `/lab-status` would recommend).
-  If everything is gate-blocked, report what awaits the PI and stop — that *is* the
-  answer.
+- Without: pick the non-terminal idea **closest to a paper** (furthest along the
+  lifecycle) that is not waiting on a PI gate or a PI-queued decision. If everything is
+  gate-blocked, report what awaits the PI and stop — that *is* the answer. (This is the
+  selection rule `/lab-status` cites for its "advance next" recommendation.)
 
 ## 2. Run exactly the next stage
 
-| Registry state | This `/advance` does | Ends at |
+The **Next-action column** of the registry row disambiguates sub-states that share one
+registry state (e.g. `scoping` before vs. after `/scope`); read it alongside the state.
+
+| Registry state (+ next action) | This `/advance` does | Ends at |
 |---|---|---|
 | `seed` | reflect + triage this one idea (the `/ideate` reflect/triage phases, critics included) | `triaged` or killed |
-| `triaged` | `/lit-review` through the novelty verdict | `scoping` or killed |
-| `lit-review` | finish the lit review → novelty verdict | `scoping` or killed |
-| `scoping` | `/scope` through the value re-verification | proposal-ready or killed |
-| scoping done | `/propose` — assemble and present the proposal | **Gate 1: stop** |
-| `proposal` + Gate 1 approved | `/spawn-project` | `active`, smoke green |
-| `active`, planned rows remain | `/experiment` — **one attempt** (config → staged run → ledger → commit) | attempt recorded |
-| `active`, baseline established + plan rows exhausted | one `/improve` operator cycle | cycle recorded |
-| `active`, plan complete or plateaued | `/analyze` | routed (more exps / `writing` / kill) |
+| `triaged` or `lit-review` (next action `/lit-review`) | `/lit-review` through the novelty verdict | `lit-review` complete, next action `/scope` (state set by `/scope`), or killed |
+| `scoping`, `decisions.md` incomplete | `/scope` through the value re-verification | `scoping`, next action `/propose`, or killed |
+| `scoping`, next action `/propose` | `/propose` — assemble and present the proposal | **Gate 1: stop** (state `proposal`) |
+| `proposal`, Gate 1 pending | nothing — report what awaits the PI | — |
+| `proposal`, next action `/spawn-project` (Gate 1 approved) | `/spawn-project` | `active`, smoke green |
+| `active`, planned PLAN.md rows remain | `/experiment` — **one attempt** (config → staged run → ledger → commit) | attempt recorded |
+| `active`, plan rows exhausted + budget for iteration remains | one `/improve` operator cycle | cycle recorded |
+| `active`, `/improve` plateaued or iteration budget spent | `/analyze` | routed (more exps / `writing` / kill) |
 | `analysis` | `/analyze` | routed |
 | `writing` | `/make-figures` + `/write-paper` through the compiled draft | `internal-review` |
 | `internal-review` | one `/review-paper` cycle (audit → ensemble → author response) | accept → **Gate 3: stop**; else revision routed |

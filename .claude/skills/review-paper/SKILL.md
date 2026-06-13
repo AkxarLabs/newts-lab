@@ -13,10 +13,13 @@ in `lab/config.yaml`.
 
 1. Run `uv run --with pyyaml python tools/audit_claims.py papers/<slug> --check-commits`.
    - Any **FAIL** → return to `/write-paper` with the failure table. Part B does not run.
+     (FAIL now includes the completeness scan: any numeral in main.tex body prose with no
+     `% CNNN` annotation — a number with no claims entry.)
    - Any **MANUAL** → verify each by hand against the stated derivation now; an
      unresolvable MANUAL is a FAIL.
-2. Run `uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib` —
-   NOT-FOUND or RETRACTED entries block.
+2. Run `uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib --threshold <writing.citation_match_threshold>` —
+   **any nonzero exit blocks**: NOT-FOUND, RETRACTED, *and* MISMATCH (below-threshold title
+   or wrong year — the near-miss-fabrication case).
 3. Manual checks the scripts can't do:
    - Figure/table scripts exist in the project repo's `scripts/figures/`, are committed,
      and regenerate the paper's figures (spot-check ≥2).
@@ -25,7 +28,11 @@ in `lab/config.yaml`.
    - Val/test discipline: nothing in the paper was selected on the test set.
    - **Phantom-experiment sweep**: audited AI-written papers hide fabricated experiments
      in ablation/analysis subsections (not main results), especially after revision
-     rounds — walk those subsections claim by claim against the project's ledger.
+     rounds — walk those subsections claim by claim against the project's ledger. At
+     `oversight.level` ≠ off, spawn an `overseer` `support` check per ablation/analysis
+     experimental claim (statement = the claim; evidence = `EXPERIMENT_LOG.md` +
+     `runs/registry.jsonl` paths) — this sweep is the judgment check most exposed to author
+     rationalization, and you wrote (or just saw written) this paper.
 
 **A paper failing any Part A check goes back to `/write-paper` before any qualitative review.**
 

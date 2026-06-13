@@ -1,5 +1,6 @@
 # Shared DOMAIN defaults (layer between ../control.yaml and configs/experiments/*).
-# Resolution: experiment yaml > this file > ../control.yaml > hub lab/config.yaml.
+# Run-config resolution: experiment yaml > this file > ../control.yaml. (The hub
+# lab/config.yaml shapes SKILL behavior only — the run-config loader never reads it.)
 # The `eval` block is FROZEN once the proposal is approved (see PLAN.md).
 # Run-control values (budgets, seeds policy, parallelism) belong in ../control.yaml —
 # budget.max_minutes is normally mapped per-stage from control.yaml's budgets block

@@ -3,6 +3,9 @@ runs/*
 !runs/README.md
 !runs/registry.jsonl
 
+# Dashboard event bus + directive inbox + loop heartbeat (runtime state)
+.bus/
+
 data/
 __pycache__/
 *.pyc

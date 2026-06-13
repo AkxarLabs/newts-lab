@@ -22,7 +22,7 @@ Enter the lifecycle anywhere: a short interview scaffolds the prerequisite files
 Reads the registry, latest notebook entries, and open questions; runs `tools/check_lab.py` and fixes drift; reports every non-final item with what unblocks it (gate-blocked items first) and recommends one next action. **Run at the start of any session.**
 
 ### `/configure [slug] [set key=value]`
-Views the effective 3-layer config with provenance (`tools/show_config.py`) or edits the right layer. PI-owned keys (budgets, envelope, `eval_frozen`, critique settings) require explicit PI confirmation. See [Configuration](configuration.md).
+Views the effective 3-layer config with provenance (`tools/show_config.py`) or edits the right layer. PI-owned keys (budgets, envelope, `eval_frozen`, `critique.*`, `lab.*`, `compute.*`, `agents.*`, `oversight.level`, `writing.page_limit`) require explicit PI confirmation — see the Owner column in [Configuration](configuration.md). `gate2_envelope.pi_signed` may also be set transitively under a PI-signed `/autopilot` campaign brief.
 
 ## Ideation → proposal
 

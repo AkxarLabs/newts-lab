@@ -30,6 +30,12 @@ loop:                           # /research-loop overrides for this project
   no_progress_backoff_cycles: 3
   monitor_poll_seconds: 300
 
+monitoring:
+  log_interval_seconds: 60      # expected seconds between ctx.log() calls — pass to
+                                # status.py --log-interval so a healthy run that logs
+                                # sparsely (per-epoch on real workloads) isn't flagged
+                                # stalled. Set this ABOVE your slowest expected log gap.
+
 figures:
   theme: clean                  # clean | warm | bold | mono — see src/project_pkg/figures.py
                                 # (same sizing/fonts/vector rules; different palette & vibe)
@@ -38,8 +44,12 @@ gate2_envelope:                 # PI-owned. Pre-authorized FULL runs; all zeros/
   full_runs: 0                  # every FULL run needs fresh PI approval.
   per_run_max_minutes: 0
   total_max_minutes: 0
-  expires: null                 # YYYY-MM-DD
-  pi_signed: false              # flipped true only by the PI (via /propose Gate 1 or /configure)
+  expires: null                 # YYYY-MM-DD — checked before each FULL launch (today <= expires)
+  pi_signed: false              # PI authority only — set directly by the PI (via /propose Gate 1
+                                # or /configure), OR transitively under a PI-signed /autopilot
+                                # campaign brief whose delegation bounds cover this envelope.
+  signed_via: null              # provenance: null = the PI signed directly; otherwise the path of
+                                # the campaign brief that carries the signature (e.g. lab/campaigns/...)
 
 eval_frozen: true               # the eval protocol in PLAN.md/base.yaml is frozen.
                                 # The agent may NEVER set this false.

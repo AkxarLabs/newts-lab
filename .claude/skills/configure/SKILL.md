@@ -1,6 +1,6 @@
 ---
 name: configure
-description: View and edit the lab's 3-layer configuration — lab defaults, a project's control.yaml, or experiment values — with provenance. Usage; /configure [project-slug] [set key=value].
+description: View and edit the lab's 3-layer configuration — lab defaults, a project's control.yaml, or experiment values — with provenance. Usage; /configure [project-slug] [set key=value] (slug first).
 ---
 
 # Configure
@@ -18,13 +18,18 @@ hub `lab/config.yaml`**. Full key reference: `docs/configuration.md`.
 
 ## Edit — `set key=value`
 
-1. Determine the right layer for the key:
-   - lab-wide keys (`lab.*`, `critique.*`, and defaults under `experiment.*`/`loop.*`) → `lab/config.yaml`
-   - project keys (`budgets.*`, `seeds.*`, `parallelism.*`, `loop.*`, `gate2_envelope.*`, `eval_frozen`) → the project's `control.yaml`
+1. Determine the right layer for the key (full ownership + layer table: `docs/configuration.md`):
+   - lab-wide keys (any top-level section in `lab/config.yaml` — `lab.*`, `compute.*`, `agents.*`, `oversight.*`, `ideation.*`, `scoping.*`, `writing.*`, `critique.*`, and defaults under `experiment.*`/`loop.*`) → `lab/config.yaml`
+   - project keys (`budgets.*`, `seeds.*`, `parallelism.*`, `loop.*`, `figures.*`, `gate2_envelope.*`, `eval_frozen`) → the project's `control.yaml`
    - per-experiment values → tell the user to edit/add the experiment yaml instead (experiment configs are immutable once run — a change means a NEW config file).
-2. **PI-owned keys** — `budgets.*` (after Gate 1), `gate2_envelope.*`, `eval_frozen`, and anything under `critique.*`: if the request did not come explicitly from the PI in this session, STOP and ask for confirmation before editing. `eval_frozen: false` and `gate2_envelope.pi_signed: true` may ONLY ever be set by the PI.
+2. **PI-owned keys** — anything marked PI-owned in `lab/config.yaml`'s comments or `docs/configuration.md`'s Owner column: `lab.*`, `compute.*`, `agents.*`, `oversight.level`, `critique.*`, `writing.page_limit`, `budgets.*` (after Gate 1), `gate2_envelope.*`, `eval_frozen`. If the request did not come explicitly from the PI in this session, STOP and ask for confirmation before editing. `eval_frozen: false` and `gate2_envelope.pi_signed: true` carry PI authority only: set them directly when the PI asks in-session, OR transitively under a PI-signed `/autopilot` campaign brief whose bounds cover the change — in the transitive case record `gate2_envelope.signed_via: <campaign-brief path>`. Never set either on the agent's own initiative.
 3. Apply the edit preserving comments where possible; re-run the view to confirm; note
    the change in the lab notebook (config changes are decisions — hard rule 11).
+4. **`agents.*` keys** also require updating the `model:` frontmatter of the mapped agent
+   file (that is the only mechanism Claude Code honors): `reviewer_model →
+   .claude/agents/fresh-context-reviewer.md`, `runner_model → experiment-runner.md`,
+   `overseer_model → overseer.md`. `critic_model` maps to no file (inline subagents) — tell
+   the PI it cannot take effect.
 
 ## Retrofit
 

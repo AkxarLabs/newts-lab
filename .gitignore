@@ -6,6 +6,9 @@ site/
 # Runtime compute-slot ledger (tools/run_slots.py)
 lab/.slots/
 
+# Dashboard event bus + directive inbox (tools/lab_bus.py, dashboard/)
+lab/.bus/
+
 # Python
 __pycache__/
 *.pyc

@@ -12,7 +12,11 @@ import random
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
+    # CPython reads PYTHONHASHSEED only at interpreter startup, so setting it here does NOT
+    # fix str/bytes hash randomization in THIS process — it only propagates to child
+    # processes. For exact replay, avoid iterating sets/dicts keyed on strings in experiment
+    # logic, or launch with PYTHONHASHSEED=0 set in the environment before Python starts.
+    os.environ.setdefault("PYTHONHASHSEED", str(seed))
 
     try:
         import numpy as np

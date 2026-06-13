@@ -21,13 +21,16 @@ from pathlib import Path
 
 import yaml
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 HUB = Path(__file__).resolve().parents[1]
 TERMINAL_STATES = {"final", "killed", "parked"}
 
 
 def parse_registry() -> list[dict]:
     rows = []
-    for line in (HUB / "lab" / "REGISTRY.md").read_text(encoding="utf-8").splitlines():
+    for line in (HUB / "lab" / "REGISTRY.md").read_text(encoding="utf-8-sig").splitlines():
         if not line.strip().startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -38,7 +41,7 @@ def parse_registry() -> list[dict]:
 
 
 def parse_frontmatter(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     if not text.startswith("---"):
         return {}
     end = text.find("\n---", 3)
@@ -60,7 +63,7 @@ def main() -> int:
     args = parser.parse_args()
 
     config_path = HUB / "lab" / "config.yaml"
-    config = (yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}) if config_path.exists() else {}
+    config = (yaml.safe_load(config_path.read_text(encoding="utf-8-sig")) or {}) if config_path.exists() else {}
     lab_cfg = config.get("lab") or {}
     stale_days = args.stale_days if args.stale_days is not None else lab_cfg.get("stale_days", 14)
     projects_root = (HUB / (lab_cfg.get("projects_root") or "../AutoScientist-Projects")).resolve()

@@ -14,7 +14,11 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REGISTRY = Path(__file__).resolve().parents[1] / "runs" / "registry.jsonl"
 
@@ -22,7 +26,14 @@ REGISTRY = Path(__file__).resolve().parents[1] / "runs" / "registry.jsonl"
 def load(completed_only: bool = True) -> list[dict]:
     if not REGISTRY.exists():
         return []
-    rows = [json.loads(l) for l in REGISTRY.read_text(encoding="utf-8").strip().splitlines() if l.strip()]
+    rows = []
+    for l in REGISTRY.read_text(encoding="utf-8-sig").strip().splitlines():
+        if not l.strip():
+            continue
+        try:
+            rows.append(json.loads(l))
+        except json.JSONDecodeError:
+            print(f"[compare] skipping unreadable registry line: {l[:80]}", file=sys.stderr)
     return [r for r in rows if r.get("status") == "completed"] if completed_only else rows
 
 

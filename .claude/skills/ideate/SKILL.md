@@ -18,6 +18,10 @@ reflection — not a long list of shallow ones. Depth knobs: `ideation.*` in
 - **Research scan**: if the user gave a direction, do a focused web/arXiv sweep of it
   (recent papers, what's saturated vs open — 15–25 minutes, logged queries); this is
   fuel, NOT the lit review.
+- **Keep all working state** (scan queries, candidate sketches, every critique, parentage,
+  tournament records) in a single session worksheet at `lab/notebook/<date>-ideation.md`.
+  Only finalists graduate to `ideas/<slug>/` (Phase 6); everything else stays in the
+  worksheet — so a crashed/compacted session is resumable and nothing lives only in chat.
 
 ## Phase 1 — Generate
 
@@ -40,7 +44,7 @@ enthusiasm for it). Distinct charges:
 - (3rd+ critic if configured: **Value skeptic** — "who would care, and would they care
   enough to change what they do?")
 
-Record each critique in the candidate's working notes.
+Record each critique in the candidate's section of the ideation worksheet (Phase 0).
 
 ## Phase 3 — Evolve
 
@@ -55,7 +59,7 @@ single critics; stop early if a round produces no substantive critique).
 If `ideation.enable_combination`: look for complementary survivors (mechanism from A +
 evaluation insight from B; A's method on B's underexplored setting). Propose up to 2–3
 combinations as new candidates; each gets ONE reflect pass (combinations inherit their
-parents' known critiques — check those first). Mark parentage in their notes.
+parents' known critiques — check those first). Mark parentage in the worksheet.
 
 ## Phase 5 — Tournament
 
@@ -69,7 +73,10 @@ decisive experiments win).
 - Top 1–3: create `ideas/<slug>/IDEA.md` from `templates/idea/IDEA.md` — scores,
   tournament record, AND a "Reflection summary" in the triage notes (the strongest
   surviving critique of each idea, so /lit-review and /scope start with eyes open).
-  State `triaged`.
+  State `triaged`. **The slug must not already exist in `lab/REGISTRY.md` or `ideas/`** —
+  slugs of killed/parked ideas are never reused (that would overwrite the recorded kill
+  reason = silent resurrection, forbidden); pick a distinct slug for a successor idea and
+  link the old one in the triage notes.
 - Promising-but-not-now: one-line entries in `OPEN-QUESTIONS.md` (no directories).
 - Update `lab/REGISTRY.md` (next action = "/lit-review").
 - Report: the ranking, each finalist's hypothesis + strongest surviving critique, and

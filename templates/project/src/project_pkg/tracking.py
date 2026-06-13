@@ -12,7 +12,9 @@ The artifact dir — not any external tracker — is the source of truth.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import subprocess
 import threading
 import time
@@ -20,6 +22,35 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+@contextlib.contextmanager
+def _locked_append(path: Path):
+    """Append one record to `path` while holding a portable sidecar lock, so parallel sweep
+    jobs that finalize at the same instant don't interleave/garble lines in the append-only
+    registry. The lock is a `<path>.lock` file created with O_EXCL and spun on; it is
+    best-effort (a stale lock from a crash is force-broken after a few seconds)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = path.with_suffix(path.suffix + ".lock")
+    deadline = time.time() + 10
+    while True:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            break
+        except FileExistsError:
+            if time.time() > deadline:
+                with contextlib.suppress(OSError):
+                    lock.unlink()  # presumed crashed holder — break it
+            time.sleep(0.05)
+    try:
+        with path.open("a", encoding="utf-8") as f:
+            yield f
+            f.flush()
+            os.fsync(f.fileno())
+    finally:
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def _git_info(repo_root: Path) -> dict[str, Any]:
@@ -80,9 +111,12 @@ class RunContext:
         self._write_meta()
 
     def _write_meta(self) -> None:
-        (self.run_dir / "meta.json").write_text(
-            json.dumps(self.meta, indent=2), encoding="utf-8"
-        )
+        # Atomic: write a temp file then os.replace, so a concurrent status.py poll never
+        # reads a half-written meta.json.
+        target = self.run_dir / "meta.json"
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self.meta, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
 
     def log(self, metrics: dict[str, Any], step: int | None = None) -> None:
         """Stream intermediate metrics (e.g., per training step)."""
@@ -122,7 +156,7 @@ class RunContext:
             "wall_seconds": self.meta["wall_seconds"],
             "metrics": final_metrics,
         }
-        with (self.runs_dir / "registry.jsonl").open("a", encoding="utf-8") as f:
+        with _locked_append(self.runs_dir / "registry.jsonl") as f:
             f.write(json.dumps(registry_line) + "\n")
 
     def fail(self, error: str) -> None:

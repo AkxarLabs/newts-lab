@@ -19,8 +19,8 @@ figure, one training-curve or scaling figure, the ablation table, the comparison
 
 ## 2. One script per figure/table (the aggregator pattern)
 
-In `projects/.../scripts/figures/`, one script per artifact (`fig_main_result.py`,
-`tab_ablations.py`):
+In the project repo's `scripts/figures/` (`<projects_root>/<slug>/scripts/figures/`, path
+in the registry row), one script per artifact (`fig_main_result.py`, `tab_ablations.py`):
 
 - **Inputs only from artifacts**: `figures.load_registry()` / `figures.metric_curve()`
   / `runs/<id>/metrics.json`. Hard-coding a number in a figure script is fabrication.
@@ -36,9 +36,15 @@ In `projects/.../scripts/figures/`, one script per artifact (`fig_main_result.py
 - `figures.save_fig(..., consumed_runs=[...])` so every artifact prints its provenance
   for `claims.yaml`.
 
+**Register every emitted artifact in `claims.yaml` now** (create `papers/<slug>/` from
+`templates/paper/` first if it doesn't exist — running standalone before `/write-paper` is
+fine): one entry per table/figure with its claim, the numbers it shows, its location (table
+label / figure file), the run ids from `consumed_runs`, and the derivation. This is what
+makes the paper's *tabular* results auditable — a table cell never echoed in prose would
+otherwise escape `tools/audit_claims.py` entirely.
+
 Run every script; commit scripts in the project repo; copy outputs (`.pdf`, `.tex`) to
-`papers/<slug>/figures/` (create `papers/<slug>/` from `templates/paper/` if it doesn't
-exist yet — running standalone before `/write-paper` is fine).
+`papers/<slug>/figures/`.
 
 ## 3. Self-review (multimodal — you can see)
 

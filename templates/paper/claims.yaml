@@ -1,13 +1,19 @@
-# Claim → artifact mapping. Every quantitative claim in main.tex gets an entry.
-# /review-paper verifies each one mechanically; a claim without a verifiable artifact
-# may not appear in the paper. Append entries as claims are written.
+# Claim → artifact mapping. Every quantitative claim in main.tex gets an entry — whether
+# the number lives in a table cell or a sentence. /review-paper verifies each one
+# mechanically (and scans main.tex for any unannotated numeral); a claim without a
+# verifiable artifact may not appear in the paper. Append entries as claims are written.
 #
 # project: the project slug (repo lives at lab.projects_root/<slug>); commit: git SHA in
 # that repo at which the artifact was produced.
+# QUOTE numbers as strings to preserve printed precision — "71.30" audits at ±0.005, but the
+# bare float 71.30 parses to 71.3 and audits 10x looser at ±0.05.
+# metric: (optional) restricts the match to artifact leaves with this final key name, so a
+# number can't pass on a coincidental match against an unrelated value.
 
 # - id: C001
 #   claim: "Our method improves val_bpb by 2.3% over the tuned baseline"
-#   numbers: [2.3]
+#   numbers: ["2.3"]
+#   metric: val_bpb
 #   location: "Sec 4.1, Table 2"
 #   project: {{slug}}
 #   commit: <sha>

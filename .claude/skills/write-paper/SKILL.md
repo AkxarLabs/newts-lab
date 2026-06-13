@@ -17,10 +17,13 @@ transcribed wrong; Related Work written early gets invented).
 
 1. Create `papers/<slug>/` from `templates/paper/`.
 2. **Figures and tables first**: run `/make-figures <slug>`. Result tables are `.tex`
-   files the paper `\input`s — no result numeral is ever typed into prose. Any number
-   that must appear in a sentence gets its `claims.yaml` entry (claim, numbers,
-   location, run ids, artifacts, derivation) at the moment it's written, annotated
-   `% C00N` in the LaTeX.
+   files the paper `\input`s — no result numeral is ever typed into prose.
+   **Every quantitative claim gets a `claims.yaml` entry — whether it lives in a table
+   cell or a sentence** (claim, numbers, location, run ids, artifacts, derivation).
+   `/make-figures` registers the table/figure numbers as it emits them; you add the
+   prose-only ones (abstract, contributions) as you write them, each annotated `% C00N`
+   in the LaTeX. A number with no entry is invisible to the blocking audit — so it must
+   not exist.
 3. **Seed the bibliography**: pull the load-bearing entries from
    `ideas/<slug>/lit-review.md` via `tools/s2.py bibtex <id>` (mechanical BibTeX — no
    hand-typed entries). Sparse, stale bibliographies are a known tell of AI-written
@@ -57,21 +60,26 @@ Each round, in order — and stop early when a round changes nothing substantive
    `\includegraphics` file exists; no placeholder text; compile
    (`latexmk -pdf main.tex`) + `chktex -q -n2 -n24 -n13 -n1`; page count vs
    `writing.page_limit` — over-length is trimmed **gradually** (one pass of tightening
-   per round, never a single slash-cut).
-2. **Claims re-audit**: `tools/audit_claims.py papers/<slug>` — after EVERY round, not
-   just at the end. Revision is when fabrication happens: systems that revised against
-   reviewer feedback invented supporting ablations, and phantom experiments hide in
-   ablation/analysis subsections. Any number the audit can't trace gets deleted, not
-   defended.
+   per round, never a single slash-cut). **No LaTeX toolchain on this machine?** Record
+   it, run every non-compile check, and flag the paper as *not-compiled* — Gate 3 cannot
+   be presented without a PDF, so this becomes a queued PI note, not a silent skip.
+2. **Claims re-audit**: `tools/audit_claims.py papers/<slug>` (runs a completeness scan —
+   every numeral in Results/Ablations/Abstract must carry a `% CNNN` annotation — plus the
+   per-claim artifact check) — after EVERY round, not just at the end. Revision is when
+   fabrication happens: systems that revised against reviewer feedback invented supporting
+   ablations, and phantom experiments hide in ablation/analysis subsections. Any number the
+   audit can't trace gets deleted, not defended.
 3. **Read the PDF** (you can see it): figures render and are legible, tables aligned,
    no orphaned floats, section flow reads.
 
 ## 4. Bibliography verification (blocking)
 
-`tools/s2.py verify papers/<slug>/references.bib` — every entry checked against the
-real record (title match ≥ `writing.citation_match_threshold`, year, retraction via
-OpenAlex). NOT-FOUND or RETRACTED entries are fixed or removed before review;
-free-generated citations are fabricated at ~18% base rate, which is why this is
+`tools/s2.py verify papers/<slug>/references.bib --threshold <writing.citation_match_threshold>`
+— every entry checked against the real record (title match ≥ threshold, year, retraction
+via OpenAlex). **Any nonzero exit blocks** — NOT-FOUND, RETRACTED, *and* MISMATCH
+(below-threshold title or wrong year, the near-miss-fabrication case the threshold exists
+for) are re-resolved via `s2.py bibtex` against the lit-review note, or removed, before
+review. Free-generated citations are fabricated at ~18% base rate, which is why this is
 mechanical and blocking.
 
 ## 5. Revision entry (cycles after the first review)

@@ -14,8 +14,8 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
 
 ```
         ┌────────────────────────  HUB (this repo)  ────────────────────────┐
-        │  /ideate → /lit-review → /propose ──[PI gate]──┐                  │
-        │                                                ▼                  │
+        │  /ideate → /lit-review → /scope → /propose ──[PI gate]──┐         │
+        │                                                         ▼         │
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │

@@ -29,6 +29,9 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
 
 **Models & keys**
 - Different models for subagent roles (`agents.*`), or `inherit` everywhere (default)?
+  → if non-default, also set the `model:` frontmatter of the mapped `.claude/agents/<role>.md`
+  (reviewer_model→fresh-context-reviewer, runner_model→experiment-runner,
+  overseer_model→overseer); `critic_model` maps to no file (inline subagents — can't apply).
 - Semantic Scholar API key? (Free with an institutional email — strongly recommended;
   keyless access is saturated.) → tell them to set `S2_API_KEY`; same for
   `OPENALEX_API_KEY`.
@@ -48,10 +51,15 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
 1. Write the answers into `lab/config.yaml`.
 2. Environment check: `git --version`, `uv --version`, `uv run --with pyyaml python
    tools/check_lab.py` (should pass on an empty lab), `uv run --with properdocs
-   --with mkdocs-material properdocs build --strict` (docs build). Report anything
-   missing with the install command.
-3. Smoke the project template once in a temp copy (run + tests) so the first real
-   spawn is never the first test.
+   --with mkdocs-material properdocs build --strict` (docs build), and `latexmk --version`
+   + `chktex --version` (required by `/write-paper`'s blocking compile gate — a paper can't
+   reach Gate 3 without a PDF). Report anything missing with the install command (TeX:
+   TeX Live / MiKTeX).
+3. Smoke the project template once in a temp copy so the first real spawn is never the
+   first test: **substitute the `{{slug}}`/`{{title}}`/`{{date}}`/`{{hub_path}}` placeholders
+   with dummy values first** (same list as `/spawn-project` step 3 — `pyproject.toml`'s
+   `name = "{{slug}}"` is an invalid package name, so a verbatim copy can't `uv sync`),
+   then `uv sync`, run the smoke config, and `uv run pytest`.
 
 ## 3. Hand off
 

@@ -20,17 +20,23 @@ compute:                        # ── CROSS-project run coordination · PI-ow
   stale_slot_minutes: 360       # slots older than this are presumed crashed and reclaimed
 
 agents:                         # ── subagent settings · PI-owned ──
-  reviewer_model: inherit       # fresh-context-reviewer (inherit = session model; or sonnet | opus | haiku)
-  runner_model: inherit         # experiment-runner
-  critic_model: inherit         # ideation critics / scoping advocates
-  overseer_model: inherit       # overseer verification checks
+                                # Applied via the `model:` frontmatter of .claude/agents/<role>.md
+                                # (inherit = session model; or sonnet | opus | haiku). /configure and
+                                # /setup-lab keep that frontmatter in sync when these change.
+  reviewer_model: inherit       # → .claude/agents/fresh-context-reviewer.md
+  runner_model: inherit         # → .claude/agents/experiment-runner.md
+  overseer_model: inherit       # → .claude/agents/overseer.md
+  critic_model: inherit         # ideation critics / scoping advocates — these are INLINE
+                                # (general-purpose) subagents with no agent file, so this value
+                                # cannot be applied; they always run at the session model.
 
 oversight:                      # ── confabulation circuit-breakers (overseer agent) ──
   level: standard               # off | standard | strict
-  # standard: verifies author-response verdicts (/review-paper) and headline
-  #           interpretations (/analyze) against their evidence
-  # strict:   also grades every fatal flaw + refutation in meta-reviews and
-  #           audits /research-loop "progress" claims at loop exit
+  # standard: verifies author-response verdicts (/review-paper), headline interpretations
+  #           (/analyze), /autopilot Gate-1 self-approvals, the /review-paper phantom-
+  #           experiment sweep, and any meta-review fatal-flaw refutation that unlocks accept
+  # strict:   also grades every fatal flaw (critique-taste) in meta-reviews and audits
+  #           /research-loop "progress" claims at loop exit
 
 ideation:                       # ── /ideate pipeline depth ──
   candidates: 8                 # initial mechanism-diverse candidates
@@ -52,6 +58,8 @@ critique:                       # ── /critique-paper · /review-paper · PI-
   ensemble_external: 3          # reviewer lenses for external-paper triage
   ensemble_own_draft: 5         # reviewer lenses for our own paper drafts
   score_anchor_human_mean: 5.4  # calibration anchor — the human-review average Overall
+                                # (mirrored in critique-lenses.md; /critique-paper substitutes it)
+  accept_bar: 7                 # median Overall at/above this + zero unrefuted fatal flaws = accept
   max_review_cycles: 3          # revision cycles before escalating to the PI
 
 experiment:                     # ── experiment loop defaults · project-overridable via control.yaml ──

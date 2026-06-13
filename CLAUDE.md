@@ -19,7 +19,7 @@ The PI chooses the pace, not the protocol: per-procedure invocation, one stage p
 
 **PI gates (hard stops — require explicit human approval):**
 - **Gate 1 — proposal approval**: before spawning a project or spending compute.
-- **Gate 2 — full-scale launch**: before any FULL-stage experiment run, **unless covered by a recorded, PI-signed budget envelope** (proposal §5 or a project's `LOOP_BRIEF.md`) and within its scope/caps. Smoke/pilot runs don't need approval; runs outside an envelope's scope always do.
+- **Gate 2 — full-scale launch**: before any FULL-stage experiment run, **unless covered by a recorded, PI-signed budget envelope** (proposal §5, a project's `LOOP_BRIEF.md`, or a `control.yaml` `gate2_envelope` whose `pi_signed: true` was set directly by the PI or transitively under a PI-signed `/autopilot` campaign brief recorded in `signed_via`) and within its scope/caps. Smoke/pilot runs don't need approval; runs outside an envelope's scope always do.
 - **Gate 3 — finalization**: before declaring a paper final or sending anything outside the lab.
 
 After **every** state change, update `lab/REGISTRY.md` in the same working session.
@@ -44,18 +44,18 @@ After **every** state change, update `lab/REGISTRY.md` in the same working sessi
 10. **Extensibility.** New experiments are new config files and/or new modules behind interfaces — never in-place edits to baseline code paths. Anyone (human or agent) must be able to re-run any past experiment from its config after any later change. If a change must alter shared code, it must keep old configs runnable.
 11. **Knowledge write-back.** At the end of every working session: append a dated entry to `lab/notebook/`, and promote any durable insight to `lab/knowledge/` (FINDINGS for confirmed results, FAILURES for things that didn't work and why, OPEN-QUESTIONS for new threads). An insight that lives only in a chat transcript is lost.
 12. **Sandboxing.** Experiment code executes inside the project repo and writes only inside it. Never modify the hub's procedures/templates from inside an experiment loop, and never edit the harness/budget to make a run pass.
-13. **Compute slots (cross-project).** Before launching any PILOT/FULL training campaign (one run or one sweep), acquire a slot: `uv run --with pyyaml python tools/run_slots.py acquire <project> <label>`; release it when the campaign's ledger entry is written. The cap is `compute.max_concurrent_runs`. Denied → wait or do CPU-light work; never delete another project's slot (stale reclaim is the tool's job). SMOKE runs are exempt.
+13. **Compute slots (cross-project).** Before launching any PILOT/FULL training campaign (one run or one sweep), acquire a slot: `uv run --with pyyaml python tools/run_slots.py acquire <project> <label>`; `touch <slot-id>` it on the monitoring cadence so a long-but-live campaign isn't reclaimed; release it when the campaign's ledger entry is written. The cap is `compute.max_concurrent_runs`. Denied → wait or do CPU-light work; never delete another project's slot (stale reclaim is the tool's job). SMOKE runs are exempt.
 
 ## Subagent rules
 
 1. **Fresh-context invariant:** review subagents receive file paths + lens definitions only — never your summary or opinion of the paper. Their independence is their value.
 2. **Worktree confinement:** experiment subagents operate only inside their assigned git worktree; one variant per subagent.
 3. **Shared ledgers are parent-only:** `EXPERIMENT_LOG.md`, the main `runs/registry.jsonl`, `lab/REGISTRY.md`, and the notebook are written ONLY by the parent session. Subagents return result packets; the parent merges through the journal, not git merges.
-4. Max `experiment.max_parallel_subagents` concurrent (default 3).
+4. Max `experiment.max_parallel_subagents` concurrent **experiment (worktree) subagents** (default 3); review/critic ensembles are sized by their own config keys (`critique.ensemble_*`, `ideation.critics_per_idea`, `scoping.options_per_decision`).
 5. Subagents inherit every hard rule — frozen budgets/evals especially.
 6. **No job spawning by subagents:** an experiment subagent runs exactly the campaign it was assigned (one run.py invocation at a time, a sweep only if assigned one) — it never launches additional sweeps, background jobs, agents, or scheduled work. Only the parent session creates work.
-7. Subagent models come from `agents.*` in `lab/config.yaml` (`inherit` = session model); pass the model when spawning.
-8. **Oversight:** at the checkpoints set by `oversight.level`, an `overseer` subagent verifies statements/critiques against their evidence (paths only) before they propagate — author-response verdicts and analysis interpretations at `standard`; meta-review flaws/refutations and loop progress claims at `strict`. An overseer rejection is acted on, not argued with in-context.
+7. Subagent models come from `agents.*` in `lab/config.yaml`, applied via the `model:` frontmatter field in each `.claude/agents/<role>.md` (`inherit` = session model); `/configure` and `/setup-lab` keep that field in sync when an `agents.*` key changes. Inline (general-purpose) critics/advocates run at the session model — `agents.critic_model` cannot be applied to them.
+8. **Oversight:** at the checkpoints set by `oversight.level`, an `overseer` subagent verifies statements/critiques against their evidence (paths only) before they propagate — at `standard`: author-response verdicts, analysis interpretations, `/autopilot` Gate-1 self-approvals, the `/review-paper` phantom-experiment sweep, and any meta-review fatal-flaw **refutation** that would unlock accept; at `strict`, additionally: grading each meta-review fatal flaw (`critique-taste`) and loop progress claims. An overseer rejection is acted on, not argued with in-context.
 
 ## Unattended loops (/research-loop)
 
