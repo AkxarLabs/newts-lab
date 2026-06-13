@@ -53,6 +53,20 @@ def _locked_append(path: Path):
             lock.unlink()
 
 
+def _bus_emit(repo_root: Path, kind: str, **fields: Any) -> None:
+    """Append one dashboard event to <project>/.bus/events.jsonl. Best-effort: any failure
+    is swallowed so run tracking is never affected by the (optional) dashboard bus."""
+    try:
+        bus = repo_root / ".bus"
+        bus.mkdir(parents=True, exist_ok=True)
+        record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": repo_root.name, "kind": kind}
+        record.update({k: v for k, v in fields.items() if v is not None})
+        with (bus / "events.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _git_info(repo_root: Path) -> dict[str, Any]:
     def run(*args: str) -> str:
         return subprocess.run(
@@ -109,6 +123,9 @@ class RunContext:
             yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8"
         )
         self._write_meta()
+        _bus_emit(self.repo_root, "run_started", run_id=self.run_id,
+                  stage=self.meta["stage"], status="running",
+                  detail=self.meta["experiment_name"])
 
     def _write_meta(self) -> None:
         # Atomic: write a temp file then os.replace, so a concurrent status.py poll never
@@ -158,6 +175,9 @@ class RunContext:
         }
         with _locked_append(self.runs_dir / "registry.jsonl") as f:
             f.write(json.dumps(registry_line) + "\n")
+        _bus_emit(self.repo_root, "run_finished", run_id=self.run_id,
+                  stage=self.meta["stage"], status=status,
+                  data={"metrics": final_metrics} if final_metrics else None)
 
     def fail(self, error: str) -> None:
         (self.run_dir / "error.txt").write_text(error, encoding="utf-8")

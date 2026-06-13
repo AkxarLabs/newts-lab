@@ -18,5 +18,5 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
    - `FINDINGS.md`: final confirmed findings with evidence pointers (paper section + run ids).
    - `FAILURES.md` / `OPEN-QUESTIONS.md`: harvest everything the project learned that didn't make the paper — future-work threads are next cycle's `/ideate` fuel.
    - **Procedure retrospective:** one paragraph in the lab notebook — where did the procedures (skills) fight you or fail? Propose concrete edits to the relevant SKILL.md files to the PI. This is how the lab itself improves.
-4. IDEA.md + registry → `final`, with pointers to paper PDF and project tag. Notebook entry.
+4. IDEA.md + registry → `final`, with pointers to paper PDF and project tag. Notebook entry. Emit `tools/lab_bus.py emit gate_resolved --idea <slug> --detail "Gate 3 → final"`.
 5. Report: deliverable paths, the findings recorded, and proposed procedure improvements. Anything beyond the lab (arXiv, submission) is the PI's action — AI involvement must be disclosed per venue policy.

@@ -39,8 +39,19 @@ import yaml
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling lab_bus
+try:
+    import lab_bus  # hub event bus (optional, best-effort)
+except Exception:  # noqa: BLE001
+    lab_bus = None
+
 HUB = Path(__file__).resolve().parents[1]
 SLOTS = HUB / "lab" / ".slots"
+
+
+def _bus(kind: str, **data) -> None:
+    if lab_bus:
+        lab_bus.emit(kind, data=data or None)
 
 
 def config() -> dict:
@@ -93,6 +104,7 @@ def main() -> int:
     reclaimed = prune_stale(stale_minutes)
     for slot in reclaimed:
         print(f"[slots] reclaimed stale slot: {slot}", file=sys.stderr)
+        _bus("slot_reclaimed", slot_id=slot)
 
     if args.cmd == "status":
         slots = active()
@@ -107,6 +119,7 @@ def main() -> int:
             print(f"DENIED — {max_runs}/{max_runs} slots in use:")
             for s in active():
                 print(f"- {s['slot_id']} ({s['project']}: {s['label']})")
+            _bus("slot_denied", project=args.project, label=args.label)
             return 1
         raw = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.project}-{args.label}"
         slot_id = re.sub(r"[^A-Za-z0-9._-]", "_", raw)  # filesystem-safe on Windows too
@@ -123,8 +136,10 @@ def main() -> int:
         if len(ids) > max_runs and slot_id in ids[max_runs:]:
             path.unlink(missing_ok=True)
             print(f"DENIED — lost the {max_runs}-slot race, retry")
+            _bus("slot_denied", project=args.project, label=args.label)
             return 1
         print(slot_id)
+        _bus("slot_acquired", slot_id=slot_id, project=args.project, label=args.label)
         return 0
 
     if args.cmd == "touch":
@@ -144,6 +159,7 @@ def main() -> int:
             return 0
         path.unlink(missing_ok=True)
         print(f"released {args.slot_id}")
+        _bus("slot_released", slot_id=args.slot_id)
         return 0
     return 0
 

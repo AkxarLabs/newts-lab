@@ -45,7 +45,21 @@ PLAN.md statuses tell you); when in doubt, `check_project.py` suggests one.
   itself.
 - Before any PILOT/FULL campaign, acquire a cross-project compute slot:
   `uv run --with pyyaml python {{hub_path}}/tools/run_slots.py acquire {{slug}} <label>`
-  — release it when the campaign's ledger entry is written. SMOKE is exempt.
+  — `touch <slot-id>` it on the monitoring cadence, release it when the campaign's ledger
+  entry is written. SMOKE is exempt.
+
+## Event bus & directives (optional, powers the dashboard)
+
+Best-effort and never required. `scripts/run.py`/`sweep.py` already emit run/sweep events
+to `.bus/events.jsonl` mechanically. You add the judgment ones: emit on a ledger append, a
+loop/campaign cycle, a kill, or a stage promotion —
+`uv run python scripts/lab_bus.py emit <kind> --detail "..."` (kinds in the hub's
+`docs/dashboard.md`). At each checkpoint (session orientation, every loop cycle, each
+experiment attempt) run `uv run python scripts/lab_bus.py inbox`: a PI **directive** is an
+instruction to act on within the protocol, then ack `done` with an evidence pointer
+(`scripts/lab_bus.py ack <id> done --evidence <run-id-or-ledger-line>`). A directive that
+would touch frozen/PI-owned settings is acked `blocked` with the reason — directives are
+subordinate to gates and hard rules; a directive is never gate approval.
 
 ## Subagents (you decide when)
 

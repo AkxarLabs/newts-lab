@@ -52,7 +52,9 @@ Campaign rules (in addition to every standing hard rule):
 - Kill criteria fire exactly as in interactive mode; a night that kills 3 ideas cheaply
   and ships 1 strong draft beats 4 weak drafts.
 - NEEDS-EXPERIMENT review items are followed within remaining budget; otherwise queued.
-- Every lifecycle step appends a Campaign Log row.
+- Every lifecycle step appends a Campaign Log row **and** emits a bus event
+  (`tools/lab_bus.py emit cycle --idea <slug> --detail "<step> → <outcome>"`); at the start
+  of each portfolio pass, check `tools/lab_bus.py inbox` and act on any PI directive.
 
 ## 3. Morning report (campaign exit)
 

@@ -39,4 +39,5 @@ nav:
   - Configuration: configuration.md
   - Projects: projects.md
   - Tools: tools.md
+  - Dashboard: dashboard.md
   - Design rationale: DESIGN.md

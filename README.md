@@ -93,7 +93,8 @@ AutoScientist/
 ├── ideas/<slug>/        # IDEA.md, lit-review.md, proposal.md, critiques/ per idea
 ├── papers/<slug>/       # LaTeX papers + claims.yaml (claim → artifact mapping)
 ├── templates/           # project/, paper/, idea/, review/, loop/ templates
-├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py
+├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py, lab_bus.py
+├── dashboard/           # Marginalia — optional local dashboard (delete it and nothing changes)
 └── (projects live at ../AutoScientist-Projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 

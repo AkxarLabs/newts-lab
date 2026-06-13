@@ -71,3 +71,6 @@ experiment:                     # ── experiment loop defaults · project-ove
 loop:                           # ── /research-loop defaults · project-overridable via control.yaml ──
   no_progress_backoff_cycles: 3 # consecutive no-progress cycles before the loop stops
   monitor_poll_seconds: 300     # cadence for zero-token status.py polling
+
+dashboard:                      # ── optional Marginalia dashboard (dashboard/serve.py) ──
+  port: 8787                    # local-only; see docs/dashboard.md

@@ -69,4 +69,6 @@ you've seen it written; that's exactly the bias the ensemble exists to remove.
      PDF + meta-review to the user for final sign-off (state stays `internal-review`
      until then; `/finalize` sets `final`); on approval, next action "/finalize".
    - After `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
-5. Update registry + notebook with scores, the triage tally, and the route.
+5. Update registry + notebook with scores, the triage tally, and the route. Emit a bus
+   event: `tools/lab_bus.py emit review_verdict --idea <slug> --detail "median <X>, <route>"`
+   (and `gate_waiting --detail "Gate 3"` if the route is the Gate-3 stop).

@@ -73,7 +73,8 @@ session before starting new work:
 5. **Record:** ledger entry (+ `Parent:` fields if an operator produced it), one commit,
    PLAN.md table update, one Loop Log row (cycle, action, run ids, best metric,
    progress?, note), **release the compute slot** if the campaign's ledger entry is now
-   written (hard rule 13), and refresh `.bus/.loop-active`.
+   written (hard rule 13), refresh `.bus/.loop-active`, and emit a bus event
+   (`scripts/lab_bus.py emit cycle --detail "<action> → <outcome>"`).
 
 **Envelope accounting** (a FULL launch "fits" iff ALL hold): each run's `budget.max_minutes`
 ≤ `gate2_envelope.per_run_max_minutes`; FULL runs already in `runs/registry.jsonl` (stage

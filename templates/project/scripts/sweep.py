@@ -28,9 +28,15 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling lab_bus
 sys.path.insert(0, str(REPO / "src"))
 
 from project_pkg.config import load_config
+
+try:
+    import lab_bus  # dashboard event bus (optional, best-effort)
+except Exception:  # noqa: BLE001
+    lab_bus = None
 
 RUN_ID_RE = re.compile(r"^\[run\] (\S+) ->", re.MULTILINE)
 _NEW_GROUP = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
@@ -142,6 +148,9 @@ def main() -> int:
     jobs = [(args.config, seed, combo, timeout) for combo in combos for seed in seeds]
     print(f"[sweep] {len(jobs)} jobs ({len(combos)} combos x {len(seeds)} seeds), "
           f"timeout {timeout:.0f}s/job, parallel={parallel}", flush=True)
+    if lab_bus:
+        lab_bus.emit("sweep_started", detail=cfg.get("experiment_name"),
+                     data={"jobs": len(jobs), "combos": len(combos), "seeds": len(seeds)})
 
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
         results = list(pool.map(lambda j: run_job(*j), jobs))
@@ -179,6 +188,10 @@ def main() -> int:
         print(f"\n{len(failures)} job(s) did not complete:")
         for r in failures:
             print(f"- {r['label']} seed={r['seed']}: {r['status']} ({r['run_id']})")
+    if lab_bus:
+        lab_bus.emit("sweep_finished", detail=cfg.get("experiment_name"),
+                     status="failed" if failures else "completed",
+                     data={"completed": len(results) - len(failures), "failed": len(failures)})
     return 1 if failures else 0
 
 

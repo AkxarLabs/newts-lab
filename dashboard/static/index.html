@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" data-lamp="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marginalia — the lab daybook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,640&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="journal.css">
+</head>
+<body data-mode="desk">
+
+<!-- ── masthead ─────────────────────────────────────────────────────────── -->
+<header class="masthead">
+  <div class="mast-title">
+    <span class="mast-name">Marginalia</span>
+    <span class="mast-sub">the lab daybook</span>
+  </div>
+  <nav class="ribbons">
+    <button class="ribbon is-active" data-go="desk">Desk</button>
+    <button class="ribbon" data-go="bench">Bench</button>
+    <button class="ribbon" data-go="gates">Gates <span class="badge" id="gateBadge" hidden>0</span></button>
+    <button class="ribbon" data-go="ledger">Ledger</button>
+    <button class="ribbon" data-go="night">Night&nbsp;Watch</button>
+  </nav>
+  <div class="mast-meters">
+    <span class="lantern" id="lantern" title="PI gates waiting" hidden>🜂</span>
+    <span class="inkwells" id="inkwells" title="compute slots in use"></span>
+    <span class="deskclock" id="deskclock" title="last data sync">··:··</span>
+    <button class="lamp" id="lampToggle" title="lamplight (day/night)">◐</button>
+  </div>
+</header>
+
+<!-- ── the spread ───────────────────────────────────────────────────────── -->
+<main class="spread">
+  <section class="page page-left" id="pageLeft"></section>
+  <section class="page page-right" id="pageRight"></section>
+
+  <!-- the always-on margin: ticker + Pica + composer -->
+  <aside class="margin">
+    <div class="ticker" id="ticker"></div>
+
+    <div class="buddy-stage" id="buddyStage" title="click Pica to leave the lab a note">
+      <!-- Pica the inchworm — pure SVG, poses toggled by classes on .pica -->
+      <svg class="pica" id="pica" viewBox="0 0 240 120" aria-label="Pica the inchworm">
+        <ellipse class="pica-shadow" cx="120" cy="104" rx="64" ry="9"/>
+        <g class="pica-body">
+          <path class="pica-rule" d="M24 96 H216"/>
+          <g class="seg s5"><circle cx="170" cy="84" r="17"/></g>
+          <g class="seg s4"><circle cx="146" cy="80" r="17"/></g>
+          <g class="seg s3"><circle cx="122" cy="78" r="18"/></g>
+          <g class="seg s2"><circle cx="98"  cy="80" r="17"/></g>
+          <g class="seg s1 head"><circle cx="74" cy="82" r="18"/>
+            <circle class="eye" cx="68" cy="78" r="3.4"/>
+            <circle class="eye" cx="80" cy="78" r="3.4"/>
+            <path class="antenna" d="M66 66 q-6 -12 -2 -20"/>
+            <path class="antenna" d="M82 66 q6 -12 2 -20"/>
+            <circle class="antenna-tip" cx="63" cy="45" r="2.4"/>
+            <circle class="antenna-tip" cx="86" cy="45" r="2.4"/>
+          </g>
+          <!-- props (shown by pose class) -->
+          <g class="prop goggles"><circle cx="68" cy="78" r="7"/><circle cx="80" cy="78" r="7"/><path d="M61 78 H53 M87 78 H95"/></g>
+          <g class="prop glasses"><circle cx="68" cy="78" r="6.5"/><circle cx="80" cy="78" r="6.5"/><path d="M74.5 78 h-1"/></g>
+          <g class="prop bell"><path d="M150 92 a10 10 0 0 1 20 0 v3 h-20 z"/><circle cx="160" cy="79" r="2.2"/><circle cx="160" cy="98" r="2"/></g>
+          <g class="prop letter"><rect x="150" y="70" width="26" height="18" rx="2"/><path d="M150 70 l13 10 l13 -10"/></g>
+          <g class="prop blanket"><path d="M86 84 q40 18 80 0 q4 14 -4 18 q-36 12 -72 0 q-8 -4 -4 -18 z"/></g>
+          <g class="prop nib"><path d="M58 70 l-14 22 l8 4 l12 -20 z"/><path d="M50 92 l-3 7"/></g>
+          <g class="prop zzz"><text x="44" y="60">z</text><text x="34" y="48">z</text><text x="26" y="38">z</text></g>
+          <g class="prop spark"><path d="M170 56 l3 8 l8 1 l-6 6 l2 8 l-7 -4 l-7 4 l2 -8 l-6 -6 l8 -1 z"/></g>
+          <g class="prop splat"><path d="M168 62 q10 -6 14 2 q8 -2 6 8 q6 6 -2 10 q0 8 -10 5 q-6 6 -12 -1 q-9 1 -7 -9 q-7 -5 1 -12 q2 -8 10 -3 z"/></g>
+        </g>
+      </svg>
+      <div class="speech" id="speech" hidden></div>
+    </div>
+
+    <div class="composer" id="composer" hidden>
+      <div class="composer-to">
+        <span>To:</span>
+        <span class="chips" id="targetChips"></span>
+      </div>
+      <textarea id="directiveText" rows="3" placeholder="leave the lab a note…"></textarea>
+      <div class="composer-foot">
+        <span class="latency" id="latency"></span>
+        <button id="sendDirective">pin it</button>
+      </div>
+      <p class="scope-note">Directives steer agents at their next checkpoint — they can’t approve gates, change frozen budgets/evals, or rewrite ledgers (those go through <code>/configure</code> and the gate procedures).</p>
+    </div>
+  </aside>
+</main>
+
+<div class="stale-veil" id="staleVeil" hidden>the daybook’s ink has gone quiet — data may be stale</div>
+
+<script src="app.js"></script>
+</body>
+</html>
