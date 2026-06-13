@@ -114,6 +114,7 @@ html[data-lamp="night"] .rail-line{background:var(--clay)}
 .entry.k-run_finished.s-completed{border-left:2px solid var(--moss); padding-left:8px}
 .entry.k-run_finished.s-failed,.entry.k-run_finished.s-timeout,.entry.k-kill{border-left:2px solid var(--brick); padding-left:8px}
 .entry.k-gate_waiting{border-left:2px solid var(--amber); padding-left:8px}
+.entry.k-decision_revisit,.entry.k-replan,.entry.k-frontier_expand{border-left:2px solid var(--clay); padding-left:8px; font-style:italic}
 @keyframes inkIn{from{opacity:0; transform:translateY(-3px)}to{opacity:1; transform:none}}
 
 .coldstart{text-align:center; padding:60px 20px; color:var(--text-soft)}

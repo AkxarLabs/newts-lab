@@ -34,6 +34,9 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `experiment.multi_seed_n` | 3 | agent-readable | seeds required before a number is paper-grade (project may override) |
 | `loop.no_progress_backoff_cycles` | 3 | agent-readable | no-progress cycles before a loop stops (project may override) |
 | `loop.monitor_poll_seconds` | 300 | agent-readable | zero-token polling cadence (project may override) |
+| `loop.mode` | `execute` | PI (per-loop via LOOP_BRIEF) | default loop mode: `execute` (run plan, then stop) or `explore` (autonomous in-project re-planning — frontier expansion + reopening non-headline decisions). The `LOOP_BRIEF.md` `Mode:` overrides per-loop. See [autonomy](autonomy.md). |
+| `loop.explore_max_expansion_rounds` | 0 | PI | explore-mode only: results-grounded `expand` rounds allowed after the plan is exhausted (0 = behaves like `execute`) |
+| `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
 | `dashboard.port` | 8787 | PI | default port for the optional [Marginalia dashboard](dashboard.md) (`dashboard/serve.py`) |
@@ -66,6 +69,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `parallelism.max_parallel_subagents` | agent | project override for `/improve` |
 | `parallelism.sweep_parallel` | agent | default `--parallel` for sweeps |
 | `loop.no_progress_backoff_cycles` / `monitor_poll_seconds` | agent | project overrides for `/research-loop` |
+| `loop.mode` / `loop.explore_*` | PI | loop mode (`execute`/`explore`) + explore caps; the LOOP_BRIEF `Mode:` overrides per-loop. `explore_*` widen the agent's authority, so PI-owned. |
 | `monitoring.log_interval_seconds` | agent | expected seconds between `ctx.log()` calls — passed to `status.py --log-interval` so a sparse-logging run isn't flagged stalled |
 | `figures.theme` | agent | figure vibe: `clean` (Okabe-Ito default) · `warm` (brown/clay editorial) · `bold` (Tol bright, talks) · `mono` (grayscale + linestyle cycling, B/W-safe) |
 | `gate2_envelope.full_runs` / `per_run_max_minutes` / `total_max_minutes` / `expires` | **PI only** | the pre-authorized FULL-run envelope — the canonical machine-readable record Gate 2 checks (`expires` checked before each FULL launch) |

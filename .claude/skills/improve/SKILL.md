@@ -43,6 +43,43 @@ node being extended. N ≥ 3 → "simple variants are exhausted; propose structu
 different / more advanced approaches." Low N → "prefer the minimal change that tests
 the mechanism."
 
+## Explore-mode operators (expand / revisit)
+
+These two operators **change the plan itself** rather than extend it, so they are gated:
+available only when the project is being driven in **explore** mode — either a PI ran
+`/improve <slug> explore`, or `/research-loop` is sequencing them under a LOOP_BRIEF whose
+`Mode: explore` (see that skill). In `execute` mode they are off and `/improve` behaves
+exactly as the four operators above. Both stay inside the **frozen set** (eval/test/seeds/
+budgets/kill-criteria — never touched) and the **Gate-2 envelope**.
+
+5. **expand** (results-grounded frontier expansion) — when the planned table, its ablation
+   rows, and the `num_drafts` lines are all exhausted but budget remains. Context packet =
+   a **results digest** (each line's best node + metric + one-line outcome from
+   `EXPERIMENT_LOG.md`, the hub's `FINDINGS.md`/`FAILURES.md` for this idea, and the
+   **headline hypothesis** verbatim from PLAN.md) + the instruction "propose up to
+   `loop.explore_max_new_lines_per_round` *mechanism-distinct* lines that the results so far
+   make promising, each WITHIN the headline hypothesis — do not repeat any prior line."
+   Each proposed line is appended to PLAN.md tagged `(expand Rn)` **with a pre-written
+   promotion criterion** (no criterion → not a valid row), then runs through the four
+   operators above like any planned work. This is `draft`'s generative spirit, seeded by
+   evidence instead of capped at `num_drafts`. Emit `frontier_expand`.
+6. **revisit** (reopen a design decision — "discard a pre-conceived idea") — when artifacts
+   satisfy the **`Revisit if:`** trigger of a settled decision in the idea's `decisions.md`.
+   - **Boundary check first (mechanical):** if that decision is `Headline: yes`, this is the
+     escalation boundary — do NOT execute; in a manual run, stop and write a PI note; under
+     `/research-loop`, queue a PI note (or, under a signed `/autopilot` campaign, run the
+     campaign-delegation check + overseer `support` pass exactly as for a Gate-1 self-approval).
+     A `Headline: no` decision, with the frozen set intact and the envelope not exceeded, is
+     **autonomous**.
+   - **Overseer gate** (`oversight.level` ≠ off): before reopening, spawn one `overseer`
+     `support` check giving it the `Revisit if:` text + the contradicting run-artifact paths
+     only — UNSUPPORTED means the trigger did **not** fire, leave the decision settled.
+   - **Action:** append a new `D-NNN` to `decisions.md` referencing the old (the old stays —
+     append-only), set the dependent PLAN.md experiment rows to `retired-by-revision` (the
+     project continues; their artifacts and ledger entries remain as evidence), record a
+     Re-planning-log row, and seed replacement line(s) under the new choice (which then flow
+     through the operators above). Emit `decision_revisit` and `replan`.
+
 ## Execution — sequential or parallel
 
 - **Sequential** (default): apply the operator yourself per the `/experiment` rules
@@ -86,6 +123,14 @@ best, confirm at `multi_seed_n` seeds via `scripts/sweep.py`.
 Stop when `loop.no_progress_backoff_cycles` consecutive cycles produce no progress
 (best metric unmoved beyond seed noise and no planned question resolved), or the budget
 allotted to this iteration phase is spent (the compute note in the proposal/`PLAN.md`, or
-— under `/research-loop` — the cycle's slice of the loop envelope). Summarize the tree
-(lines, best node, what was abandoned and why) in `EXPERIMENT_LOG.md`, update PLAN.md and
-the registry, recommend `/analyze`.
+— under `/research-loop` — the cycle's slice of the loop envelope). **In explore mode**,
+"the operators are exhausted" is not yet a stop: run an `expand` round first (up to
+`loop.explore_max_expansion_rounds`), and only stop when the rounds cap is reached or the
+no-progress backoff fires (an expand round that yields no progress counts toward it).
+Summarize the tree (lines, best node, what was abandoned and why) in `EXPERIMENT_LOG.md`,
+update PLAN.md and the registry, recommend `/analyze`.
+
+**Selection discipline (louder during exploration):** every expanded or replacement line is
+tuned on validation and reported on the **frozen test**, and needs `multi_seed_n` seeds before
+any number is paper-grade. The more expansion rounds you run, the more validation overfits
+(hard rule 5) — that is exactly why the rounds are capped.

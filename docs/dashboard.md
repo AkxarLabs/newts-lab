@@ -78,7 +78,8 @@ same philosophy as the rest of the lab:
 Event kinds: `session_start/end`, `state_change`, `gate_waiting`, `gate_resolved`,
 `run_started/finished`, `sweep_started/finished`, `slot_acquired/released/denied/reclaimed`,
 `cycle`, `review_verdict`, `paper_compiled`, `kill`, `writeback`, `directive_seen/done/blocked`,
-`note`. The bus lives in gitignored `lab/.bus/` (hub) and `<project>/.bus/` (each project), so
+`frontier_expand` (explore loop proposed new lines), `decision_revisit` (reopened a design
+decision), `replan` (a pivot landed in PLAN.md/decisions.md), `note`. The bus lives in gitignored `lab/.bus/` (hub) and `<project>/.bus/` (each project), so
 emitting is always safe and cheap; a project spawned before the bus existed still shows
 runs/registry/liveness — events only enrich.
 

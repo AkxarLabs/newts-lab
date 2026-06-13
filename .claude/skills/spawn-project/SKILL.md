@@ -37,9 +37,11 @@ stays lean and the project is independently cloneable.
    PI-signed `/autopilot` campaign brief (unattended spawn), set `signed_via:
    lab/campaigns/<file>` — the campaign signature carries the PI's authority within its
    delegation bounds (see `/autopilot`).
-5. Fill `PLAN.md` from the approved proposal: frozen eval protocol, kill criteria, the
-   staged experiment table, the ablation plan (budgets live in control.yaml — reference,
-   don't duplicate).
+5. Fill `PLAN.md` from the approved proposal: frozen eval protocol (including the
+   **headline hypothesis** — the central claim, the explore-mode autonomy boundary), kill
+   criteria, the staged experiment table, the ablation plan (budgets live in control.yaml —
+   reference, don't duplicate). Leave `control.yaml` `loop.mode: execute` unless an
+   `/autopilot` campaign authorized `explore` for spawned projects (then set it + the caps).
 6. Add the project's real dependencies to `pyproject.toml` (minimal set; pin via lock).
 7. Initialize: `git init`, then `uv sync`, then run the smoke pipeline:
    - `uv run python scripts/run.py --config configs/experiments/exp-001-smoke.yaml`

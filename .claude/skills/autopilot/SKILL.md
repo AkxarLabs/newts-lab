@@ -40,7 +40,9 @@ per idea:  /ideate(direction) → /lit-review → /scope → /propose
                outside      → queue for PI, take the next idea
            → /spawn-project (envelope from the brief into control.yaml, pi_signed: true,
                              signed_via: the campaign file)
-           → /research-loop (its LOOP_BRIEF authorized "PI via campaign brief …")
+           → /research-loop (its LOOP_BRIEF authorized "PI via campaign brief …",
+                             Mode + explore caps from the campaign's "Loop mode for spawned
+                             projects" line)
            → /analyze → /make-figures → /write-paper → /review-paper cycles
            → stop at internal-review (or earlier kill — kills are fine outcomes)
 ```
@@ -52,6 +54,12 @@ Campaign rules (in addition to every standing hard rule):
 - Kill criteria fire exactly as in interactive mode; a night that kills 3 ideas cheaply
   and ships 1 strong draft beats 4 weak drafts.
 - NEEDS-EXPERIMENT review items are followed within remaining budget; otherwise queued.
+- **Explore-mode pivots** (if the campaign authorized `explore`): a project loop may reopen
+  `Headline: no` decisions and expand the frontier autonomously within its envelope. A
+  `Headline: yes` reopen (abandoning a project's central hypothesis) is checked against the
+  campaign's Gate-1 delegation bounds + an overseer `support` pass — exactly like a Gate-1
+  self-approval; within bounds → record it and continue, outside → queue for the PI and move
+  on. Frozen-set changes and envelope overruns are never delegated.
 - Every lifecycle step appends a Campaign Log row **and** emits a bus event
   (`tools/lab_bus.py emit cycle --idea <slug> --detail "<step> → <outcome>"`); at the start
   of each portfolio pass, check `tools/lab_bus.py inbox` and act on any PI directive.

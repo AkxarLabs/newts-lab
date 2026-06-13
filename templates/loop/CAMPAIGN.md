@@ -17,6 +17,13 @@ A proposal may be self-approved by the agent only if ALL hold:
 - [ ] Scoping value re-verification passed with ≤ ___ open questions
 Anything outside these bounds queues for the PI and the campaign moves to the next idea.
 
+**Loop mode for spawned projects:** `execute` <!-- execute | explore -->. In `explore`,
+each project's loop may autonomously expand the frontier and reopen NON-headline design
+decisions within its envelope (caps: ___ expansion rounds, ___ new lines/round → written into
+each LOOP_BRIEF). Reopening a project's **headline** decision, touching the frozen set, or
+exceeding the envelope is checked against these delegation bounds + an overseer `support` pass
+(like Gate-1 self-approval); out of bounds → queue for the PI. Never silent.
+
 ## What is NEVER delegated
 
 - **Gate 3.** Papers end the campaign at `internal-review` — drafts with morning

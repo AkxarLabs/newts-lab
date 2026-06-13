@@ -30,7 +30,8 @@ function picaPoseFor(state) {
     if (k === 'run_finished' && e.status === 'completed') return 'success';
   }
   if ((state.items || []).some(it => (it.inflight || []).length)) return 'running';
-  if (recent.some(e => e.kind === 'paper_compiled' || (e.kind || '').includes('review'))) return 'writing';
+  if (recent.some(e => e.kind === 'paper_compiled' || (e.kind || '').includes('review')
+    || ['decision_revisit', 'replan', 'frontier_expand'].includes(e.kind))) return 'writing';
   if (recent.some(e => (e.detail || '').toLowerCase().includes('lit') || (e.kind === 'cycle'))) return 'reading';
   if (recent.length === 0) return 'sleep';
   return 'idle';
@@ -63,6 +64,9 @@ function narrate(state) {
     case 'cycle': txt = `cycle — ${d}`; break;
     case 'kill': txt = `composted: ${d}`; break;
     case 'state_change': txt = d; break;
+    case 'decision_revisit': txt = `reopening a decision — ${d}`; break;
+    case 'replan': txt = `re-planning — ${d}`; break;
+    case 'frontier_expand': txt = `expanding the frontier — ${d}`; break;
     default: txt = d || last.kind;
   }
   if (live > 1) txt = `${live} runs live · ${txt}`;

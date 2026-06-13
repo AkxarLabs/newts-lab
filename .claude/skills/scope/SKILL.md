@@ -40,9 +40,16 @@ For each decision:
    leaning). Charge: "argue the strongest case for this option AND name its two most
    likely failure modes." Otherwise argue each side yourself, in writing, before choosing.
 3. Decide with a written rationale, an explicit **rejected-because** line per
-   alternative, and a **revisit-if** condition (what evidence would reopen this).
-4. Record as a D-NNN entry in `decisions.md`. Decisions are append-only after Gate 1 —
-   reopening one later is a new entry referencing the old.
+   alternative, and a **revisit-if** condition (what evidence would reopen this — write it
+   so a later session can check it mechanically against run artifacts).
+4. Mark the decision **`Headline: yes`** if this choice is load-bearing for the central
+   hypothesis the project's novelty rests on (the thing the paper fundamentally claims);
+   otherwise **`Headline: no`** — a supporting decision. This flag is the autonomy boundary
+   downstream: an `explore`-mode loop may reopen a `Headline: no` decision on its own when
+   the revisit-if trigger fires, but reopening a `Headline: yes` one escalates to the PI.
+   Most decisions are `no`; typically only the method recipe / framing are `yes`.
+5. Record as a D-NNN entry in `decisions.md` (with its `Headline` flag). Decisions are
+   append-only after Gate 1 — reopening one later is a new entry referencing the old.
 
 A decision that genuinely cannot be settled without data may be left **OPEN** with the
 pilot experiment that will settle it named — but at most `scoping.max_open_questions`

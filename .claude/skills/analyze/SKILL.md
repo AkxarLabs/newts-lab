@@ -15,12 +15,17 @@ Input: project in state `analysis` (or mid-`active` for an interim read). Output
    - Alternative explanations: could the gain come from a confound (extra compute/params/data, eval artifact, lucky seeds)?
    - Which ablations from the plan are now load-bearing? Are any kept-but-unablated changes stacked in the winning config?
    - What's the cheapest experiment that could *break* the favored interpretation?
+   - **Founding-assumption check:** read `ideas/<slug>/decisions.md` and ask whether the
+     evidence now satisfies any settled decision's `Revisit if:` trigger — i.e. a design
+     choice baked in at scoping time looks wrong. This is the "discard a pre-conceived idea"
+     signal; route it in step 4.
    - **Oversight pass** (`oversight.level` ≠ off): spawn one `overseer` subagent
      (`support` check) per headline interpretation, giving it the statement + artifact
      paths only. OVERREACH → adopt its supported version verbatim; UNSUPPORTED →
      it is not a finding, whatever it felt like.
 4. **Decide and route:**
    - Missing ablations / confound checks → add rows to PLAN.md and return to `/experiment`. (Ablations are complete when every row of PLAN.md's ablation plan has a multi-seed result or a recorded failure — no kept change without its removal test.)
+   - **A settled decision's `Revisit if:` trigger is now met** → reopen it via `/improve`'s `revisit` operator (new `D-NNN`, dependent lines → `retired-by-revision`, seed replacements), then return to `/experiment`/`/improve`. A `Headline: no` decision is autonomous (overseer-gated); a `Headline: yes` decision escalates to the PI. Under an `explore` loop this is just the loop's step 2f; in a manual `/analyze`, recommend it (or do it if non-headline and you're continuing).
    - Hypothesis confirmed with honest effect → state → `writing`, next action "/write-paper".
    - Null/negative → that can still be a paper (decide with the PI); otherwise kill/park with reasons.
 5. **Write it down:** `analysis-YYYY-MM-DD.md` in the project root (claims → run ids throughout). Distill to the hub: `FINDINGS.md` (confirmed, with evidence pointers), `FAILURES.md` (what didn't work + diagnosis), `OPEN-QUESTIONS.md` (new threads). Update registry + notebook.

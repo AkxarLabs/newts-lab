@@ -7,6 +7,22 @@ FROZEN once authorized — changes require fresh PI sign-off.*
 
 - **Primary metric:** <!-- one metric + direction, e.g. "minimize val_loss" -->
 - **Target / done condition:** <!-- e.g. "beat exp-002 baseline by >= X beyond seed noise" -->
+- **Headline hypothesis (frozen):** <!-- the central claim the proposal's novelty rests on,
+  copied from proposal.md. The loop may reopen NON-headline design decisions autonomously in
+  explore mode; reopening this / abandoning it is the escalation boundary (PI note). -->
+
+## Loop mode (frozen)
+
+- **Mode:** `execute` <!-- execute | explore -->
+  - `execute` — run the approved PLAN.md (planned experiments → ablations → multi-seed →
+    /improve operators), then stop when exhausted. The conservative default.
+  - `explore` — autonomous in-project iteration: when the plan is exhausted with budget left,
+    the loop may **expand the frontier** (propose results-grounded new lines) and **reopen
+    non-headline design decisions** (`decisions.md` whose `Revisit if:` trigger fired), all
+    within the frozen set + the Gate-2 envelope. The PI signature below authorizes this wider
+    action space. See docs/autonomy.md.
+- **Explore caps** (apply only in explore mode; default from control.yaml `loop.explore_*`):
+  - Max expansion rounds: ___  ·  Max new lines per round: ___
 
 ## Budget envelope
 

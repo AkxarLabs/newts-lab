@@ -29,6 +29,16 @@ parallelism:
 loop:                           # /research-loop overrides for this project
   no_progress_backoff_cycles: 3
   monitor_poll_seconds: 300
+  mode: execute                 # execute | explore (the LOOP_BRIEF's Mode: overrides per-loop).
+                                # explore enables autonomous in-project re-planning — see below.
+  explore_max_expansion_rounds: 0   # explore: results-grounded "expand" rounds allowed after the
+                                # planned table is exhausted (0 = behaves like execute)
+  explore_max_new_lines_per_round: 3  # explore: max new PLAN.md lines per expand round
+  # In explore mode the loop may reopen a NON-headline design decision (decisions.md
+  # `Headline: no`) and expand the frontier, as long as the frozen set holds and the
+  # gate2_envelope is not exceeded. Touching the frozen set, exceeding the envelope, or
+  # reopening a HEADLINE decision escalates (PI note, or campaign-delegation check under
+  # a signed /autopilot). explore_* are PI-owned (they widen the agent's authority).
 
 monitoring:
   log_interval_seconds: 60      # expected seconds between ctx.log() calls — pass to

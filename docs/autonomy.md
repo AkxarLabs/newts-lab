@@ -28,6 +28,33 @@ worth your read, and what the next `/advance` would do. Your loop is *review →
 `/advance` → review*. It never crosses a PI gate, and one stage means one stage — if
 analysis routes back to experiments, that's the next `/advance`.
 
+### Project loop: `execute` vs `explore`
+
+`/research-loop <slug>` (and `/improve`) run a project's experiments unattended under a
+signed `LOOP_BRIEF.md`. The brief's **`Mode:`** field chooses how much rope the loop has —
+the PI's signature scopes it:
+
+- **`execute`** (default) — run the approved `PLAN.md`: planned experiments → ablations →
+  multi-seed confirmation → `/improve` operators (draft/debug/improve/crossover). When the
+  plan is exhausted, the loop stops. A faithful, predictable plan-runner.
+- **`explore`** — the autonomous in-project iterator (AutoResearch-style, with the lab's
+  guardrails). When the plan is exhausted *with budget left*, instead of stopping the loop may
+  **expand the frontier** — propose new, results-grounded experiment lines (each with a
+  pre-written success criterion) — and **reopen a design decision** baked in at scoping time
+  when the evidence fires its `decisions.md` **`Revisit if:`** trigger (retiring the lines that
+  depended on it and re-planning under the new choice). All of this stays inside the **frozen
+  set** (eval/test/seeds/budgets/kill-criteria, never touched), the **Gate-2 envelope**, and
+  the `loop.explore_*` caps; the anti-burn backoff still ends a fruitless search.
+
+The boundary is **mechanical**: each decision is flagged `Headline: yes/no` at scope time.
+Reopening a *non-headline* decision and expanding the frontier are fully autonomous; reopening
+a **headline** decision (the central hypothesis the proposal's novelty rests on), touching the
+frozen set, or exceeding the envelope **escalates** — a PI note in manual/`execute`, or under a
+signed `/autopilot` campaign the same delegation-bounds + overseer `support` check used for a
+Gate-1 self-approval. A pivot is never silent: it lands in `decisions.md`, PLAN.md's Re-planning
+log, and the event bus (so the dashboard shows it live). Default is `execute`, so nothing
+changes until you sign a brief that says `explore`.
+
 ### Full autopilot: the one-command night
 
 ```text
@@ -136,8 +163,10 @@ campaigns:
 4. **Overseers** (`oversight.level`) — dedicated verification subagents that check a
    statement against its evidence files before it propagates: at `standard`,
    author-response verdicts, analysis interpretations, `/autopilot` Gate-1 self-approvals,
-   the phantom-experiment sweep, and any meta-review refutation that would unlock accept;
-   at `strict`, also grading meta-review fatal flaws and loop progress claims.
+   explore-mode decision reopens (the `Revisit if:` trigger-fired claim and any campaign
+   headline-reopen bounds check), the phantom-experiment sweep, and any meta-review refutation
+   that would unlock accept; at `strict`, also grading meta-review fatal flaws and loop
+   progress claims.
 5. **Hard stops** — kill criteria checked every cycle; anti-burn backoff; frozen
    settings untouchable by any feedback; PI escalation for stalemates.
 

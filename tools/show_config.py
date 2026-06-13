@@ -68,6 +68,9 @@ SKILL_KEYS = [
     ("num_drafts", None, "experiment.num_drafts"),
     ("loop.no_progress_backoff_cycles", "loop.no_progress_backoff_cycles", "loop.no_progress_backoff_cycles"),
     ("loop.monitor_poll_seconds", "loop.monitor_poll_seconds", "loop.monitor_poll_seconds"),
+    ("loop.mode", "loop.mode", "loop.mode"),
+    ("loop.explore_max_expansion_rounds", "loop.explore_max_expansion_rounds", "loop.explore_max_expansion_rounds"),
+    ("loop.explore_max_new_lines_per_round", "loop.explore_max_new_lines_per_round", "loop.explore_max_new_lines_per_round"),
 ]
 
 

@@ -24,6 +24,12 @@ For overnight/long sessions where the PI is away. Tunables from the project's
   authorizes itself — but a PI-signed campaign brief is the PI's authorization.
 - The brief's authorization line is Gate 2 for this loop; everything above the Loop Log is
   frozen.
+- **Read the brief's `Mode:`** (default `execute` from `loop.mode`). `execute` = run the
+  approved plan, then stop when it's exhausted (cycle step 2 below). `explore` = also allowed
+  to **expand the frontier** and **reopen non-headline design decisions** within the frozen set
+  and the envelope — the PI signature on this brief authorizes that wider action space. Note
+  the brief's `Headline hypothesis` and `Explore caps` (else `loop.explore_*`). A loop never
+  switches its own mode.
 
 ## 0.5 Single-loop guard + resume check (before the first cycle, and on every re-entry)
 
@@ -48,17 +54,28 @@ session before starting new work:
    the Loop Log (+ `SYSTEM.md` once at loop start, if present — machine constraints
    bind every cycle), and the directive inbox (`scripts/lab_bus.py inbox` — a PI directive
    is acted on within the protocol, then acked). Never repeat a tried variant.
+   **In `explore` mode, also read `ideas/<slug>/decisions.md`** and check each settled
+   decision's `Revisit if:` trigger against the artifacts — a fired trigger queues a `revisit`
+   action (step 2f).
 2. **Pick the next action** by fixed priority:
    a. unfinished planned experiments in `PLAN.md` (in order),
    b. ablation-plan rows,
    c. multi-seed confirmation of the current best (`scripts/sweep.py`),
    d. `/improve` operators (draft/debug/improve within this cycle's budget slice).
+   **`explore` mode only** — when (a)–(d) are all exhausted (rather than stopping):
+   e. **frontier expansion** — the `/improve` `expand` operator: propose ≤
+      `explore_max_new_lines_per_round` results-grounded new lines (with criteria) into
+      PLAN.md, capped at `explore_max_expansion_rounds` total rounds. Each fresh expand round
+      that yields no progress counts toward the no-progress backoff.
+   f. **decision revisit** — if step 1 found a fired `Revisit if:` trigger: the `/improve`
+      `revisit` operator (reopen the decision, retire dependent lines, seed replacements).
+      Subject to the **escalation boundary** below.
    **Before selecting, check fit:** the action's `budget.max_minutes` must fit the loop's
    remaining wall-clock, and a FULL run must fit the `gate2_envelope` (see *Envelope
    accounting* below). FULL work outside the envelope, or any action that doesn't fit
    remaining wall-clock, is written as a **PI note** in the Loop Log — and if *nothing*
-   planned fits the remaining wall-clock, that IS a stop condition (budget exhausted): exit,
-   don't idle.
+   fits the remaining wall-clock (in `explore`: nothing planned AND expansion rounds are
+   spent), that IS a stop condition (budget exhausted): exit, don't idle.
 3. **Launch** via `scripts/run.py` (or `sweep.py`) as a background process. PILOT/FULL
    campaigns acquire a compute slot first (hard rule 13); a DENIED slot is not idleness —
    log it, do CPU-light work (analysis, planning, ledger hygiene), and retry next cycle.
@@ -98,6 +115,14 @@ FULL) + the runs about to launch ≤ `full_runs` (a sweep counts as N runs); boo
   *new* run once expired.
 - All frozen things stay frozen (eval, test set, seeds policy, budgets). A loop that
   needs to change one stops and queues a PI note instead.
+- **Explore-mode escalation boundary:** expanding the frontier and reopening a
+  `Headline: no` decision are autonomous (within the frozen set + envelope). But reopening a
+  **`Headline: yes`** decision, abandoning the brief's headline hypothesis, exceeding the
+  envelope, or any change to the frozen set is the boundary — queue a **PI note** (or, under a
+  signed `/autopilot` campaign, run the campaign-delegation + overseer `support` check, like a
+  Gate-1 self-approval) and continue with other in-bounds work. Never pivot the headline
+  silently. The reopen itself is overseer-gated (`/improve` `revisit`); a `revisit` or
+  `expand` is recorded in PLAN.md's Re-planning log + `decisions.md` and emits its bus event.
 
 ## Exit (any stop condition)
 

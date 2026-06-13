@@ -71,6 +71,18 @@ experiment:                     # ── experiment loop defaults · project-ove
 loop:                           # ── /research-loop defaults · project-overridable via control.yaml ──
   no_progress_backoff_cycles: 3 # consecutive no-progress cycles before the loop stops
   monitor_poll_seconds: 300     # cadence for zero-token status.py polling
+  mode: execute                 # execute | explore — the DEFAULT loop mode (the LOOP_BRIEF's
+                                # `Mode:` field overrides per-loop). execute = run the approved
+                                # plan then stop; explore = autonomous in-project iteration —
+                                # frontier expansion + reopening non-headline design decisions,
+                                # bounded by the two caps below and the Gate-2 envelope.
+                                # See docs/autonomy.md.
+  explore_max_expansion_rounds: 0   # explore mode only: how many results-grounded "expand" rounds
+                                # may run after the planned table is exhausted (0 = never expand,
+                                # i.e. explore degrades to execute). Each round is also subject to
+                                # the anti-burn backoff above.
+  explore_max_new_lines_per_round: 3  # explore mode only: max NEW mechanism-distinct lines an
+                                # expand round may append to PLAN.md (each with pre-written criteria)
 
 dashboard:                      # ── optional Marginalia dashboard (dashboard/serve.py) ──
   port: 8787                    # local-only; see docs/dashboard.md
