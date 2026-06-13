@@ -35,7 +35,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `loop.no_progress_backoff_cycles` | 3 | agent-readable | no-progress cycles before a loop stops (project may override) |
 | `loop.monitor_poll_seconds` | 300 | agent-readable | zero-token polling cadence (project may override) |
 | `loop.mode` | `execute` | PI (per-loop via LOOP_BRIEF) | default loop mode: `execute` (run plan, then stop) or `explore` (autonomous in-project re-planning — frontier expansion + reopening non-headline decisions). The `LOOP_BRIEF.md` `Mode:` overrides per-loop. See [autonomy](autonomy.md). |
-| `loop.explore_max_expansion_rounds` | 0 | PI | explore-mode only: results-grounded `expand` rounds allowed after the plan is exhausted (0 = behaves like `execute`) |
+| `loop.explore_max_expansion_rounds` | 0 | PI | explore-mode only: results-grounded `expand` rounds allowed after the plan is exhausted (0 = no frontier expansion; decision revisits still fire, as those are gated by `loop.mode`) |
 | `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |

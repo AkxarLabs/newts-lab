@@ -114,7 +114,7 @@ The agent takes it from there, pausing at the PI gates (proposal approval, full-
 
 - **Manual** — invoke each procedure yourself (`/ideate` → `/lit-review` → …).
 - **Stage-gated** — `/advance`: one lifecycle stage per command, verified by you between stages.
-- **Project loop** — `/research-loop <slug>`: unattended experiments under a signed brief.
+- **Project loop** — `/research-loop <slug>`: unattended experiments under a signed brief. Two modes (set in the brief's `Mode:`): `execute` (run the approved plan, then stop) or `explore` (autonomous in-project re-planning — expand the frontier and reopen non-headline design decisions within the envelope; see [autonomy](docs/autonomy.md)).
 - **Full autopilot** — `/autopilot`: sign one campaign brief, wake up to reviewed drafts (wrap with the built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`).
 
 Already have an idea, a design, or a codebase? `/adopt` enters the lifecycle mid-stream.

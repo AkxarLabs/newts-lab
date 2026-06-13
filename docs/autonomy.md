@@ -55,6 +55,22 @@ Gate-1 self-approval. A pivot is never silent: it lands in `decisions.md`, PLAN.
 log, and the event bus (so the dashboard shows it live). Default is `execute`, so nothing
 changes until you sign a brief that says `explore`.
 
+**Enabling `explore` (what to flip, and who may).** Two independent switches, both PI-owned:
+
+1. **Mode** — set `Mode: explore` in the project's `LOOP_BRIEF.md` when you authorize the loop
+   (under `/autopilot`, set the campaign brief's "Loop mode for spawned projects" line instead;
+   it flows into each spawned brief). This alone lets the loop **reopen non-headline decisions**
+   when their `Revisit if:` triggers fire.
+2. **Expansion caps** — to also allow open-ended **frontier expansion**, set
+   `loop.explore_max_expansion_rounds` > 0 (and optionally `…_new_lines_per_round`) in the
+   project's `control.yaml` — `/configure <slug> set loop.explore_max_expansion_rounds=2`. With
+   the default `0`, an `explore` loop revisits decisions but does not expand the frontier.
+
+Both are PI-owned (they widen the agent's authority), so `/configure` only changes them on an
+explicit PI request — or transitively when an `/autopilot` campaign brief's delegation bounds
+cover them. Per-decision `Headline: yes/no` flags are set by `/scope` and live in
+`ideas/<slug>/decisions.md`; changing one is a decisions.md edit, not a config key.
+
 ### Full autopilot: the one-command night
 
 ```text

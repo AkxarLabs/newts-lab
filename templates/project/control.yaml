@@ -32,7 +32,8 @@ loop:                           # /research-loop overrides for this project
   mode: execute                 # execute | explore (the LOOP_BRIEF's Mode: overrides per-loop).
                                 # explore enables autonomous in-project re-planning — see below.
   explore_max_expansion_rounds: 0   # explore: results-grounded "expand" rounds allowed after the
-                                # planned table is exhausted (0 = behaves like execute)
+                                # planned table is exhausted (0 = no frontier expansion; decision
+                                # revisits still fire on their triggers, since those are gated by mode)
   explore_max_new_lines_per_round: 3  # explore: max new PLAN.md lines per expand round
   # In explore mode the loop may reopen a NON-headline design decision (decisions.md
   # `Headline: no`) and expand the frontier, as long as the frozen set holds and the

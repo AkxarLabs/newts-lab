@@ -78,9 +78,11 @@ loop:                           # ── /research-loop defaults · project-over
                                 # bounded by the two caps below and the Gate-2 envelope.
                                 # See docs/autonomy.md.
   explore_max_expansion_rounds: 0   # explore mode only: how many results-grounded "expand" rounds
-                                # may run after the planned table is exhausted (0 = never expand,
-                                # i.e. explore degrades to execute). Each round is also subject to
-                                # the anti-burn backoff above.
+                                # may run after the planned table is exhausted. 0 = no frontier
+                                # expansion (but in explore mode, reopening a non-headline decision
+                                # still fires when its `Revisit if:` trigger does — that is gated by
+                                # the mode, not by this cap). Each round is subject to the anti-burn
+                                # backoff above.
   explore_max_new_lines_per_round: 3  # explore mode only: max NEW mechanism-distinct lines an
                                 # expand round may append to PLAN.md (each with pre-written criteria)
 
