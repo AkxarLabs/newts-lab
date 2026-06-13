@@ -39,7 +39,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
-| `dashboard.port` | 8787 | PI | default port for the optional [Marginalia dashboard](dashboard.md) (`dashboard/serve.py`) |
+| `dashboard.port` | 8787 | PI | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) |
 | `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` (applied via the `model:` frontmatter of `.claude/agents/fresh-context-reviewer.md`; `inherit` \| `sonnet` \| `opus` \| `haiku`) |
 | `agents.runner_model` | inherit | PI | model for `experiment-runner` (→ its agent-file frontmatter) |
 | `agents.critic_model` | inherit | PI | ideation critics / scoping advocates — **inline subagents with no agent file, so this value cannot be applied** (they run at the session model) |

@@ -1,0 +1,287 @@
+/* Vivarium — the lab as a living terrarium. Warm glass, wood, plants, and Newt. */
+:root{
+  --sky1:#fbf4e6; --sky2:#f3e2c8; --mist:rgba(143,207,209,.18);
+  --glass:rgba(160,210,200,.16); --glass-edge:rgba(120,180,168,.45); --glint:rgba(255,255,255,.6);
+  --wood:#a9744c; --wood-d:#7a4f30; --soil:#4b3526;
+  --leaf:#6f9e5a; --leaf-d:#4f7a3e; --bloom:#e98aa0; --bloom-d:#cf6a86;
+  --water:#cdeceb; --water-d:#8fcfd1; --water-edge:#a9dcdb;
+  --ink:#3c2f25; --ink-soft:#7c6a59; --hair:#e6d6bf;
+  --card:#fffaf1; --card-edge:#ecdcc4;
+  --amber:#e6a64b; --moss:#6f9e5a; --brick:#cf6a4a; --coral:#f2a0ab; --pink:#f7c8d0; --pink-d:#f0aab6;
+  --shadow:0 6px 22px rgba(90,60,35,.12);
+  --serif:'Fraunces',Georgia,serif; --round:'Nunito',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
+}
+html[data-lamp="night"]{
+  --sky1:#15211e; --sky2:#0d1714; --mist:rgba(120,200,190,.08);
+  --glass:rgba(120,200,180,.07); --glass-edge:rgba(120,200,180,.22); --glint:rgba(190,255,240,.18);
+  --wood:#5b3d28; --wood-d:#3f2a1c; --soil:#241a13;
+  --ink:#ece2cf; --ink-soft:#a9b3a0; --hair:#2c3a33; --card:#1b2723; --card-edge:#2c3a33;
+  --water:#16302e; --water-d:#1d4a45; --water-edge:#2a615a;
+  --shadow:0 8px 30px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}   /* CSS display rules otherwise beat the hidden attribute */
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--round); color:var(--ink); -webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--mist), transparent 60%),
+    linear-gradient(180deg, var(--sky1), var(--sky2));
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+
+/* ── top bar ─────────────────────────────────────────────────────────────── */
+.topbar{display:flex; align-items:center; gap:20px; padding:12px 22px; flex:0 0 auto;
+  border-bottom:1px solid var(--hair); background:color-mix(in srgb,var(--sky1) 75%, transparent); backdrop-filter:blur(6px)}
+.brand{display:flex; align-items:baseline; gap:8px}
+.logo-leaf{font-size:1.2rem; transform:translateY(2px)}
+.brand-name{font-family:var(--serif); font-weight:640; font-size:1.45rem; letter-spacing:.2px}
+.brand-sub{font-style:italic; color:var(--ink-soft); font-size:.9rem}
+.tabs{display:flex; gap:4px; margin:0 auto}
+.tab{font-family:var(--round); font-weight:700; font-size:.92rem; color:var(--ink-soft);
+  background:transparent; border:0; padding:8px 16px; border-radius:999px; cursor:pointer; transition:.18s}
+.tab:hover{background:color-mix(in srgb,var(--leaf) 14%,transparent); color:var(--ink)}
+.tab.is-active{background:var(--card); color:var(--ink); box-shadow:var(--shadow)}
+.badge{display:inline-flex; min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+  background:var(--amber); color:#3a2a12; font-size:.72rem; font-weight:800; align-items:center; justify-content:center; margin-left:4px}
+.status{display:flex; align-items:center; gap:14px}
+.fireflies{display:inline-flex; gap:5px; align-items:center}
+.fireflies i{width:8px; height:8px; border-radius:50%; background:var(--hair); display:inline-block}
+.fireflies i.lit{background:var(--amber); box-shadow:0 0 8px 2px color-mix(in srgb,var(--amber) 70%,transparent); animation:firefly 2.6s ease-in-out infinite}
+.clock{font-family:var(--mono); font-size:.85rem; color:var(--ink-soft)}
+.clock.stopped{color:var(--brick); animation:none}
+.lamp{border:0; background:transparent; font-size:1.1rem; cursor:pointer; opacity:.8}
+
+/* ── stage ───────────────────────────────────────────────────────────────── */
+.stage{flex:1 1 auto; overflow:auto; padding:24px 26px 150px; position:relative}
+
+/* ── the terrarium scene ─────────────────────────────────────────────────── */
+.scene{position:relative; max-width:1100px; margin:0 auto; min-height:460px;
+  border-radius:38px 38px 20px 20px; padding:34px 34px 0; overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 50% -6%, var(--glint), transparent 50%),
+    radial-gradient(80% 50% at 50% 112%, color-mix(in srgb,var(--leaf) 26%,transparent), transparent 60%),
+    linear-gradient(180deg, var(--glass) 0%, transparent 55%, color-mix(in srgb,var(--soil) 12%,transparent) 100%);
+  border:1.5px solid var(--glass-edge); box-shadow:var(--shadow), inset 0 2px 0 var(--glint), inset 0 -30px 50px -30px color-mix(in srgb,var(--soil) 50%,transparent)}
+.scene::before{content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(115deg, transparent 40%, rgba(255,255,255,.10) 46%, transparent 52%)}
+.scene-sun{position:absolute; top:18px; right:34px; width:46px; height:46px; border-radius:50%;
+  background:radial-gradient(circle, #ffe6a8, #f5c97a); box-shadow:0 0 36px 10px rgba(245,201,122,.45)}
+html[data-lamp="night"] .scene-sun{background:radial-gradient(circle,#fff6d8,#e9c97a); box-shadow:0 0 30px 6px rgba(233,201,122,.35)}
+.scene h2{font-family:var(--serif); font-weight:560; font-size:1.2rem; margin:0 0 4px}
+.scene .lede{color:var(--ink-soft); font-size:.9rem; margin:0 0 18px}
+
+/* sprouts row (ideas pre-project) */
+.sprouts{display:flex; flex-wrap:wrap; gap:14px; margin-bottom:26px; min-height:10px}
+.sprout{display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; width:96px; text-align:center}
+.sprout .pot{font-size:1.7rem; line-height:1; filter:drop-shadow(0 3px 3px rgba(80,50,30,.18)); transition:transform .2s}
+.sprout:hover .pot{transform:translateY(-3px) scale(1.08)}
+.sprout .nm{font-size:.74rem; font-weight:700; color:var(--ink); line-height:1.1; max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sprout .st{font-size:.66rem; color:var(--ink-soft); font-family:var(--mono)}
+.sprout.gate .nm::after{content:" 🔔"}
+
+/* the shelf of project jars */
+.shelf{position:relative; margin:0 -30px; padding:14px 30px 30px}
+.shelf::after{content:""; position:absolute; left:14px; right:14px; bottom:14px; height:16px; border-radius:6px;
+  background:linear-gradient(180deg,var(--wood),var(--wood-d)); box-shadow:0 8px 16px rgba(80,50,30,.25)}
+.jars{display:flex; flex-wrap:wrap; gap:18px; position:relative; z-index:1}
+.jar{position:relative; width:188px; padding:14px 14px 16px; cursor:pointer; border-radius:14px 14px 10px 10px;
+  background:linear-gradient(180deg, color-mix(in srgb,var(--card) 88%,transparent), var(--card));
+  border:1.5px solid var(--card-edge); box-shadow:var(--shadow), inset 0 10px 18px -10px var(--glint);
+  transition:transform .18s, box-shadow .18s}
+.jar::before{content:""; position:absolute; top:6px; left:10px; width:26px; height:60%; border-radius:40%;
+  background:linear-gradient(180deg, rgba(255,255,255,.5), transparent); pointer-events:none}
+.jar:hover{transform:translateY(-4px); box-shadow:0 14px 30px rgba(90,60,35,.2)}
+.jar.gate{border-color:var(--amber); box-shadow:var(--shadow),0 0 0 2px color-mix(in srgb,var(--amber) 40%,transparent)}
+.jar.fail{border-color:var(--brick)}
+.jar .plant{font-size:1.8rem; line-height:1}
+.jar .nm{font-family:var(--serif); font-weight:560; font-size:1.02rem; margin:2px 0}
+.jar .chips{display:flex; flex-wrap:wrap; gap:5px; margin:6px 0}
+.chip{font-family:var(--mono); font-size:.66rem; padding:2px 7px; border-radius:7px; border:1px solid var(--hair); color:var(--ink-soft)}
+.chip.state{border-color:var(--leaf-d); color:var(--leaf-d)}
+.chip.live{border-color:var(--water-d); color:var(--water-d); background:color-mix(in srgb,var(--water) 50%,transparent)}
+.chip.stalled,.chip.fail{border-color:var(--brick); color:var(--brick)}
+.chip.note{border-color:var(--amber); color:var(--amber)}
+.fill{height:7px; border-radius:4px; background:color-mix(in srgb,var(--water) 40%,transparent); overflow:hidden; margin:7px 0}
+.fill i{display:block; height:100%; background:linear-gradient(90deg,var(--water-d),var(--leaf)); border-radius:4px; transition:width .6s}
+.spark{display:block; margin-top:4px}
+.jar .last{font-family:var(--mono); font-size:.68rem; color:var(--ink-soft); margin-top:4px}
+.tap{font-size:.66rem; color:var(--leaf-d); font-weight:700; margin-top:8px; opacity:0; transition:.18s}
+.jar:hover .tap{opacity:1}
+
+.empty-note{color:var(--ink-soft); font-style:italic; padding:30px 0; text-align:center}
+.coldstart{text-align:center; padding:34px 0}
+.coldstart .big{font-family:var(--serif); font-size:1.7rem; margin-bottom:6px}
+.coldstart code{font-family:var(--mono); background:var(--card); padding:2px 6px; border-radius:6px; border:1px solid var(--card-edge)}
+
+/* ── panels (shelf / gates / ledger / night) ───────────────────────────── */
+.panel{max-width:1100px; margin:0 auto}
+.panel h2{font-family:var(--serif); font-weight:560; font-size:1.25rem; margin:0 0 4px}
+.panel .lede{color:var(--ink-soft); font-size:.9rem; margin:0 0 18px}
+.cardgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px}
+.pcard{background:var(--card); border:1px solid var(--card-edge); border-radius:16px; padding:16px; box-shadow:var(--shadow)}
+.pcard h3{font-family:var(--serif); font-weight:560; margin:0 0 8px; font-size:1.05rem}
+.pcard .row{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0}
+.btnrow{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.btn{font-family:var(--round); font-weight:700; font-size:.78rem; padding:6px 12px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--card-edge); background:var(--sky1); color:var(--ink); transition:.15s}
+.btn:hover{background:color-mix(in srgb,var(--leaf) 16%,transparent); border-color:var(--leaf)}
+.btn.go{background:var(--leaf); border-color:var(--leaf-d); color:#fff}
+.btn.go:hover{background:var(--leaf-d)}
+.btn.tool{background:transparent; color:var(--ink-soft); font-family:var(--mono); font-size:.72rem}
+
+/* gates */
+.letters{display:flex; flex-direction:column; gap:14px; max-width:680px}
+.letter{position:relative; background:var(--card); border:1px solid var(--card-edge); border-left:4px solid var(--amber);
+  border-radius:12px; padding:16px 18px; box-shadow:var(--shadow)}
+.letter.g3{border-left-color:var(--brick)}
+.letter h3{font-family:var(--serif); font-weight:560; margin:0 0 4px}
+.letter .seal{position:absolute; top:14px; right:16px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  background:var(--amber); color:#3a2a12; font-weight:800; font-family:var(--serif)}
+.letter.g3 .seal{background:var(--brick); color:#fff}
+.letter code{font-family:var(--mono); font-size:.76rem; background:var(--sky1); padding:3px 7px; border-radius:6px; display:inline-block; margin:6px 0}
+.letter .sub{color:var(--ink-soft); font-size:.85rem; margin:2px 0}
+
+/* tables */
+table{width:100%; border-collapse:collapse; font-size:.84rem; margin:6px 0 18px}
+th{font-family:var(--round); font-weight:800; text-align:left; border-bottom:2px solid var(--ink);
+  padding:6px 8px; font-size:.76rem; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-soft)}
+td{padding:7px 8px; border-bottom:1px solid var(--hair)}
+.mono{font-family:var(--mono); font-size:.8rem}
+.dchip{font-family:var(--mono); font-size:.68rem; padding:1px 7px; border-radius:6px; border:1px solid var(--hair)}
+.dchip.pending{border-color:var(--amber); color:var(--amber)}
+.dchip.seen{border-color:var(--water-d); color:var(--water-d)}
+.dchip.done{border-color:var(--moss); color:var(--moss)}
+.dchip.blocked,.dchip.withdrawn{border-color:var(--brick); color:var(--brick)}
+.dchip.done.noevidence{border-color:var(--amber); color:var(--amber)}
+.unresolved{color:var(--brick); font-style:italic}
+
+/* night view */
+.night{display:flex; flex-direction:column; gap:12px; max-width:760px; margin:0 auto}
+.nrow{display:flex; align-items:center; gap:14px; padding:16px 18px; background:var(--card); border:1px solid var(--card-edge); border-radius:14px; font-family:var(--mono); font-size:.86rem}
+.nrow.stalled{border-color:var(--brick)}
+.nrow .rid{flex:0 0 auto; font-weight:600}
+.nrow .barwrap{flex:1 1 auto; height:8px; background:var(--water); border-radius:4px; overflow:hidden}
+.nrow .barwrap i{display:block; height:100%; background:var(--water-d)}
+.nrow .met{flex:0 0 auto; color:var(--ink-soft)}
+.quiet{text-align:center; color:var(--ink-soft); font-style:italic; padding:30px}
+
+/* ── habitat (always-on): water, Newt, lantern ─────────────────────────── */
+.habitat{position:fixed; left:0; right:0; bottom:0; height:132px; z-index:30; pointer-events:none}
+.water{position:absolute; left:0; right:0; bottom:0; height:84px;
+  background:linear-gradient(180deg,var(--water),var(--water-d)); border-top:2px solid var(--water-edge);
+  box-shadow:0 -6px 24px rgba(90,60,35,.12)}
+.water::before{content:""; position:absolute; left:0; right:0; top:0; height:14px;
+  background:repeating-linear-gradient(90deg, transparent, transparent 22px, var(--glint) 22px, transparent 40px); opacity:.5;
+  animation:ripple 7s linear infinite}
+.lantern{position:absolute; right:30px; bottom:92px; width:40px; height:54px; pointer-events:auto; cursor:pointer; text-align:center}
+.lantern::before{content:"🏮"; font-size:2rem}
+.lantern-glow{position:absolute; inset:-8px; border-radius:50%; background:radial-gradient(circle,rgba(232,166,75,.55),transparent 70%); animation:lanternPulse 2.6s ease-in-out infinite}
+.lantern-n{position:absolute; top:-6px; right:-4px; background:var(--amber); color:#3a2a12; font-weight:800; font-size:.7rem; border-radius:9px; padding:0 5px}
+
+.newt-stage{position:absolute; left:50%; bottom:34px; transform:translateX(-50%); width:200px; height:130px;
+  pointer-events:auto; cursor:pointer; animation:swim 9s ease-in-out infinite}
+.newt-stage:hover{filter:brightness(1.04)}
+.newt{width:200px; height:130px; overflow:visible; animation:bob 3.6s ease-in-out infinite}
+.newt-shadow{fill:rgba(60,40,25,.16)}
+.belly{fill:var(--pink); stroke:var(--pink-d); stroke-width:1.5}
+.head{fill:var(--pink); stroke:var(--pink-d); stroke-width:1.5}
+.tail{fill:var(--pink-d)}
+.leg{fill:var(--pink-d)}
+.eye{fill:#2f2630}
+.glint{fill:#fff}
+.cheek{fill:var(--coral); opacity:.5}
+.smile{fill:none; stroke:#a86b74; stroke-width:2; stroke-linecap:round}
+.gills path{fill:none; stroke:var(--coral); stroke-width:6; stroke-linecap:round; transform-origin:center; animation:gill 3s ease-in-out infinite}
+.gills-r path{animation-delay:.4s}
+.prop{display:none}
+.prop text{font-family:var(--round); font-weight:800; fill:var(--ink-soft)}
+.prop.spark path{fill:var(--amber)}
+.prop.regen .regen-bud{fill:var(--coral); opacity:.9; animation:pulse 1.4s ease-in-out infinite}
+.prop.regen .regen-ray{stroke:var(--amber); stroke-width:2; stroke-linecap:round; animation:pulse 1.4s ease-in-out infinite}
+.prop.rain path{fill:#9fb6c2}
+.prop.rain .drop{stroke:var(--water-d); stroke-width:2; fill:none; stroke-linecap:round}
+.prop.bubbles circle{fill:none; stroke:var(--water-edge); stroke-width:2}
+.prop.letter rect{fill:#fff7e8; stroke:var(--wood-d); stroke-width:1.5}
+.prop.letter path{fill:none; stroke:var(--wood-d); stroke-width:1.5}
+
+/* poses */
+.newt.pose-sleep .eye{transform:scaleY(.18); transform-origin:center; transform-box:fill-box}
+.newt.pose-sleep .zzz{display:block}
+.newt.pose-sleep, .newt.pose-sleep ~ *{animation-play-state:running}
+.newt.pose-gate .letter, .newt.pose-success .spark{display:block}
+.newt.pose-success .spark{display:block}
+.newt.pose-regen .regen{display:block}
+.newt.pose-writing .regen{display:block}
+.newt.pose-failure .rain{display:block}
+.newt.pose-running .bubbles{display:block}
+.newt.pose-letter .letter{display:block}
+.newt.pose-failure .smile{d:path("M92 72 q8 -7 16 0")}
+
+.speech{position:absolute; left:50%; bottom:118px; transform:translateX(-50%); max-width:300px; min-width:160px;
+  background:var(--card); border:1.5px solid var(--card-edge); border-radius:14px; padding:9px 13px; font-size:.84rem;
+  box-shadow:var(--shadow); pointer-events:none}
+.speech::after{content:""; position:absolute; left:50%; bottom:-9px; transform:translateX(-50%);
+  border:8px solid transparent; border-top-color:var(--card); border-bottom:0}
+.speech .mono{color:var(--leaf-d)}
+.hint{position:absolute; right:90px; bottom:64px; font-size:.78rem; color:var(--ink-soft); font-style:italic; pointer-events:none;
+  animation:fadehint 6s ease-in forwards}
+
+/* ── command sheet ──────────────────────────────────────────────────────── */
+.sheet-scrim,.modal-scrim{position:fixed; inset:0; background:rgba(40,28,18,.32); z-index:40; backdrop-filter:blur(2px)}
+.sheet{position:fixed; right:0; top:0; bottom:0; width:360px; max-width:92vw; z-index:50; background:var(--sky1);
+  border-left:1px solid var(--hair); box-shadow:-10px 0 40px rgba(60,40,25,.2); padding:18px; overflow:auto;
+  display:flex; flex-direction:column; gap:12px; animation:slidein .2s ease}
+.sheet-head{display:flex; justify-content:space-between; align-items:center}
+.sheet-head span{font-family:var(--serif); font-size:1.15rem}
+.x{border:0; background:transparent; font-size:1.05rem; cursor:pointer; color:var(--ink-soft)}
+.sheet-to{display:flex; align-items:center; gap:8px; font-size:.82rem; color:var(--ink-soft)}
+.chips{display:flex; flex-wrap:wrap; gap:5px}
+.tchip{font-family:var(--mono); font-size:.72rem; padding:3px 9px; border-radius:999px; border:1px solid var(--card-edge);
+  background:var(--card); cursor:pointer}
+.tchip.on{background:var(--leaf); color:#fff; border-color:var(--leaf-d)}
+.actions{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.act{display:flex; flex-direction:column; gap:2px; align-items:flex-start; text-align:left; padding:10px 12px; border-radius:11px;
+  border:1px solid var(--card-edge); background:var(--card); cursor:pointer; transition:.15s}
+.act:hover{border-color:var(--leaf); transform:translateY(-2px); box-shadow:var(--shadow)}
+.act b{font-size:.86rem}
+.act small{color:var(--ink-soft); font-size:.7rem; line-height:1.15}
+.act.warn:hover{border-color:var(--brick)}
+.act.gate{grid-column:span 2; background:color-mix(in srgb,var(--amber) 16%,var(--card)); border-color:var(--amber)}
+.note-box{display:flex; gap:8px; margin-top:6px}
+.note-box textarea{flex:1; resize:vertical; font-family:var(--round); border:1px solid var(--card-edge); border-radius:10px; padding:8px; background:var(--card); color:var(--ink)}
+.note-box button{align-self:flex-end; padding:8px 12px; border-radius:9px; border:1px solid var(--card-edge); background:var(--card); cursor:pointer; font-weight:700}
+.latency{font-size:.74rem; color:var(--ink-soft); font-style:italic; margin:0}
+
+/* modal + drawer + toast */
+.modal{position:fixed; left:50%; top:34%; transform:translate(-50%,-50%); z-index:60; width:440px; max-width:92vw;
+  background:var(--card); border:1px solid var(--card-edge); border-radius:18px; padding:22px; box-shadow:0 20px 60px rgba(60,40,25,.34)}
+.modal h3{font-family:var(--serif); font-weight:560; margin:0 0 8px}
+.modal p{color:var(--ink-soft); font-size:.9rem; line-height:1.45}
+.modal-row{display:flex; justify-content:flex-end; gap:10px; margin-top:16px}
+.ghost{background:transparent; border:1px solid var(--card-edge); padding:8px 16px; border-radius:9px; cursor:pointer; font-weight:700}
+.danger{background:var(--amber); border:1px solid var(--amber); color:#3a2a12; padding:8px 16px; border-radius:9px; cursor:pointer; font-weight:800}
+.drawer{position:fixed; left:0; right:0; bottom:0; max-height:55vh; z-index:55; background:var(--card); border-top:1px solid var(--card-edge);
+  box-shadow:0 -10px 40px rgba(60,40,25,.22); display:flex; flex-direction:column; animation:slideup .2s ease}
+.drawer-head{display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-bottom:1px solid var(--hair); font-family:var(--mono); font-size:.82rem}
+.drawer pre{margin:0; padding:14px 16px; overflow:auto; font-family:var(--mono); font-size:.78rem; line-height:1.5; white-space:pre-wrap}
+.toast{position:fixed; left:50%; bottom:150px; transform:translateX(-50%); z-index:70; background:var(--ink); color:var(--sky1);
+  padding:10px 18px; border-radius:999px; font-weight:700; font-size:.86rem; box-shadow:var(--shadow)}
+.stale-veil{position:fixed; top:62px; left:50%; transform:translateX(-50%); z-index:65; background:var(--brick); color:#fff;
+  padding:6px 16px; border-radius:999px; font-size:.82rem}
+
+/* ── animations ─────────────────────────────────────────────────────────── */
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-7px) rotate(1deg)}}
+@keyframes swim{0%,100%{transform:translateX(-50%)} 25%{transform:translateX(-180px)} 50%{transform:translateX(-50%)} 75%{transform:translateX(80px)}}
+@keyframes gill{0%,100%{transform:rotate(0deg)} 50%{transform:rotate(6deg)}}
+@keyframes firefly{0%,100%{opacity:.5} 50%{opacity:1}}
+@keyframes lanternPulse{0%,100%{opacity:.5} 50%{opacity:1}}
+@keyframes ripple{from{background-position:0 0} to{background-position:80px 0}}
+@keyframes pulse{0%,100%{opacity:.5} 50%{opacity:1}}
+@keyframes slidein{from{transform:translateX(30px); opacity:0} to{transform:none; opacity:1}}
+@keyframes slideup{from{transform:translateY(30px); opacity:0} to{transform:none; opacity:1}}
+@keyframes fadehint{0%,70%{opacity:.9} 100%{opacity:0}}
+
+@media (prefers-reduced-motion: reduce){
+  .newt-stage,.newt,.gills path,.water::before,.lantern-glow,.fireflies i.lit,.prop.regen *{animation:none !important}
+}

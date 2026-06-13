@@ -95,7 +95,7 @@ AutoScientist/
 ├── papers/<slug>/       # LaTeX papers + claims.yaml (claim → artifact mapping)
 ├── templates/           # project/, paper/, idea/, review/, loop/ templates
 ├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py, lab_bus.py
-├── dashboard/           # Marginalia — optional local dashboard (delete it and nothing changes)
+├── dashboard/           # Vivarium — optional local terrarium dashboard + Newt (delete it and nothing changes)
 └── (projects live at ../AutoScientist-Projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 

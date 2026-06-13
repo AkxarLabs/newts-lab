@@ -3,93 +3,125 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Marginalia — the lab daybook</title>
+<title>Vivarium — the living lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,640&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="journal.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,640&family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="terrarium.css">
 </head>
-<body data-mode="desk">
+<body data-mode="terrarium">
 
-<!-- ── masthead ─────────────────────────────────────────────────────────── -->
-<header class="masthead">
-  <div class="mast-title">
-    <span class="mast-name">Marginalia</span>
-    <span class="mast-sub">the lab daybook</span>
+<!-- ── top bar ───────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-leaf">🌿</span>
+    <span class="brand-name">Vivarium</span>
+    <span class="brand-sub">the living lab</span>
   </div>
-  <nav class="ribbons">
-    <button class="ribbon is-active" data-go="desk">Desk</button>
-    <button class="ribbon" data-go="bench">Bench</button>
-    <button class="ribbon" data-go="gates">Gates <span class="badge" id="gateBadge" hidden>0</span></button>
-    <button class="ribbon" data-go="ledger">Ledger</button>
-    <button class="ribbon" data-go="night">Night&nbsp;Watch</button>
+  <nav class="tabs">
+    <button class="tab is-active" data-go="terrarium">Terrarium</button>
+    <button class="tab" data-go="shelf">Shelf</button>
+    <button class="tab" data-go="gates">Gates <span class="badge" id="gateBadge" hidden>0</span></button>
+    <button class="tab" data-go="ledger">Ledger</button>
+    <button class="tab" data-go="night">Night</button>
   </nav>
-  <div class="mast-meters">
-    <span class="lantern" id="lantern" title="PI gates waiting" hidden>🜂</span>
-    <span class="inkwells" id="inkwells" title="compute slots in use"></span>
-    <span class="deskclock" id="deskclock" title="last data sync">··:··</span>
-    <button class="lamp" id="lampToggle" title="lamplight (day/night)">◐</button>
+  <div class="status">
+    <span class="fireflies" id="fireflies" title="compute slots"></span>
+    <span class="clock" id="clock" title="last sync">··:··</span>
+    <button class="lamp" id="lampToggle" title="day / night">🌙</button>
   </div>
 </header>
 
-<!-- ── the spread ───────────────────────────────────────────────────────── -->
-<main class="spread">
-  <section class="page page-left" id="pageLeft"></section>
-  <section class="page page-right" id="pageRight"></section>
+<!-- ── the stage (view content mounts here) ──────────────────────────────── -->
+<main class="stage" id="stage"></main>
 
-  <!-- the always-on margin: ticker + Pica + composer -->
-  <aside class="margin">
-    <div class="ticker" id="ticker"></div>
+<!-- ── Newt's habitat: always-on pool, buddy, lantern, speech ─────────────── -->
+<footer class="habitat" id="habitat">
+  <div class="lantern" id="lantern" title="PI gates" hidden>
+    <span class="lantern-glow"></span><span class="lantern-n" id="lanternN">0</span>
+  </div>
+  <div class="water"></div>
 
-    <div class="buddy-stage" id="buddyStage" title="click Pica to leave the lab a note">
-      <!-- Pica the inchworm — pure SVG, poses toggled by classes on .pica -->
-      <svg class="pica" id="pica" viewBox="0 0 240 120" aria-label="Pica the inchworm">
-        <ellipse class="pica-shadow" cx="120" cy="104" rx="64" ry="9"/>
-        <g class="pica-body">
-          <path class="pica-rule" d="M24 96 H216"/>
-          <g class="seg s5"><circle cx="170" cy="84" r="17"/></g>
-          <g class="seg s4"><circle cx="146" cy="80" r="17"/></g>
-          <g class="seg s3"><circle cx="122" cy="78" r="18"/></g>
-          <g class="seg s2"><circle cx="98"  cy="80" r="17"/></g>
-          <g class="seg s1 head"><circle cx="74" cy="82" r="18"/>
-            <circle class="eye" cx="68" cy="78" r="3.4"/>
-            <circle class="eye" cx="80" cy="78" r="3.4"/>
-            <path class="antenna" d="M66 66 q-6 -12 -2 -20"/>
-            <path class="antenna" d="M82 66 q6 -12 2 -20"/>
-            <circle class="antenna-tip" cx="63" cy="45" r="2.4"/>
-            <circle class="antenna-tip" cx="86" cy="45" r="2.4"/>
-          </g>
-          <!-- props (shown by pose class) -->
-          <g class="prop goggles"><circle cx="68" cy="78" r="7"/><circle cx="80" cy="78" r="7"/><path d="M61 78 H53 M87 78 H95"/></g>
-          <g class="prop glasses"><circle cx="68" cy="78" r="6.5"/><circle cx="80" cy="78" r="6.5"/><path d="M74.5 78 h-1"/></g>
-          <g class="prop bell"><path d="M150 92 a10 10 0 0 1 20 0 v3 h-20 z"/><circle cx="160" cy="79" r="2.2"/><circle cx="160" cy="98" r="2"/></g>
-          <g class="prop letter"><rect x="150" y="70" width="26" height="18" rx="2"/><path d="M150 70 l13 10 l13 -10"/></g>
-          <g class="prop blanket"><path d="M86 84 q40 18 80 0 q4 14 -4 18 q-36 12 -72 0 q-8 -4 -4 -18 z"/></g>
-          <g class="prop nib"><path d="M58 70 l-14 22 l8 4 l12 -20 z"/><path d="M50 92 l-3 7"/></g>
-          <g class="prop zzz"><text x="44" y="60">z</text><text x="34" y="48">z</text><text x="26" y="38">z</text></g>
-          <g class="prop spark"><path d="M170 56 l3 8 l8 1 l-6 6 l2 8 l-7 -4 l-7 4 l2 -8 l-6 -6 l8 -1 z"/></g>
-          <g class="prop splat"><path d="M168 62 q10 -6 14 2 q8 -2 6 8 q6 6 -2 10 q0 8 -10 5 q-6 6 -12 -1 q-9 1 -7 -9 q-7 -5 1 -12 q2 -8 10 -3 z"/></g>
+  <div class="newt-stage" id="newtStage" title="click Newt to command the lab">
+    <div class="speech" id="speech" hidden></div>
+    <!-- Newt the axolotl — pure SVG, poses toggled by classes on .newt -->
+    <svg class="newt" id="newt" viewBox="0 0 200 130" aria-label="Newt the axolotl">
+      <ellipse class="newt-shadow" cx="100" cy="116" rx="52" ry="7"/>
+      <g class="newt-body">
+        <!-- tail -->
+        <path class="tail" d="M150 78 q34 -6 40 12 q-6 22 -40 8 z"/>
+        <!-- legs -->
+        <ellipse class="leg" cx="78" cy="98" rx="9" ry="6"/>
+        <ellipse class="leg" cx="128" cy="98" rx="9" ry="6"/>
+        <!-- body -->
+        <path class="belly" d="M52 74 q60 -34 104 0 q6 24 -16 30 q-36 12 -72 0 q-22 -6 -16 -30 z"/>
+        <!-- gills (three frilly stalks each side) -->
+        <g class="gills gills-l">
+          <path d="M58 52 q-22 -10 -30 -2 q10 6 30 6"/>
+          <path d="M58 60 q-26 0 -34 12 q14 2 34 -4"/>
+          <path d="M58 68 q-22 10 -26 22 q14 -2 28 -12"/>
         </g>
-      </svg>
-      <div class="speech" id="speech" hidden></div>
-    </div>
+        <g class="gills gills-r">
+          <path d="M142 52 q22 -10 30 -2 q-10 6 -30 6"/>
+          <path d="M142 60 q26 0 34 12 q-14 2 -34 -4"/>
+          <path d="M142 68 q22 10 26 22 q-14 -2 -28 -12"/>
+        </g>
+        <!-- head -->
+        <path class="head" d="M56 56 q44 -34 88 0 q4 26 -44 26 q-48 0 -44 -26 z"/>
+        <!-- face -->
+        <circle class="eye" cx="82" cy="58" r="5.2"/><circle class="eye" cx="118" cy="58" r="5.2"/>
+        <circle class="glint" cx="83.6" cy="56.4" r="1.7"/><circle class="glint" cx="119.6" cy="56.4" r="1.7"/>
+        <circle class="cheek" cx="70" cy="66" r="5"/><circle class="cheek" cx="130" cy="66" r="5"/>
+        <path class="smile" d="M92 68 q8 7 16 0"/>
+        <!-- props (shown by pose) -->
+        <g class="prop zzz"><text x="150" y="40">z</text><text x="162" y="28">z</text><text x="172" y="18">z</text></g>
+        <g class="prop spark"><path d="M150 28 l3 8 l8 1 l-6 6 l2 8 l-7 -4 l-7 4 l2 -8 l-6 -6 l8 -1 z"/></g>
+        <g class="prop regen"><circle class="regen-bud" cx="150" cy="98" r="7"/><path class="regen-ray" d="M150 86 v-8 M161 92 l6 -5 M139 92 l-6 -5"/></g>
+        <g class="prop rain"><path d="M150 22 q14 0 14 12 q0 8 -14 8 q-16 0 -16 -10 q0 -10 16 -10 z"/><path class="drop" d="M142 46 v6 M150 48 v6 M158 46 v6"/></g>
+        <g class="prop bubbles"><circle cx="160" cy="60" r="4"/><circle cx="172" cy="48" r="3"/><circle cx="166" cy="36" r="2.2"/></g>
+        <g class="prop letter"><rect x="146" y="44" width="30" height="20" rx="3"/><path d="M146 44 l15 11 l15 -11"/></g>
+      </g>
+    </svg>
+  </div>
 
-    <div class="composer" id="composer" hidden>
-      <div class="composer-to">
-        <span>To:</span>
-        <span class="chips" id="targetChips"></span>
-      </div>
-      <textarea id="directiveText" rows="3" placeholder="leave the lab a note…"></textarea>
-      <div class="composer-foot">
-        <span class="latency" id="latency"></span>
-        <button id="sendDirective">pin it</button>
-      </div>
-      <p class="scope-note">Directives steer agents at their next checkpoint — they can’t approve gates, change frozen budgets/evals, or rewrite ledgers (those go through <code>/configure</code> and the gate procedures).</p>
-    </div>
-  </aside>
-</main>
+  <div class="hint" id="hint">click Newt to command the lab →</div>
+</footer>
 
-<div class="stale-veil" id="staleVeil" hidden>the daybook’s ink has gone quiet — data may be stale</div>
+<!-- ── overlays: command console · gate modal · tool drawer ──────────────── -->
+<div class="sheet-scrim" id="sheetScrim" hidden></div>
+<aside class="sheet" id="sheet" hidden>
+  <div class="sheet-head">
+    <span id="sheetTitle">Command the lab</span>
+    <button class="x" id="sheetClose">✕</button>
+  </div>
+  <div class="sheet-to">
+    <span>send to</span><span class="chips" id="targetChips"></span>
+  </div>
+  <div class="actions" id="actionGrid"></div>
+  <div class="note-box">
+    <textarea id="noteText" rows="2" placeholder="…or write a free-text note"></textarea>
+    <button id="sendNote">leave a note</button>
+  </div>
+  <p class="latency" id="latency"></p>
+</aside>
+
+<div class="modal-scrim" id="modalScrim" hidden></div>
+<div class="modal" id="modal" hidden>
+  <h3 id="modalTitle">Approve gate?</h3>
+  <p id="modalBody"></p>
+  <div class="modal-row">
+    <button class="ghost" id="modalCancel">cancel</button>
+    <button class="danger" id="modalOk">confirm</button>
+  </div>
+</div>
+
+<div class="drawer" id="drawer" hidden>
+  <div class="drawer-head"><span id="drawerTitle">output</span><button class="x" id="drawerClose">✕</button></div>
+  <pre id="drawerBody"></pre>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<div class="stale-veil" id="staleVeil" hidden>the glass has fogged — data may be stale</div>
 
 <script src="app.js"></script>
 </body>

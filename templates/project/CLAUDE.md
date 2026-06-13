@@ -59,7 +59,11 @@ experiment attempt) run `uv run python scripts/lab_bus.py inbox`: a PI **directi
 instruction to act on within the protocol, then ack `done` with an evidence pointer
 (`scripts/lab_bus.py ack <id> done --evidence <run-id-or-ledger-line>`). A directive that
 would touch frozen/PI-owned settings is acked `blocked` with the reason — directives are
-subordinate to gates and hard rules; a directive is never gate approval.
+subordinate to gates and hard rules; a directive is never gate approval. A directive may be a
+**structured command** (`kind:"command"` + `action`, e.g. `start_loop`/`set_mode`/`run_smoke`/
+`request_run`/`park`/`kill`) the dashboard issued — execute it through the normal procedure,
+within the protocol, then ack. A `gate2_envelope.pi_signed: true` with `signed_via: dashboard:*`
+in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is never dashboard-signed.
 
 ## Subagents (you decide when)
 

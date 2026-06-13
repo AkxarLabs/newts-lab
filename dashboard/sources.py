@@ -1,4 +1,4 @@
-"""Read-only world model for the Marginalia dashboard.
+"""Read-only world model for the Vivarium dashboard.
 
 The lab's files ARE the database — this module only reads them, tolerantly:
   - lab/REGISTRY.md        -> the idea/project roster (same row logic as tools/check_lab.py)
@@ -179,8 +179,18 @@ def _directive_threads(bus_dir: Path) -> list[dict]:
         ack = acks.get(d["id"])
         state = "withdrawn" if d["id"] in withdrawn else (ack["state"] if ack else "pending")
         threads.append({"id": d["id"], "ts": d.get("ts"), "text": d.get("text", ""),
-                        "state": state, "ack": ack})
+                        "state": state, "ack": ack,
+                        "kind": d.get("kind", "note"), "action": d.get("action"),
+                        "args": d.get("args")})
     return threads
+
+
+_GATE_RE = re.compile(r"gate ?([123])", re.I)
+
+
+def _gate_of(next_action: str) -> int | None:
+    m = _GATE_RE.search(next_action or "")
+    return int(m.group(1)) if m else None
 
 
 # ── the snapshot ──────────────────────────────────────────────────────────────
@@ -199,6 +209,7 @@ def snapshot() -> dict:
             "id": row["id"], "title": row["title"], "state": row["state"],
             "updated": row["updated"], "next": row["next"],
             "has_project": pdir is not None, "has_paper": bool((row.get("paper") or "").strip(" -—`")),
+            "project_dir": str(pdir) if pdir else None, "gate": _gate_of(row["next"]),
             "inflight": [], "best": None, "loop_active": False, "events": [],
         }
         item["directives"] = []

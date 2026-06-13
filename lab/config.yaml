@@ -86,5 +86,5 @@ loop:                           # ── /research-loop defaults · project-over
   explore_max_new_lines_per_round: 3  # explore mode only: max NEW mechanism-distinct lines an
                                 # expand round may append to PLAN.md (each with pre-written criteria)
 
-dashboard:                      # ── optional Marginalia dashboard (dashboard/serve.py) ──
+dashboard:                      # ── optional Vivarium dashboard (dashboard/serve.py) ──
   port: 8787                    # local-only; see docs/dashboard.md

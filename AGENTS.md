@@ -61,8 +61,10 @@ parallelism:
   `audit_claims.py`, `show_config.py`, `run_slots.py`, `s2.py`, `lab_bus.py`), project
   `scripts/` (`run.py`, `sweep.py`, `compare.py`, `status.py`, `check_project.py`,
   `lab_bus.py`). Invoke hub tools via `uv run --with pyyaml python tools/<script>.py`.
-- An optional local dashboard lives in `dashboard/` (Marginalia) — it reads the bus and
-  registry and never writes anything but PI directives; see `docs/dashboard.md`.
+- An optional local dashboard lives in `dashboard/` (Vivarium) — the lab as a living
+  terrarium with an axolotl, **Newt**, you click to command. It reads the bus and registry;
+  its writes are bus directives/commands and (PI-confirmed, local) Gate 1/2 approvals — never
+  Gate 3. See `docs/dashboard.md`.
 - Configuration is 3-layered (experiment yaml > project `control.yaml` >
   `lab/config.yaml`) — see `docs/configuration.md`.
 - Projects live OUTSIDE this repo at `lab.projects_root` (default

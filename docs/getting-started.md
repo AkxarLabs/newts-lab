@@ -56,8 +56,9 @@ You'll be stopped at the gates and otherwise left to read the notebook.
 ## Watching it work (optional)
 
 To keep an eye on the lab while agents iterate — every lifecycle stage and every running
-project, live — launch the optional [Marginalia dashboard](dashboard.md): the lab rendered as a
-living daybook with a tiny inchworm named Pica you can click to leave directives for the agents.
+project, live — launch the optional [Vivarium dashboard](dashboard.md): the lab rendered as a
+living terrarium with an axolotl named Newt you can click to **command** the agents (start/stop
+loops, request runs, approve Gate 1 & 2), all from the scene.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787

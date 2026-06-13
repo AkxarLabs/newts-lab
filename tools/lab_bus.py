@@ -17,9 +17,12 @@ never break the lab. The dashboard (optional) tails these files; with no dashboa
 they are simply a local audit trail.
 
 Event line:  {ts, source, kind, idea, run_id, stage, status, detail, data{}}
-Directive line (written by the dashboard to directives.jsonl): {id, ts, from, text} or a
-withdrawal {kind:"withdraw", ref:<id>, ts}. Acks are events of kind directive_seen /
-directive_done / directive_blocked carrying data.ref = the directive id.
+Directive line (written by the dashboard to directives.jsonl): a free-text note
+{id, ts, from, text}, a STRUCTURED command {id, ts, from, kind:"command", action, args, text}
+(the agent executes the action in-protocol — start_loop/set_mode/park/kill/request_run/…),
+or a withdrawal {kind:"withdraw", ref:<id>, ts}. Acks are events of kind directive_seen /
+directive_done / directive_blocked carrying data.ref = the directive id. A command that would
+touch a frozen/PI-owned setting is acked `blocked` — directives/commands are never gate approval.
 """
 
 from __future__ import annotations
@@ -43,6 +46,7 @@ KINDS = {
     "run_started", "run_finished", "sweep_started", "sweep_finished",
     "slot_acquired", "slot_released", "slot_denied", "slot_reclaimed",
     "cycle", "review_verdict", "paper_compiled", "kill", "writeback",
+    "frontier_expand", "decision_revisit", "replan",
     "directive_seen", "directive_done", "directive_blocked", "note",
 }
 
@@ -123,7 +127,14 @@ def cmd_inbox(args) -> int:
         return 0
     print(f"## Directive inbox — {SOURCE} ({len(pending)} unresolved)\n")
     for d in pending:
-        print(f"- [{d['_status']}] `{d['id']}` ({d.get('ts', '?')}) — {d.get('text', '').strip()}")
+        label = (d.get("text", "") or "").strip()
+        if d.get("kind") == "command":
+            args = d.get("args") or {}
+            label = f"[command: {d.get('action')}]" + (f" {args}" if args else "") + (f" — {label}" if label else "")
+        print(f"- [{d['_status']}] `{d['id']}` ({d.get('ts', '?')}) — {label}")
+    print("\nAct within the protocol, then ack: `lab_bus.py ack <id> done --evidence <path>`.")
+    print("A `command` directive is a structured PI instruction (start_loop, set_mode, park, …);")
+    print("a command that would touch a frozen/PI-owned setting is acked `blocked` — never a gate.")
     return 0
 
 
