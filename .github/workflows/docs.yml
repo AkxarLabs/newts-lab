@@ -1,0 +1,53 @@
+name: docs
+
+# Build the ProperDocs site on every push/PR (with --strict, so a broken link or a
+# missing nav entry fails the check), and deploy it to GitHub Pages on a push to the
+# default branch.
+#
+# One-time repo setting: Settings → Pages → "Build and deployment" → Source = "GitHub
+# Actions". Until that is set, the build still runs (and gates PRs) but the deploy job
+# is a no-op-with-error; flip the setting once and deploys start working.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress Pages publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Build docs (strict)
+        run: uv run --with properdocs --with mkdocs-material properdocs build --strict
+      - name: Upload Pages artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

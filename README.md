@@ -83,6 +83,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 AutoScientist/
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
+├── .github/workflows/   # CI: docs build+deploy (Pages), lab lint, cross-platform template smoke
 ├── .claude/skills/      # The procedures above
 ├── .claude/agents/      # Scoped subagents: fresh-context-reviewer, experiment-runner, overseer
 ├── lab/

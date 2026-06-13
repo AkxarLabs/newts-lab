@@ -1,0 +1,24 @@
+name: ci
+
+# Smoke CI for a spawned AutoScientist project: proves the pipeline runs end-to-end
+# from a clean clone (config -> seed -> run -> artifacts -> registry). Domain deps you
+# add to pyproject.toml install here automatically; keep this smoke test green forever
+# and add experiment-specific tests alongside it.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Project readiness lint
+        run: uv run python scripts/check_project.py
+      - name: Smoke test (full pipeline end-to-end)
+        run: uv run pytest -q

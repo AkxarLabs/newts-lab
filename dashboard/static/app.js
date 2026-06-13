@@ -150,6 +150,8 @@ function renderBench(s) {
     let chips = `<span class="chip state">${esc(it.state)}</span>`;
     fly.forEach(r => { chips += `<span class="chip ${r.state}">${esc(r.run_id?.split('-').slice(-1)[0] || r.stage || 'run')} ${r.state}</span>`; });
     if (it.loop_active) chips += '<span class="chip live">loop</span>';
+    const pendingDir = (it.directives || []).filter(d => d.state === 'pending' || d.state === 'seen').length;
+    if (pendingDir) chips += `<span class="chip note" title="directives awaiting an agent ack">✎ ${pendingDir}</span>`;
     let rule = '';
     if (fly.length && fly[0].budget_min) {
       const pct = Math.min(100, (fly[0].elapsed_s / (fly[0].budget_min * 60)) * 100);
@@ -182,12 +184,16 @@ function renderGates(s) {
 
 function renderLedger(s) {
   const L = $('#pageLeft'); L.innerHTML = '<h2>The back pages <small>every directive & event</small></h2>';
-  const dir = s.directives || [];
+  // directives across every target: hub + each project's own thread
+  const dir = [
+    ...(s.directives || []).map(d => ({ ...d, target: 'hub' })),
+    ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: it.id }))),
+  ];
   let html = '<h3 style="margin-top:14px">Directives</h3><table><thead><tr><th>id</th><th>target</th><th>note</th><th>state</th><th>evidence</th></tr></thead><tbody>';
   if (!dir.length) html += '<tr><td colspan="5" class="sub">none</td></tr>';
   dir.forEach(d => {
     const ev = d.ack && d.ack.evidence ? `<span class="mono">${esc(d.ack.evidence)}</span>` : (d.state === 'done' ? '<span class="unresolved">— none —</span>' : '');
-    html += `<tr><td class="mono">${esc(d.id)}</td><td>hub</td><td>${esc(d.text)}</td><td><span class="dchip ${d.state}${d.state === 'done' && !(d.ack && d.ack.evidence) ? ' noevidence' : ''}">${esc(d.state)}</span></td><td>${ev}</td></tr>`;
+    html += `<tr><td class="mono">${esc(d.id)}</td><td>${esc(d.target)}</td><td>${esc(d.text)}</td><td><span class="dchip ${d.state}${d.state === 'done' && !(d.ack && d.ack.evidence) ? ' noevidence' : ''}">${esc(d.state)}</span></td><td>${ev}</td></tr>`;
   });
   html += '</tbody></table>';
   html += '<h3 style="margin-top:22px">Event log</h3><table><thead><tr><th>time</th><th>source</th><th>kind</th><th>detail</th></tr></thead><tbody>';

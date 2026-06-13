@@ -201,12 +201,14 @@ def snapshot() -> dict:
             "has_project": pdir is not None, "has_paper": bool((row.get("paper") or "").strip(" -—`")),
             "inflight": [], "best": None, "loop_active": False, "events": [],
         }
+        item["directives"] = []
         if pdir is not None:
             registry = _read_jsonl(pdir / "runs" / "registry.jsonl")
             item["n_runs"] = sum(1 for r in registry if r.get("run_id"))
             item["best"] = _best_metric(registry)
             item["inflight"] = _inflight_runs(pdir)
             item["loop_active"] = (pdir / ".bus" / ".loop-active").exists()
+            item["directives"] = _directive_threads(pdir / ".bus")
             pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)

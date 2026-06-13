@@ -135,6 +135,7 @@ html[data-lamp="night"] .rail-line{background:var(--clay)}
 .chip.state{border-color:var(--clay); color:var(--clay)}
 .chip.live{border-color:var(--moss); color:var(--moss)}
 .chip.stalled{border-color:var(--brick); color:var(--brick)}
+.chip.note{border-color:var(--amber); color:var(--amber)}
 .card .doodle{position:absolute; top:12px; right:12px; opacity:.5}
 .card .rule{height:5px; background:var(--paper-deep); border-radius:3px; margin-top:8px; overflow:hidden}
 .card .rule>i{display:block; height:100%; background:var(--clay)}

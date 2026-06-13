@@ -1,0 +1,85 @@
+name: ci
+
+# Mechanical guardrails for the lab, run on every push/PR:
+#   lab-checks      — registry consistency, dashboard import, docs build (strict)
+#   template-smoke  — spawn templates/project/ and run its check_project + pytest + a
+#                     2-seed sweep, on Linux AND Windows (much of the tooling is
+#                     Windows-hardened, so the Windows leg earns its keep).
+# Everything runs through `uv` with ephemeral envs — no committed lockfile needed at
+# the hub, and the spawned project syncs its own pyproject.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Lab registry/idea consistency lint
+        run: uv run --with pyyaml python tools/check_lab.py
+      - name: Dashboard reads the lab without crashing
+        run: uv run --with pyyaml python -c "import sys; sys.path.insert(0, 'dashboard'); import sources; s = sources.snapshot(); print('snapshot ok — cold:', s['cold'], '| items:', len(s['items']))"
+      - name: Docs build (strict)
+        run: uv run --with properdocs --with mkdocs-material properdocs build --strict
+
+  template-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Spawn templates/project into a scratch project
+        run: |
+          cat > ci_spawn.py <<'PY'
+          import shutil
+          from pathlib import Path
+          hub = Path.cwd()
+          dest = hub.parent / "_ci_scratch"
+          src = hub / "templates" / "project"
+          if dest.exists():
+              shutil.rmtree(dest)
+          shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+          subs = {
+              "{{slug}}": "ci-smoke",
+              "{{title}}": "CI Smoke Project",
+              "{{date}}": "2026-01-01",
+              "{{hub_path}}": str(hub).replace("\\", "/"),
+          }
+          exts = {".py", ".toml", ".md", ".yaml", ".yml", ".cfg", ".txt"}
+          for p in dest.rglob("*"):
+              if p.is_file() and p.suffix in exts:
+                  t = p.read_text(encoding="utf-8-sig")
+                  for k, v in subs.items():
+                      t = t.replace(k, v)
+                  p.write_text(t, encoding="utf-8")
+          print("spawned ->", dest)
+          PY
+          uv run python ci_spawn.py
+      - name: check_project readiness lint
+        working-directory: ../_ci_scratch
+        run: uv run python scripts/check_project.py
+      - name: pytest smoke (full pipeline end-to-end)
+        working-directory: ../_ci_scratch
+        run: uv run pytest -q --basetemp=.pytmp
+      - name: 2-seed sweep (sweep.py + mechanical bus emits)
+        working-directory: ../_ci_scratch
+        run: uv run python scripts/sweep.py --config configs/experiments/exp-001-smoke.yaml --seeds 0,1

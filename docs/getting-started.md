@@ -72,6 +72,14 @@ uv run --with properdocs --with mkdocs-material properdocs serve    # http://127
 uv run --with properdocs --with mkdocs-material properdocs build    # static site into site/
 ```
 
+!!! note "Auto-published on push"
+    The `docs` GitHub Actions workflow (`.github/workflows/docs.yml`) builds the site with
+    `--strict` on every push and pull request (so a broken link fails the check) and deploys
+    it to GitHub Pages on a push to the default branch. One-time setup in your lab repo:
+    **Settings → Pages → Source = "GitHub Actions"**. The companion `ci` workflow lints the
+    registry, imports the dashboard, and spawns the project template to run its smoke test on
+    Linux and Windows.
+
 ## A typical week with the lab
 
 | When | What happens |
