@@ -193,12 +193,150 @@ def _gate_of(next_action: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# ── workers (per-agent activity from .bus/workers/*.jsonl — the traceability feed) ──
+#
+# tools/trace_hook.py (a Claude Code hook) writes ONE file per agent/subagent. We fold
+# each file into a roster entry: who it is (role), what it's doing (status + recent
+# actions), and where (project / idea). Best-effort and non-canonical, like the rest of
+# the bus — absent dir => []. The dashboard renders one sprite per entry.
+
+_WORKER_LINGER_S = 300   # keep a finished worker on the roster this long (for its despawn anim)
+_WORKER_STALE_S = 150    # no activity & no stop -> treat as idle, not "working"
+_MAX_RECENT = 40
+_KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
+                "overseer", "ideation-critic", "scoping-advocate"}
+
+
+def _workers(bus_dir: Path, project: str | None = None) -> list[dict]:
+    wdir = bus_dir / "workers"
+    if not wdir.exists():
+        return []
+    now = time.time()
+    out = []
+    for f in sorted(wdir.glob("*.jsonl")):
+        lines = _read_jsonl(f)
+        if not lines:
+            continue
+        role, idea, done, spawns, actions = "orchestrator", None, False, None, []
+        for ln in lines:
+            if ln.get("role"):
+                role = ln["role"]
+            if ln.get("idea"):
+                idea = ln["idea"]
+            if ln.get("spawns"):
+                spawns = ln["spawns"]
+            ev = ln.get("event")
+            if ev == "stop":
+                done = True
+            if ev in ("action", "spawn"):
+                actions.append({"ts": ln.get("ts"),
+                                "text": ln.get("summary") or ln.get("tool") or ev,
+                                "kind": ln.get("kind") or ev})
+        try:
+            age = now - f.stat().st_mtime
+        except OSError:
+            age = 0
+        if done:
+            if age > _WORKER_LINGER_S:
+                continue                       # finished a while ago -> off the roster
+            status = "done"
+        elif age > _WORKER_STALE_S:
+            status = "idle"
+        else:
+            status = "working"
+        out.append({
+            "worker_id": f.stem,
+            "role": role,
+            "role_known": role in _KNOWN_ROLES,
+            "status": status,
+            "project": project,
+            "idea": idea,
+            "spawns": spawns,
+            "started": lines[0].get("ts"),
+            "last_ts": lines[-1].get("ts"),
+            "n_actions": sum(1 for ln in lines if ln.get("event") in ("action", "spawn")),
+            "recent_actions": actions[-_MAX_RECENT:],
+        })
+    return out
+
+
+# ── campaigns (/autopilot) — first-class grouping of delegated projects ─────────
+#
+# A campaign is a PI-signed /autopilot brief that delegates work across projects. We read it from two
+# tolerant sources and merge: (1) campaign logs in lab/campaigns/*.md (optional YAML frontmatter),
+# and (2) the truth on the ground — each project's control.yaml gate2_envelope.signed_via, which is
+# `autopilot:<campaign>` (or `campaign:<name>`) when a FULL-run envelope was signed under a campaign.
+
+def _first_heading(text: str) -> str | None:
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("#"):
+            return s.lstrip("#").strip()
+    return None
+
+
+def _excerpt(text: str, n: int = 240) -> str:
+    body = text
+    if body.lstrip().startswith("---"):
+        parts = body.split("---", 2)
+        if len(parts) >= 3:
+            body = parts[2]
+    body = "\n".join(ln for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("#"))
+    return (body[:n] + "…") if len(body) > n else body
+
+
+def campaigns(rows: list[dict] | None = None) -> list[dict]:
+    rows = rows if rows is not None else parse_registry()
+    cmap: dict[str, dict] = {}
+    cdir = LAB / "campaigns"
+    for f in (sorted(cdir.glob("*.md")) if cdir.exists() else []):
+        text = _read_text(f)
+        meta = {}
+        if text.lstrip().startswith("---"):
+            parts = text.split("---", 2)
+            if len(parts) >= 3:
+                try:
+                    meta = yaml.safe_load(parts[1]) or {}
+                except yaml.YAMLError:
+                    meta = {}
+        name = str(meta.get("name") or f.stem)
+        projects = meta.get("projects") or meta.get("ideas") or []
+        if isinstance(projects, str):
+            projects = [projects]
+        cmap[name] = {
+            "name": name, "title": meta.get("title") or _first_heading(text) or name,
+            "status": str(meta.get("status") or "active"),
+            "signed": meta.get("signed_by") or meta.get("signed"),
+            "started": meta.get("started"), "budget": meta.get("budget") or meta.get("envelope"),
+            "projects": [str(p).strip() for p in projects], "file": f"campaigns/{f.name}",
+            "detail": _excerpt(text),
+        }
+    # membership from each project's signed envelope (the ground truth)
+    for row in rows:
+        pdir = _project_path(row)
+        ctrl = (pdir / "control.yaml") if pdir else None
+        if not ctrl or not ctrl.exists():
+            continue
+        env = (_load_yaml(ctrl).get("gate2_envelope") or {})
+        sv = str(env.get("signed_via") or "").strip()
+        if ":" in sv:
+            kind, ref = sv.split(":", 1)
+            if kind.strip().lower() in ("autopilot", "campaign") and ref.strip():
+                ref = ref.strip()
+                c = cmap.setdefault(ref, {"name": ref, "title": ref, "status": "active", "signed": None,
+                                          "started": None, "budget": env, "projects": [], "file": None, "detail": ""})
+                if row["id"] not in c["projects"]:
+                    c["projects"].append(row["id"])
+    return list(cmap.values())
+
+
 # ── the snapshot ──────────────────────────────────────────────────────────────
 
 def snapshot() -> dict:
     rows = parse_registry()
     hub_bus = LAB / ".bus"
     items, all_events = [], []
+    workers = _workers(hub_bus, None)
 
     for e in _read_jsonl(hub_bus / "events.jsonl", limit=400):
         all_events.append(e)
@@ -213,6 +351,7 @@ def snapshot() -> dict:
             "inflight": [], "best": None, "loop_active": False, "events": [],
         }
         item["directives"] = []
+        item["n_workers"] = 0
         if pdir is not None:
             registry = _read_jsonl(pdir / "runs" / "registry.jsonl")
             item["n_runs"] = sum(1 for r in registry if r.get("run_id"))
@@ -223,6 +362,9 @@ def snapshot() -> dict:
             pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)
+            pworkers = _workers(pdir / ".bus", row["id"])
+            item["n_workers"] = sum(1 for w in pworkers if w["status"] != "done")
+            workers.extend(pworkers)
         items.append(item)
 
     all_events.sort(key=lambda e: e.get("ts", ""))
@@ -235,6 +377,8 @@ def snapshot() -> dict:
         "events": all_events[-200:],
         "slots": {"in_use": len(slots()), "cap": slot_cap(), "held": slots()},
         "directives": _directive_threads(hub_bus),
+        "workers": workers[-200:],
+        "campaigns": campaigns(rows),
         "gates_waiting": len(gates),
         "cold": len(rows) == 0,
     }

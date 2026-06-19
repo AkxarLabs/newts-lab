@@ -9,10 +9,18 @@ lab/.slots/
 # Dashboard event bus + directive inbox (tools/lab_bus.py, dashboard/)
 lab/.bus/
 
+# Dashboard SOURCE art (raw generations / previews) — provenance only, never served, large.
+# The RUNTIME art the page actually loads lives in dashboard/static/assets/ and IS committed.
+dashboard/assets-src/
+
 # Python
 __pycache__/
 *.pyc
 .venv/
+
+# Hub-tools test suite runtime (pytest --basetemp=.pytmp; cwd-relative, so match it anywhere)
+.pytmp/
+.pytest_cache/
 
 # LaTeX build artifacts
 papers/**/*.aux

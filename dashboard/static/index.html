@@ -4,90 +4,143 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vivarium — the living lab</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,640&family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="terrarium.css">
 </head>
 <body data-mode="terrarium">
 
-<!-- ── top bar ───────────────────────────────────────────────────────────── -->
+<!-- ── the living world: a full-bleed, hand-drawn Canvas-2D lab rendered behind everything.
+     No build, no deps — the creature, the rooms, and every worker are drawn procedurally. -->
+<canvas id="scene" aria-hidden="true"></canvas>
+
+<!-- ── top bar ─────────────────────────────────────────────────────────────── -->
 <header class="topbar">
   <div class="brand">
-    <span class="logo-leaf">🌿</span>
+    <span class="logo-mote" aria-hidden="true"></span>
     <span class="brand-name">Vivarium</span>
-    <span class="brand-sub">the living lab</span>
+    <span class="brand-sub">the&nbsp;living&nbsp;lab</span>
   </div>
   <nav class="tabs">
-    <button class="tab is-active" data-go="terrarium">Terrarium</button>
-    <button class="tab" data-go="shelf">Shelf</button>
-    <button class="tab" data-go="gates">Gates <span class="badge" id="gateBadge" hidden>0</span></button>
+    <button class="tab is-active" data-go="terrarium">World</button>
+    <button class="tab" data-go="shelf">Projects</button>
+    <button class="tab" data-go="agents">Agents</button>
+    <button class="tab" data-go="gates">Activity <span class="badge" id="gateBadge" hidden>0</span></button>
     <button class="tab" data-go="ledger">Ledger</button>
-    <button class="tab" data-go="night">Night</button>
   </nav>
   <div class="status">
-    <span class="fireflies" id="fireflies" title="compute slots"></span>
+    <span class="motes" id="fireflies" title="compute slots"></span>
     <span class="clock" id="clock" title="last sync">··:··</span>
-    <button class="lamp" id="lampToggle" title="day / night">🌙</button>
+    <button class="iconbtn" id="paletteBtn" title="search / jump (press /)">⌕</button>
+    <button class="iconbtn" id="bell" title="what needs you">◔<span class="bell-n" id="bellN" hidden>0</span></button>
+    <button class="iconbtn" id="settingsBtn" title="settings, theme, guide">⚙</button>
   </div>
 </header>
 
-<!-- ── the stage (view content mounts here) ──────────────────────────────── -->
+<!-- ── onboarding / help overlay (the ? button; auto-shown once) ─────────────────── -->
+<div class="help-scrim" id="helpScrim" hidden></div>
+<div class="help" id="help" hidden>
+  <div class="help-head"><span>Welcome to the Vivarium</span><button class="x" id="helpClose">✕</button></div>
+  <div class="help-body">
+    <p class="help-lede">Your lab, rendered as a living world. Here's how to read it.</p>
+    <div class="help-grid">
+      <div class="help-card"><span class="hc-ico">🏛️</span><b>Rooms are stages</b><small>Each room is a lifecycle stage — Incubator → Study → Lab → Writing → Archive, plus the Margins for parked/killed work. An idea/project sits in the room for its stage.</small></div>
+      <div class="help-card"><span class="hc-ico">🦎</span><b>Buddies are the work</b><small>Each creature is an idea/project (coloured by project) or a working agent. The little pip on an agent shows its role. Newt, bottom-centre, is the orchestrator — and your command handle.</small></div>
+      <div class="help-card"><span class="hc-ico">🔍</span><b>Click to dive in</b><small>Click a room (or a project buddy) to zoom into it and watch its crew move. Click an agent to open its inspector — what it's doing now + its full action log — and <b>⊙ follow</b> it.</small></div>
+      <div class="help-card"><span class="hc-ico">⌁</span><b>Stay in the loop</b><small>The <b>◔ bell</b> shows what needs you (gates, escalations). <b>⌕</b> (or <kbd>/</kbd>) is the command palette. <b>⚙</b> holds settings, theme & the lab's knowledge. Gates 1 & 2 you can approve here; Gate 3 is always done in a session.</small></div>
+    </div>
+    <p class="help-foot">Want to see it move without a live session? <button class="help-demo" id="helpDemo">▶ open demo mode</button> — a synthetic living lab to explore. Light / dark lives in <span class="mono">⚙</span>.</p>
+  </div>
+</div>
+
+<!-- ── settings drawer (the ⚙ button): preferences, theme, knowledge, guide ───────── -->
+<div class="settings-scrim" id="settingsScrim" hidden></div>
+<aside class="settings" id="settings" hidden>
+  <div class="settings-head"><span>Settings</span><button class="x" id="settingsClose">✕</button></div>
+  <div class="settings-body" id="settingsBody"></div>
+</aside>
+
+<!-- ── command palette (press / or ⌕): jump to tabs, rooms, projects, actions ─────── -->
+<div class="palette-scrim" id="paletteScrim" hidden></div>
+<div class="palette" id="palette" hidden>
+  <input id="paletteInput" type="text" autocomplete="off" placeholder="jump to a room, project, tab, or action…">
+  <div class="palette-list" id="paletteList"></div>
+  <div class="palette-hint">↑↓ to move · ↵ to go · esc to close</div>
+</div>
+
+<!-- ── attention inbox (the bell): everything waiting on the PI ───────────────────── -->
+<aside class="attention" id="attention" hidden>
+  <div class="att-head"><span>Needs you</span><button class="x" id="attentionClose">✕</button></div>
+  <div class="att-body" id="attentionBody"></div>
+</aside>
+
+<!-- ── project detail drawer ──────────────────────────────────────────────────────── -->
+<aside class="detail" id="detail" hidden>
+  <div class="detail-head"><span id="detailTitle">project</span><button class="x" id="detailClose">✕</button></div>
+  <div class="detail-body" id="detailBody"></div>
+</aside>
+
+<!-- ── camera breadcrumb (shown when zoomed into a room or a project's bench) ─── -->
+<div class="breadcrumb" id="breadcrumb" hidden>
+  <button class="crumb-back" id="cameraBack">◂ back</button>
+  <span class="crumb-text" id="crumbText"></span>
+</div>
+
+<!-- ── mini-map (shown when zoomed in): the whole lab in miniature; click a room to jump ─── -->
+<div class="minimap" id="minimap" hidden></div>
+
+<!-- ── history scrubber (toggle: click the clock): replay this session ───────────── -->
+<div class="scrubber" id="scrubber" hidden>
+  <button class="scrub-btn" id="scrubPlay" title="play / pause">▶</button>
+  <div class="scrub-wrap">
+    <div class="scrub-ticks" id="scrubTicks"></div>
+    <input class="scrub-range" id="scrubRange" type="range" min="0" max="0" value="0" title="scrub through this session">
+  </div>
+  <span class="scrub-time" id="scrubTime">live</span>
+  <button class="scrub-live on" id="scrubLive" title="return to live">● LIVE</button>
+  <button class="x scrub-x" id="scrubClose" title="close">✕</button>
+</div>
+
+<!-- ── "now happening" pulse strip (at-a-glance workflow tracking) ──────────── -->
+<div class="pulse" id="pulse" hidden></div>
+
+<!-- ── the stage (panel views mount here; the World view stays transparent) ──── -->
 <main class="stage" id="stage"></main>
 
-<!-- ── Newt's habitat: always-on pool, buddy, lantern, speech ─────────────── -->
+<!-- ── status legend (bottom-left): what an idea/project's colour-state means ──── -->
+<aside class="legend status-legend" id="statusLegend" hidden>
+  <div class="legend-head">Status legend</div>
+  <div class="legend-body" id="statusLegendBody"></div>
+</aside>
+
+<!-- ── buddy-roles legend (bottom-right): role → gill colour, with live head-counts ─ -->
+<aside class="legend role-legend" id="legend" hidden>
+  <div class="legend-head">Buddy roles</div>
+  <div class="legend-body" id="legendBody"></div>
+</aside>
+
+<!-- ── Newt's HUD: gate beacon, speech bubble, and the listening command bar ──── -->
 <footer class="habitat" id="habitat">
-  <div class="lantern" id="lantern" title="PI gates" hidden>
-    <span class="lantern-glow"></span><span class="lantern-n" id="lanternN">0</span>
-  </div>
-  <div class="water"></div>
+  <button class="beacon" id="lantern" title="PI gates waiting — open" hidden>
+    <span class="beacon-core"></span><span class="beacon-n" id="lanternN">0</span>
+  </button>
 
-  <div class="newt-stage" id="newtStage" title="click Newt to command the lab">
+  <!-- Newt is drawn on the canvas, bottom-centre. #newt is the hidden pose-state carrier
+       the renderer/CSS read; the speech bubble + command bar float over the pool. -->
+  <div class="newt-stage" id="newtStage">
     <div class="speech" id="speech" hidden></div>
-    <!-- Newt the axolotl — pure SVG, poses toggled by classes on .newt -->
-    <svg class="newt" id="newt" viewBox="0 0 200 130" aria-label="Newt the axolotl">
-      <ellipse class="newt-shadow" cx="100" cy="116" rx="52" ry="7"/>
-      <g class="newt-body">
-        <!-- tail -->
-        <path class="tail" d="M150 78 q34 -6 40 12 q-6 22 -40 8 z"/>
-        <!-- legs -->
-        <ellipse class="leg" cx="78" cy="98" rx="9" ry="6"/>
-        <ellipse class="leg" cx="128" cy="98" rx="9" ry="6"/>
-        <!-- body -->
-        <path class="belly" d="M52 74 q60 -34 104 0 q6 24 -16 30 q-36 12 -72 0 q-22 -6 -16 -30 z"/>
-        <!-- gills (three frilly stalks each side) -->
-        <g class="gills gills-l">
-          <path d="M58 52 q-22 -10 -30 -2 q10 6 30 6"/>
-          <path d="M58 60 q-26 0 -34 12 q14 2 34 -4"/>
-          <path d="M58 68 q-22 10 -26 22 q14 -2 28 -12"/>
-        </g>
-        <g class="gills gills-r">
-          <path d="M142 52 q22 -10 30 -2 q-10 6 -30 6"/>
-          <path d="M142 60 q26 0 34 12 q-14 2 -34 -4"/>
-          <path d="M142 68 q22 10 26 22 q-14 -2 -28 -12"/>
-        </g>
-        <!-- head -->
-        <path class="head" d="M56 56 q44 -34 88 0 q4 26 -44 26 q-48 0 -44 -26 z"/>
-        <!-- face -->
-        <circle class="eye" cx="82" cy="58" r="5.2"/><circle class="eye" cx="118" cy="58" r="5.2"/>
-        <circle class="glint" cx="83.6" cy="56.4" r="1.7"/><circle class="glint" cx="119.6" cy="56.4" r="1.7"/>
-        <circle class="cheek" cx="70" cy="66" r="5"/><circle class="cheek" cx="130" cy="66" r="5"/>
-        <path class="smile" d="M92 68 q8 7 16 0"/>
-        <!-- props (shown by pose) -->
-        <g class="prop zzz"><text x="150" y="40">z</text><text x="162" y="28">z</text><text x="172" y="18">z</text></g>
-        <g class="prop spark"><path d="M150 28 l3 8 l8 1 l-6 6 l2 8 l-7 -4 l-7 4 l2 -8 l-6 -6 l8 -1 z"/></g>
-        <g class="prop regen"><circle class="regen-bud" cx="150" cy="98" r="7"/><path class="regen-ray" d="M150 86 v-8 M161 92 l6 -5 M139 92 l-6 -5"/></g>
-        <g class="prop rain"><path d="M150 22 q14 0 14 12 q0 8 -14 8 q-16 0 -16 -10 q0 -10 16 -10 z"/><path class="drop" d="M142 46 v6 M150 48 v6 M158 46 v6"/></g>
-        <g class="prop bubbles"><circle cx="160" cy="60" r="4"/><circle cx="172" cy="48" r="3"/><circle cx="166" cy="36" r="2.2"/></g>
-        <g class="prop letter"><rect x="146" y="44" width="30" height="20" rx="3"/><path d="M146 44 l15 11 l15 -11"/></g>
-      </g>
-    </svg>
+    <span class="newt" id="newt" hidden></span>
   </div>
 
-  <div class="hint" id="hint">click Newt to command the lab →</div>
+  <div class="command-bar" id="commandBar" title="Newt is listening — type a note or open the command console">
+    <span class="cmd-dot" id="newtDot" aria-hidden="true"></span>
+    <span class="cmd-name">Newt</span>
+    <input id="cmdInput" type="text" autocomplete="off" placeholder="is listening — ask anything or give a comment…">
+    <button class="cmd-more" id="cmdMore" title="open the full command console">⋯</button>
+    <button class="cmd-send" id="cmdSend" title="send to Newt">➤</button>
+  </div>
 </footer>
 
-<!-- ── overlays: command console · gate modal · tool drawer ──────────────── -->
+<!-- ── overlays: command console · gate modal · tool drawer · worker inspector ─ -->
 <div class="sheet-scrim" id="sheetScrim" hidden></div>
 <aside class="sheet" id="sheet" hidden>
   <div class="sheet-head">
@@ -106,9 +159,11 @@
 </aside>
 
 <div class="modal-scrim" id="modalScrim" hidden></div>
-<div class="modal" id="modal" hidden>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true">
+  <div class="modal-seal" id="modalSeal">2</div>
   <h3 id="modalTitle">Approve gate?</h3>
   <p id="modalBody"></p>
+  <button class="modal-read" id="modalRead" hidden>read ▸</button>
   <div class="modal-row">
     <button class="ghost" id="modalCancel">cancel</button>
     <button class="danger" id="modalOk">confirm</button>
@@ -120,8 +175,17 @@
   <pre id="drawerBody"></pre>
 </div>
 
+<!-- worker inspector: what this agent/subagent has been doing (its own clean log) -->
+<aside class="inspector" id="inspector" hidden>
+  <div class="inspector-head">
+    <span id="inspectorTitle">worker</span>
+    <button class="x" id="inspectorClose">✕</button>
+  </div>
+  <div class="inspector-body" id="inspectorBody"></div>
+</aside>
+
 <div class="toast" id="toast" hidden></div>
-<div class="stale-veil" id="staleVeil" hidden>the glass has fogged — data may be stale</div>
+<div class="stale-veil" id="staleVeil" hidden>⟳ reconnecting to the lab — showing the last snapshot…</div>
 
 <script src="app.js"></script>
 </body>

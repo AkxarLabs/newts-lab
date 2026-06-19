@@ -14,6 +14,9 @@ control surface — but it stays honest about what it can and can't do:
                           local-only, explicit-confirm, logged. GATE 3 IS NEVER OFFERED.
   RUNS (safe, read-only subprocesses, on demand):
     POST /api/tool        a whitelisted read-only tool (check_lab/show_config/status/…)
+  READS (safe, read-only file views, on demand):
+    POST /api/read        a small whitelisted text view (lab knowledge; a gate's proposal/
+                          claims/envelope) from fixed roots + a sanitized slug. Never writes.
 
 It cannot run an agent skill (that's the Claude session) and it never signs Gate 3 or
 fakes a result. Binds 127.0.0.1 only. Delete the dashboard/ folder and the lab is unchanged.
@@ -93,11 +96,12 @@ def append_withdraw(target: str, ref: str) -> None:
 
 
 def _pi_log(rec: dict) -> None:
-    """Append-only audit trail of PI actions taken through the dashboard."""
+    """Append-only audit trail of PI actions taken through the dashboard. `default=str` keeps it
+    robust to YAML-parsed values (e.g. an `expires:` date) that aren't natively JSON-serializable."""
     (LAB / ".bus").mkdir(parents=True, exist_ok=True)
     rec["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     with (LAB / ".bus" / "pi-actions.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec) + "\n")
+        f.write(json.dumps(rec, default=str) + "\n")
 
 
 def _emit_hub(kind: str, **fields) -> None:
@@ -128,7 +132,9 @@ def approve_gate(idea: str, gate: int) -> dict:
         _pi_log({"action": "approve_gate", "gate": 1, "idea": idea})
         return {"ok": True, "gate": 1, "idea": idea,
                 "note": "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint."}
-    # gate 2 — flip pi_signed in the project's control.yaml (the canonical machine-readable signature)
+    # gate 2 — sign the project's control.yaml gate2_envelope (the canonical machine-readable
+    # signature). READ via YAML to VALIDATE the envelope; WRITE via a targeted regex so the
+    # file's comments/formatting survive.
     pdir = sources._project_path({"id": idea, "project": ""})
     control = (pdir / "control.yaml") if pdir else None
     if not control or not control.exists():
@@ -136,13 +142,24 @@ def approve_gate(idea: str, gate: int) -> dict:
     text = control.read_text(encoding="utf-8-sig")
     if "pi_signed:" not in text:
         return {"error": "control.yaml has no gate2_envelope.pi_signed field"}
+    env = sources._load_yaml(control).get("gate2_envelope") or {}
+    if env.get("pi_signed"):
+        return {"error": "gate2_envelope is already signed (pi_signed: true) — nothing to do"}
+    expires = str(env.get("expires") or "").strip()
+    if expires and expires.lower() not in ("null", "none") and expires < time.strftime("%Y-%m-%d"):
+        return {"error": f"gate2_envelope expired ({expires}) — update the envelope in control.yaml before signing"}
+    warnings = []
+    if not any(env.get(k) for k in ("full_runs", "per_run_max_minutes", "total_max_minutes")):
+        warnings.append("envelope authorizes nothing (all caps are 0/null) — signing it is a no-op; every FULL run will still need fresh PI approval")
     import re
     text = re.sub(r"pi_signed:\s*false", "pi_signed: true", text, count=1)
     text = re.sub(r"signed_via:\s*null", f"signed_via: dashboard:{ts}", text, count=1)
     control.write_text(text, encoding="utf-8")
+    env_after = sources._load_yaml(control).get("gate2_envelope") or {}
     _emit_hub("gate_resolved", idea=idea, detail="Gate 2 envelope signed (PI via dashboard)")
-    _pi_log({"action": "approve_gate", "gate": 2, "idea": idea, "control": str(control)})
-    return {"ok": True, "gate": 2, "idea": idea,
+    _pi_log({"action": "approve_gate", "gate": 2, "idea": idea, "control": str(control),
+             "envelope_before": env, "envelope_after": env_after})
+    return {"ok": True, "gate": 2, "idea": idea, "warnings": warnings or None,
             "note": "gate2_envelope.pi_signed set true (signed_via: dashboard). FULL runs within the envelope are now authorized."}
 
 
@@ -169,7 +186,8 @@ def run_tool(name: str, idea: str | None = None) -> dict:
         if not pdir:
             return {"error": f"'{name}' needs a project (pass idea)"}
         script = pdir / "scripts" / f"{name}.py"
-        cmd, cwd = [py, str(script)] + (["--last", "20"] if name == "compare" else []), pdir
+        # compare.py requires a subcommand (`list`); status.py takes none.
+        cmd, cwd = [py, str(script)] + (["list", "--last", "20"] if name == "compare" else []), pdir
     try:
         out = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=60)
@@ -179,6 +197,101 @@ def run_tool(name: str, idea: str | None = None) -> dict:
         return {"error": f"{name} timed out"}
     except Exception as e:  # noqa: BLE001
         return {"error": f"{name} failed: {e}"}
+
+
+# ── read-only document viewer (lab knowledge · a gate's proposal/claims) ─────
+#
+# Surfaces a few SMALL, READ-ONLY text files so the PI can read context in-dashboard
+# (the lab's learning; a proposal/claims at a gate). Reads only from fixed roots with a
+# sanitized slug — never writes, never executes. Gate 3 stays non-signable; this only
+# *shows* the draft + claims so a finalization decision can be made in a session.
+
+import re as _re
+
+_SLUG_RE = _re.compile(r"[^A-Za-z0-9._-]")
+_DOC_CLIP = 16000   # never stream a whole repo — clip each file
+
+
+def _slug(s: str) -> str:
+    return _SLUG_RE.sub("", (s or "").strip())[:80]
+
+
+def _read_clip(path: Path) -> str:
+    if not path.exists() or not path.is_file():
+        return ""
+    txt = path.read_text(encoding="utf-8-sig", errors="replace")
+    return txt if len(txt) <= _DOC_CLIP else txt[:_DOC_CLIP] + "\n\n… (clipped — open the file for the rest)"
+
+
+def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: str | None = None) -> dict:
+    if what == "run":
+        slug, rid = _slug(idea or ""), _slug(run or "")
+        if not slug or not rid:
+            return {"error": "need a project + run id"}
+        pdir = sources._project_path({"id": slug, "project": ""})
+        if not pdir:
+            return {"error": f"no project dir for {slug}"}
+        rdir = pdir / "runs" / rid
+        secs = []
+        for fn in ("metrics.json", "meta.json", "config.yaml"):
+            f = rdir / fn
+            if f.exists():
+                secs.append({"title": f"runs/{rid}/{fn}", "text": _read_clip(f)})
+        stream = rdir / "metrics.jsonl"
+        if stream.exists():
+            lines = [ln for ln in _read_clip(stream).splitlines() if ln.strip()]
+            if lines:
+                secs.append({"title": f"runs/{rid}/metrics.jsonl · last {min(8, len(lines))} of {len(lines)}",
+                             "text": "\n".join(lines[-8:])})
+        if not secs:
+            return {"error": f"no artifacts under {slug}/runs/{rid} (runs are gitignored; the project may be elsewhere)"}
+        return {"ok": True, "title": f"{slug} · {rid}", "sections": secs}
+
+    if what == "knowledge":
+        secs = []
+        for name in ("FINDINGS", "FAILURES", "OPEN-QUESTIONS"):
+            secs.append({"title": name.replace("-", " ").title(),
+                         "text": _read_clip(LAB / "knowledge" / f"{name}.md") or "(none recorded yet)"})
+        nb_dir = LAB / "notebook"
+        entries = sorted(nb_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True) if nb_dir.exists() else []
+        dated = [f for f in entries if f.name.lower() != "readme.md"]
+        latest = (dated or entries)[0] if (dated or entries) else None
+        if latest:
+            secs.append({"title": "Latest notebook entry · " + latest.name, "text": _read_clip(latest)})
+        return {"ok": True, "title": "Lab knowledge", "sections": secs}
+
+    if what == "gate":
+        slug = _slug(idea or "")
+        if not slug:
+            return {"error": "no idea given"}
+        try:
+            gate = int(gate or 0)
+        except (TypeError, ValueError):
+            gate = 0
+        if gate == 1:
+            f = HUB / "ideas" / slug / "proposal.md"
+            return {"ok": True, "title": f"Gate 1 · {slug} · proposal",
+                    "sections": [{"title": f"ideas/{slug}/proposal.md",
+                                  "text": _read_clip(f) or f"no proposal at ideas/{slug}/proposal.md"}]}
+        if gate == 2:
+            pdir = sources._project_path({"id": slug, "project": ""})
+            ctrl = (pdir / "control.yaml") if pdir else None
+            env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
+            secs = [{"title": "gate2_envelope (control.yaml)",
+                     "text": json.dumps(env, indent=2, default=str) if env else "no gate2_envelope found — spawn the project first"}]
+            if ctrl and ctrl.exists():
+                secs.append({"title": "control.yaml", "text": _read_clip(ctrl)})
+            return {"ok": True, "title": f"Gate 2 · {slug} · the FULL-run envelope", "sections": secs}
+        if gate == 3:
+            pdir = HUB / "papers" / slug
+            secs = [{"title": f"papers/{slug}/claims.yaml", "text": _read_clip(pdir / "claims.yaml") or "no claims.yaml yet"}]
+            if pdir.exists():
+                for md in sorted(pdir.glob("*review*.md")) + sorted(pdir.glob("*meta*.md")):
+                    secs.append({"title": md.name, "text": _read_clip(md)})
+            return {"ok": True, "title": f"Gate 3 · {slug} · claims + review (read-only)",
+                    "sections": secs, "note": "Gate 3 is never signed from the dashboard — read here, then /finalize in a session."}
+        return {"error": f"unknown gate {gate}"}
+    return {"error": f"unknown document '{what}'"}
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -285,6 +398,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(res, 200 if res.get("ok") else 400)
         if p.startswith("/api/tool"):
             return self._json(run_tool(body.get("name", ""), body.get("idea")))
+        if p.startswith("/api/read"):
+            return self._json(read_doc(body.get("what", ""), body.get("idea"), body.get("gate"), body.get("run")))
         if p.startswith("/api/withdraw"):
             append_withdraw(body.get("target", "hub"), body.get("id", ""))
             return self._json({"ok": True})
