@@ -63,7 +63,9 @@ Each round, in order — and stop early when a round changes nothing substantive
    per round, never a single slash-cut). **No LaTeX toolchain on this machine?** Record
    it, run every non-compile check, and flag the paper as *not-compiled* — Gate 3 cannot
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
-2. **Claims re-audit**: `tools/audit_claims.py papers/<slug>` (runs a completeness scan —
+2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (the hub figures still
+   match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
+   `tools/audit_claims.py papers/<slug>` (runs a completeness scan —
    every numeral in Results/Ablations/Abstract must carry a `% CNNN` annotation — plus the
    per-claim artifact check) — after EVERY round, not just at the end. Revision is when
    fabrication happens: systems that revised against reviewer feedback invented supporting

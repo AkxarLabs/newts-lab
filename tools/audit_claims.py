@@ -1,6 +1,11 @@
 """Mechanically audit a paper's claims.yaml against run artifacts.
 
-    uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--rel-tol 1e-3] [--check-commits]
+    uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--rel-tol 1e-3]
+        [--check-commits] [--verify-hashes]
+
+Artifacts resolve from the hub archive (papers/<slug>/artifacts/, locked by tools/lock_artifacts.py
+at /finalize) first, then the live project — so a finalized paper audits from the hub alone.
+--verify-hashes checks each artifact against the claim's locked artifact_sha256.
 
 For every claim, each number must be found in the referenced artifacts:
   PASS         direct match in some artifact (within tolerance)
@@ -30,6 +35,7 @@ Exit codes: 0 all PASS/PASS-derived · 2 MANUAL items remain · 1 any FAIL.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import statistics
@@ -54,6 +60,39 @@ def projects_root() -> Path:
     config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
     root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
     return (HUB / root).resolve()
+
+
+_REG_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
+
+
+def _registry_project_path(slug: str) -> Path | None:
+    """Map a slug to its project dir via lab/REGISTRY.md's Project column — authoritative for
+    where a project actually lives (so an /adopt project outside projects_root still audits)."""
+    reg = HUB / "lab" / "REGISTRY.md"
+    if not slug or not reg.exists():
+        return None
+    for line in reg.read_text(encoding="utf-8-sig").splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < len(_REG_COLS) or cells[0] != slug:
+            continue
+        raw = (dict(zip(_REG_COLS, cells)).get("project") or "").strip().strip("`")
+        if raw and raw not in ("—", "-"):
+            p = Path(raw)
+            return p if p.is_absolute() else (HUB / p).resolve()
+    return None
+
+
+def resolve_project_dir(claim: dict) -> Path:
+    """Where this claim's artifacts live. Precedence: explicit claim `project_path` >
+    REGISTRY.md Project column > projects_root()/<slug> (the legacy default)."""
+    pp = str(claim.get("project_path") or "").strip()
+    if pp:
+        p = Path(pp)
+        return p if p.is_absolute() else (HUB / p).resolve()
+    slug = str(claim.get("project", ""))
+    return _registry_project_path(slug) or (projects_root() / slug)
 
 
 def coverage_scan(paper_dir: Path) -> list[str]:
@@ -121,10 +160,12 @@ def leaf_key(path: str) -> str:
     return re.split(r"[.\[]", path)[-1].rstrip("]") if path else ""
 
 
-def audit_claim(claim: dict, rel_tol: float, check_commits: bool) -> tuple[str, str]:
-    project_dir = projects_root() / str(claim.get("project", ""))
+def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: bool,
+                verify_hashes: bool) -> tuple[str, str]:
+    project_dir = resolve_project_dir(claim)
     artifacts = claim.get("artifacts") or []
     numbers = claim.get("numbers") or []
+    hashes = claim.get("artifact_sha256") or {}
 
     if check_commits and claim.get("commit"):
         ok = subprocess.run(["git", "-C", str(project_dir), "cat-file", "-e", str(claim["commit"])],
@@ -134,9 +175,15 @@ def audit_claim(claim: dict, rel_tol: float, check_commits: bool) -> tuple[str, 
 
     per_artifact: list[list[tuple[str, float]]] = []
     for rel in artifacts:
-        path = project_dir / rel
+        # hub archive first (papers/<slug>/artifacts/, locked at /finalize), live project second —
+        # so a finalized paper stays auditable even if the project repo is gone.
+        archived = paper_dir / "artifacts" / rel
+        path = archived if archived.exists() else project_dir / rel
         if not path.exists():
-            return "FAIL", f"artifact missing: {rel}"
+            return "FAIL", f"artifact missing (hub archive + project): {rel}"
+        if verify_hashes and rel in hashes:
+            if hashlib.sha256(path.read_bytes()).hexdigest() != hashes[rel]:
+                return "FAIL", f"artifact hash mismatch (tampered/regenerated since /finalize): {rel}"
         try:
             per_artifact.append(extract_numbers(path))
         except (json.JSONDecodeError, ValueError) as e:
@@ -188,6 +235,8 @@ def main() -> int:
     parser.add_argument("paper_dir", help="e.g. papers/<slug>")
     parser.add_argument("--rel-tol", type=float, default=1e-3)
     parser.add_argument("--check-commits", action="store_true")
+    parser.add_argument("--verify-hashes", action="store_true",
+                        help="verify each artifact against the locked artifact_sha256 (post-/finalize)")
     parser.add_argument("--no-coverage", action="store_true",
                         help="skip the main.tex unannotated-numeral completeness scan")
     args = parser.parse_args()
@@ -207,7 +256,8 @@ def main() -> int:
     counts = {"PASS": 0, "PASS-derived": 0, "MANUAL": 0, "FAIL": 0}
     for claim in claims:
         try:
-            status, detail = audit_claim(claim, args.rel_tol, args.check_commits)
+            status, detail = audit_claim(claim, paper_dir, args.rel_tol, args.check_commits,
+                                         args.verify_hashes)
         except Exception as e:  # one malformed entry is a FAIL row, never a crashed audit
             status, detail = "FAIL", f"malformed claim entry: {e}"
         counts[status] += 1

@@ -15,6 +15,7 @@ and a suggested next procedure. The project-side analogue of the hub's check_lab
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -29,6 +30,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--adopt", action="store_true",
+                    help="extra provenance checks for an /adopt-ed repo (run artifacts + frozen contract)")
+    args = ap.parse_args()
     problems: list[str] = []
     notes: list[str] = []
 
@@ -84,11 +89,36 @@ def main() -> int:
     signed = bool(envelope.get("pi_signed"))
     system_md = (ROOT / "SYSTEM.md").exists()
 
+    if args.adopt:
+        # An adopted repo must carry its own provenance: pre-existing numbers must trace to artifacts.
+        if n_runs == 0:
+            problems.append("--adopt: no runs/registry.jsonl entries — adopted results must trace to run artifacts; re-run the baseline to generate them before trusting any pre-existing number")
+        else:
+            for line in registry.read_text(encoding="utf-8-sig").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rid = rec.get("run_id")
+                if rid and not (ROOT / "runs" / rid / "metrics.json").exists():
+                    notes.append(f"--adopt: registry cites {rid} but runs/{rid}/metrics.json is absent on disk — verify provenance (a fresh clone has gitignored artifacts; regenerate before citing)")
+        if isinstance(control, dict) and "eval_frozen" not in control:
+            problems.append("--adopt: control.yaml has no `eval_frozen` — declare the frozen eval/test contract before adopted results are trusted")
+        if not (ROOT / "scripts" / "figures").exists():
+            notes.append("--adopt: no scripts/figures/ — paper figures must be regenerable from runs/ (add aggregator scripts before /write-paper)")
+
     print(f"## Project check — {ROOT.name}\n")
     if problems:
         print("**Not ready (fix first):**")
         for p in problems:
             print(f"- {p}")
+        print()
+    if notes:
+        print("**Notes / warnings:**")
+        for nmsg in notes:
+            print(f"- {nmsg}")
         print()
 
     print(f"- Runs recorded: {n_runs}")

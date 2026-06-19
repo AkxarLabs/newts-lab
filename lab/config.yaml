@@ -43,6 +43,28 @@ ideation:                       # ── /ideate pipeline depth ──
   reflection_rounds: 2          # reflect -> evolve cycles per surviving idea
   critics_per_idea: 2           # parallel fresh-context critic subagents in each reflect pass
   enable_combination: true      # propose crossovers of complementary survivors
+  in_project: true              # allow `/ideate --in-project <slug>`: divergent METHOD-approach
+                                # ideation WITHIN a project's frozen problem/eval/test/seeds/budgets
+                                # (output = candidate approaches, NOT experiments; never a new
+                                # lifecycle state — active -> active). false = capability off.
+  in_project_candidates: 4      # approach candidates an in-project ideation round generates
+  in_project_rounds: 1          # max in-project ideation rounds before stopping (so recursion
+                                # terminates by config, not convention; each round charges its cost
+                                # against the loop envelope minutes / iteration budget)
+  in_project_approval: pi       # PI-owned (WIDENS authority — edit only on explicit PI request, or
+                                # transitively under a PI-signed /autopilot campaign brief; same rule
+                                # as loop.explore_*).  pi | campaign_auto :
+                                #   pi            = surviving approaches always queue at /propose for
+                                #                   human Gate 1 (the manual default).
+                                #   campaign_auto = under a signed /autopilot campaign, a surviving
+                                #                   approach is auto-approved WITHIN the campaign's
+                                #                   delegation bounds + an overseer `support` check
+                                #                   (exactly like a Gate-1 self-approval); a campaign
+                                #                   brief may override back to `pi`. Manual runs are
+                                #                   ALWAYS PI-gated regardless of this value. Any
+                                #                   headline-hypothesis change re-enters /propose
+                                #                   (mini-proposal) or a successor idea — never a bare
+                                #                   PI note. Gate 3 is never delegated.
 
 scoping:                        # ── /scope deliberation depth ──
   options_per_decision: 3       # alternatives generated per design-decision branch

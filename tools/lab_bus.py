@@ -4,6 +4,8 @@
                                        [--status ST] [--detail "..."] [--data k=v ...]
     python tools/lab_bus.py inbox                      # unresolved PI directives
     python tools/lab_bus.py ack <id> seen|done|blocked [--note "..."] [--evidence PATH]
+    python tools/lab_bus.py escalate --detail "..." [--idea X] [--severity S]
+                                       # a project asks the hub/PI for attention mid-run
 
 One JSONL file per source, gitignored runtime state (like the slot ledger). This same
 file is shipped into every spawned project as scripts/lab_bus.py and auto-detects whether
@@ -46,7 +48,8 @@ KINDS = {
     "run_started", "run_finished", "sweep_started", "sweep_finished",
     "slot_acquired", "slot_released", "slot_denied", "slot_reclaimed",
     "cycle", "review_verdict", "paper_compiled", "kill", "writeback",
-    "frontier_expand", "decision_revisit", "replan",
+    "frontier_expand", "decision_revisit", "replan", "approach_ideate",
+    "escalation",
     "directive_seen", "directive_done", "directive_blocked", "note",
 }
 
@@ -138,6 +141,18 @@ def cmd_inbox(args) -> int:
     return 0
 
 
+def cmd_escalate(args) -> int:
+    """Raise a project's hand to the hub/PI mid-run. An escalation requests attention
+    (a fired headline-reopen trigger, a blocked-on-frozen need, a FULL run outside the
+    envelope) — it is NEVER gate approval. It lands on this repo's bus; the hub merges
+    per-project events, so `/lab-status` and the dashboard surface it without a reverse
+    channel."""
+    emit("escalation", idea=args.idea, detail=args.detail,
+         data={"severity": args.severity} if args.severity else None)
+    print(f"escalation raised on {SOURCE} bus: {args.detail or ''}")
+    return 0
+
+
 def cmd_ack(args) -> int:
     if args.state not in ("seen", "done", "blocked"):
         print("state must be seen | done | blocked", file=sys.stderr)
@@ -169,6 +184,11 @@ def main() -> int:
     p.add_argument("id"); p.add_argument("state")
     p.add_argument("--note"); p.add_argument("--evidence")
     p.set_defaults(fn=cmd_ack)
+
+    p = sub.add_parser("escalate")
+    p.add_argument("--detail", required=True)
+    p.add_argument("--idea"); p.add_argument("--severity")
+    p.set_defaults(fn=cmd_escalate)
 
     args = parser.parse_args()
     return args.fn(args)

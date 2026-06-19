@@ -24,7 +24,7 @@ Input: project in state `analysis` (or mid-`active` for an interim read). Output
      paths only. OVERREACH → adopt its supported version verbatim; UNSUPPORTED →
      it is not a finding, whatever it felt like.
 4. **Decide and route:**
-   - Missing ablations / confound checks → add rows to PLAN.md and return to `/experiment`. (Ablations are complete when every row of PLAN.md's ablation plan has a multi-seed result or a recorded failure — no kept change without its removal test.)
+   - Missing ablations / confound checks → **one coordinated cross-repo step**: add the rows to the project's `PLAN.md` AND set the hub registry `state → active` in the same checkpoint, then commit the project and emit `tools/lab_bus.py emit replan --idea <slug> --detail "analyze → more experiments"`; return to `/experiment`. (Ablations are complete when every row of PLAN.md's ablation plan has a multi-seed result or a recorded failure — no kept change without its removal test.)
    - **A settled decision's `Revisit if:` trigger is now met** → reopen it via `/improve`'s `revisit` operator (new `D-NNN`, dependent lines → `retired-by-revision`, seed replacements), then return to `/experiment`/`/improve`. A `Headline: no` decision is autonomous (overseer-gated); a `Headline: yes` decision escalates to the PI. Under an `explore` loop this is just the loop's step 2f; in a manual `/analyze`, recommend it (or do it if non-headline and you're continuing).
    - Hypothesis confirmed with honest effect → state → `writing`, next action "/write-paper".
    - Null/negative → that can still be a paper (decide with the PI); otherwise kill/park with reasons.

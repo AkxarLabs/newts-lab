@@ -11,16 +11,19 @@ in `lab/config.yaml`.
 
 ## Part A — Claims audit (mechanical, blocking)
 
-1. Run `uv run --with pyyaml python tools/audit_claims.py papers/<slug> --check-commits`.
+1. **Figures in sync:** `uv run --with pyyaml python tools/sync_figures.py <slug> --check` —
+   a stale (project regenerated, not re-synced) or hand-edited hub figure is a blocking FAIL;
+   re-run `tools/sync_figures.py <slug>` then re-check before continuing.
+2. Run `uv run --with pyyaml python tools/audit_claims.py papers/<slug> --check-commits`.
    - Any **FAIL** → return to `/write-paper` with the failure table. Part B does not run.
      (FAIL now includes the completeness scan: any numeral in main.tex body prose with no
      `% CNNN` annotation — a number with no claims entry.)
    - Any **MANUAL** → verify each by hand against the stated derivation now; an
      unresolvable MANUAL is a FAIL.
-2. Run `uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib --threshold <writing.citation_match_threshold>` —
+3. Run `uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib --threshold <writing.citation_match_threshold>` —
    **any nonzero exit blocks**: NOT-FOUND, RETRACTED, *and* MISMATCH (below-threshold title
    or wrong year — the near-miss-fabrication case).
-3. Manual checks the scripts can't do:
+4. Manual checks the scripts can't do:
    - Figure/table scripts exist in the project repo's `scripts/figures/`, are committed,
      and regenerate the paper's figures (spot-check ≥2).
    - Multi-seed coverage (`experiment.multi_seed_n`) for all headline numbers, variance reported.
@@ -60,10 +63,12 @@ you've seen it written; that's exactly the bias the ensemble exists to remove.
    against the cited evidence or escalated; this is the circuit-breaker between a wrong
    review point and a wrong "improvement".
 4. Route on the triage:
-   - Any **NEEDS-EXPERIMENT** items → append them as PLAN.md rows (criteria written
-     now), state → `active`, next action "/experiment" — then `/analyze` →
-     `/write-paper` and the next review cycle. New claims require new runs; nothing
-     gets "addressed" in prose that needed an experiment.
+   - Any **NEEDS-EXPERIMENT** items → **one coordinated cross-repo step**: append the new
+     rows to the project's `PLAN.md` (criteria written now) AND set the hub registry row
+     `state → active` in the same checkpoint; then commit the project and emit
+     `tools/lab_bus.py emit replan --idea <slug> --detail "review NEEDS-EXPERIMENT → active"`.
+     Next action "/experiment" — then `/analyze` → `/write-paper` and the next review cycle.
+     New claims require new runs; nothing gets "addressed" in prose that needed an experiment.
    - Only ACCEPT items remain → state → `writing` with that worklist.
    - Meta-review **accept** AND zero unrefuted fatal flaws → **PI Gate 3**: present the
      PDF + meta-review to the user for final sign-off (state stays `internal-review`

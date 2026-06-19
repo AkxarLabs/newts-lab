@@ -34,7 +34,9 @@ For overnight/long sessions where the PI is away. Tunables from the project's
 ## 0.5 Single-loop guard + resume check (before the first cycle, and on every re-entry)
 
 This skill is re-entered by `/loop` after a crash, so it must reconcile the previous
-session before starting new work:
+session before starting new work. **Run `uv run --with pyyaml python scripts/reconcile.py` first** —
+it surfaces dead/stalled runs, orphan run dirs, and a stale loop lock in one command (add `--fix` to
+clear a stale `.bus/.loop-active`); act on what it reports, then confirm:
 - **One loop per project.** Check `.bus/.loop-active` (gitignored): if it holds a
   heartbeat fresher than `2 × loop.monitor_poll_seconds`, another loop is live on this
   project — STOP (two loops double-spend the envelope and interleave the ledger). If it is
@@ -69,7 +71,8 @@ session before starting new work:
       that yields no progress counts toward the no-progress backoff.
    f. **decision revisit** — if step 1 found a fired `Revisit if:` trigger: the `/improve`
       `revisit` operator (reopen the decision, retire dependent lines, seed replacements).
-      Subject to the **escalation boundary** below.
+      Subject to the **escalation boundary** below — a fired `Headline: yes` trigger does not
+      re-plan in place; it routes to `/ideate --in-project <slug>` (see the boundary rule).
    **Before selecting, check fit:** the action's `budget.max_minutes` must fit the loop's
    remaining wall-clock, and a FULL run must fit the `gate2_envelope` (see *Envelope
    accounting* below). FULL work outside the envelope, or any action that doesn't fit
@@ -118,11 +121,21 @@ FULL) + the runs about to launch ≤ `full_runs` (a sweep counts as N runs); boo
 - **Explore-mode escalation boundary:** expanding the frontier and reopening a
   `Headline: no` decision are autonomous (within the frozen set + envelope). But reopening a
   **`Headline: yes`** decision, abandoning the brief's headline hypothesis, exceeding the
-  envelope, or any change to the frozen set is the boundary — queue a **PI note** (or, under a
-  signed `/autopilot` campaign, run the campaign-delegation + overseer `support` check, like a
-  Gate-1 self-approval) and continue with other in-bounds work. Never pivot the headline
-  silently. The reopen itself is overseer-gated (`/improve` `revisit`); a `revisit` or
-  `expand` is recorded in PLAN.md's Re-planning log + `decisions.md` and emits its bus event.
+  envelope, or any change to the frozen set is the boundary — queue a **PI note** and emit
+  `uv run python scripts/lab_bus.py escalate --detail "<what & why>"` (so the hub/PI sees it
+  mid-run, not only at loop exit; an escalation requests attention, never grants a gate) — or,
+  under a signed `/autopilot` campaign, run the campaign-delegation + overseer `support` check,
+  like a Gate-1 self-approval — and continue with other in-bounds work. Never pivot the headline
+  silently. A `Headline: yes` reopen is **not a dead end**: the PI note (or the in-bounds
+  campaign hand-off) **routes to divergent method-ideation** — `/ideate --in-project <slug>`
+  (under `ideation.in_project_approval`; in a campaign, `campaign_auto` runs the same
+  delegation-bounds + overseer `support` check) or a successor hub `/ideate`. Its surviving
+  approaches re-enter `/propose` (a mini-proposal crossing Gate 1) or spawn a successor idea —
+  they **never** enter experiments on a bare PI note. The reopen itself is overseer-gated
+  (`/improve` `revisit`); a `revisit` or `expand` is recorded in PLAN.md's Re-planning log +
+  `decisions.md` and emits its bus event. When an in-project ideation round runs, emit
+  `approach_ideate` (`--idea <slug>`); **on each `replan` emit the bus event mid-cycle, not only
+  at loop exit**, so a mid-campaign approach pivot is visible at the hub.
 
 ## Exit (any stop condition)
 

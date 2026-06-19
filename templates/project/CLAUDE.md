@@ -17,7 +17,14 @@ this file adds what is specific to working inside a project.
 4. `EXPERIMENT_LOG.md` tail + `runs/registry.jsonl` + `git log --oneline -20` — what
    was already tried. Never repeat an attempt without saying why.
 5. Unsure the project is in a runnable state? `uv run --with pyyaml python
-   scripts/check_project.py` — readiness lint plus a suggested next action.
+   scripts/check_project.py` — readiness lint plus a suggested next action. Resuming after a
+   crashed or unattended session? `uv run --with pyyaml python scripts/reconcile.py` first — it
+   surfaces dead runs, orphans, and a stale loop lock (`--fix` clears a stale loop lock).
+6. **Back-half re-entry:** if `PLAN.md` has new rows the hub appended during writing/review,
+   or the hub registry bounced this project `internal-review → active`, just run
+   `/experiment` as usual — the paper-phase back-half loop re-enters here. The project can
+   be re-entered **repeatedly** during the paper phase; treat each new PLAN.md row like any
+   planned experiment.
 
 ## Procedures
 
@@ -28,9 +35,11 @@ From inside this project you will mainly need, in lifecycle order:
 |---|---|
 | `experiment` | run the next planned experiment (smoke → pilot → full) |
 | `improve` | operator-driven iteration once a baseline exists (draft/debug/improve/crossover) |
+| `ideate --in-project <slug>` | divergent METHOD-approach ideation inside this project — scoped to the frozen set; output = candidate approaches, not experiments. A headline-changing survivor re-enters `propose` (mini-proposal, Gate 1) or spawns a successor idea, never a bare PI note. Approval per `ideation.in_project_approval`. |
 | `research-loop` | unattended experiment loop — requires the PI-signed `LOOP_BRIEF.md` |
 | `analyze` | plan complete or plateaued — artifact-only analysis |
 | `make-figures` | figures/tables mechanically from `runs/` artifacts |
+| `experiment` (re-entry) | hub appended new `PLAN.md` rows during writing/review, or registry bounced you `internal-review → active` — run it as usual; this is the paper-phase back-half loop, and it may re-enter here repeatedly |
 
 Open the skill file and follow it step by step — they are written as instructions to
 you. Decide for yourself which procedure the project state calls for (the log tail and
@@ -102,8 +111,27 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
 
 ## Session end (write-back)
 
-Findings flow back to the hub: append a dated entry to `{{hub_path}}/lab/notebook/`
-and promote durable insights to `{{hub_path}}/lab/knowledge/` (FINDINGS / FAILURES /
-OPEN-QUESTIONS), update the registry row if the state changed. If the hub is
-unreachable from this session, append a `HUB-WRITEBACK-PENDING:` entry to
-`EXPERIMENT_LOG.md` instead so the next hub session carries it over.
+Findings flow back to the hub. **The normal path** (hub reachable — `hub_path` is in
+`control.yaml`): one atomic call —
+
+```
+uv run --with pyyaml python {{hub_path}}/tools/hub_writeback.py --slug {{slug}} \
+  --notebook "..." [--finding "..."] [--failure "..."] [--question "..."] \
+  [--state <state>] [--evidence "..."]
+```
+
+It appends a dated `lab/notebook/` entry, promotes durable insights to
+`lab/knowledge/{FINDINGS,FAILURES,OPEN-QUESTIONS}.md`, and sets the registry row —
+atomically (it derives the hub path from its own location). Do not hand-edit hub files.
+
+**Only if the hub tool can't be run** (hub unreachable from this session), append a
+`HUB-WRITEBACK-PENDING:` block to `EXPERIMENT_LOG.md` instead — the next hub session
+reconciles it via `tools/process_writebacks.py --apply`. Block format:
+
+```
+HUB-WRITEBACK-PENDING: <short-id>
+notebook: <one-line>
+finding: <one-line, optional>
+failure: <one-line, optional>
+question: <one-line, optional>
+```

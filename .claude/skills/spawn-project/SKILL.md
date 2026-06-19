@@ -11,7 +11,7 @@ stays lean and the project is independently cloneable.
 
 ## Procedure
 
-1. Verify Gate 1 approval in `ideas/<slug>/proposal.md`. If absent, stop and route back to `/propose`.
+1. Verify Gate 1 approval — mechanically: `uv run --with pyyaml python tools/guard.py spawn <slug>` (checks the Gate-1 marker in `ideas/<slug>/proposal.md`, the registry state, and that no existing project would be overwritten). A nonzero exit stops the spawn and routes back to `/propose`.
 2. Resolve `lab.projects_root` from `lab/config.yaml` (default `../AutoScientist-Projects`,
    relative to the hub). If the container directory doesn't exist, create it with a
    one-paragraph README ("Projects spawned by the AutoScientist lab at <hub path>; each

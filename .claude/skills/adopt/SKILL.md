@@ -48,7 +48,7 @@ and log the entry in the notebook. Then per entry point:
    land in `runs/<run_id>/` with a registry line (adapt `scripts/run.py` to call their
    entry point — this is also where the smoke yaml points).
 3. State: `active` if experiments remain, `analysis` if they claim results are in.
-4. `uv run --with pyyaml python scripts/check_project.py` must exit 0 before routing on.
+4. `uv run --with pyyaml python scripts/check_project.py --adopt` must exit 0 before routing on — the `--adopt` provenance checks add that pre-existing numbers trace to `runs/` artifacts, the `eval_frozen` contract is declared, and figures are regenerable from `runs/`.
 
 ## 3. Integrity rules (what adoption may NOT skip)
 

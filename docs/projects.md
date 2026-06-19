@@ -56,6 +56,15 @@ uv run python scripts/run.py --config configs/experiments/<any-past-exp>.yaml --
 
 …and re-run **any past experiment from its config file**. That works because of the run contract: every run dumps its fully resolved config + git SHA + seed + metrics into `runs/<run_id>/`, appends one line to the committed `runs/registry.jsonl`, and is budget-capped by a watchdog that cannot be talked out of it.
 
+## The hardened hub↔project boundary
+
+The paper lives in the hub but its evidence lives in the project — so the boundary between them is wired so a finalized paper never depends on a live project repo:
+
+- **Figures are synced, not copied by hand.** `tools/sync_figures.py <slug>` copies the project's `figures/*.{pdf,tex,png}` into `papers/<slug>/figures/` and records a `.manifest.json` (source path + sha256 + project commit); `--check` (run by `/write-paper` and `/review-paper`) fails if any hub copy is stale or diverged.
+- **Cited artifacts are archived at finalize.** `tools/lock_artifacts.py <slug>` copies every `runs/<id>/metrics.json` cited in `claims.yaml` into committed `papers/<slug>/artifacts/`, with a locked `artifact_sha256` per claim; `audit_claims.py … --verify-hashes` then resolves the hub archive first and re-checks the hashes — so a **finalized paper is auditable from the hub alone**.
+- **Write-back is a single atomic tool.** A project session calls `tools/hub_writeback.py --slug <slug> …` to append the hub notebook/knowledge entry and set the registry row in one step; if the hub is unreachable it leaves a `HUB-WRITEBACK-PENDING:` block in `EXPERIMENT_LOG.md` that the next hub session reconciles via `tools/process_writebacks.py --apply`.
+- **Escalation is bidirectional.** A project loop blocked mid-run (a headline reopen, a frozen-setting block, FULL work outside the envelope) emits `lab_bus.py escalate` so the hub/PI sees it without waiting for loop exit — it requests attention, never grants a gate.
+
 ## Extensibility rules (how the code stays extendable)
 
 These are the project-level hard rules, written for auto-research but exactly what makes human extension pleasant:

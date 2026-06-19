@@ -6,6 +6,9 @@ runs/*
 # Dashboard event bus + directive inbox + loop heartbeat (runtime state)
 .bus/
 
+# guard.py append-only baselines (runtime state)
+.guard/
+
 data/
 __pycache__/
 *.pyc

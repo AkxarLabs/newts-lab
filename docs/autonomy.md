@@ -46,14 +46,25 @@ the PI's signature scopes it:
   set** (eval/test/seeds/budgets/kill-criteria, never touched), the **Gate-2 envelope**, and
   the `loop.explore_*` caps; the anti-burn backoff still ends a fruitless search.
 
+  Frontier-`expand` is **incremental iteration WITHIN the headline hypothesis** — it is *not*
+  divergent method-ideation. Generating a genuinely new *approach* to the project's problem is a
+  separate, gated act: **`/ideate --in-project <slug>`** (the in-project mode of `/ideate` — a
+  divergent approach generator scoped to the frozen set, whose output is candidate approaches, not
+  experiments). See the `/ideate` skill for its generate→critique→tournament→triage pipeline and
+  the re-enter-`/propose`-or-successor-idea rule.
+
 The boundary is **mechanical**: each decision is flagged `Headline: yes/no` at scope time.
 Reopening a *non-headline* decision and expanding the frontier are fully autonomous; reopening
 a **headline** decision (the central hypothesis the proposal's novelty rests on), touching the
 frozen set, or exceeding the envelope **escalates** — a PI note in manual/`execute`, or under a
 signed `/autopilot` campaign the same delegation-bounds + overseer `support` check used for a
-Gate-1 self-approval. A pivot is never silent: it lands in `decisions.md`, PLAN.md's Re-planning
-log, and the event bus (so the dashboard shows it live). Default is `execute`, so nothing
-changes until you sign a brief that says `explore`.
+Gate-1 self-approval. A headline reopen is **not a dead end**: it routes to in-project
+method-ideation — **`/ideate --in-project <slug>`** (under `ideation.in_project_approval`: PI-gated
+in manual runs; auto within campaign bounds + overseer `support`) or a successor hub `/ideate` —
+whose surviving approaches re-enter `/propose` (a mini-proposal that crosses Gate 1) or spawn a
+successor idea, never entering experiments on a bare PI note. A pivot is never silent: it lands in
+`decisions.md`, PLAN.md's Re-planning log, and the event bus (so the dashboard shows it live).
+Default is `execute`, so nothing changes until you sign a brief that says `explore`.
 
 **Enabling `explore` (what to flip, and who may).** Two independent switches, both PI-owned:
 
@@ -185,6 +196,11 @@ campaigns:
    progress claims.
 5. **Hard stops** — kill criteria checked every cycle; anti-burn backoff; frozen
    settings untouchable by any feedback; PI escalation for stalemates.
+
+A project loop can also escalate **up to the hub mid-run**: at a headline reopen, a block on
+a frozen/PI-owned setting, or FULL work outside the envelope, it emits `lab_bus.py escalate`
+alongside the local PI note, so the request surfaces in `/lab-status` and the dashboard
+without waiting for loop exit. Escalation requests PI attention — it never grants a gate.
 
 ## First time?
 

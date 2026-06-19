@@ -11,6 +11,9 @@
 # ============================================================================
 
 project: "{{slug}}"
+hub_path: "{{hub_path}}"        # absolute path to the hub repo, filled at spawn. Tools that
+                                # bridge back to the hub (e.g. tools/hub_writeback.py) read it.
+                                # Informational — do not edit.
 
 budgets:                        # PI-owned after Gate 1 — enforced by the run.py watchdog.
   smoke_max_minutes: 10         # applied per-stage when an experiment yaml doesn't set

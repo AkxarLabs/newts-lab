@@ -56,10 +56,19 @@ Campaign rules (in addition to every standing hard rule):
 - NEEDS-EXPERIMENT review items are followed within remaining budget; otherwise queued.
 - **Explore-mode pivots** (if the campaign authorized `explore`): a project loop may reopen
   `Headline: no` decisions and expand the frontier autonomously within its envelope. A
-  `Headline: yes` reopen (abandoning a project's central hypothesis) is checked against the
-  campaign's Gate-1 delegation bounds + an overseer `support` pass — exactly like a Gate-1
-  self-approval; within bounds → record it and continue, outside → queue for the PI and move
-  on. Frozen-set changes and envelope overruns are never delegated.
+  `Headline: yes` reopen (abandoning a project's central hypothesis) is **not a dead end** — it
+  routes to **`/ideate --in-project <slug>`** (divergent method-ideation inside the project, scoped
+  to its frozen set). Under the campaign the approval default is `ideation.in_project_approval:
+  campaign_auto`: a surviving approach is checked against the campaign's Gate-1 delegation bounds +
+  an overseer `support` pass — **exactly like a Gate-1 self-approval** (the same delegation-bounds +
+  overseer check this campaign already applies to proposal auto-approvals); within bounds → record
+  the auto-approval and route the approach through `/propose` → `/spawn-project`/re-plan, outside
+  bounds (or `in_project_approval: pi` on the campaign brief/config) → queue for the PI and move on.
+  A surviving approach that changes the headline hypothesis **always** re-enters `/propose` (a
+  mini-proposal) or spawns a successor idea — never experiments on a bare PI note. Emit
+  `approach_ideate` for the round and `replan` when an approach re-plans the project (mid-campaign,
+  not only at exit), so the pivot is visible at the hub. Frozen-set changes, envelope overruns, and
+  **Gate 3 are never delegated**.
 - Every lifecycle step appends a Campaign Log row **and** emits a bus event
   (`tools/lab_bus.py emit cycle --idea <slug> --detail "<step> → <outcome>"`); at the start
   of each portfolio pass, check `tools/lab_bus.py inbox` and act on any PI directive.

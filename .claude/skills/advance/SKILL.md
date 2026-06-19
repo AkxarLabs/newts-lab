@@ -34,6 +34,7 @@ registry state (e.g. `scoping` before vs. after `/scope`); read it alongside the
 | `proposal`, next action `/spawn-project` (Gate 1 approved) | `/spawn-project` | `active`, smoke green |
 | `active`, planned PLAN.md rows remain | `/experiment` — **one attempt** (config → staged run → ledger → commit) | attempt recorded |
 | `active`, plan rows exhausted + budget for iteration remains | one `/improve` operator cycle | cycle recorded |
+| `active`, explore exhausted + PI requests divergence | one `/ideate --in-project <slug>` round (scoped to the frozen set; output = candidate approaches) | candidates triaged; headline-changing survivors routed to `/propose` (**Gate 1**) or a successor `/ideate` |
 | `active`, `/improve` plateaued or iteration budget spent | `/analyze` | routed (more exps / `writing` / kill) |
 | `analysis` | `/analyze` | routed |
 | `writing` | `/make-figures` + `/write-paper` through the compiled draft | `internal-review` |

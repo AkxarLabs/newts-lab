@@ -2,6 +2,9 @@ name: ci
 
 # Mechanical guardrails for the lab, run on every push/PR:
 #   lab-checks      — registry consistency, dashboard import, docs build (strict)
+#   hub-tools       — hermetic pytest regression suite for the hub's trust tools
+#                     (tests/), on Linux AND Windows — the integrity layer (audit,
+#                     guards, bus, slots, dashboard, write-backs) must stay green.
 #   template-smoke  — spawn templates/project/ and run its check_project + pytest + a
 #                     2-seed sweep, on Linux AND Windows (much of the tooling is
 #                     Windows-hardened, so the Windows leg earns its keep).
@@ -32,6 +35,23 @@ jobs:
         run: uv run --with pyyaml python -c "import sys; sys.path.insert(0, 'dashboard'); import sources; s = sources.snapshot(); print('snapshot ok — cold:', s['cold'], '| items:', len(s['items']))"
       - name: Docs build (strict)
         run: uv run --with properdocs --with mkdocs-material properdocs build --strict
+
+  hub-tools:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Hub trust-tools regression suite (hermetic)
+        run: uv run --with pyyaml --with pytest python -m pytest tests/ -q
 
   template-smoke:
     strategy:

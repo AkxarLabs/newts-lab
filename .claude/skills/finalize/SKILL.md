@@ -13,6 +13,7 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
 2. **Reproducibility pass on the project repo** (this is what makes "others can build on it" true):
    - `uv run pytest` green; smoke config runs clean from a fresh `uv sync`.
    - README's Reproduce section accurate; every paper-cited run id present in `runs/registry.jsonl`; figure scripts regenerate the paper's figures.
+   - **Secure the evidence in the hub** so the paper stays auditable even if the project is later moved or cleaned: `tools/sync_figures.py <slug> --check` (hub figures match their project sources), then `tools/lock_artifacts.py <slug>` (archives each cited `metrics.json` into `papers/<slug>/artifacts/` and records `artifact_sha256`), then `tools/audit_claims.py papers/<slug> --verify-hashes` — after this the paper audits from the hub alone.
    - Final commit + tag `paper-v1` **in the project repo**. If publishing, this repo + the tag are the artifact.
 3. **Hub close-out:**
    - `FINDINGS.md`: final confirmed findings with evidence pointers (paper section + run ids).

@@ -67,15 +67,34 @@ def _bus_emit(repo_root: Path, kind: str, **fields: Any) -> None:
         pass
 
 
-def _git_info(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        ).stdout.strip()
+def _git(repo_root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
+    ).stdout
 
-    sha = run("rev-parse", "HEAD")
-    dirty = bool(run("status", "--porcelain"))
+
+def _git_info(repo_root: Path) -> dict[str, Any]:
+    sha = _git(repo_root, "rev-parse", "HEAD").strip()
+    dirty = bool(_git(repo_root, "status", "--porcelain").strip())
     return {"commit": sha or None, "dirty": dirty}
+
+
+def _capture_dirty_state(repo_root: Path, run_dir: Path) -> dict[str, Any]:
+    """When the working tree is dirty, the `commit` SHA alone does NOT identify the code that
+    ran. Snapshot the exact change into the run dir so the run stays reproducible: apply
+    `code.patch` on top of `commit` to reconstruct the tree. Returns meta fields to record.
+    Best-effort — a git failure never breaks the run."""
+    try:
+        status = _git(repo_root, "status", "--porcelain")
+        if not status.strip():
+            return {}
+        (run_dir / "code.patch").write_text(_git(repo_root, "diff", "HEAD"), encoding="utf-8")
+        (run_dir / "diffstat.txt").write_text(_git(repo_root, "diff", "--stat", "HEAD"), encoding="utf-8")
+        (run_dir / "git_status.txt").write_text(status, encoding="utf-8")
+        untracked = [ln[3:] for ln in status.splitlines() if ln.startswith("??")]
+        return {"patch": "code.patch", "untracked": untracked or None}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 class RunContext:
@@ -118,6 +137,8 @@ class RunContext:
             },
             **_git_info(self.repo_root),
         }
+        if self.meta.get("dirty"):
+            self.meta.update(_capture_dirty_state(self.repo_root, self.run_dir))
 
         (self.run_dir / "config.resolved.yaml").write_text(
             yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8"
@@ -169,6 +190,7 @@ class RunContext:
             "seed": self.meta["seed"],
             "commit": self.meta["commit"],
             "dirty": self.meta["dirty"],
+            "patch": self.meta.get("patch"),
             "status": status,
             "wall_seconds": self.meta["wall_seconds"],
             "metrics": final_metrics,

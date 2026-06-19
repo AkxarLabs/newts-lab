@@ -1,6 +1,6 @@
 ---
 name: improve
-description: Operator-driven iteration on a project after initial implementation — draft/debug/improve/crossover over experiment variants, optionally in parallel via worktree subagents. Argument; the idea slug (and optionally a focus, e.g. an experiment id).
+description: Operator-driven iteration on a project after initial implementation — draft/debug/improve/crossover over experiment variants, optionally in parallel via worktree subagents. Argument; the idea slug, then optional tokens — a focus (e.g. an experiment id) and/or the mode token `explore` to enable the expand/revisit operators (default `execute`).
 ---
 
 # Improve (operator loop)
@@ -47,10 +47,14 @@ the mechanism."
 
 These two operators **change the plan itself** rather than extend it, so they are gated:
 available only when the project is being driven in **explore** mode — either a PI ran
-`/improve <slug> explore`, or `/research-loop` is sequencing them under a LOOP_BRIEF whose
-`Mode: explore` (see that skill). In `execute` mode they are off and `/improve` behaves
-exactly as the four operators above. Both stay inside the **frozen set** (eval/test/seeds/
-budgets/kill-criteria — never touched) and the **Gate-2 envelope**.
+`/improve <slug> [focus] explore` (the `explore` mode token, default `execute`), or
+`/research-loop` is sequencing them under a LOOP_BRIEF whose `Mode: explore` (see that skill).
+In `execute` mode they are off and `/improve` behaves exactly as the four operators above.
+The **manual `/improve <slug> explore` path honors the same checks as the loop path**: the
+`loop.explore_*` caps (`explore_max_expansion_rounds`/`…_new_lines_per_round`), the **frozen
+set** (eval/test/seeds/budgets/kill-criteria — never touched), and the **Gate-2 envelope** all
+bind identically — a manual `explore` does not get more rope than the loop, and a `Headline: yes`
+reopen escalates the same way (below). Default `execute`, so absent the token nothing changes.
 
 5. **expand** (results-grounded frontier expansion) — when the planned table, its ablation
    rows, and the `num_drafts` lines are all exhausted but budget remains. Context packet =
@@ -66,11 +70,17 @@ budgets/kill-criteria — never touched) and the **Gate-2 envelope**.
 6. **revisit** (reopen a design decision — "discard a pre-conceived idea") — when artifacts
    satisfy the **`Revisit if:`** trigger of a settled decision in the idea's `decisions.md`.
    - **Boundary check first (mechanical):** if that decision is `Headline: yes`, this is the
-     escalation boundary — do NOT execute; in a manual run, stop and write a PI note; under
-     `/research-loop`, queue a PI note (or, under a signed `/autopilot` campaign, run the
-     campaign-delegation check + overseer `support` pass exactly as for a Gate-1 self-approval).
-     A `Headline: no` decision, with the frozen set intact and the envelope not exceeded, is
-     **autonomous**.
+     escalation boundary — do NOT execute the reopen as an in-place re-plan. This is the entry
+     point to **divergent method-ideation, not a dead end**: route to `/ideate --in-project <slug>`
+     (under `ideation.in_project_approval`) — or a successor hub `/ideate` — whose surviving
+     approaches re-enter `/propose` (a mini-proposal crossing Gate 1) or spawn a successor idea,
+     never entering experiments on a bare PI note. In a manual run, stop and write a PI note that
+     names this route; under `/research-loop`, queue that PI note **and emit `uv run python
+     scripts/lab_bus.py escalate --detail "headline reopen — needs PI"`** so it reaches the hub
+     mid-run (not only at loop exit) — or, under a signed `/autopilot` campaign, run the
+     campaign-delegation check + overseer `support` pass exactly as for a Gate-1 self-approval,
+     then hand off to `/ideate --in-project`. A `Headline: no` decision, with the
+     frozen set intact and the envelope not exceeded, is **autonomous**.
    - **Overseer gate** (`oversight.level` ≠ off): before reopening, spawn one `overseer`
      `support` check giving it the `Revisit if:` text + the contradicting run-artifact paths
      only — UNSUPPORTED means the trigger did **not** fire, leave the decision settled.

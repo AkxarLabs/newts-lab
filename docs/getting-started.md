@@ -57,8 +57,11 @@ You'll be stopped at the gates and otherwise left to read the notebook.
 
 To keep an eye on the lab while agents iterate — every lifecycle stage and every running
 project, live — launch the optional [Vivarium dashboard](dashboard.md): the lab rendered as a
-living terrarium with an axolotl named Newt you can click to **command** the agents (start/stop
-loops, request runs, approve Gate 1 & 2), all from the scene.
+hand-drawn, *Rain-World*-style **living lab world** — each lifecycle stage is a room, every idea
+and project is a critter living in its room, and every working agent is its own worker critter you
+can **click to inspect** (a legend bottom-left maps role → colour with live head-counts). A buddy
+named Newt moves through it, and you click to **command** the agents (start/stop loops, request
+runs, approve Gate 1 & 2), all from the scene.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
