@@ -56,6 +56,8 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # (TRAINING) is globally serialized by compute.max_concurrent_runs.
     max_depth: 1                # launch-recursion cap. 1 = hub→project only; a launched agent may NOT
                                 # launch further agents (mirrors the no-nested-subagents rule)
+    max_transcript_mb: 200      # cap each agent's stored stdout transcript (.bus/agents/*.stream.jsonl);
+                                # a runaway/looping agent can't fill the disk before the watchdog. 0 = unlimited.
     backends:                   # per-backend invocation knobs (agent_runner knows the flag grammar)
       claude:
         extra_args: ""          # appended to the `claude -p` invocation (advanced)

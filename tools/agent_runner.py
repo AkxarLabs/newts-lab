@@ -32,6 +32,7 @@ Safety (the lab is "full autonomy WITH many human-intervention points"):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import signal
@@ -66,6 +67,48 @@ def _load_yaml(path: Path) -> dict:
 
 def _prog_cfg() -> dict:
     return ((_load_yaml(LAB / "config.yaml").get("agents") or {}).get("programmatic")) or {}
+
+
+def _pos_int(value, default: int, minimum: int) -> int:
+    """Parse a numeric config knob defensively: unparseable -> default; below minimum -> clamped."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    return v if v >= minimum else minimum
+
+
+def _pos_float(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@contextlib.contextmanager
+def _launch_lock(adir: Path):
+    """Serialize the cap-check + manifest reservation so two near-simultaneous launches can't both
+    pass max_concurrent. A crashed holder's lock (>2 min old) is reclaimed."""
+    lock = adir / ".launch.lock"
+    deadline = time.time() + 30
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            with contextlib.suppress(OSError):
+                if time.time() - lock.stat().st_mtime > 120:
+                    lock.unlink(); continue
+            if time.time() > deadline:
+                raise TimeoutError("launch ledger busy")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def _registry_rows() -> list[dict]:
@@ -192,8 +235,11 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
 
     def _guard_extra(forbidden: tuple[str, ...]) -> None:
         # extra_args is a PI-owned advanced knob; it must NOT silently negate the human-in-loop
-        # permission/sandbox defaults this tool promises. Refuse rather than override.
-        hit = [f for f in forbidden if f in extra.split()]
+        # permission/sandbox defaults this tool promises. Refuse rather than override. Match the
+        # `=`-joined form too (`--sandbox=danger-full-access`), which clap accepts and bare-token
+        # equality would miss.
+        toks = extra.split()
+        hit = sorted({f for f in forbidden for tok in toks if tok == f or tok.startswith(f + "=")})
         if hit:
             raise SystemExit(f"[agent_runner] backends.{backend}.extra_args may not set {hit} — that "
                              "would defeat the human-in-loop default; set the dedicated config key instead")
@@ -266,8 +312,8 @@ def cmd_launch(a) -> int:
         print("[agent_runner] BLOCKED: agents.programmatic.enabled is false — programmatic launching is "
               "a PI-owned opt-in. Enable via /configure (or a PI-signed /autopilot campaign brief) first.")
         return 1
-    depth = int(os.environ.get(_DEPTH_ENV, "0") or 0)
-    max_depth = int(prog.get("max_depth", 1))
+    depth = _pos_int(os.environ.get(_DEPTH_ENV, "0") or 0, 0, 0)
+    max_depth = _pos_int(prog.get("max_depth", 1), 1, 0)   # 0 = kill switch (blocks all launches)
     if depth >= max_depth:
         print(f"[agent_runner] BLOCKED: launch depth {depth} >= max_depth {max_depth} — a launched agent "
               "may not launch further agents (mirrors the no-nested-subagents rule). Only the top-level "
@@ -277,17 +323,15 @@ def cmd_launch(a) -> int:
     if not pdir or not pdir.exists():
         print(f"[agent_runner] BLOCKED: no project dir for {a.project!r}")
         return 1
-    prompt = a.prompt or (Path(a.prompt_file).read_text(encoding="utf-8") if a.prompt_file else None)
+    prompt = a.prompt
+    if prompt is None and a.prompt_file:
+        try:
+            prompt = Path(a.prompt_file).read_text(encoding="utf-8")
+        except OSError as e:
+            print(f"[agent_runner] BLOCKED: cannot read --prompt-file {a.prompt_file}: {e}")
+            return 1
     if not prompt:
         print("[agent_runner] BLOCKED: need --prompt or --prompt-file")
-        return 1
-
-    running = [m for m in _list_manifests(pdir)
-               if m.get("status") == "running" and _pid_alive(m.get("pid"))]
-    cap = int(prog.get("max_concurrent", 2))
-    if len(running) >= cap:
-        print(f"[agent_runner] BLOCKED: {len(running)} agent(s) already running on {pdir.name} "
-              f"(agents.programmatic.max_concurrent={cap})")
         return 1
 
     backend = a.backend or prog.get("backend") or "claude"
@@ -296,31 +340,43 @@ def cmd_launch(a) -> int:
     role = a.role or "orchestrator"
     # A headless agent ALWAYS has a wall-clock cap — 0/unset is the default, never "unbounded"
     # (the watchdog is the only kill for a hung/non-terminating child, so it must always run).
-    max_minutes = float(prog.get("max_minutes") or 0)
+    max_minutes = _pos_float(prog.get("max_minutes"), 0.0)
     if max_minutes <= 0:
         max_minutes = 240.0
-
+    cap = _pos_int(prog.get("max_concurrent", 2), 2, 1)
+    cmd, fires_hooks = _build_command(backend, prompt, pdir, model, perm, prog)  # may SystemExit on the extra-args guard
     adir = _agents_dir(pdir)
-    base = f"{a.label or role}-{time.strftime('%Y%m%d-%H%M%S')}"
-    agent_id, manifest_path = base, adir / f"{base}.json"
-    for i in range(1, 100):  # collision suffix (same-second launches)
-        if not manifest_path.exists():
-            break
-        agent_id = f"{base}-{i}"
-        manifest_path = adir / f"{agent_id}.json"
-    stream_path = adir / f"{agent_id}.stream.jsonl"
 
-    cmd, fires_hooks = _build_command(backend, prompt, pdir, model, perm, prog)
-    wlog = None if fires_hooks else (pdir / ".bus" / "workers" / f"{agent_id}.jsonl")
-
-    manifest = {
-        "agent_id": agent_id, "backend": backend, "model": model, "role": role,
-        "label": a.label, "project": pdir.name, "cwd": str(pdir),
-        "prompt_summary": prompt.strip()[:200], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "status": "running", "pid": None, "stream": stream_path.name, "max_minutes": max_minutes,
-        "session_id": None, "exit_code": None, "finished": None, "wall_seconds": None, "last_message": None,
-    }
-    _write_manifest(manifest_path, manifest)
+    # Serialize the cap-check + manifest reservation so two near-simultaneous launches can't both
+    # pass the cap (the reservation — a 'running' manifest — counts toward the next launcher's check).
+    try:
+        with _launch_lock(adir):
+            running = [m for m in _list_manifests(pdir)
+                       if m.get("status") == "running" and _pid_alive(m.get("pid"))]
+            if len(running) >= cap:
+                print(f"[agent_runner] BLOCKED: {len(running)} agent(s) already running on {pdir.name} "
+                      f"(agents.programmatic.max_concurrent={cap})")
+                return 1
+            base = f"{a.label or role}-{time.strftime('%Y%m%d-%H%M%S')}"
+            agent_id, manifest_path = base, adir / f"{base}.json"
+            for i in range(1, 100):  # collision suffix (same-second launches)
+                if not manifest_path.exists():
+                    break
+                agent_id = f"{base}-{i}"
+                manifest_path = adir / f"{agent_id}.json"
+            stream_path = adir / f"{agent_id}.stream.jsonl"
+            wlog = None if fires_hooks else (pdir / ".bus" / "workers" / f"{agent_id}.jsonl")
+            manifest = {
+                "agent_id": agent_id, "backend": backend, "model": model, "role": role,
+                "label": a.label, "project": pdir.name, "cwd": str(pdir),
+                "prompt_summary": prompt.strip()[:200], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "status": "running", "pid": None, "stream": stream_path.name, "max_minutes": max_minutes,
+                "session_id": None, "exit_code": None, "finished": None, "wall_seconds": None, "last_message": None,
+            }
+            _write_manifest(manifest_path, manifest)   # the reservation
+    except TimeoutError:
+        print("[agent_runner] BLOCKED: launch ledger busy — another launch is in progress, retry")
+        return 1
 
     env = dict(os.environ)
     env[_DEPTH_ENV] = str(depth + 1)
@@ -358,10 +414,21 @@ def cmd_launch(a) -> int:
     threading.Thread(target=_watchdog, daemon=True).start()
 
     last_message = session_id = None
+    # Cap the persisted transcript so a runaway/looping agent can't fill the disk before the
+    # max_minutes watchdog fires (default 200 MB; 0 = unlimited). Parsing for activity continues.
+    max_bytes = _pos_int(prog.get("max_transcript_mb", 200), 200, 0) * 1024 * 1024
+    written, truncated = 0, False
     with stream_path.open("a", encoding="utf-8") as sf:
         for line in proc.stdout:  # type: ignore[union-attr]
-            sf.write(line)
-            sf.flush()
+            if max_bytes <= 0 or written < max_bytes:
+                sf.write(line)
+                sf.flush()
+                written += len(line.encode("utf-8", "replace"))
+                if max_bytes > 0 and written >= max_bytes and not truncated:
+                    sf.write('{"_truncated":"transcript hit max_transcript_mb; further output is '
+                             'parsed for activity but no longer stored"}\n')
+                    sf.flush()
+                    truncated = True
             s = line.strip()
             if not s:
                 continue

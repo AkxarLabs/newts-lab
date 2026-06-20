@@ -65,6 +65,15 @@ def _set_state(slug: str, state: str) -> str:
             os.close(os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             break
         except FileExistsError:
+            # Reclaim a crashed holder's lock: the registry rewrite takes milliseconds, so a lock
+            # older than 60s is certainly abandoned — without this a killed writer wedges ALL future
+            # registry state changes forever ("registry busy" on every session).
+            try:
+                if time.time() - lock.stat().st_mtime > 60:
+                    lock.unlink()
+                    continue
+            except OSError:
+                pass
             time.sleep(0.1)
     else:
         return "registry busy (lock not acquired)"

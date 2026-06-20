@@ -96,18 +96,30 @@ def main() -> int:
                   f"`sync_figures.py {args.slug}` first")
             return 1
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        project_present = src_dir.exists()
         problems = []
         for name, ent in manifest.items():
+            expected = ent.get("sha256")
             hub_f, src_f = paper_fig / name, src_dir / name
             if not hub_f.exists():
                 problems.append(f"missing (hub copy gone): {name}")
                 continue
-            if sha256(hub_f) != ent["sha256"]:
+            if not expected:
+                problems.append(f"manifest entry malformed (no sha256) — re-sync: {name}")
+                continue
+            if sha256(hub_f) != expected:
                 problems.append(f"diverged (hub copy hand-edited): {name}")
-            if not src_f.exists():
-                problems.append(f"missing (project source gone): {name}")
-            elif sha256(src_f) != ent["sha256"]:
-                problems.append(f"stale (project regenerated, not re-synced): {name}")
+            # The project-source check only applies when the repo is PRESENT: a finalized/archived
+            # paper whose project is gone stays auditable from its hub copies alone (the lock_artifacts
+            # self-sufficiency contract), so 'project absent' is informational, not drift.
+            if project_present:
+                if not src_f.exists():
+                    problems.append(f"missing (project source gone): {name}")
+                elif sha256(src_f) != expected:
+                    problems.append(f"stale (project regenerated, not re-synced): {name}")
+        if not project_present:
+            print(f"[sync_figures] note: project repo absent ({project}) — checked hub copies "
+                  f"against the manifest only")
         if problems:
             print(f"## Figure sync check — {args.slug}: {len(problems)} issue(s)")
             for p in problems:
@@ -135,8 +147,15 @@ def main() -> int:
     if not copied:
         print(f"[sync_figures] {src_dir} has no .pdf/.tex/.png to sync")
         return 1
+    # After a real sync, drop hub figure copies the project no longer produces (renamed/deleted
+    # source) so a stale figure can't linger unmanifested and silently feed an \includegraphics.
+    removed = 0
+    for hf in paper_fig.iterdir():
+        if hf.is_file() and hf.suffix.lower() in EXTS and hf.name not in manifest:
+            hf.unlink()
+            removed += 1
     print(f"synced {copied} figure file(s) → studies/{args.slug}/paper/figures/ "
-          f"(project commit {commit[:8] or '?'})")
+          f"(project commit {commit[:8] or '?'})" + (f"; removed {removed} stale hub copy(ies)" if removed else ""))
     return 0
 
 

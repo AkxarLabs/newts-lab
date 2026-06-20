@@ -118,15 +118,19 @@ def main() -> int:
             for key, value in flatten(layer).items():
                 merged[key] = value
                 sources[key] = name
-        # Stage-budget mapping (mirrors project_pkg.config.load_config: explicit if set in
-        # the experiment yaml OR base.yaml)
-        if "budget.max_minutes" not in flatten(exp) and "budget.max_minutes" not in flatten(base):
+        # Stage-budget mapping (mirrors project_pkg.config.load_config: the stage cap applies only
+        # when NO layer set budget.max_minutes explicitly — control.yaml top-level included, which the
+        # loader honors). Omitting control here would mis-report a PI's top-level budget override.
+        if ("budget.max_minutes" not in flatten(exp) and "budget.max_minutes" not in flatten(base)
+                and "budget.max_minutes" not in flatten(control)):
             stage = str(merged.get("stage", "SMOKE")).lower()
             cap = flatten(control).get(f"budgets.{stage}_max_minutes")
             if cap is not None:
                 merged["budget.max_minutes"] = cap
                 sources["budget.max_minutes"] = f"control.yaml (budgets.{stage}_max_minutes)"
         print(f"\n### Layer 3 — resolved run config for {args.experiment}\n")
+        print("*(assumes no CLI overrides; `stage` / `budget.max_minutes` differ if you pass "
+              "`stage=...` or a dotted override on the run command.)*\n")
         print("| key | value | set by |")
         print("|---|---|---|")
         for key in sorted(merged):

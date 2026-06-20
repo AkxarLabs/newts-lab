@@ -92,7 +92,7 @@ def main() -> int:
         if slug not in study_dirs:
             problems.append(f"registry row '{slug}' has no studies/{slug}/ dir")
     for slug in sorted(slug_dirs(projects_root)):
-        if slug not in rows and "-wt-" not in slug:
+        if slug not in rows and "-wt-" not in slug and not slug.endswith("-wt"):  # skip transient worktrees (matches trace_hook)
             problems.append(f"{projects_root.name}/{slug}/ has no registry row")
 
     # 3. Staleness.

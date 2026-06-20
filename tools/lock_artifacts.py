@@ -8,7 +8,9 @@ record its sha256 into the claim's `artifact_sha256:` map. After this,
 `audit_claims.py studies/<slug>/paper --verify-hashes` PASSES from a fresh hub clone even if the
 project repo is gone — the paper carries its own evidence ("secured" in the hub). Run at
 `/finalize`. Idempotent: re-running re-copies + re-hashes from the (still-present) project, or
-keeps the already-archived copy if the project source is gone.
+keeps the already-archived copy if the project source is gone. claims.yaml is rewritten in place
+(machine-owned): its leading comment header is preserved, but inline comments below it are not —
+keep durable guidance in the header block.
 """
 
 from __future__ import annotations
@@ -70,6 +72,19 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _leading_comments(text: str) -> str:
+    """The contiguous comment/blank header atop claims.yaml — the load-bearing precision-quoting +
+    semantics guidance. safe_dump can't preserve comments, so we re-prepend this header on rewrite
+    (inline comments below it are not preserved — keep durable notes in the header)."""
+    out = []
+    for line in text.splitlines():
+        if line.strip() == "" or line.lstrip().startswith("#"):
+            out.append(line)
+        else:
+            break
+    return (("\n".join(out)).rstrip() + "\n\n") if any(s.strip() for s in out) else ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("slug")
@@ -80,7 +95,8 @@ def main() -> int:
     if not claims_path.exists():
         print(f"[lock_artifacts] no claims.yaml at {claims_path}")
         return 1
-    doc = yaml.safe_load(claims_path.read_text(encoding="utf-8-sig")) or {}
+    original = claims_path.read_text(encoding="utf-8-sig")
+    doc = yaml.safe_load(original) or {}
     claims = doc.get("claims") or []
     archive = paper_dir / "artifacts"
 
@@ -105,7 +121,7 @@ def main() -> int:
             claim["artifact_sha256"] = hashes
 
     doc["claims"] = claims
-    claims_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True),
+    claims_path.write_text(_leading_comments(original) + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True),
                            encoding="utf-8")
     print(f"locked {locked} artifact(s) into studies/{args.slug}/paper/artifacts/ + recorded "
           f"sha256 in claims.yaml")
