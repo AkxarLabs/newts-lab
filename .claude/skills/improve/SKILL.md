@@ -6,11 +6,11 @@ description: Operator-driven iteration on a project after initial implementation
 # Improve (operator loop)
 
 Iterates on the project repo at `<projects_root>/<slug>` to push the primary metric,
-AIDE/AIRA-style: the quality lives in the **operators**, not in clever search.
-Defaults from the project's `control.yaml` (`parallelism.*`, `seeds.*`), falling back
-to `lab/config.yaml` (`experiment.*`): `max_debug_depth`, `num_drafts`,
-`max_parallel_subagents`, `multi_seed_n`. If the project has a `SYSTEM.md`, its machine
-constraints bind every variant (and are passed to runner subagents' context packets).
+AIDE/AIRA-style: the quality lives in the **operators**. Defaults from the project's
+`control.yaml` (`parallelism.*`, `seeds.*`), falling back to `lab/config.yaml`
+(`experiment.*`): `max_debug_depth`, `num_drafts`, `max_parallel_subagents`,
+`multi_seed_n`. If the project has a `SYSTEM.md`, its machine constraints bind every
+variant (and are passed to runner subagents' context packets).
 
 ## The journal is the tree
 
@@ -19,7 +19,10 @@ constraints bind every variant (and are passed to runner subagents' context pack
 attempt from either skill is a node here, so sibling tables and "already tried" checks
 see everything. Before every operator decision, reconstruct from the journal: the
 solution **lines** (chains of kept changes), each line's best node, and which attempts
-failed. Never act without reading the journal first.
+failed. Never act without reading the journal first — **and read `NOTES.md` "Tried &
+abandoned" before any `draft`/`improve`**: a distilled dead end there means don't re-draft it
+(propose a different mechanism instead). When an operator confirms a new dead end or
+a reusable fix, add the one-line lesson to `NOTES.md`.
 
 ## Operator selection (per cycle)
 
@@ -46,15 +49,14 @@ the mechanism."
 ## Explore-mode operators (expand / revisit)
 
 These two operators **change the plan itself** rather than extend it, so they are gated:
-available only when the project is being driven in **explore** mode — either a PI ran
-`/improve <slug> [focus] explore` (the `explore` mode token, default `execute`), or
-`/research-loop` is sequencing them under a LOOP_BRIEF whose `Mode: explore` (see that skill).
-In `execute` mode they are off and `/improve` behaves exactly as the four operators above.
-The **manual `/improve <slug> explore` path honors the same checks as the loop path**: the
-`loop.explore_*` caps (`explore_max_expansion_rounds`/`…_new_lines_per_round`), the **frozen
-set** (eval/test/seeds/budgets/kill-criteria — never touched), and the **Gate-2 envelope** all
-bind identically — a manual `explore` does not get more rope than the loop, and a `Headline: yes`
-reopen escalates the same way (below). Default `execute`, so absent the token nothing changes.
+available only in **explore** mode — either a PI ran `/improve <slug> [focus] explore` (the
+`explore` mode token, default `execute`), or `/research-loop` is sequencing them under a
+LOOP_BRIEF whose `Mode: explore` (see that skill). In `execute` mode they are off and the four
+operators above are all that run. The **manual `/improve <slug> explore` path honors the same
+checks as the loop path**: the `loop.explore_*` caps
+(`explore_max_expansion_rounds`/`…_new_lines_per_round`), the **frozen set**
+(eval/test/seeds/budgets/kill-criteria — never touched), and the **Gate-2 envelope** all bind
+identically, and a `Headline: yes` reopen escalates the same way (below).
 
 5. **expand** (results-grounded frontier expansion) — when the planned table, its ablation
    rows, and the `num_drafts` lines are all exhausted but budget remains. Context packet =
@@ -65,19 +67,22 @@ reopen escalates the same way (below). Default `execute`, so absent the token no
    make promising, each WITHIN the headline hypothesis — do not repeat any prior line."
    Each proposed line is appended to PLAN.md tagged `(expand Rn)` **with a pre-written
    promotion criterion** (no criterion → not a valid row), then runs through the four
-   operators above like any planned work. This is `draft`'s generative spirit, seeded by
-   evidence instead of capped at `num_drafts`. Emit `frontier_expand`.
+   operators above like any planned work. Emit `frontier_expand`; then run
+   `uv run --with pyyaml python tools/guard.py plan-trace <slug>` — a BLOCKED means a row reads as
+   a headline change and must re-enter `/propose`, not sit in PLAN.md.
 6. **revisit** (reopen a design decision — "discard a pre-conceived idea") — when artifacts
-   satisfy the **`Revisit if:`** trigger of a settled decision in the idea's `decisions.md`.
+   satisfy the **`Revisit if:`** trigger (machine form: its **`Revisit predicate:`**, shape-checked
+   by `guard.py decisions <slug>`) of a settled decision in the idea's `decisions.md`.
    - **Boundary check first (mechanical):** if that decision is `Headline: yes`, this is the
      escalation boundary — do NOT execute the reopen as an in-place re-plan. This is the entry
      point to **divergent method-ideation, not a dead end**: route to `/ideate --in-project <slug>`
-     (under `ideation.in_project_approval`) — or a successor hub `/ideate` — whose surviving
-     approaches re-enter `/propose` (a mini-proposal crossing Gate 1) or spawn a successor idea,
-     never entering experiments on a bare PI note. In a manual run, stop and write a PI note that
-     names this route; under `/research-loop`, queue that PI note **and emit `uv run python
-     scripts/lab_bus.py escalate --detail "headline reopen — needs PI"`** so it reaches the hub
-     mid-run (not only at loop exit) — or, under a signed `/autopilot` campaign, run the
+     (enabled by `ideation.in_project: true`, approval-gated by `ideation.in_project_approval` —
+     **if `ideation.in_project: false` the `--in-project` route is OFF; fall back to a successor
+     hub `/ideate`**) — whose surviving approaches re-enter `/propose` (a mini-proposal crossing
+     Gate 1) or spawn a successor idea, never entering experiments on a bare PI note. In a manual
+     run, stop and write a PI note naming this route; under `/research-loop`, queue that PI note
+     **and emit `uv run python scripts/lab_bus.py escalate --detail "headline reopen — needs PI"`**
+     so it reaches the hub mid-run — or, under a signed `/autopilot` campaign, run the
      campaign-delegation check + overseer `support` pass exactly as for a Gate-1 self-approval,
      then hand off to `/ideate --in-project`. A `Headline: no` decision, with the
      frozen set intact and the envelope not exceeded, is **autonomous**.
@@ -104,8 +109,8 @@ reopen escalates the same way (below). Default `execute`, so absent the token no
      budget. PILOT-running variants each need a compute slot (hard rule 13) — acquire
      them as the parent before spawning. **Spawn at most as many PILOT-running variants
      as slots granted**; with the default `max_concurrent_runs: 1`, that is one — run the
-     rest SMOKE-only in parallel (SMOKE needs no slot) or queue them for the next batch,
-     and never spawn a PILOT-running runner without holding its slot. Subagents never
+     rest SMOKE-only in parallel (SMOKE needs no slot) or queue them for the next batch.
+     Never spawn a PILOT-running runner without holding its slot. Subagents never
      manage slots, commit in their branch, return a result packet, and never touch shared
      ledgers.
   3. **Merge through the journal, not git merges** (CLAUDE.md subagent rule 3) — for each
@@ -114,8 +119,8 @@ reopen escalates the same way (below). Default `execute`, so absent the token no
      - **Copy `runs/<id>/` dirs + the variant's new `runs/registry.jsonl` lines into the
        main tree — for EVERY packet, keep or revert.** A reverted variant's artifacts are
        evidence too (hard rules 1, 2; `/experiment` step 4: revert the code but keep the
-       ledger entry and registry line). Do this *before* removing the worktree, because
-       `runs/*` is gitignored and `git worktree remove` would delete it permanently.
+       ledger entry and registry line). Do this *before* removing the worktree — `runs/*` is
+       gitignored and `git worktree remove` would delete it permanently.
      - For **kept** variants only, take the code by path — `git -C <projects_root>/<slug>
        checkout exp-NNN -- configs/ src/` (configs + new modules; never a full `git merge`,
        which would conflict/duplicate on the tracked `registry.jsonl`) — then commit
@@ -143,4 +148,4 @@ update PLAN.md and the registry, recommend `/analyze`.
 **Selection discipline (louder during exploration):** every expanded or replacement line is
 tuned on validation and reported on the **frozen test**, and needs `multi_seed_n` seeds before
 any number is paper-grade. The more expansion rounds you run, the more validation overfits
-(hard rule 5) — that is exactly why the rounds are capped.
+(hard rule 5) — why the rounds are capped.

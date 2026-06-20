@@ -71,7 +71,7 @@ def parse_registry() -> list[dict]:
 
 def projects_root() -> Path:
     lab_cfg = (_load_yaml(LAB / "config.yaml").get("lab") or {})
-    return (HUB / (lab_cfg.get("projects_root") or "../AutoScientist-Projects")).resolve()
+    return (HUB / (lab_cfg.get("projects_root") or "../kartr-lab-projects")).resolve()
 
 
 def _project_path(row: dict) -> Path | None:
@@ -121,6 +121,25 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
             "elapsed_s": round(elapsed), "budget_min": budget,
             "state": "stalled" if stalled else "alive", "last": last,
         })
+    return out
+
+
+def _launched_agents(project_dir: Path) -> list[dict]:
+    """Headless top-level agents launched into this project by tools/agent_runner.py — each is a
+    <project>/.bus/agents/<id>.json manifest. Surfaces who/what/status; the full transcript lives
+    next to it as <id>.stream.jsonl. Best-effort, absent dir => []."""
+    adir = project_dir / ".bus" / "agents"
+    if not adir.exists():
+        return []
+    out = []
+    for f in sorted(adir.glob("*.json")):
+        try:
+            m = json.loads(_read_text(f))
+        except json.JSONDecodeError:
+            continue
+        out.append({k: m.get(k) for k in
+                    ("agent_id", "backend", "role", "status", "started", "finished",
+                     "wall_seconds", "exit_code", "prompt_summary")})
     return out
 
 
@@ -351,6 +370,7 @@ def snapshot() -> dict:
             "inflight": [], "best": None, "loop_active": False, "events": [],
         }
         item["directives"] = []
+        item["agents"] = []
         item["n_workers"] = 0
         if pdir is not None:
             registry = _read_jsonl(pdir / "runs" / "registry.jsonl")
@@ -358,6 +378,7 @@ def snapshot() -> dict:
             item["best"] = _best_metric(registry)
             item["inflight"] = _inflight_runs(pdir)
             item["loop_active"] = (pdir / ".bus" / ".loop-active").exists()
+            item["agents"] = _launched_agents(pdir)
             item["directives"] = _directive_threads(pdir / ".bus")
             pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
             item["events"] = pevents[-12:]

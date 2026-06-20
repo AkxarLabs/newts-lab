@@ -79,6 +79,23 @@ def _git_info(repo_root: Path) -> dict[str, Any]:
     return {"commit": sha or None, "dirty": dirty}
 
 
+def _env_info() -> dict[str, Any]:
+    """Per-run environment provenance (best-effort): interpreter + platform, and the ML-stack
+    versions if importable. Complements the git SHA + uv.lock (which pin code + deps) with the
+    runtime/hardware facts that matter for replaying 'harder' GPU work. Never breaks a run."""
+    import platform
+    info: dict[str, Any] = {"python": platform.python_version(), "platform": platform.platform()}
+    try:
+        import torch  # type: ignore
+        info["torch"] = torch.__version__
+        if torch.cuda.is_available():
+            info["cuda"] = torch.version.cuda
+            info["gpu"] = torch.cuda.get_device_name(0)
+    except Exception:  # noqa: BLE001 — torch is optional; provenance must never fail a run
+        pass
+    return info
+
+
 def _capture_dirty_state(repo_root: Path, run_dir: Path) -> dict[str, Any]:
     """When the working tree is dirty, the `commit` SHA alone does NOT identify the code that
     ran. Snapshot the exact change into the run dir so the run stays reproducible: apply
@@ -135,6 +152,7 @@ class RunContext:
                 "max_minutes": (cfg.get("budget") or {}).get("max_minutes"),
                 "breached": False,
             },
+            "env": _env_info(),
             **_git_info(self.repo_root),
         }
         if self.meta.get("dirty"):

@@ -5,10 +5,12 @@ description: Generate the paper's figures and tables from run artifacts — aggr
 
 # Make Figures
 
-All visual/tabular evidence for `papers/<slug>/`, generated mechanically from
+All visual/tabular evidence for `studies/<slug>/paper/`, generated mechanically from
 `runs/` artifacts in the project repo. The figure library
 (`src/project_pkg/figures.py`) carries the style, so scripts stay tiny and figures
-are consistent by construction. Add `matplotlib` to the project's pyproject if absent.
+are consistent. Add `matplotlib` to the project's pyproject if absent. (For a non-`ml`
+project the artifacts may be regression tables / sim summaries — the *artifact-not-hand-made*
+rule still binds; `theory` figures are illustrative, where the project's `TYPE.md` relaxes it.)
 
 ## 1. Inventory
 
@@ -29,23 +31,22 @@ in the registry row), one script per artifact (`fig_main_result.py`, `tab_ablati
   ("mean ± std over n=3 seeds"). Single-seed curves are labeled as such.
 - **Tables**: cells formatted by `figures.format_measurement()` (sig-fig discipline),
   laid out by `figures.emit_table()` (booktabs, no vertical rules), written as `.tex`
-  files that the paper `\input`s — **numbers never pass through prose generation**
-  (this single rule eliminated numerical transcription errors in prior systems).
+  files that the paper `\input`s — **numbers never pass through prose generation**.
 - ≤3 panels per figure; ≤7 series per panel (Okabe-Ito palette limit); vary
   linestyle/marker as well as color.
 - `figures.save_fig(..., consumed_runs=[...])` so every artifact prints its provenance
   for `claims.yaml`.
 
-**Register every emitted artifact in `claims.yaml` now** (create `papers/<slug>/` from
+**Register every emitted artifact in `claims.yaml` now** (create `studies/<slug>/paper/` from
 `templates/paper/` first if it doesn't exist — running standalone before `/write-paper` is
 fine): one entry per table/figure with its claim, the numbers it shows, its location (table
-label / figure file), the run ids from `consumed_runs`, and the derivation. This is what
-makes the paper's *tabular* results auditable — a table cell never echoed in prose would
-otherwise escape `tools/audit_claims.py` entirely.
+label / figure file), the run ids from `consumed_runs`, and the derivation. This makes
+*tabular* results auditable — a table cell never echoed in prose would otherwise escape
+`tools/audit_claims.py` entirely.
 
 Run every script; commit the scripts in the project repo; then sync the outputs into the hub:
 `uv run --with pyyaml python tools/sync_figures.py <slug>` — it copies `figures/*.{pdf,tex,png}`
-into `papers/<slug>/figures/` and records a manifest (sha256 + project commit) so a later
+into `studies/<slug>/paper/figures/` and records a manifest (sha256 + project commit) so a later
 `tools/sync_figures.py <slug> --check` catches a stale (project regenerated) or hand-edited hub
 figure. Never hand-copy figures.
 
@@ -55,8 +56,8 @@ Read each generated `.png` and check, per figure:
 
 1. **Trend supports the claim** it's attached to — if the picture doesn't show what the
    text will say, fix the text's expectation or the figure choice, never the data.
-2. **Legible at print size**: the PNG renders the figure at final width — if you have
-   to squint at tick labels, the reader can't read them at all.
+2. **Legible at print size**: the PNG renders at final width — if you have to squint at
+   tick labels, the reader can't read them.
 3. **Complete**: legend present, axes labeled with units, error-band semantics in the
    caption draft.
 4. **Informative**: a panel where all series overlap into one line, or all bars are

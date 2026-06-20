@@ -18,12 +18,13 @@ def _mod():
 
 def test_idea_of_ideas_path():
     m = _mod()
-    assert m._idea_of({"file_path": "ideas/my-slug/proposal.md"}) == "my-slug"
+    assert m._idea_of({"file_path": "studies/my-slug/proposal.md"}) == "my-slug"
 
 
 def test_idea_of_papers_path():
     m = _mod()
-    assert m._idea_of({"file_path": "papers/cool-paper/main.tex"}) == "cool-paper"
+    # the paper lives at studies/<slug>/paper/ — still attributed to the slug, not "paper"
+    assert m._idea_of({"file_path": "studies/cool-paper/paper/main.tex"}) == "cool-paper"
 
 
 def test_idea_of_project_artifact_attribution():
@@ -43,7 +44,7 @@ def test_idea_of_unrelated_returns_empty():
 
 def test_idea_of_handles_windows_separators():
     m = _mod()
-    assert m._idea_of({"file_path": r"ideas\win-slug\IDEA.md"}) == "win-slug"
+    assert m._idea_of({"file_path": r"studies\win-slug\IDEA.md"}) == "win-slug"
 
 
 # ── _resolve_bus ──────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ def test_resolve_bus_finds_hub(tmp_path):
     hub = tmp_path / "hub"
     (hub / "lab").mkdir(parents=True)
     (hub / "lab" / "REGISTRY.md").write_text("reg", encoding="utf-8")
-    sub = hub / "ideas" / "x"
+    sub = hub / "studies" / "x"
     sub.mkdir(parents=True)
     assert m._resolve_bus(str(sub)) == hub / "lab" / ".bus"
 
@@ -97,3 +98,21 @@ def test_kind_classifies_tools():
     assert m._kind("Bash", {"command": "git commit -m x"}) == "git"
     assert m._kind("Bash", {"command": "ls"}) == "bash"
     assert m._kind("Skill", {}) == "skill"
+
+
+# ── drift guard: the project-template copy must stay in lockstep with the hub ──────
+# (Its docstring claims "verbatim copy of the hub's tools/trace_hook.py"; the studies/ refactor
+#  once let IDEA_RE drift to the stale (?:ideas|papers)/ form — this test pins them together.)
+
+def test_template_trace_hook_in_lockstep_with_hub():
+    hub = load("trace_hook")
+    tpl = load("templates/project/scripts/trace_hook")
+    assert tpl.IDEA_RE.pattern == hub.IDEA_RE.pattern
+    assert tpl.PROJ_RE.pattern == hub.PROJ_RE.pattern
+
+
+def test_template_idea_of_resolves_studies_paths():
+    # the bug: the template copy returned "" for studies/<slug>/... (stale ideas|papers regex).
+    tpl = load("templates/project/scripts/trace_hook")
+    assert tpl._idea_of({"file_path": "studies/demo/proposal.md"}) == "demo"
+    assert tpl._idea_of({"file_path": "studies/demo/paper/main.tex"}) == "demo"

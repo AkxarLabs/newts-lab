@@ -1,6 +1,6 @@
 # Experiment Plan — {{title}}
 
-*Copied from the approved proposal (`ideas/{{slug}}/proposal.md`, PI Gate 1: {{date}}). The staged
+*Copied from the approved proposal (`studies/{{slug}}/proposal.md`, PI Gate 1: {{date}}). The staged
 table below is the working checklist for `/experiment`. The eval protocol, budgets, and kill
 criteria here are FROZEN — changes require PI approval and a logged note.*
 
@@ -29,6 +29,11 @@ criteria here are FROZEN — changes require PI approval and a logged note.*
 `retired-by-revision` (a design decision this line depended on was reopened in explore mode —
 the line is retired, not killed; the project continues). Rows added by an explore-mode
 `expand` round are tagged `(expand Rn)` in the Question and still need a pre-written criterion.*
+
+*Provenance (checked by `tools/guard.py plan-trace <slug>`): every non-baseline row should name its
+origin in the Question — a `decisions.md` decision (`D-NNN`) or an `(expand Rn)` tag with a matching
+Re-planning-log row. A row that would **change the headline hypothesis** (`Headline-change: yes`)
+must re-enter `/propose` first — it never enters this table on a bare note.*
 
 | ID | Question | Stage | Status | Promotion/success criterion | Result (run ids) |
 |----|----------|-------|--------|------------------------------|------------------|

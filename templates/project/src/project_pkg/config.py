@@ -39,6 +39,24 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
 
 
+def _validate(cfg: dict[str, Any]) -> None:
+    """Fail fast on the UNIVERSAL config mistakes — a typo'd stage, a non-int seed, a
+    non-numeric budget — at load time, instead of KeyError-ing deep inside experiment.run
+    (or silently running a wrong value). This is the place to add THIS project's domain
+    checks (required keys, value ranges); keep them cheap and readable — it runs on every
+    load. It is the lightweight stand-in for a heavyweight schema framework."""
+    stage = str(cfg.get("stage", "SMOKE")).upper()
+    if stage not in ("SMOKE", "PILOT", "FULL"):
+        raise ValueError(f"config: stage must be SMOKE|PILOT|FULL, got {cfg.get('stage')!r}")
+    seed = cfg.get("seed", 0)
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        raise ValueError(f"config: seed must be an int, got {seed!r}")
+    mm = (cfg.get("budget") or {}).get("max_minutes")
+    if mm is not None and (not isinstance(mm, (int, float)) or isinstance(mm, bool)):
+        raise ValueError(f"config: budget.max_minutes must be numeric, got {mm!r}")
+    # --- add project-specific validation below (required keys / value ranges) ---
+
+
 def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None) -> dict[str, Any]:
     """Load control.yaml + base.yaml + experiment yaml + dotted overrides ("seed=1")."""
     exp_path = Path(experiment_yaml).resolve()
@@ -64,11 +82,14 @@ def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None)
             node = node.setdefault(part, {})
         node[parts[-1]] = yaml.safe_load(raw)
 
-    # Stage-budget mapping: control.yaml's per-stage cap applies unless a higher layer
-    # (experiment yaml, base.yaml, or a CLI override) set budget.max_minutes explicitly.
+    # Stage-budget mapping: control.yaml's per-stage cap applies unless budget.max_minutes was
+    # set explicitly — by a higher layer (experiment yaml, base.yaml, a CLI override) OR by a
+    # deliberate top-level `budget:` block in control.yaml itself (a PI override must not be
+    # silently replaced by the per-stage default — hard rule 4).
     explicit = (
         "max_minutes" in (exp_cfg.get("budget") or {})
         or "max_minutes" in (_load_yaml(base_path).get("budget") or {})
+        or "max_minutes" in (control_cfg.get("budget") or {})
         or any(o.partition("=")[0].strip() == "budget.max_minutes" for o in overrides)
     )
     stage = str(cfg.get("stage", "SMOKE")).lower()
@@ -76,5 +97,6 @@ def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None)
     if not explicit and stage_cap is not None:
         cfg.setdefault("budget", {})["max_minutes"] = stage_cap
 
+    _validate(cfg)
     cfg["_config_path"] = str(exp_path)
     return cfg

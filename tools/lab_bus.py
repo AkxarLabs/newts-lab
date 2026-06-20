@@ -49,7 +49,7 @@ KINDS = {
     "slot_acquired", "slot_released", "slot_denied", "slot_reclaimed",
     "cycle", "review_verdict", "paper_compiled", "kill", "writeback",
     "frontier_expand", "decision_revisit", "replan", "approach_ideate",
-    "escalation",
+    "escalation", "score_read", "agent_launched", "agent_finished",
     "directive_seen", "directive_done", "directive_blocked", "note",
 }
 

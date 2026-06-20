@@ -14,11 +14,11 @@
 
 ## Instantiate your lab
 
-AutoScientist is a **template repository** — each lab is a living instance of it:
+Kartr Lab is a **template repository** — each lab is a living instance of it:
 
 1. On GitHub: **Use this template** → create your lab repo (or `npx degit <repo> my-lab`, or plain clone).
 2. Open `lab/config.yaml` and check the two keys that matter on day one:
-   - `lab.projects_root` — where project repos are created (default: `../AutoScientist-Projects`, a sibling folder next to the hub)
+   - `lab.projects_root` — where project repos are created (default: `../kartr-lab-projects`, a sibling folder next to the hub)
    - the `critique` / `experiment` / `loop` defaults (sane as shipped)
 3. That's it. Lab state (`lab/REGISTRY.md`, knowledge, notebook) starts empty and fills as you work.
 

@@ -39,7 +39,7 @@ You don't have to enter at `seed`. `/adopt` interviews you briefly, scaffolds ex
 | …and you know the literature | `scoping` | + `lit-review.md` stub, items marked **PI-waived** | `/scope` |
 | a settled design | proposal prep | + `decisions.md` from your answers (ADR per decision) | `/propose` |
 | an existing code/results repo | `active` / `analysis` | registry row pointing at *your* repo + the project contract retrofitted (`control.yaml`, `CLAUDE.md`/`AGENTS.md`, `PLAN.md`, run tracking) — additions only, your code untouched | `/experiment` / `/analyze` |
-| a draft paper | `internal-review` | `papers/<slug>/` + a real `claims.yaml` | `/review-paper` |
+| a draft paper | `internal-review` | `studies/<slug>/paper/` + a real `claims.yaml` | `/review-paper` |
 
 Two things adoption never waives: the PI gates, and hard rule 1 — pre-existing numbers without run artifacts can't enter papers (they become planned reproduction experiments, or they're dropped). Skipped stages are recorded as PI-waived in `IDEA.md`, so reviewers know what was never machine-verified.
 

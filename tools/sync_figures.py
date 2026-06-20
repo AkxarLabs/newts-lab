@@ -4,9 +4,9 @@
     uv run --with pyyaml python tools/sync_figures.py <slug> --check  # verify, exit!=0 on drift
 
 Figures are GENERATED in the project (`<projects_root>/<slug>/figures/` by `scripts/figures/*.py`)
-and CONSUMED by the paper in the hub (`papers/<slug>/figures/`). This copies the `*.pdf/*.tex/*.png`
+and CONSUMED by the paper in the hub (`studies/<slug>/paper/figures/`). This copies the `*.pdf/*.tex/*.png`
 across and records, per file, the sha256 at copy time + the project's git commit, into
-`papers/<slug>/figures/.manifest.json`. `--check` re-hashes and reports drift:
+`studies/<slug>/paper/figures/.manifest.json`. `--check` re-hashes and reports drift:
   - stale     : the project source changed since the last sync (regenerated, not re-synced)
   - diverged  : the hub copy was hand-edited (no longer matches what was synced)
   - missing   : a manifested file is gone from the hub or the project
@@ -35,8 +35,35 @@ EXTS = (".pdf", ".tex", ".png")
 
 def projects_root() -> Path:
     config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
+    root = ((config.get("lab") or {}).get("projects_root")) or "../kartr-lab-projects"
     return (HUB / root).resolve()
+
+
+_REG_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
+
+
+def _registry_project_path(slug: str) -> Path | None:
+    """The slug's project dir from lab/REGISTRY.md's Project column — authoritative, so an
+    /adopt project outside projects_root still syncs (mirrors audit_claims.py)."""
+    reg = HUB / "lab" / "REGISTRY.md"
+    if not slug or not reg.exists():
+        return None
+    for line in reg.read_text(encoding="utf-8-sig").splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < len(_REG_COLS) or cells[0] != slug:
+            continue
+        raw = (dict(zip(_REG_COLS, cells)).get("project") or "").strip().strip("`")
+        if raw and raw not in ("—", "-"):
+            p = Path(raw)
+            return p if p.is_absolute() else (HUB / p).resolve()
+    return None
+
+
+def resolve_project_dir(slug: str) -> Path:
+    """Registry Project column > projects_root()/<slug> (the legacy default)."""
+    return _registry_project_path(slug) or (projects_root() / slug)
 
 
 def sha256(path: Path) -> str:
@@ -58,9 +85,9 @@ def main() -> int:
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
 
-    project = projects_root() / args.slug
+    project = resolve_project_dir(args.slug)
     src_dir = project / "figures"
-    paper_fig = HUB / "papers" / args.slug / "figures"
+    paper_fig = HUB / "studies" / args.slug / "paper" / "figures"
     manifest_path = paper_fig / ".manifest.json"
 
     if args.check:
@@ -108,7 +135,7 @@ def main() -> int:
     if not copied:
         print(f"[sync_figures] {src_dir} has no .pdf/.tex/.png to sync")
         return 1
-    print(f"synced {copied} figure file(s) → papers/{args.slug}/figures/ "
+    print(f"synced {copied} figure file(s) → studies/{args.slug}/paper/figures/ "
           f"(project commit {commit[:8] or '?'})")
     return 0
 

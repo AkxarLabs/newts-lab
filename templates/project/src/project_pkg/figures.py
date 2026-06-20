@@ -63,7 +63,7 @@ def resolve_theme(theme: str | None = None) -> str:
     control = REPO / "control.yaml"
     if control.exists():
         import yaml
-        cfg = yaml.safe_load(control.read_text(encoding="utf-8")) or {}
+        cfg = yaml.safe_load(control.read_text(encoding="utf-8-sig")) or {}
         return (cfg.get("figures") or {}).get("theme", "clean")
     return "clean"
 

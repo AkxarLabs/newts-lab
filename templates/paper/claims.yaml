@@ -12,7 +12,7 @@
 # metric: (optional) restricts the match to artifact leaves with this final key name, so a
 # number can't pass on a coincidental match against an unrelated value.
 # artifact_sha256: (optional) added by tools/lock_artifacts.py at /finalize — it copies each
-# cited metrics.json into papers/<slug>/artifacts/<rel> and records its sha256 here. After that,
+# cited metrics.json into studies/<slug>/paper/artifacts/<rel> and records its sha256 here. After that,
 # audit_claims.py resolves artifacts from the hub archive first and `--verify-hashes` checks
 # them, so the finalized paper is auditable from the hub alone (the project repo may be gone).
 

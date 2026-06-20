@@ -1,6 +1,6 @@
 # Internal Review — {{title}}
 
-*Paper: `papers/{{slug}}/` · Reviewer pass: {{n}} · Date: {{date}}*
+*Paper: `studies/{{slug}}/paper/` · Reviewer pass: {{n}} · Date: {{date}}*
 *Reviewer lens: {{lens}}*
 
 > The claims audit is performed mechanically and blockingly by `/review-paper` Part A

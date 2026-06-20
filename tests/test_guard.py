@@ -20,7 +20,7 @@ def _mod(hub, monkeypatch):
 
 
 def _proposal(hub, slug, text):
-    p = hub.root / "ideas" / slug / "proposal.md"
+    p = hub.root / "studies" / slug / "proposal.md"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
     return p
@@ -205,3 +205,143 @@ def test_writeback_warn_when_nothing(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     hub.add_registry_row("demo", state="active", project="-")
     assert m.c_writeback(types.SimpleNamespace(slug="demo")) == 2
+
+
+# ── decisions (Revisit-predicate lint) ────────────────────────────────────────
+
+def _write_decisions(hub, slug, decisions):
+    """decisions: list of (D-NNN, status, headline, predicate|None)."""
+    idx = ["## Decision index", "", "| ID | Decision | Status | Headline | Choice |",
+           "|----|----------|--------|----------|--------|"]
+    for d, status, headline, _ in decisions:
+        idx.append(f"| {d} | area | {status} | {headline} | choice |")
+    blocks = []
+    for d, status, headline, pred in decisions:
+        b = [f"## {d}: area", "", f"**Headline:** {headline}", "", "**Revisit if:** something"]
+        if pred is not None:
+            b.append(f"**Revisit predicate:** `{pred}`")
+        blocks.append("\n".join(b))
+    doc = "\n".join(idx) + "\n\n---\n\n" + "\n\n---\n\n".join(blocks) + "\n"
+    f = hub.root / "studies" / slug / "decisions.md"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(doc, encoding="utf-8")
+    return f
+
+
+def _dec_ns(slug, strict=False):
+    return types.SimpleNamespace(slug=slug, strict=strict)
+
+
+def test_decisions_ok_well_formed_predicate(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "settled", "no",
+                                    "metric(exp-003, val_acc) within seed_noise of best(baseline)")])
+    assert m.c_decisions(_dec_ns("demo")) == 0
+
+
+def test_decisions_warn_missing_predicate(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "settled", "no", None)])
+    assert m.c_decisions(_dec_ns("demo")) == 2
+
+
+def test_decisions_strict_blocks_missing(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "settled", "no", None)])
+    assert m.c_decisions(_dec_ns("demo", strict=True)) == 1
+
+
+def test_decisions_blocked_malformed_predicate(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "settled", "no", "just some prose, no function call")])
+    assert m.c_decisions(_dec_ns("demo")) == 1
+
+
+def test_decisions_headline_yes_exempt(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "settled", "yes", None)])
+    assert m.c_decisions(_dec_ns("demo")) == 0
+
+
+def test_decisions_open_exempt(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _write_decisions(hub, "demo", [("D-001", "OPEN", "no", None)])
+    assert m.c_decisions(_dec_ns("demo")) == 0
+
+
+# ── plan-trace (PLAN.md row provenance) ───────────────────────────────────────
+
+def _plan_project(hub, slug, rows, replan_events=None, decisions_text=None):
+    """rows: list of (id, question, criterion). Writes PLAN.md (+ optional hub decisions.md)."""
+    proj = hub.make_project(slug)
+    body = ["# Experiment Plan", "", "## Experiments", "",
+            "| ID | Question | Stage | Status | Promotion/success criterion | Result (run ids) |",
+            "|----|----------|-------|--------|------------------------------|------------------|"]
+    for rid, q, crit in rows:
+        body.append(f"| {rid} | {q} | SMOKE | todo | {crit} | |")
+    body += ["", "## Re-planning log", "", "| date | event | detail | evidence |", "|---|---|---|---|"]
+    for ev in (replan_events or []):
+        body.append(f"| 2026-06-20 | {ev} | round 1 | exp-009 |")
+    (proj / "PLAN.md").write_text("\n".join(body) + "\n", encoding="utf-8")
+    hub.add_registry_row(slug, state="active", project=str(proj))
+    if decisions_text is not None:
+        f = hub.root / "studies" / slug / "decisions.md"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(decisions_text, encoding="utf-8")
+    return proj
+
+
+def test_plan_trace_ok_seed_only(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo", [("exp-001", "pipeline end-to-end", "runs clean")])
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_plan_trace_ok_row_cites_decision(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo",
+                  [("exp-001", "smoke", "clean"), ("exp-002", "test D-003 dataset choice", "beats base")],
+                  decisions_text="## D-003: dataset\n**Headline:** no\n")
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_plan_trace_ok_expand_row_with_log(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo",
+                  [("exp-001", "smoke", "clean"), ("exp-007", "curriculum (expand R1)", "beats base")],
+                  replan_events=["frontier_expand"])
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_plan_trace_warn_untraceable_row(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo",
+                  [("exp-001", "smoke", "clean"), ("exp-002", "some new idea", "beats base")])
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 2
+
+
+def test_plan_trace_blocked_headline_change_row(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo",
+                  [("exp-001", "smoke", "clean"),
+                   ("exp-002", "swap the objective — Headline-change: yes", "beats base")])
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 1
+
+
+def test_plan_trace_headline_change_not_smuggled_by_decision_cite(hub, monkeypatch):
+    # A Headline-change:yes row must be BLOCKED even when it cites a real D-NNN — a decisions.md
+    # decision is not a /propose origin, so it cannot smuggle a headline change past the gate.
+    m = _mod(hub, monkeypatch)
+    _plan_project(hub, "demo",
+                  [("exp-001", "smoke", "clean"),
+                   ("exp-002", "rework objective per D-003 — Headline-change: yes", "beats base")],
+                  decisions_text="## D-003: objective\n**Headline:** no\n")
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 1
+
+
+def test_plan_trace_blocked_no_plan(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    (proj / "PLAN.md").unlink(missing_ok=True)
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 1

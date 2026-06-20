@@ -43,6 +43,14 @@ write it as something a later session can verify against run artifacts (e.g. "pi
 dataset-A val_acc within seed noise of the baseline at exp-003"). This is what an explore
 loop's `revisit` operator tests each cycle. -->
 
+**Revisit predicate:** <!-- REQUIRED for every settled `Headline: no` decision: the machine-
+checkable form of the trigger above (the overseer still adjudicates whether it actually fired).
+Grammar: `FN(<exp-id|run-id>, <metric>) OP <value> [within <tol> of <ref>]`, where FN ∈
+metric|best|delta|status and OP ∈ < <= > >= == != within. Example:
+`metric(exp-003, val_acc) within seed_noise of best(baseline)`. Lint it with
+`tools/guard.py decisions <slug>`. Headline: yes decisions are exempt (they escalate, never
+auto-revisit). -->
+
 ---
 
 <!-- OPEN decisions: same format, Status OPEN, plus: -->

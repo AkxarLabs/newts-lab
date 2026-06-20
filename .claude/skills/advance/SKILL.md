@@ -7,22 +7,21 @@ description: Stage-gated semi-autonomous mode — run exactly the next lifecycle
 
 The middle autonomy mode: more hands-on than `/autopilot`, less typing than invoking
 each procedure yourself. One `/advance` = **one lifecycle stage, then a hard stop** —
-the PI verifies the stage's output before the next `/advance`. Nothing here changes
-the protocol: the same procedures run, the same gates stop; this skill only adds the
-"do the next thing, then wait" discipline.
+the PI verifies the stage's output before the next `/advance`. Same procedures, same
+gates; this skill only adds the "do the next thing, then wait" discipline.
 
 ## 1. Select the idea
 
 - With `<slug>`: use its registry row.
 - Without: pick the non-terminal idea **closest to a paper** (furthest along the
-  lifecycle) that is not waiting on a PI gate or a PI-queued decision. If everything is
-  gate-blocked, report what awaits the PI and stop — that *is* the answer. (This is the
+  lifecycle) not waiting on a PI gate or a PI-queued decision. If everything is
+  gate-blocked, report what awaits the PI and stop — that *is* the answer. (The
   selection rule `/lab-status` cites for its "advance next" recommendation.)
 
 ## 2. Run exactly the next stage
 
-The **Next-action column** of the registry row disambiguates sub-states that share one
-registry state (e.g. `scoping` before vs. after `/scope`); read it alongside the state.
+The **Next-action column** disambiguates sub-states that share one registry state
+(e.g. `scoping` before vs. after `/scope`); read it alongside the state.
 
 | Registry state (+ next action) | This `/advance` does | Ends at |
 |---|---|---|
@@ -34,7 +33,7 @@ registry state (e.g. `scoping` before vs. after `/scope`); read it alongside the
 | `proposal`, next action `/spawn-project` (Gate 1 approved) | `/spawn-project` | `active`, smoke green |
 | `active`, planned PLAN.md rows remain | `/experiment` — **one attempt** (config → staged run → ledger → commit) | attempt recorded |
 | `active`, plan rows exhausted + budget for iteration remains | one `/improve` operator cycle | cycle recorded |
-| `active`, explore exhausted + PI requests divergence | one `/ideate --in-project <slug>` round (scoped to the frozen set; output = candidate approaches) | candidates triaged; headline-changing survivors routed to `/propose` (**Gate 1**) or a successor `/ideate` |
+| `active`, explore exhausted + PI requests divergence | one `/ideate --in-project <slug>` round (scoped to the frozen set; output = candidate approaches) — **only if `ideation.in_project: true`; if `false`, run a successor hub `/ideate` instead** | candidates triaged; headline-changing survivors routed to `/propose` (**Gate 1**) or a successor `/ideate` |
 | `active`, `/improve` plateaued or iteration budget spent | `/analyze` | routed (more exps / `writing` / kill) |
 | `analysis` | `/analyze` | routed |
 | `writing` | `/make-figures` + `/write-paper` through the compiled draft | `internal-review` |
@@ -42,9 +41,14 @@ registry state (e.g. `scoping` before vs. after `/scope`); read it alongside the
 | `final` / `killed` / `parked` | nothing — report the state | — |
 
 Stage-boundary rules:
+- **Target-driven projects** (`/compete`, `control.yaml` `target.active: true`) have **no paper
+  lifecycle**: they stay at `active` and the `active` rows above mean "run the next experiment /
+  improve / in-project ideate toward the metric" — they do **not** route to `/analyze → writing`.
+  One `/advance` does the next climb step; when `target.done` is met or the deadline
+  passes, the next action is `/finalize` (Gate 3 — PI selects the final output), not a paper.
 - **Never cross a PI gate.** At Gate 1 and Gate 3, present the artifact and stop —
   even if the PI is "probably fine with it". FULL runs inside an `active` stage still
-  follow Gate 2 (approval or signed envelope) exactly as in any other mode.
+  follow Gate 2 (approval or signed envelope) as in any other mode.
 - One stage only. If `/analyze` routes back to experiments, that's the *next*
   `/advance`, not this one.
 - Kills found mid-stage are recorded normally (kill criteria don't wait for hand-offs).
@@ -57,5 +61,5 @@ End every `/advance` with a verification summary:
    verdict, decisions.md's riskiest decision, the ledger entry, the draft's claims).
 3. **What the next `/advance` would do** — so "continue" is an informed yes.
 
-Then the standard write-back (registry + notebook — hard rule 11 applies per session,
-and a stage is a session's worth of work).
+Then the standard write-back (registry + notebook — hard rule 11 per session, and a
+stage is a session's worth of work).

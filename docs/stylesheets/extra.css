@@ -1,5 +1,5 @@
 /* ============================================================================
-   AutoScientist docs — warm editorial theme
+   Kartr Lab docs — warm editorial theme
    paper off-white · brown ink · clay accents · booktabs tables
    Display type: Fraunces · Body: Source Serif 4 · Code: JetBrains Mono
    ========================================================================== */
@@ -345,6 +345,41 @@
 .md-typeset .grid.cards > ul > li > p > .twemoji svg,
 .md-typeset .grid.cards > ul > li svg {
   fill: var(--as-clay);
+}
+
+/* ====================== figures & screenshots =========================== */
+
+/* Framed, modern screenshots: rounded corners, hairline edge, soft warm shadow.
+   Dark dashboard art sits on warm paper, so a quiet frame keeps it from floating. */
+.md-typeset img {
+  border-radius: 10px;
+  max-width: 100%;
+}
+.md-typeset figure {
+  margin: 1.8rem 0;
+  text-align: center;
+}
+.md-typeset figure img,
+.md-typeset img.as-shot {
+  border: 1px solid var(--as-paper-edge);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(80, 56, 35, 0.14), 0 2px 6px rgba(80, 56, 35, 0.08);
+  background: #1a1410;            /* matches the dashboard's dark frame, no white flash on load */
+}
+.md-typeset figure img:hover,
+.md-typeset img.as-shot:hover {
+  box-shadow: 0 16px 44px rgba(80, 56, 35, 0.20), 0 3px 8px rgba(80, 56, 35, 0.10);
+}
+.md-typeset figcaption {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--as-ink-soft);
+  margin-top: 0.7em;
+  max-width: 40rem;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
 }
 
 /* ============================ footer ===================================== */

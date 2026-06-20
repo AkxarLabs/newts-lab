@@ -1,4 +1,4 @@
-"""Vivarium — the AutoScientist lab, rendered as a living terrarium. Optional, local-only.
+"""Vivarium — the Kartr Lab, rendered as a living terrarium. Optional, local-only.
 
     uv run --with pyyaml python dashboard/serve.py [--port 8787]
 
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -55,12 +56,14 @@ SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots"}
 # ── bus writers (directives, commands) ──────────────────────────────────────
 
 def _next_id(directives_path: Path) -> str:
-    n = 0
+    # max(existing d-NNN) + 1 — NOT a line count: a withdrawn/edited/missing row must never
+    # cause a reissued id (which would collide and mis-route acks/withdraws onto a live directive).
+    hi = 0
     if directives_path.exists():
         for line in directives_path.read_text(encoding="utf-8-sig").splitlines():
-            if '"id"' in line:
-                n += 1
-    return f"d-{n + 1:03d}"
+            for m in re.findall(r'"id"\s*:\s*"d-(\d+)"', line):
+                hi = max(hi, int(m))
+    return f"d-{hi + 1:03d}"
 
 
 def _bus_dir(target: str) -> Path:
@@ -122,9 +125,9 @@ def approve_gate(idea: str, gate: int) -> dict:
         return {"error": "Gate 3 (finalization) is never approved from the dashboard — do it in a session."}
     ts = time.strftime("%Y-%m-%dT%H:%M:%S")
     if gate == 1:
-        proposal = HUB / "ideas" / idea / "proposal.md"
+        proposal = HUB / "studies" / idea / "proposal.md"
         if not proposal.exists():
-            return {"error": f"no proposal at ideas/{idea}/proposal.md"}
+            return {"error": f"no proposal at studies/{idea}/proposal.md"}
         with proposal.open("a", encoding="utf-8") as f:
             f.write(f"\n\n<!-- PI Gate 1 approved via Vivarium dashboard {ts} -->\n")
         append_command(idea, "gate1_approved", {}, "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
@@ -269,10 +272,10 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
         except (TypeError, ValueError):
             gate = 0
         if gate == 1:
-            f = HUB / "ideas" / slug / "proposal.md"
+            f = HUB / "studies" / slug / "proposal.md"
             return {"ok": True, "title": f"Gate 1 · {slug} · proposal",
-                    "sections": [{"title": f"ideas/{slug}/proposal.md",
-                                  "text": _read_clip(f) or f"no proposal at ideas/{slug}/proposal.md"}]}
+                    "sections": [{"title": f"studies/{slug}/proposal.md",
+                                  "text": _read_clip(f) or f"no proposal at studies/{slug}/proposal.md"}]}
         if gate == 2:
             pdir = sources._project_path({"id": slug, "project": ""})
             ctrl = (pdir / "control.yaml") if pdir else None
@@ -283,8 +286,8 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
                 secs.append({"title": "control.yaml", "text": _read_clip(ctrl)})
             return {"ok": True, "title": f"Gate 2 · {slug} · the FULL-run envelope", "sections": secs}
         if gate == 3:
-            pdir = HUB / "papers" / slug
-            secs = [{"title": f"papers/{slug}/claims.yaml", "text": _read_clip(pdir / "claims.yaml") or "no claims.yaml yet"}]
+            pdir = HUB / "studies" / slug / "paper"
+            secs = [{"title": f"studies/{slug}/paper/claims.yaml", "text": _read_clip(pdir / "claims.yaml") or "no claims.yaml yet"}]
             if pdir.exists():
                 for md in sorted(pdir.glob("*review*.md")) + sorted(pdir.glob("*meta*.md")):
                     secs.append({"title": md.name, "text": _read_clip(md)})
@@ -320,6 +323,26 @@ class Handler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
             return {}
+
+    _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+    def _local_only(self) -> bool:
+        """True iff this is a same-origin localhost request. Guards state-changing POSTs (the
+        dashboard can sign Gate 1/2) against DNS-rebinding from a malicious page the PI visits:
+        a rebound request still carries the attacker's Host header, which is rejected here."""
+        host = (self.headers.get("Host") or "").strip()
+        if host.startswith("["):            # [::1]:port -> ::1
+            host = host.split("]", 1)[0].lstrip("[")
+        elif host.count(":") == 1:          # 127.0.0.1:port -> 127.0.0.1
+            host = host.rsplit(":", 1)[0]
+        if host and host not in self._LOCAL_HOSTS:
+            return False
+        origin = self.headers.get("Origin")
+        if origin and origin != "null":
+            from urllib.parse import urlparse
+            if (urlparse(origin).hostname or "") not in self._LOCAL_HOSTS:
+                return False
+        return True
 
     def do_GET(self):
         if self.path == "/" or self.path.startswith("/index.html") or self.path.startswith("/?"):
@@ -378,6 +401,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self):
+        if not self._local_only():
+            return self._json({"error": "refused: cross-origin/non-localhost POST"}, 403)
         body = self._body()
         p = self.path
         if p.startswith("/api/directive"):
@@ -394,7 +419,13 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/gate"):
             if not body.get("confirm"):
                 return self._json({"error": "gate approval needs explicit confirm"}, 400)
-            res = approve_gate(body.get("idea", ""), int(body.get("gate", 0)))
+            try:
+                gate = int(body.get("gate", 0))
+            except (TypeError, ValueError):
+                return self._json({"error": "gate must be 1 or 2"}, 400)
+            if gate not in (1, 2):
+                return self._json({"error": "dashboard signs only Gate 1 or Gate 2"}, 400)
+            res = approve_gate(body.get("idea", ""), gate)
             return self._json(res, 200 if res.get("ok") else 400)
         if p.startswith("/api/tool"):
             return self._json(run_tool(body.get("name", ""), body.get("idea")))

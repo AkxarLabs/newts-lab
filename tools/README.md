@@ -5,7 +5,7 @@ environment of its own — invoke with uv's ephemeral env:
 
 ```bash
 uv run --with pyyaml python tools/check_lab.py            # registry/idea consistency lint
-uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--check-commits]
+uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--check-commits]
 uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]  # 3-layer config + provenance
 uv run --with pyyaml python tools/run_slots.py acquire|touch|release|status       # cross-project compute slots
 uv run --with pyyaml python tools/s2.py search|bibtex|verify ...                  # literature API + citation audit

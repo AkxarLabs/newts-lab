@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-safe activity tracer for the AutoScientist lab (a Claude Code hook).
+"""Fail-safe activity tracer for the Kartr Lab (a Claude Code hook).
 
 Registered in `.claude/settings.json` on SessionStart, PreToolUse(Task|Agent),
 PostToolUse(*), SubagentStop(*) and SessionEnd. It reads one hook JSON object on stdin
@@ -30,7 +30,7 @@ from pathlib import Path
 
 MAX_SUMMARY = 200
 SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
-IDEA_RE = re.compile(r"(?:ideas|papers)/([a-z0-9][a-z0-9._-]*)", re.I)
+IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
 # a hub session touching a project's artifacts (analyze/write/finalize) → attribute it to
 # that project, so its back-half work isn't blank on the project's trace.
 PROJ_RE = re.compile(r"([a-z0-9][a-z0-9._-]*)/(?:runs/|PLAN\.md|EXPERIMENT_LOG\.md)", re.I)

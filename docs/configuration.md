@@ -11,8 +11,8 @@ View the effective merged configuration — with the layer that set each key —
 
 ```bash
 uv run --with pyyaml python tools/show_config.py                          # lab layer
-uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-proj
-uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-proj exp-004.yaml
+uv run --with pyyaml python tools/show_config.py ../kartr-lab-projects/my-proj
+uv run --with pyyaml python tools/show_config.py ../kartr-lab-projects/my-proj exp-004.yaml
 ```
 
 …or just run `/configure` and let the agent present it. Edits go through `/configure [slug] set key=value` (or by hand — they're YAML files).
@@ -21,7 +21,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 
 | Key | Default | Owner | Effect |
 |---|---|---|---|
-| `lab.projects_root` | `../AutoScientist-Projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
+| `lab.projects_root` | `../kartr-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |
@@ -49,12 +49,18 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `ideation.reflection_rounds` | 2 | agent-readable | reflect→evolve cycles per surviving idea |
 | `ideation.critics_per_idea` | 2 | agent-readable | parallel critic subagents per idea per reflect pass |
 | `ideation.enable_combination` | true | agent-readable | propose crossovers of complementary survivors |
+| `ideation.in_project` | true | PI | enable `/ideate --in-project <slug>` (divergent in-project method-ideation, scoped to the frozen set); `false` = capability OFF (the headline-reopen route falls back to a successor hub `/ideate`) |
+| `ideation.in_project_candidates` | 4 | agent-readable | approach candidates an in-project ideation round generates |
+| `ideation.in_project_rounds` | 1 | agent-readable | max in-project ideation rounds before stopping |
+| `ideation.in_project_approval` | `pi` | PI | **campaign-only** knob — only modulates approval *under a signed `/autopilot` campaign*; **manual `--in-project` runs are always PI-gated**. `pi` = surviving approaches queue at `/propose` for Gate 1; `campaign_auto` = under a campaign, auto-approve within delegation bounds + overseer `support` |
+| `discuss.max_research_minutes` | 15 | agent-readable | cap on live web/arXiv/S2 research *during* a `/discuss` session (discussion fuel, not the lit review); `0` = Q&A only |
 | `scoping.options_per_decision` | 3 | agent-readable | alternatives generated per design-decision branch in `/scope` |
 | `scoping.advocate_subagents` | true | agent-readable | one parallel advocate per option argues its case |
 | `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
+| `writing.venue` | `neurips` | PI | paper format `/write-paper` builds from. `neurips` \| `icml` \| `iclr` \| `aclarr` \| `aaai` \| `generic`; picks `templates/paper/venues/<venue>/main.tex` + fetches that venue's style file (URLs/limits in that dir's `README.md`). Project `control.yaml` may override per-project |
 | `writing.max_reflection_rounds` | 3 | agent-readable | verifier-gated revision rounds in `/write-paper` (gains plateau ~3) |
 | `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
-| `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually |
+| `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 
@@ -62,6 +68,7 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 
 | Key | Owner | Effect |
 |---|---|---|
+| `package` | agent | the importable package under `src/` that `scripts/run.py` + `sweep.py` drive (config/experiment/seeding/tracking). Spawned projects keep `project_pkg`; an **adopted** repo sets this to its own package name instead of renaming it (autodetected when `src/` has exactly one package; this pins it) |
 | `budgets.smoke_max_minutes` / `pilot_…` / `full_…` | **PI after Gate 1** | per-stage wall-clock caps, **enforced by the run watchdog** (a run that exceeds its stage budget is killed and recorded as `timeout`) |
 | `budgets.total_note` | PI | free-text total compute cap from the proposal |
 | `seeds.list` | agent | default seeds for `scripts/sweep.py` |
@@ -77,6 +84,21 @@ uv run --with pyyaml python tools/show_config.py ../AutoScientist-Projects/my-pr
 | `gate2_envelope.signed_via` | provenance | `null` = signed directly by the PI; else the path of the campaign brief carrying the signature |
 | `eval_frozen` | **PI only** | the eval protocol is frozen; the agent may *never* set this false |
 
+**`target.*` — present only for `/compete` (target-driven) projects** (appended from `templates/compete/control.target.yaml`; absent for paper projects). See [Target-driven projects](compete.md).
+
+| Key | Owner | Effect |
+|---|---|---|
+| `target.active` | agent | marks this a target-driven project (set by `/compete`) |
+| `target.name` / `url` | agent | the task/target label + page (free-text, **not** tool-specific) |
+| `target.metric` / `direction` | **PI (frozen)** | the scored metric + `maximize`/`minimize` — part of the frozen eval |
+| `target.done` | PI | the done-condition (e.g. `public >= 0.90`) — a loop stop-condition |
+| `target.deadline` | PI | hard deadline (YYYY-MM-DD), if any — a loop stop-condition + checked by the scripts |
+| `target.output.*` | **PI (frozen)** | the output-artifact contract (`path`, `format`, `id_column`, `target_columns`, `expected_rows`) validated by `scripts/check_output.py`; omit for a local-metric-only target |
+| `target.scoring.read_back` | PI | `manual` (record an observed score) \| `command` (run `score_command`) |
+| `target.scoring.external` | **PI** | `true` if obtaining a score **sends data outside the lab** (then `score_envelope` authorizes it) |
+| `target.scoring.score_command` | agent | the task's own score command for `read_back: command` — **any tool** (CLI/HTTP/grader); placeholders `{file}{run_id}{note}{name}`. No host assumed |
+| `target.score_envelope.*` | **PI only** | the outward-action envelope for external reads (`per_day_max`, `total_max`, `pi_signed`, `signed_via`) — a Gate-2 analogue enforced by `scripts/report_score.py` |
+
 !!! warning "PI-owned keys"
     `/configure` refuses to change PI-owned keys unless the request comes explicitly from you in-session. `gate2_envelope.pi_signed: true` and `eval_frozen: false` carry PI authority by hard rule, not convention — set directly when you ask in-session, or (for `pi_signed`) transitively under a PI-signed `/autopilot` campaign brief, which records its path in `signed_via`. The agent never sets them on its own initiative.
 
@@ -90,6 +112,13 @@ The unit of experimentation. **Immutable once run** — a variant is a *new* fil
 ### Stage-budget mapping
 
 If neither the experiment yaml nor `base.yaml` sets `budget.max_minutes`, the loader maps it from `control.yaml → budgets.<stage>_max_minutes` for the run's stage — so per-stage caps apply automatically without repeating them in every experiment file. The fully resolved config is dumped into every run's artifact dir as `config.resolved.yaml`; per-key provenance (which layer set each key) is available via `tools/show_config.py`.
+
+### Load-time validation & environment capture
+
+Two lightweight reproducibility guards, deliberately in place of a heavyweight config framework (Hydra/OmegaConf — which would also fight `run.py`'s in-process budget watchdog and `RunContext`'s own run-dir ownership):
+
+- **Validation at load** (`config.py → _validate`): after merge, the loader fails fast on the universal mistakes — a `stage` that isn't `SMOKE|PILOT|FULL`, a non-int `seed`, a non-numeric `budget.max_minutes` — instead of KeyError-ing deep inside `experiment.run`. `_validate` is the documented place to add **this project's** required-key/range checks (it's a few readable lines, not a schema DSL).
+- **Environment provenance** (`tracking.py → meta.json.env`): every run records the python version, platform, and (when importable) torch/CUDA + GPU name, alongside the git SHA, dirty-tree `code.patch`, and seed. `uv.lock` pins the dependency closure; this pins the *runtime* facts that matter for replaying GPU-heavy work.
 
 ## How configs flow through a project's life
 

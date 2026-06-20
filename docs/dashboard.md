@@ -12,6 +12,11 @@ larger, unique creature who reacts to everything and is your control handle (cli
 agents iterate (hub lifecycle *and* every running external project, live) and it lets you **drive**
 them.
 
+<figure markdown>
+![The Vivarium world — six lifecycle rooms in one continuous lab, each with its critters](assets/dashboard-world-dark.png){ .as-shot }
+<figcaption>The <strong>World</strong> view — the whole lab as one continuous terrarium. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and worker critters currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
+</figure>
+
 The whole scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
 dependencies, fully offline (see [Tech notes](#tech-notes)). There is no WebGL and nothing
 vendored; the same renderer produces a still frame for `prefers-reduced-motion` and `?static`.
@@ -24,6 +29,11 @@ uv run --with pyyaml python dashboard/serve.py --port 9000
 Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface but stays
 honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)).
 
+!!! tip "Try it with no lab — `?demo`"
+    Open `http://127.0.0.1:8787/?demo` for a fully synthetic, living lab (agents come and go,
+    runs progress, gates wait) — entirely client-side, touching no files. Add `&lamp=day` for the
+    light theme. Every screenshot on this page is the demo. Click a room or a critter to zoom in.
+
 ## What it shows — the views
 
 The living world (the rooms + the critters + Newt + the worker critters) is the canvas under
@@ -33,17 +43,22 @@ every view; the data views float over it as soft, paper-toned panels.
 |---|---|
 | **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment workers live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's workers up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as critters in their own room. |
 | **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. |
-| **Gates** | your sign-off. Each pending Gate 1/2/3 as a sealed letter. **Gate 1 & 2 carry a one-click Approve button** (confirm + logged); **Gate 3** shows the command only — finalization is always done in a session. |
+| **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the worker critters you see in the world. |
+| **Activity** | the live state that **needs you or is running** — two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
-| **In flight** | the quiet view: one row per in-flight run (elapsed/budget bar, last metric, stalled flag), gates pinned on top. |
 
 A **"now happening" pulse strip** runs along the top-centre of the World — an at-a-glance summary
 of what is live right now: running loops, waiting gates, in-flight runs, and how many agents are
 working. It is the one line you can read without panning anywhere.
 
-**Lamplight** (the `🌙` toggle, or auto by local clock) shifts the world's ambient between a
-brighter daytime and a dim, lantern-lit dusk. If file-tailing stalls, the masthead clock turns
-red, so degraded data never reads as calm.
+**Lamplight** is a simple **Light / Dark** toggle (the `🌙` button or Settings; default Dark — the
+scene is dark-first), shifting the world's ambient between a brighter daytime and a dim, lantern-lit
+dusk. If file-tailing stalls, the masthead clock turns red, so degraded data never reads as calm.
+
+<figure markdown>
+![The same lab world in the Light theme](assets/dashboard-world-light.png){ .as-shot }
+<figcaption>The same World in the <strong>Light</strong> theme — every room, corridor, and critter re-lit for daytime. Light/Dark is one toggle; the choice persists per browser.</figcaption>
+</figure>
 
 ## The world — the rooms
 
@@ -68,6 +83,11 @@ between rooms:
 Each idea/project critter's look reflects its situation: a live run makes its room and its critter
 active, a killed idea's critter sinks and greys out in the compost, a parked one rests dim on the
 quiet shelf.
+
+<figure markdown>
+![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
+<figcaption>Click a room (or a project critter) to <strong>zoom in</strong>. Here, inside <em>the lab</em>: stations for smoke/pilot/full, improve/debug, in-project ideation, quality-check, and analysis — with each running worker critter standing at its task, labelled with what it's doing.</figcaption>
+</figure>
 
 ## Newt — the buddy that is also the controller
 
@@ -141,7 +161,17 @@ Claude session). So it works in three tiers:
 
 You can also leave a **free-text note** from the same console when no button fits.
 
+<figure markdown>
+![The Activity screen — pending gates with one-click approve, and the in-flight run](assets/dashboard-activity-dark.png){ .as-shot }
+<figcaption>The <strong>Activity</strong> view is the control surface: <em>Needs you</em> (Gate 1 & 2 with a one-click <em>Approve</em>; Gate 3 shows only the command — it's never approvable here) beside <em>In flight</em> (the running experiment with its budget bar). Approvals are confirmed and written to the append-only audit.</figcaption>
+</figure>
+
 ## How it stays honest (the bus)
+
+<figure markdown>
+![The Ledger — commands and the append-only event log](assets/dashboard-ledger-dark.png){ .as-shot }
+<figcaption>The <strong>Ledger</strong> makes the dashboard auditable: every command you've issued (with its <code>pending → seen → done</code> state and evidence pointer) and the full, append-only event log. A <code>done</code> with no evidence is flagged — nothing on screen is unbacked.</figcaption>
+</figure>
 
 Everything shown is backed by a real file. The signal layer is **the bus** — append-only JSONL,
 the same philosophy as the rest of the lab:
@@ -162,7 +192,11 @@ Event kinds: `session_start/end`, `state_change`, `gate_waiting`, `gate_resolved
 decision), `replan` (a pivot landed), `approach_ideate` (in-project method-ideation proposed
 candidate approaches), `escalation` (a project loop asking the hub/PI for attention mid-run —
 a headline reopen, a block on a frozen setting, or FULL work outside the envelope; requests
-attention, never grants a gate), `note`. The bus lives in gitignored `lab/.bus/` (hub) and
+attention, never grants a gate), `score_read` (a target-driven `/compete` project read an
+external score under its PI-signed envelope — `scripts/report_score.py`), `agent_launched` /
+`agent_finished` (a headless top-level agent was spawned into / finished in a project by
+`tools/agent_runner.py` — its full transcript is in `<project>/.bus/agents/<id>.stream.jsonl`),
+`note`. The bus lives in gitignored `lab/.bus/` (hub) and
 `<project>/.bus/` (each project); a project spawned before the bus existed still shows
 runs/registry/liveness — events only enrich.
 

@@ -7,7 +7,7 @@ Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's
 ### `audit_claims.py` — verify a paper's numbers against artifacts
 
 ```bash
-uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--rel-tol 1e-3] [--check-commits]
+uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3] [--check-commits]
 ```
 
 For every claim in the paper's `claims.yaml`, each number must be found in the referenced run artifacts (resolved via `lab.projects_root`):
@@ -27,7 +27,7 @@ For every claim in the paper's `claims.yaml`, each number must be found in the r
 uv run --with pyyaml python tools/check_lab.py [--stale-days N] [--strict]
 ```
 
-Checks registry↔IDEA.md state agreement, orphan idea/project/paper dirs (projects scanned at `lab.projects_root`; transient `-wt-` worktrees ignored), and stale rows. Exit 1 on real inconsistencies. `/lab-status` runs it every session.
+Checks registry↔IDEA.md state agreement, orphan study/project dirs (`studies/<slug>/` in the hub and projects scanned at `lab.projects_root`; transient `-wt-` worktrees ignored), and stale rows. Exit 1 on real inconsistencies. `/lab-status` runs it every session.
 
 ### `run_slots.py` — cross-project compute coordination
 
@@ -44,7 +44,7 @@ Within a project, the experiment loop controls its own runs; the hub-level risk 
 ```bash
 uv run --with pyyaml python tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
 uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066
-uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib [--threshold 0.85]
+uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
 ```
 
 Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit); it exits **3** when *both* backends are unreachable, so an empty result is never mistaken for "no prior work". `bibtex` returns the canonical entry for a paper id — no hand-typed bibliography. `verify` is the zero-assumption citation audit `/review-paper` runs: every bib entry title-matched against the real record (pass `--threshold <writing.citation_match_threshold>`), year-checked, and retraction-checked via OpenAlex `is_retracted`. **Any nonzero exit blocks** — NOT-FOUND/RETRACTED *and* MISMATCH (near-miss/wrong-year). Free-generated LLM citations are fabricated at ~18% base rate — this check is blocking, not advisory. Env keys: `S2_API_KEY` (keyless S2 shares a saturated global pool; backoff built in), `OPENALEX_API_KEY` (required for OpenAlex calls since 2026-02 — **without it the fallback search and the retraction check silently degrade**).
@@ -56,6 +56,24 @@ uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]
 ```
 
 Prints the lab layer, the project's control.yaml, the effective skill values (control-first, lab fallback), and — given an experiment — the fully resolved run config with the layer that set each key. Backs `/configure`. See [Configuration](configuration.md).
+
+### `guard.py` — mechanical lifecycle guards
+
+```bash
+uv run --with pyyaml python tools/guard.py <spawn|full-run|frozen|state|append-only|writeback|decisions|plan-trace> <slug> [args]
+```
+
+The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move.
+
+### `agent_runner.py` — launch + capture headless top-level agents
+
+```bash
+uv run --with pyyaml python tools/agent_runner.py <launch|list|kill|reconcile> --project <slug> [--prompt-file <f>]
+```
+
+The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p` / `codex exec`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. See [Autonomy & modes](autonomy.md).
+
+> The remaining helpers are contextual and documented where they're used: `lab_bus.py` (the event bus) and `trace_hook.py` in [Dashboard](dashboard.md); `hub_writeback.py` / `process_writebacks.py` (project→hub write-back) and `lock_artifacts.py` / `sync_figures.py` (finalization) in [Projects](projects.md).
 
 ## Project helpers (`scripts/` in every project)
 

@@ -1,4 +1,4 @@
-# AutoScientist
+# Kartr Lab
 
 A self-contained **research lab for an AI agent**. This repo holds the procedures, state, and templates that let an agent (Claude Code or similar) take a research direction from **ideation → literature review → proposal → experimentation → analysis & ablations → paper writing → internal review → finalization**, with the human acting as PI at a small number of explicit gates.
 
@@ -16,7 +16,7 @@ Start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-starte
 
 ## Use as a template
 
-AutoScientist is a **template repository** — each lab is a living instance:
+Kartr Lab is a **template repository** — each lab is a living instance:
 
 1. **Use this template** on GitHub (or `npx degit`/clone) → your own lab repo.
 2. Check `lab/config.yaml` (`lab.projects_root` is the one key worth a look on day one).
@@ -26,16 +26,16 @@ To pull template improvements into a running lab later: `git remote add template
 
 ## The model
 
-**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo outside the hub** — at `lab.projects_root` (default `../AutoScientist-Projects/<slug>`) — from a reproducible template; that's where all code and experiments live, so the hub never bloats with experiment state. Results flow back to the hub for analysis, writing, and knowledge accumulation.
+**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo outside the hub** — at `lab.projects_root` (default `../kartr-lab-projects/<slug>`) — from a reproducible template; that's where all code and experiments live, so the hub never bloats with experiment state. Results flow back to the hub for analysis, writing, and knowledge accumulation.
 
 ```
         ┌────────────────────────  HUB (this repo)  ────────────────────────┐
-        │  /ideate → /lit-review → /propose ──[PI gate]──┐                  │
-        │                                                ▼                  │
+        │  /ideate → /lit-review → /scope → /propose ──[PI gate]──┐         │
+        │                                                         ▼         │
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │
-                │   ┌── SPOKE (../AutoScientist-Projects/<slug>) ┴───┐
+                │   ┌── SPOKE (../kartr-lab-projects/<slug>) ┴───┐
                 └── │  /spawn-project → /experiment → /improve →     │
           findings  │  /analyze   (own git repo, own env, own        │
                     │  control.yaml — independently reproducible)    │
@@ -60,7 +60,9 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/autopilot` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a signed brief |
 | `/advance` | Stage-gated mode: run exactly the next lifecycle stage, then stop for PI verification |
 | `/adopt` | Enter the lifecycle anywhere — scaffold prerequisites for an existing idea, design, or code repo |
+| `/compete` | Spin off a **target-driven** project for a fixed target (benchmark/leaderboard/KPI) — iterate toward the metric, no paper pipeline |
 | `/lab-status` | Orient: registry + notebook + `tools/check_lab.py` lint; recommend next action |
+| `/discuss` | Collaborative human↔agent session (grill-style Q&A + live research) that seeds the next stage — optional pre-step to `/ideate`, `/compete`, `/scope`, `/write-paper` |
 | `/ideate` | Phased pipeline: research → generate → multi-agent reflection → evolve → combine → tournament |
 | `/lit-review` | Ground an idea in literature; novelty verdict; positioning |
 | `/scope` | Deliberate every design decision branch (advocate subagents) → ADR-style `decisions.md` + value re-check |
@@ -76,33 +78,38 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/write-paper` | Evidence-first LaTeX drafting; placeholder-resolved verified citations; claims re-audited every revision round |
 | `/review-paper` | Mechanical claims audit (`tools/audit_claims.py`) + fresh-context critique ensemble with minority veto |
 | `/finalize` | Close out: archive, write-back to lab knowledge, update registry |
+| `/grill-with-docs` | Sharpen an engineering plan/design via a relentless grilling loop → `CONTEXT.md` glossary + ADRs (vendored, MIT). Available in the hub and every project repo |
+
+`/grill-with-docs` composes two smaller vendored skills that are also invocable on their own:
+`/grilling` (the one-question-at-a-time loop) and `/domain-modeling` (glossary + ADRs). See
+[docs/skills.md](docs/skills.md) for the full reference.
 
 ## Directory map
 
 ```
-AutoScientist/
+kartr-lab/
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
 ├── .github/workflows/   # CI: docs build+deploy (Pages), lab lint, cross-platform template smoke
 ├── .claude/skills/      # The procedures above
 ├── .claude/agents/      # Scoped subagents: fresh-context-reviewer, experiment-runner, overseer
 ├── lab/
-│   ├── REGISTRY.md      # Single source of truth for all ideas/projects + states
+│   ├── REGISTRY.md      # Single source of truth for all studies/projects + states
 │   ├── config.yaml      # Lab-wide tunables (ensemble sizes, debug depth, backoff, ...)
 │   ├── knowledge/       # Lab world model: FINDINGS, FAILURES, OPEN-QUESTIONS
 │   └── notebook/        # Dated lab-notebook entries (one per working session)
-├── ideas/<slug>/        # IDEA.md, lit-review.md, proposal.md, critiques/ per idea
-├── papers/<slug>/       # LaTeX papers + claims.yaml (claim → artifact mapping)
-├── templates/           # project/, paper/, idea/, review/, loop/ templates
+├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
+│   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
+├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
 ├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py, lab_bus.py
 ├── dashboard/           # Vivarium — optional local Rain-World-style living-lab-world dashboard (rooms, critters, worker critters + Newt; delete it and nothing changes)
-└── (projects live at ../AutoScientist-Projects/<slug> — see lab/config.yaml lab.projects_root)
+└── (projects live at ../kartr-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
 ## Quickstart
 
 ```bash
-cd AutoScientist
+cd kartr-lab
 claude        # start the agent
 > /setup-lab                  # first time: 5-minute configuration interview
 > /ideate efficient small-LM post-training   # or any direction
@@ -118,6 +125,15 @@ The agent takes it from there, pausing at the PI gates (proposal approval, full-
 - **Full autopilot** — `/autopilot`: sign one campaign brief, wake up to reviewed drafts (wrap with the built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`).
 
 Already have an idea, a design, or a codebase? `/adopt` enters the lifecycle mid-stream.
+Have a fixed target (a benchmark, a leaderboard, a KPI)? `/compete` spins off a
+target-driven project that chases the metric directly — no paper pipeline.
+
+## Contributing
+
+Improving the lab machinery (a skill, tool, template, the dashboard, or docs)? See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, the four checks CI runs, and the
+conventions that keep the lab coherent. (Running research with the lab isn't a
+contribution — that work lives in your own lab state, never in a PR.)
 
 ## Principles (short version — full version in CLAUDE.md)
 

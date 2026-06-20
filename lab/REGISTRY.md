@@ -10,8 +10,8 @@ Single source of truth for everything in the lab. Every procedure that changes a
 
 ## Conventions
 
-- **ID**: short kebab-case slug, assigned at idea creation, reused for `ideas/<id>/`, the project repo at `<projects_root>/<id>/` (see `lab/config.yaml`), and `papers/<id>/`.
-- **Project**: the relative path from the hub to the project repo (e.g. `../AutoScientist-Projects/<id>`).
+- **ID**: short kebab-case slug, assigned at idea creation, reused for `studies/<id>/`, the project repo at `<projects_root>/<id>/` (see `lab/config.yaml`), and `studies/<id>/paper/`.
+- **Project**: the relative path from the hub to the project repo (e.g. `../kartr-lab-projects/<id>`).
 - **Updated**: date of last state change (YYYY-MM-DD).
 - **Next action**: one line — what unblocks this idea (e.g., "awaiting PI gate 1", "run pilot exp-003").
 - Killed/parked rows stay in the table (move to the bottom) with the reason linked in their `IDEA.md`.

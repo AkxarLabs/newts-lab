@@ -1,0 +1,49 @@
+# ── Target-driven mode ───────────────────────────────────────────────────────
+# Appended to a project's control.yaml by /compete. Present ONLY for target-driven
+# projects (a task with a fixed, straightforward target — a benchmark, a metric to hit,
+# a leaderboard to climb, an internal KPI); absent = an open research project aimed at a
+# paper. The frozen set becomes {task data/resources, metric, output contract, rules,
+# deadline}; everything else — model, features, approach — is OPEN, iterated toward the
+# target. Human source of truth: TARGET.md. Nothing here assumes a specific tool/host.
+target:
+  active: true                  # marks this a target-driven project (set by /compete)
+  name: ""                      # the task / target name (free label — NOT tool-specific)
+  url: ""                       # task page, if any (informational)
+  spec: TARGET.md               # the PI-owned brief (target, rules, data, scoring) — read, never edit
+  metric: ""                    # the scored metric, e.g. "auc", "rmse", "accuracy", "map@3"
+  direction: maximize           # maximize | minimize
+  done: ""                      # the target / done-condition, e.g. "public score >= 0.90" or
+                                # "rmse < 0.42 on the grader" — a loop stop-condition
+  deadline: null                # YYYY-MM-DD (or ISO datetime), if any — a HARD loop stop-condition,
+                                # checked by the loop and the scripts below
+
+  # Output artifact contract — OPTIONAL. Present when the target is scored on an artifact you
+  # produce (a submission/predictions file). Omit (leave null) when the target is a metric you
+  # compute locally — then there is nothing to validate or send out.
+  output:                       # set to null for a local-metric-only target
+    path: submission.csv        # written into runs/<run_id>/ by the experiment, validated on write
+    format: csv                 # csv (the built-in check_output validator) | other (write your own)
+    id_column: ""               # key column the scorer expects in the header (csv format)
+    target_columns: []          # prediction column(s) the scorer expects, e.g. [target]
+    expected_rows: null         # exact row count the scorer expects (null = unchecked)
+
+  # How a target score is obtained.
+  scoring:
+    read_back: manual           # manual | command
+                                #   manual  = a human/agent records the score it observed
+                                #   command = run score_command to obtain a score (ANY tool —
+                                #             a CLI, an HTTP call, a grader script; see below)
+    external: false             # true if obtaining a score SENDS data outside the lab (then the
+                                # score_envelope authorizes it). false = computed locally.
+    score_command: ""           # only for read_back: command. A shell command template the agent
+                                # fills for THIS task — no tool is assumed. Placeholders:
+                                # {file} {run_id} {note} {name}. (E.g. for a Kaggle task the agent
+                                # would learn and fill the submit+fetch commands here itself.)
+
+  # Outward-action authorization — the Gate-2 analogue. Required ONLY when scoring.external is
+  # true (sending output to an external scorer). For internal scoring this block is unused.
+  score_envelope:
+    per_day_max: 0              # max external score reads/day (match the scorer's own limit, if any)
+    total_max: 0                # max external score reads before the deadline (0 = none authorized)
+    pi_signed: false            # PI authority only — set by the PI (/compete interview or /configure)
+    signed_via: null            # provenance: null = the PI signed directly; else the campaign-brief path

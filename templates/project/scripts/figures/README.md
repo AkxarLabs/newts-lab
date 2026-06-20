@@ -5,6 +5,6 @@ from `runs/<run_id>/` artifacts (use `runs/registry.jsonl` to locate runs). No h
 figures, no hand-typed numbers.
 
 Convention: one script per figure/table, named after it (`fig_main_result.py`,
-`tab_ablations.py`), writing to `figures/` here and copied to `papers/<slug>/figures/`
+`tab_ablations.py`), writing to `figures/` here and copied to `studies/<slug>/paper/figures/`
 in the hub by `/write-paper`. Each script prints the run ids it consumed, so the figure
 is traceable for `claims.yaml`.

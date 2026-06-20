@@ -1,6 +1,6 @@
 # Project Protocol — {{title}}
 
-You are the implementation agent of this project, spawned from the AutoScientist lab
+You are the implementation agent of this project, spawned from the Kartr Lab
 at `{{hub_path}}` (the hub). This file is the protocol for any session started **in
 this directory**. The hub's `CLAUDE.md` is the lab-wide protocol and still binds you;
 this file adds what is specific to working inside a project.
@@ -14,13 +14,17 @@ this file adds what is specific to working inside a project.
 3. `SYSTEM.md` — **if present**: the PI's description of the machine/cluster you are
    working on (hardware, data locations, scheduling rules, forbidden actions). Its
    constraints bind exactly like control.yaml. PI-owned: read and obey, never edit.
-4. `EXPERIMENT_LOG.md` tail + `runs/registry.jsonl` + `git log --oneline -20` — what
-   was already tried. Never repeat an attempt without saying why.
-5. Unsure the project is in a runnable state? `uv run --with pyyaml python
+4. `NOTES.md` — **read it in full** (it's short by design): the *distilled* memory of this
+   project — environment gotchas + their fixes, approaches already tried and abandoned (don't
+   re-try blindly), and what's settled here. It is the index over `EXPERIMENT_LOG.md` that
+   survives after early entries scroll out of the log tail.
+5. `EXPERIMENT_LOG.md` tail + `runs/registry.jsonl` + `git log --oneline -20` — the full
+   chronological record of what was already tried. Never repeat an attempt without saying why.
+6. Unsure the project is in a runnable state? `uv run --with pyyaml python
    scripts/check_project.py` — readiness lint plus a suggested next action. Resuming after a
    crashed or unattended session? `uv run --with pyyaml python scripts/reconcile.py` first — it
    surfaces dead runs, orphans, and a stale loop lock (`--fix` clears a stale loop lock).
-6. **Back-half re-entry:** if `PLAN.md` has new rows the hub appended during writing/review,
+7. **Back-half re-entry:** if `PLAN.md` has new rows the hub appended during writing/review,
    or the hub registry bounced this project `internal-review → active`, just run
    `/experiment` as usual — the paper-phase back-half loop re-enters here. The project can
    be re-entered **repeatedly** during the paper phase; treat each new PLAN.md row like any
@@ -35,7 +39,7 @@ From inside this project you will mainly need, in lifecycle order:
 |---|---|
 | `experiment` | run the next planned experiment (smoke → pilot → full) |
 | `improve` | operator-driven iteration once a baseline exists (draft/debug/improve/crossover) |
-| `ideate --in-project <slug>` | divergent METHOD-approach ideation inside this project — scoped to the frozen set; output = candidate approaches, not experiments. A headline-changing survivor re-enters `propose` (mini-proposal, Gate 1) or spawns a successor idea, never a bare PI note. Approval per `ideation.in_project_approval`. |
+| `ideate --in-project <slug>` | divergent METHOD-approach ideation inside this project — scoped to the frozen set; output = candidate approaches, not experiments. A headline-changing survivor re-enters `propose` (mini-proposal, Gate 1) or spawns a successor idea, never a bare PI note. Enabled by `ideation.in_project: true` (else fall back to a successor hub `/ideate`); approval per `ideation.in_project_approval` (campaign-scoped; manual runs always PI-gated). |
 | `research-loop` | unattended experiment loop — requires the PI-signed `LOOP_BRIEF.md` |
 | `analyze` | plan complete or plateaued — artifact-only analysis |
 | `make-figures` | figures/tables mechanically from `runs/` artifacts |
@@ -111,7 +115,15 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
 
 ## Session end (write-back)
 
-Findings flow back to the hub. **The normal path** (hub reachable — `hub_path` is in
+**First, distill locally.** If this session learned something a future session here would
+otherwise re-learn the hard way — an environment/data gotcha + its fix, an approach that was
+tried and abandoned (and why), or a result that's now settled — append **one line** (with an
+`exp-NNN`/`run_id` evidence pointer) to the right section of `NOTES.md`. This is a project-local
+cache, append-only; it does **not** replace the hub promotion below — a durable *cross-project*
+lesson goes to **both** (NOTES.md = "don't repeat this *here*"; hub knowledge = the transferable
+version). Keep `NOTES.md` lean: a line earns its place only if it saves a future session real work.
+
+Then findings flow back to the hub. **The normal path** (hub reachable — `hub_path` is in
 `control.yaml`): one atomic call —
 
 ```

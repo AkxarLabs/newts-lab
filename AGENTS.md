@@ -1,6 +1,6 @@
 # AGENTS.md — operating this lab with any coding agent
 
-This file makes AutoScientist drivable by **any** agent that reads AGENTS.md (Codex,
+This file makes Kartr Lab drivable by **any** agent that reads AGENTS.md (Codex,
 Cursor, Gemini CLI, …). Claude Code is the first-class driver — it reads `CLAUDE.md`
 and gets the procedures as native slash-command skills — but everything here is plain
 files, so other agents can run the same lab.
@@ -21,13 +21,20 @@ time, `autopilot` for a signed unattended campaign.
 ## Procedures
 
 The workflow lives in `.claude/skills/<name>/SKILL.md` — plain-Markdown procedures
-(`setup-lab`, `lab-status`, `configure`, `ideate`, `lit-review`, `critique-paper`,
+(`setup-lab`, `lab-status`, `configure`, `discuss`, `ideate`, `lit-review`, `critique-paper`,
 `scope`, `propose`, `spawn-project`, `experiment`, `improve`, `research-loop`,
 `autopilot`, `advance`, `adopt`, `analyze`, `make-figures`, `write-paper`,
 `review-paper`, `finalize`).
 They are written as instructions to an agent and contain no Claude-specific syntax:
 **open the file and follow it step by step.** When the PI says "/ideate X", that
 means: execute `.claude/skills/ideate/SKILL.md` with argument X.
+
+`discuss` is the collaborative human↔agent session (a grilling Q&A loop + live research) that
+optionally seeds `ideate`/`compete`/`scope`/`write-paper`. Three more skills are **general
+engineering helpers vendored from github.com/mattpocock/skills (MIT)**, not part of the research
+lifecycle: `grilling` (the reusable one-question-at-a-time loop), `domain-modeling`, and
+`grill-with-docs` (sharpen a plan/design → `CONTEXT.md` glossary + `adr/` ADRs). They ship in the
+hub and in every spawned project, so any agent can use them standalone.
 
 ## Approximating the multi-agent steps
 
@@ -70,7 +77,7 @@ parallelism:
 - Configuration is 3-layered (experiment yaml > project `control.yaml` >
   `lab/config.yaml`) — see `docs/configuration.md`.
 - Projects live OUTSIDE this repo at `lab.projects_root` (default
-  `../AutoScientist-Projects/<slug>`); each is its own git repo with its own AGENTS.md.
+  `../kartr-lab-projects/<slug>`); each is its own git repo with its own AGENTS.md.
 
 ## Non-negotiables (compressed from CLAUDE.md — the full text governs)
 

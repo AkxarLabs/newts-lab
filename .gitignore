@@ -1,4 +1,11 @@
-# (Spawned project repos live OUTSIDE the hub at lab.projects_root — nothing to ignore here.)
+# Spawned project repos live OUTSIDE the hub at lab.projects_root (default
+# ../kartr-lab-projects), so they're normally not in this tree at all. These
+# entries are a SAFETY NET: if the PI points lab.projects_root at a path INSIDE the
+# hub, the project repos (each its own git repo, with its own large runs/) must not
+# be committed into the hub. The hub only ever tracks studies/<slug>/ (idea + paper/).
+/kartr-lab-projects/
+/projects/
+/Projects/
 
 # Docs build output (ProperDocs)
 site/
@@ -22,15 +29,15 @@ __pycache__/
 .pytmp/
 .pytest_cache/
 
-# LaTeX build artifacts
-papers/**/*.aux
-papers/**/*.bbl
-papers/**/*.blg
-papers/**/*.fdb_latexmk
-papers/**/*.fls
-papers/**/*.log
-papers/**/*.out
-papers/**/*.synctex.gz
+# LaTeX build artifacts (papers live at studies/<slug>/paper/)
+studies/**/*.aux
+studies/**/*.bbl
+studies/**/*.blg
+studies/**/*.fdb_latexmk
+studies/**/*.fls
+studies/**/*.log
+studies/**/*.out
+studies/**/*.synctex.gz
 
 # OS
 .DS_Store

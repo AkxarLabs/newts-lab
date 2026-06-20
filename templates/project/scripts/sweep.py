@@ -31,7 +31,36 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling lab_bus
 sys.path.insert(0, str(REPO / "src"))
 
-from project_pkg.config import load_config
+
+def _resolve_pkg() -> str:
+    """Match scripts/run.py: the package under src/ to import. `project_pkg` for spawned
+    projects; an adopted repo's own name via control.yaml `package:` (or $PROJECT_PKG)."""
+    src = REPO / "src"
+    override = os.environ.get("PROJECT_PKG")
+    if override:
+        return override
+    ctl = REPO / "control.yaml"
+    if ctl.exists():
+        try:
+            import yaml
+            name = (yaml.safe_load(ctl.read_text(encoding="utf-8-sig")) or {}).get("package")
+            if name:
+                return str(name)
+        except Exception:  # noqa: BLE001 — best-effort; fall through to autodetect
+            pass
+    if (src / "project_pkg" / "__init__.py").exists():
+        return "project_pkg"
+    pkgs = [p.name for p in src.iterdir() if (p / "__init__.py").exists()] if src.exists() else []
+    if len(pkgs) == 1:
+        return pkgs[0]
+    raise SystemExit("[sweep] cannot resolve the project package under src/ — set `package:` "
+                     "in control.yaml (or $PROJECT_PKG)")
+
+
+import importlib  # noqa: E402
+
+load_config = importlib.import_module(f"{_resolve_pkg()}.config").load_config
+_locked_append = importlib.import_module(f"{_resolve_pkg()}.tracking")._locked_append
 
 try:
     import lab_bus  # dashboard event bus (optional, best-effort)
@@ -77,7 +106,9 @@ def _finalize_orphan(run_id: str | None, status: str) -> None:
            "stage": meta.get("stage"), "seed": meta.get("seed"),
            "commit": meta.get("commit"), "dirty": meta.get("dirty"),
            "status": status, "wall_seconds": None, "metrics": {}}
-    with (REPO / "runs" / "registry.jsonl").open("a", encoding="utf-8") as f:
+    # Use the SAME sidecar lock + fsync as RunContext.finish, so a timeout-orphan write can't
+    # interleave with a sibling job finalizing at the same instant during a --parallel sweep.
+    with _locked_append(REPO / "runs" / "registry.jsonl") as f:
         f.write(json.dumps(row) + "\n")
 
 

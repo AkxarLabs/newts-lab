@@ -90,7 +90,7 @@ def test_gate2_successful_sign_writes_signed_and_signed_via(hub, monkeypatch):
 
 def test_gate1_signs_proposal_and_leaves_command(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    prop = hub.root / "ideas" / "demo" / "proposal.md"
+    prop = hub.root / "studies" / "demo" / "proposal.md"
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
     res = m.approve_gate("demo", 1)

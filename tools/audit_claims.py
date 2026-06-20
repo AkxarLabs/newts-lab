@@ -1,9 +1,9 @@
 """Mechanically audit a paper's claims.yaml against run artifacts.
 
-    uv run --with pyyaml python tools/audit_claims.py papers/<slug> [--rel-tol 1e-3]
+    uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3]
         [--check-commits] [--verify-hashes]
 
-Artifacts resolve from the hub archive (papers/<slug>/artifacts/, locked by tools/lock_artifacts.py
+Artifacts resolve from the hub archive (studies/<slug>/paper/artifacts/, locked by tools/lock_artifacts.py
 at /finalize) first, then the live project — so a finalized paper audits from the hub alone.
 --verify-hashes checks each artifact against the claim's locked artifact_sha256.
 
@@ -58,7 +58,7 @@ CLAIM_ANNOT_RE = re.compile(r"%.*\bC\d+\b")
 def projects_root() -> Path:
     """Resolve lab.projects_root from lab/config.yaml (relative paths anchor at the hub)."""
     config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
+    root = ((config.get("lab") or {}).get("projects_root")) or "../kartr-lab-projects"
     return (HUB / root).resolve()
 
 
@@ -112,9 +112,13 @@ def coverage_scan(paper_dir: Path) -> list[str]:
         m = re.search(r"(?<!\\)%", raw)
         code = raw[:m.start()] if m else raw
         annotated = bool(CLAIM_ANNOT_RE.search(raw))
-        # Skip structural lines whose numbers aren't prose measurements.
-        if re.search(r"\\(input|include|includegraphics|cite\w*|ref|label|section|subsection|subsubsection|url|href|usepackage)", code):
-            continue
+        # Strip structural macros + their (optional [..] and {..}) args so their internal numbers
+        # don't count — but a prose measurement SHARING a line with \ref/\cite/\label IS still
+        # checked (don't `continue` the whole line, or a measurement hides behind a citation).
+        code = re.sub(
+            r"\\(?:includegraphics|include|input|usepackage|cite\w*|ref|label|url|href|subsubsection|subsection|section)"
+            r"(?![a-zA-Z])\s*(?:\[[^\]]*\])?\s*(?:\{[^}]*\})?",
+            " ", code)
         if MEASUREMENT_RE.search(code) and not annotated:
             findings.append(f"L{i}: {raw.strip()[:90]}")
     return findings
@@ -175,7 +179,7 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
 
     per_artifact: list[list[tuple[str, float]]] = []
     for rel in artifacts:
-        # hub archive first (papers/<slug>/artifacts/, locked at /finalize), live project second —
+        # hub archive first (studies/<slug>/paper/artifacts/, locked at /finalize), live project second —
         # so a finalized paper stays auditable even if the project repo is gone.
         archived = paper_dir / "artifacts" / rel
         path = archived if archived.exists() else project_dir / rel
@@ -232,7 +236,7 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("paper_dir", help="e.g. papers/<slug>")
+    parser.add_argument("paper_dir", help="e.g. studies/<slug>/paper")
     parser.add_argument("--rel-tol", type=float, default=1e-3)
     parser.add_argument("--check-commits", action="store_true")
     parser.add_argument("--verify-hashes", action="store_true",

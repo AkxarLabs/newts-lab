@@ -2,7 +2,7 @@
 
     uv run --with pyyaml python tools/s2.py search "small language model distillation" [--limit 10] [--year 2023:] [--bulk]
     uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066
-    uv run --with pyyaml python tools/s2.py verify papers/<slug>/references.bib [--threshold 0.85]
+    uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
 
 Why: replayable, logged literature searches for /lit-review and /scope, mechanical
 BibTeX from paper ids for /write-paper, and zero-assumption citation verification for
@@ -43,7 +43,7 @@ FIELDS = "title,abstract,year,venue,citationCount,externalIds,authors.name,tldr"
 
 
 def http_get(url: str, retries: int = 4) -> dict | None:
-    headers = {"User-Agent": "AutoScientist-lab-tools"}
+    headers = {"User-Agent": "kartr-lab-tools"}
     if "semanticscholar" in url and os.environ.get("S2_API_KEY"):
         headers["x-api-key"] = os.environ["S2_API_KEY"]
     for attempt in range(retries):
@@ -188,7 +188,8 @@ def check_retracted(doi: str) -> bool | None:
 
 
 def cmd_verify(args) -> int:
-    text = open(args.bibfile, encoding="utf-8-sig").read()
+    with open(args.bibfile, encoding="utf-8-sig") as f:
+        text = f.read()
     entries = parse_bib(text)
     if not entries:
         print("no bib entries found")

@@ -5,9 +5,9 @@ description: First-run interview — ask the PI the key questions, write lab/con
 
 # Setup Lab
 
-Goal: a 5-minute interview that leaves the lab configured, verified, and pointed at
-the PI's research interests. Ask the questions below (grouped, not one at a time);
-write the answers into `lab/config.yaml` (preserving comments); report what was set.
+Goal: an interview that leaves the lab configured, verified, and pointed at the PI's
+research interests. Ask the questions below (grouped, not one at a time); write the
+answers into `lab/config.yaml` (preserving comments); report what was set.
 
 ## 1. Interview
 
@@ -37,7 +37,7 @@ write the answers into `lab/config.yaml` (preserving comments); report what was 
   `OPENALEX_API_KEY`.
 
 **Projects location**
-- Keep `lab.projects_root` at `../AutoScientist-Projects` or elsewhere?
+- Keep `lab.projects_root` at `../kartr-lab-projects` or elsewhere?
 
 **The machine itself (optional)**
 - Anything the implementation agent should know about the machine(s) experiments run
@@ -68,3 +68,5 @@ Report the configuration summary, then offer the two on-ramps:
 - Unattended: `/autopilot` — authorize a campaign and let the lab run while you sleep.
 - Somewhere between: `/advance <slug>` — one lifecycle stage at a time, you verify
   between stages. Have an existing idea or codebase? `/adopt` enters mid-lifecycle.
+- A task with a fixed target (benchmark / leaderboard / KPI, no paper)? `/compete` spins off a
+  target-driven project that iterates toward the metric.

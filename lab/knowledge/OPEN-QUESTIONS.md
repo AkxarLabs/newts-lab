@@ -7,7 +7,7 @@ Entry format:
 ```markdown
 ## Q-NNN: <the question>  (added YYYY-MM-DD, source: <project/paper/lit-review/session>)
 Why it matters, what a first experiment might look like, related findings/failures (F-/X- ids).
-Status: open | promoted → ideas/<slug> | retired (reason)
+Status: open | promoted → studies/<slug> | retired (reason)
 ```
 
 ---

@@ -50,8 +50,10 @@ the PI's signature scopes it:
   divergent method-ideation. Generating a genuinely new *approach* to the project's problem is a
   separate, gated act: **`/ideate --in-project <slug>`** (the in-project mode of `/ideate` — a
   divergent approach generator scoped to the frozen set, whose output is candidate approaches, not
-  experiments). See the `/ideate` skill for its generate→critique→tournament→triage pipeline and
-  the re-enter-`/propose`-or-successor-idea rule.
+  experiments). It has **two independent PI-owned switches**: the ENABLE flag `ideation.in_project`
+  (default `true`; a kill-switch — `false` turns the `--in-project` capability OFF) and the APPROVAL
+  knob `ideation.in_project_approval`. See the `/ideate` skill for its
+  generate→critique→tournament→triage pipeline and the re-enter-`/propose`-or-successor-idea rule.
 
 The boundary is **mechanical**: each decision is flagged `Headline: yes/no` at scope time.
 Reopening a *non-headline* decision and expanding the frontier are fully autonomous; reopening
@@ -59,8 +61,10 @@ a **headline** decision (the central hypothesis the proposal's novelty rests on)
 frozen set, or exceeding the envelope **escalates** — a PI note in manual/`execute`, or under a
 signed `/autopilot` campaign the same delegation-bounds + overseer `support` check used for a
 Gate-1 self-approval. A headline reopen is **not a dead end**: it routes to in-project
-method-ideation — **`/ideate --in-project <slug>`** (under `ideation.in_project_approval`: PI-gated
-in manual runs; auto within campaign bounds + overseer `support`) or a successor hub `/ideate` —
+method-ideation — **`/ideate --in-project <slug>`** (enabled by `ideation.in_project: true` and
+approval-gated by `ideation.in_project_approval`: PI-gated in manual runs, auto within campaign
+bounds + overseer `support`; **if `ideation.in_project: false` the `--in-project` route is OFF —
+fall back to** a successor hub `/ideate`) —
 whose surviving approaches re-enter `/propose` (a mini-proposal that crosses Gate 1) or spawn a
 successor idea, never entering experiments on a bare PI note. A pivot is never silent: it lands in
 `decisions.md`, PLAN.md's Re-planning log, and the event bus (so the dashboard shows it live).
@@ -80,7 +84,7 @@ Default is `execute`, so nothing changes until you sign a brief that says `explo
 Both are PI-owned (they widen the agent's authority), so `/configure` only changes them on an
 explicit PI request — or transitively when an `/autopilot` campaign brief's delegation bounds
 cover them. Per-decision `Headline: yes/no` flags are set by `/scope` and live in
-`ideas/<slug>/decisions.md`; changing one is a decisions.md edit, not a config key.
+`studies/<slug>/decisions.md`; changing one is a decisions.md edit, not a config key.
 
 ### Full autopilot: the one-command night
 
@@ -171,7 +175,51 @@ permission mode that won't stop to ask (`claude --permission-mode acceptEdits`, 
 `/goal` drives toward a single checkable condition (good for "make the smoke test
 pass", too narrow for a campaign); cloud routines (`/schedule`) run without an open
 session but in a fresh clone — only useful if your lab state is pushed and your
-compute is reachable from it; `claude -p` is for headless one-shots (CI), not loops.
+compute is reachable from it. (`claude -p` headless is also how the lab launches *project*
+agents programmatically — see the next section.)
+
+## Programmatic agents & multi-project fleets
+
+A single session orchestrates work by spawning **worktree subagents** (the Task tool) for
+parallel experiment *variants* — but those are short-lived, fire-and-return, and **cannot spawn
+their own subagents** (subagent rule 6). So one session cannot run several long-running project
+loops at once: a research loop *is* a top-level session, not a subagent. The lab scales to many
+projects the other way — **multiple top-level sessions over shared files** — and
+`tools/agent_runner.py` is how the hub launches them programmatically instead of by hand:
+
+```bash
+uv run --with pyyaml python tools/agent_runner.py launch --project <slug> \
+    --role orchestrator --prompt-file <brief>     # one headless session, in the project repo
+uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project <slug>
+```
+
+- **Backends, via config (default claude).** `agents.programmatic.backend: claude` runs `claude -p`
+  (headless); `codex` runs `codex exec`. Each launched agent is a **top-level** session in the
+  project's cwd (so it *can* spawn its own experiment-runners) — **not** a nested subagent — and is
+  **depth-capped** (`max_depth: 1`) so it can't launch more.
+- **Nothing is lost.** Running in the project cwd means the project's `.claude/settings.json` hooks
+  (Claude backends) and `run.py` already emit run/worker signals into `<project>/.bus/`. On top of
+  that the launcher persists the **full stdout transcript** (`<project>/.bus/agents/<id>.stream.jsonl`),
+  a **manifest** (`<id>.json`, status `running`→terminal, pid, timing — reconciled on crash like a
+  killed run), `agent_launched`/`agent_finished` **bus events**, and a synthesized **worker log** for
+  non-Claude backends — so the dashboard catches every launched agent as its own room/sprite, live.
+- **Coordination is the existing slot ledger.** N launched sessions advance their CPU-light stages in
+  parallel; **training still serializes** through `tools/run_slots.py` (`compute.max_concurrent_runs`).
+  No new lock — the file-based substrate already arbitrates cross-project compute.
+- **`/autopilot` concurrency.** `autopilot.max_concurrent_projects` (default **1**) keeps autopilot
+  on one project end-to-end; set it `>1` (with `agents.programmatic.enabled: true`) and autopilot
+  becomes a coordinator that launches one headless session per project.
+
+**Human-in-the-loop, by construction.** Programmatic launching *widens* autonomy (N autonomous
+sessions writing to N repos), so it is **PI-owned and OFF by default** (`agents.programmatic.enabled:
+false`) — flipped on only by `/configure` or a PI-signed campaign brief, exactly like
+`ideation.in_project` and the Gate-2 `pi_signed` chain. Every launched agent **inherits every gate**:
+FULL runs still need a signed `gate2_envelope` (`guard.py full-run`), and **Gate 3 is never
+delegated** — a launched agent stops its pipeline at `internal-review`, never `final`. The PI can
+**stop** any launched agent live: a dashboard/bus `kill`/`park` directive (picked up at the agent's
+next `lab_bus.py inbox` checkpoint), `agent_runner.py kill`, or `compute.max_concurrent_runs: 0` (no
+session can acquire a training slot). The number of autonomous agents the lab may spin up is itself a
+gated, PI-signed quantity — full autonomy *with* the brakes left in.
 
 ## The integrity stack (what keeps unattended ≠ unhinged)
 

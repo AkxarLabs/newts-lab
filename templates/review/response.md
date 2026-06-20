@@ -1,6 +1,6 @@
 # Author Response — {{title}}, review cycle {{n}}
 
-*Paper: `papers/{{slug}}/` · Responding to: `reviews/review-{{n}}.md` · Date: {{date}}*
+*Paper: `studies/{{slug}}/paper/` · Responding to: `reviews/review-{{n}}.md` · Date: {{date}}*
 
 Review feedback is **validated, never obeyed**. Every action item gets exactly one
 verdict below, with evidence. A reviewer point contradicted by the artifacts or the

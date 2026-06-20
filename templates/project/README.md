@@ -1,6 +1,6 @@
 # {{title}}
 
-*Spawned from AutoScientist `templates/project/` on {{date}} · Idea: `{{slug}}` · Proposal: `ideas/{{slug}}/proposal.md` in the hub repo.*
+*Spawned from Kartr Lab `templates/project/` on {{date}} · Idea: `{{slug}}` · Proposal: `studies/{{slug}}/proposal.md` in the hub repo.*
 
 ## What this is
 
@@ -10,6 +10,7 @@
 
 ```
 ├── PLAN.md                  # the approved experiment plan (from the proposal)
+├── NOTES.md                 # distilled memory: gotchas+fixes, tried-and-abandoned, what's settled
 ├── EXPERIMENT_LOG.md        # append-only narrative ledger — read this first
 ├── configs/
 │   ├── base.yaml            # shared defaults

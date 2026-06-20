@@ -5,14 +5,14 @@ description: Write a full research proposal (staged experiment plan, budgets, ki
 
 # Propose
 
-Input: idea in state `scoping` with a completed `decisions.md` (from `/scope`). Output: `ideas/<slug>/proposal.md` presented for **PI Gate 1**.
+Input: idea in state `scoping` with a completed `decisions.md` (from `/scope`). Output: `studies/<slug>/proposal.md` presented for **PI Gate 1**.
 
 ## Procedure
 
 1. Read `IDEA.md`, `lit-review.md`, and `decisions.md`. Set state → `proposal`. The proposal is assembled FROM the settled decisions: §3 Method and §4 Experimental design follow decisions.md directly; OPEN decisions become explicit pilot rows whose criterion is "settles D-NNN".
 2. Fill `templates/idea/proposal.md`. The non-negotiables:
-   - **Headline hypothesis**: state the single central claim the project's novelty rests on, in one sentence — it must be consistent with the `Headline: yes` decisions in `decisions.md`. This is what `/spawn-project` copies into PLAN.md and a LOOP_BRIEF, and it is the autonomy boundary: an `explore`-mode loop may reopen supporting decisions and expand the frontier under it, but abandoning it escalates to the PI.
-   - **Frozen eval protocol**: primary metric, validation (selection) vs held-out test (reporting) defined now. The experiment loop will never read test — design the split so that's physically easy to honor.
+   - **Headline hypothesis**: the single central claim the project's novelty rests on, in one sentence — consistent with the `Headline: yes` decisions in `decisions.md`. `/spawn-project` copies it into PLAN.md and a LOOP_BRIEF, and it is the autonomy boundary: an `explore`-mode loop may reopen supporting decisions and expand the frontier under it, but abandoning it escalates to the PI.
+   - **Frozen eval protocol**: primary metric, validation (selection) vs held-out test (reporting) defined now. The experiment loop will never read test — design the split so that's physically easy to honor. (Its concrete form follows the project TYPE chosen at spawn — the literal split for `ml`, pre-registration + a hold-out/placebo for `empirical`, calibration moments for `simulation`; see `templates/project-types/`.)
    - **Strongest fair baseline** from the lit review's positioning section — not the convenient one.
    - **Staged experiment table**: exp-001 is always a SMOKE; pilots answer the hypothesis cheaply; FULL runs are few and PI-gated. Every row gets its promotion/success criterion written NOW — criteria invented after seeing results are not criteria.
    - **Ablation plan**: every method component gets a removal test. If the method has one component, plan the sanity ablations (e.g., vs. random/shuffled control).

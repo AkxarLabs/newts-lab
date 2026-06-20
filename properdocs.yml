@@ -1,4 +1,4 @@
-site_name: AutoScientist
+site_name: Kartr Lab
 site_description: A research lab for an AI agent — ideation to publication, with the human as PI.
 docs_dir: docs
 theme:
@@ -36,8 +36,11 @@ nav:
   - The workflow: workflow.md
   - Autonomy & modes: autonomy.md
   - Skills reference: skills.md
+  - Collaborative sessions (/discuss): discuss.md
   - Configuration: configuration.md
   - Projects: projects.md
+  - Project types: project-types.md
+  - Target-driven (/compete): compete.md
   - Tools: tools.md
   - Dashboard: dashboard.md
   - Design rationale: DESIGN.md

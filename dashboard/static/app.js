@@ -6,7 +6,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const el = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
-const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hhmm = ts => (ts || '').slice(11, 16);
 const num = v => typeof v === 'number' ? (+v).toPrecision(4) : esc(v);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -699,7 +699,7 @@ function openGate(idea, gate) {
   $('#modalSeal').textContent = gate;
   $('#modalTitle').textContent = `Gate ${gate} — ${idea}`;
   $('#modalBody').innerHTML = gate === 1
-    ? `Records your PI signature on <span class="mono">ideas/${esc(idea)}/proposal.md</span> and lets the agent spawn the project.`
+    ? `Records your PI signature on <span class="mono">studies/${esc(idea)}/proposal.md</span> and lets the agent spawn the project.`
     : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`;
   const read = $('#modalRead'); read.hidden = false;
   read.textContent = gate === 1 ? 'read the proposal ▸' : 'review the envelope ▸';
@@ -1509,9 +1509,18 @@ function renderScrubber() {
   });
 }
 function connect() {
-  const es = new EventSource('/api/events');
-  es.onmessage = ev => { try { ingest(JSON.parse(ev.data)); $('#staleVeil').hidden = true; } catch (e) {} };
-  es.onerror = () => { $('#clock').classList.add('stopped'); if (!connect._p) connect._p = setInterval(() => fetch('/api/state').then(r => r.json()).then(ingest).catch(() => $('#staleVeil').hidden = false), 5000); };
+  if (connect._es) { try { connect._es.close(); } catch (e) {} }   // never leak a prior stream on reconnect
+  const es = connect._es = new EventSource('/api/events');
+  es.onmessage = ev => {
+    if (connect._p) { clearInterval(connect._p); connect._p = null; }  // SSE live again → drop the poll fallback
+    try { ingest(JSON.parse(ev.data)); $('#staleVeil').hidden = true; } catch (e) {}
+  };
+  es.onerror = () => {
+    $('#clock').classList.add('stopped');
+    try { es.close(); } catch (e) {}   // stop the browser's auto-reconnect storm (each reconnect = a server thread)
+    if (!connect._p) connect._p = setInterval(() => fetch('/api/state').then(r => r.json()).then(ingest).catch(() => $('#staleVeil').hidden = false), 5000);
+    if (!connect._r) connect._r = setTimeout(() => { connect._r = null; connect(); }, 15000);  // one delayed SSE retry
+  };
 }
 
 /* ── demo mode (?demo): a synthetic, living lab — agents in every room that come, go, and
@@ -1557,7 +1566,7 @@ function demoState(tick) {
   const VERB = {
     'experiment-runner': [['Bash: python scripts/run.py --seed 0', 'run'], ['Read: configs/base.yaml', 'read'], ['Edit: src/model.py', 'edit'], ['Bash: git commit -m "exp"', 'git'], ['Grep: val_loss in runs/', 'read']],
     'overseer': [['Read: runs/exp-007/metrics.json', 'read'], ['Grep: claim vs artifact', 'read'], ['Read: analysis.md', 'read']],
-    'fresh-context-reviewer': [['Read: papers/draft.md', 'read'], ['Grep: unsupported claims', 'read'], ['Write: review-notes.md', 'edit']],
+    'fresh-context-reviewer': [['Read: studies/<slug>/paper/main.tex', 'read'], ['Grep: unsupported claims', 'read'], ['Write: review-notes.md', 'edit']],
     'ideation-critic': [['Read: IDEA.md', 'read'], ['Write: critique.md', 'edit'], ['Grep: prior work', 'read']],
     'scoping-advocate': [['Read: decisions.md', 'read'], ['Write: scoping/option-a.md', 'edit'], ['Grep: baselines', 'read']],
   };

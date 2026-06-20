@@ -51,7 +51,7 @@ def test_extract_numbers_json_and_text(hub, monkeypatch, tmp_path):
 # ── audit_claim verdicts ──────────────────────────────────────────────────────
 
 def _paper(hub, slug, claims):
-    pdir = hub.root / "papers" / slug
+    pdir = hub.root / "studies" / slug / "paper"
     pdir.mkdir(parents=True, exist_ok=True)
     (pdir / "claims.yaml").write_text(yaml.safe_dump({"claims": claims}), encoding="utf-8")
     return pdir
@@ -150,10 +150,10 @@ def test_resolve_project_dir_default_projects_root(hub, monkeypatch):
 
 def test_archive_first_audit_passes_with_project_absent_and_hash_verified(hub, monkeypatch):
     """The canonical /finalize case: project dir is gone, but the locked artifact under
-    papers/<slug>/artifacts/ + the recorded sha256 keep the audit PASSING."""
+    studies/<slug>/paper/artifacts/ + the recorded sha256 keep the audit PASSING."""
     m = _mod(hub, monkeypatch)
     hub.add_registry_row("demo", project="../projects/demo")  # project dir does NOT exist
-    paper = hub.root / "papers" / "demo"
+    paper = hub.root / "studies" / "demo" / "paper"
     art = paper / "artifacts" / "runs" / "r0"
     art.mkdir(parents=True, exist_ok=True)
     metrics_bytes = b'{"val_acc": 0.913}'
@@ -170,7 +170,7 @@ def test_archive_first_audit_passes_with_project_absent_and_hash_verified(hub, m
 def test_verify_hashes_fail_on_tamper(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     hub.add_registry_row("demo", project="../projects/demo")
-    paper = hub.root / "papers" / "demo"
+    paper = hub.root / "studies" / "demo" / "paper"
     art = paper / "artifacts" / "runs" / "r0"
     art.mkdir(parents=True, exist_ok=True)
     (art / "metrics.json").write_bytes(b'{"val_acc": 0.913}')

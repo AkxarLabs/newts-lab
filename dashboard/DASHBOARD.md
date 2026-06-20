@@ -18,7 +18,7 @@ without reading raw files or transcripts.
 
 It must serve two jobs at once:
 
-- **Observability** — at any moment, show what the lab is doing: which ideas/projects exist, what
+- **Observability** — at any moment, show what the lab is doing: which studies/projects exist, what
   stage each is in, what is running, and which agents are active.
 - **Control** — let the PI act on what they see: command the lab, approve the human decision
   points, run read-only checks, and leave instructions.

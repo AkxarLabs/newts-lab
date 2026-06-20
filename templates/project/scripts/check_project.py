@@ -56,7 +56,7 @@ def main() -> int:
     # Unfilled template placeholders ({{slug}} etc. — not the figure library's {{{...}}}).
     # All files /spawn-project substitutes, so an unfilled CLAUDE.md/AGENTS.md is caught too.
     for rel in ("PLAN.md", "control.yaml", "CLAUDE.md", "AGENTS.md", "README.md",
-                "EXPERIMENT_LOG.md", "pyproject.toml"):
+                "EXPERIMENT_LOG.md", "NOTES.md", "pyproject.toml"):
         path = ROOT / rel
         if path.exists() and re.search(r"\{\{(?!\{)[a-z_]+\}\}", path.read_text(encoding="utf-8-sig")):
             problems.append(f"{rel} still contains template placeholders — spawn incomplete")
@@ -130,6 +130,11 @@ def main() -> int:
         )
     print(f"- Gate 2 envelope: {'signed' if signed else 'none — every FULL run needs fresh PI approval'}")
     print(f"- SYSTEM.md: {'present — read it before acting' if system_md else 'not present'}")
+    notes_md = ROOT / "NOTES.md"
+    if notes_md.exists():
+        lessons = sum(1 for ln in notes_md.read_text(encoding="utf-8-sig").splitlines()
+                      if ln.strip().startswith("- "))
+        print(f"- NOTES.md: present, {lessons} distilled lesson(s) — read in full before acting")
 
     if problems:
         suggestion = "fix the items above (see AGENTS.md cold-start checklist), then re-run this check"

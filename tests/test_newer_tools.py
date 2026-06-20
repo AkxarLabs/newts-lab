@@ -1,6 +1,6 @@
 """Tests for the newer hub trust tools:
   sync_figures.py      — copy project figures into the hub + a verifiable manifest, --check drift
-  lock_artifacts.py    — archive cited metrics.json into papers/<slug>/artifacts/ + record sha256
+  lock_artifacts.py    — archive cited metrics.json into studies/<slug>/paper/artifacts/ + record sha256
   hub_writeback.py     — atomic project->hub write-back (notebook + knowledge + registry state)
   process_writebacks.py— reconcile deferred HUB-WRITEBACK-PENDING blocks, idempotently
 
@@ -40,7 +40,7 @@ def test_sync_figures_writes_manifest_then_check_clean(hub, monkeypatch):
     (figs / "fig1.png").write_bytes(b"PNGDATA")
     # sync
     assert _run_main(m, monkeypatch, "demo") == 0
-    manifest = hub.root / "papers" / "demo" / "figures" / ".manifest.json"
+    manifest = hub.root / "studies" / "demo" / "paper" / "figures" / ".manifest.json"
     assert manifest.exists()
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert "fig1.png" in data
@@ -56,7 +56,7 @@ def test_sync_figures_check_flags_hand_edited_hub_copy(hub, monkeypatch):
     (figs / "fig1.png").write_bytes(b"PNGDATA")
     _run_main(m, monkeypatch, "demo")
     # hand-edit the HUB copy -> diverged
-    (hub.root / "papers" / "demo" / "figures" / "fig1.png").write_bytes(b"TAMPERED")
+    (hub.root / "studies" / "demo" / "paper" / "figures" / "fig1.png").write_bytes(b"TAMPERED")
     assert _run_main(m, monkeypatch, "demo", "--check") == 1
 
 
@@ -75,7 +75,7 @@ def test_sync_figures_check_flags_stale_project_source(hub, monkeypatch):
 # ── lock_artifacts (+ audit chained) ──────────────────────────────────────────
 
 def _paper_with_claim(hub, slug, claim):
-    pdir = hub.root / "papers" / slug
+    pdir = hub.root / "studies" / slug / "paper"
     pdir.mkdir(parents=True, exist_ok=True)
     (pdir / "claims.yaml").write_text(yaml.safe_dump({"claims": [claim]}), encoding="utf-8")
     return pdir
@@ -90,9 +90,9 @@ def test_lock_archives_and_records_sha256(hub, monkeypatch):
         "id": "C001", "project": "demo", "numbers": ["0.913"], "metric": "val_acc",
         "artifacts": ["runs/r0/metrics.json"]})
     assert _run_main(m, monkeypatch, "demo") == 0
-    archived = hub.root / "papers" / "demo" / "artifacts" / "runs" / "r0" / "metrics.json"
+    archived = hub.root / "studies" / "demo" / "paper" / "artifacts" / "runs" / "r0" / "metrics.json"
     assert archived.exists()
-    doc = yaml.safe_load((hub.root / "papers" / "demo" / "claims.yaml").read_text(encoding="utf-8"))
+    doc = yaml.safe_load((hub.root / "studies" / "demo" / "paper" / "claims.yaml").read_text(encoding="utf-8"))
     sha = doc["claims"][0]["artifact_sha256"]["runs/r0/metrics.json"]
     assert len(sha) == 64
 

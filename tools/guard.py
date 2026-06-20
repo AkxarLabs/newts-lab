@@ -6,6 +6,8 @@
     uv run --with pyyaml python tools/guard.py state <slug> <from> <to>
     uv run --with pyyaml python tools/guard.py append-only <slug | project-path>
     uv run --with pyyaml python tools/guard.py writeback <slug>
+    uv run --with pyyaml python tools/guard.py decisions <slug> [--strict]
+    uv run --with pyyaml python tools/guard.py plan-trace <slug>
 
 Each command validates a precondition/postcondition the protocol otherwise only states in
 prose, so unattended autonomy doesn't depend on perfect agent memory. Idempotent and read-only
@@ -62,7 +64,7 @@ def _registry_rows() -> list[dict]:
         if not line.strip().startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < len(_COLS) or cells[0] in ("ID", "") or set(cells[0]) <= {"-"}:
+        if len(cells) < len(_COLS) or cells[0] in ("ID", "", "—") or set(cells[0]) <= {"-"}:
             continue
         out.append(dict(zip(_COLS, cells)))
     return out
@@ -74,7 +76,7 @@ def _row(slug: str) -> dict | None:
 
 def _projects_root() -> Path:
     root = ((_load_yaml(LAB / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../AutoScientist-Projects"
+        or "../kartr-lab-projects"
     return (HUB / root).resolve()
 
 
@@ -99,11 +101,11 @@ def _verdict(code: int, msg: str) -> int:
 
 def c_spawn(a) -> int:
     """Gate 1 must be recorded before /spawn-project spends compute."""
-    prop = HUB / "ideas" / a.slug / "proposal.md"
+    prop = HUB / "studies" / a.slug / "proposal.md"
     if not prop.exists():
-        return _verdict(1, f"no proposal at ideas/{a.slug}/proposal.md — run /propose first")
+        return _verdict(1, f"no proposal at studies/{a.slug}/proposal.md — run /propose first")
     if not re.search(r"gate ?1 approved|PI Gate 1|gate1_approved", prop.read_text(encoding="utf-8-sig"), re.I):
-        return _verdict(1, f"Gate 1 not recorded in ideas/{a.slug}/proposal.md — needs PI sign-off before spawn")
+        return _verdict(1, f"Gate 1 not recorded in studies/{a.slug}/proposal.md — needs PI sign-off before spawn")
     row = _row(a.slug)
     pd = _project_dir(a.slug, row)
     if pd and any(pd.glob("runs/*")):
@@ -220,14 +222,140 @@ def c_writeback(a) -> int:
     return _verdict(2, f"no dated write-back for {a.slug} today — run tools/hub_writeback.py before ending (rule 11)")
 
 
+# grammar for a machine-checkable Revisit predicate: FN(...) OP value [within tol of ref]
+_PRED_RE = re.compile(r"^(metric|best|delta|status)\s*\([^)]*\)\s*(<=|>=|==|!=|<|>|within)\b", re.I)
+
+
+def _decision_blocks(text: str):
+    """Yield (D-NNN, block_body) for each '## D-NNN' section of a decisions.md."""
+    parts = re.split(r"(?m)^##\s+(D-\d+)\b", text)
+    for i in range(1, len(parts), 2):
+        yield parts[i], (parts[i + 1] if i + 1 < len(parts) else "")
+
+
+def _index_status(text: str) -> dict:
+    """Map D-NNN -> status (lowercased) from the '## Decision index' table."""
+    out = {}
+    for line in text.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells and re.fullmatch(r"D-\d+", cells[0] or ""):
+            out[cells[0]] = (cells[2] if len(cells) > 2 else "").lower()
+    return out
+
+
+def c_decisions(a) -> int:
+    """Every SETTLED, non-headline decision must carry a machine-checkable **Revisit predicate:**
+    so an explore loop's revisit trigger is parseable, not free prose. (The overseer still
+    adjudicates whether it actually fired; this only shape-checks the trigger.) Headline:yes
+    decisions are exempt; OPEN decisions are resolved by a pilot, not revisited."""
+    dfile = HUB / "studies" / a.slug / "decisions.md"
+    if not dfile.exists():
+        return _verdict(2, f"no decisions.md at studies/{a.slug}/ — run /scope first")
+    text = dfile.read_text(encoding="utf-8-sig")
+    status = _index_status(text)
+    missing, malformed, checked = [], [], 0
+    for dnnn, body in _decision_blocks(text):
+        hm = re.search(r"\*\*Headline:\*\*\s*(yes|no)\b", body, re.I)
+        if not hm or hm.group(1).lower() != "no":
+            continue  # unfilled placeholder, or Headline:yes (exempt — it escalates)
+        if status.get(dnnn, "settled") == "open":
+            continue  # OPEN → resolved by a pilot, not revisited
+        checked += 1
+        pm = re.search(r"(?m)^\s*\*\*Revisit predicate:\*\*\s*(.+?)\s*$", body)
+        pred = pm.group(1).strip().strip("`").strip() if pm else ""
+        if pred.startswith("<!--"):
+            pred = ""  # unfilled HTML-comment placeholder
+        if not pred:
+            missing.append(dnnn)
+        elif not _PRED_RE.match(pred):
+            malformed.append(dnnn)
+    if malformed:
+        for d in malformed:
+            print(f"  - {d}: **Revisit predicate** present but ungrammatical (want FN(...) OP value)")
+        return _verdict(1, f"{len(malformed)} malformed Revisit predicate(s) in studies/{a.slug}/decisions.md")
+    if missing:
+        for d in missing:
+            print(f"  - {d}: settled Headline:no decision has no machine **Revisit predicate:**")
+        return _verdict(1 if getattr(a, "strict", False) else 2,
+                        f"{len(missing)} settled non-headline decision(s) without a machine predicate")
+    return _verdict(0, f"all {checked} settled non-headline decision(s) carry a well-formed Revisit predicate")
+
+
+def _experiment_rows(text: str):
+    """Yield (id, question, criterion) for each PLAN.md Experiments-table row."""
+    in_tbl = False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("| ID ") and "Question" in ln and "Stage" in ln:
+            in_tbl = True
+            continue
+        if in_tbl:
+            if not s.startswith("|"):
+                break
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if not cells or set("".join(cells)) <= {"-", ":", " "}:
+                continue
+            if re.match(r"exp-\d+", cells[0], re.I):
+                yield cells[0], (cells[1] if len(cells) > 1 else ""), (cells[4] if len(cells) > 4 else "")
+
+
+def c_plan_trace(a) -> int:
+    """Every non-baseline PLAN.md experiment row must trace to an authorized origin: a decisions.md
+    D-NNN, an `(expand Rn)` tag backed by a Re-planning-log row, or the exp-001 seed. A row carrying
+    a `Headline-change: yes` marker is BLOCKED regardless of any D-NNN citation (a decisions.md
+    decision is not a /propose origin — a headline change must re-enter /propose)."""
+    pdir = _project_dir(a.slug)
+    if not pdir:
+        return _verdict(1, f"no project dir for {a.slug}")
+    plan = pdir / "PLAN.md"
+    if not plan.exists():
+        return _verdict(1, f"no PLAN.md in {pdir.name}")
+    text = plan.read_text(encoding="utf-8-sig")
+    dfile = HUB / "studies" / a.slug / "decisions.md"
+    dids = set(re.findall(r"\bD-\d+\b", dfile.read_text(encoding="utf-8-sig"))) if dfile.exists() else set()
+    replan = text.split("## Re-planning log", 1)[1] if "## Re-planning log" in text else ""
+    has_expand_log = bool(re.search(r"frontier_expand|decision_revisit", replan))
+    rows = list(_experiment_rows(text))
+    untraceable, blocked = [], []
+    for rid, question, criterion in rows:
+        if re.fullmatch(r"exp-0*1", rid, re.I):
+            continue  # the seed smoke baseline
+        blob = f"{question} {criterion}"
+        # A Headline-change:yes row is ALWAYS blocked — it must re-enter /propose, and a decisions.md
+        # D-NNN is not a /propose origin. Classify it BEFORE the traced short-circuit so citing any
+        # D-NNN cannot smuggle a headline change past the gate.
+        if re.search(r"headline[-\s]?change:\s*yes", blob, re.I):
+            blocked.append(rid)
+            continue
+        traced = any(d in blob for d in dids) or \
+            (bool(re.search(r"\(expand\s+R\d+\)", blob, re.I)) and has_expand_log)
+        if not traced:
+            untraceable.append(rid)
+    if blocked:
+        for r in blocked:
+            print(f"  - {r}: Headline-change:yes row with no /propose origin — must re-enter /propose")
+        return _verdict(1, f"{len(blocked)} headline-changing PLAN.md row(s) bypassing /propose in {a.slug}")
+    if untraceable:
+        for r in untraceable:
+            print(f"  - {r}: no D-NNN / (expand Rn) origin — provenance undocumented")
+        return _verdict(2, f"{len(untraceable)} PLAN.md row(s) with undocumented origin in {a.slug}")
+    return _verdict(0, f"all {len(rows)} PLAN.md experiment row(s) trace to an authorized origin")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="mechanical lifecycle guards")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name, fn in [("spawn", c_spawn), ("full-run", c_full_run), ("frozen", c_frozen),
-                     ("writeback", c_writeback)]:
+                     ("writeback", c_writeback), ("plan-trace", c_plan_trace)]:
         p = sub.add_parser(name)
         p.add_argument("slug")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("decisions")
+    p.add_argument("slug")
+    p.add_argument("--strict", action="store_true", help="treat a missing predicate as BLOCKED")
+    p.set_defaults(fn=c_decisions)
     p = sub.add_parser("append-only")
     p.add_argument("target", help="slug or project path")
     p.set_defaults(fn=c_append_only)

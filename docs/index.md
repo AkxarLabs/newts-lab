@@ -1,14 +1,19 @@
-# AutoScientist
+# Kartr Lab
 
 <div class="as-hero" markdown>
 <p class="as-kicker">A research lab for an AI agent</p>
-<p class="as-lede">AutoScientist takes a research direction from <strong>ideation</strong> through literature review, proposal, experimentation, analysis and ablations, to a <strong>finished LaTeX paper</strong> — driven by an agent, with you as the PI at three explicit gates.</p>
+<p class="as-lede">Kartr Lab takes a research direction from <strong>ideation</strong> through literature review, proposal, experimentation, analysis and ablations, to a <strong>finished LaTeX paper</strong> — driven by an agent, with you as the PI at three explicit gates.</p>
 
 [Getting started](getting-started.md){ .md-button }
 [Autonomy & modes](autonomy.md){ .md-button .md-button--secondary }
 </div>
 
 It is a *template*, not a framework: procedures are Markdown skills the agent executes with judgment, state is plain files and git, and nothing here assumes a research domain. The design distills what worked across the autonomous-research literature — Sakana's AI Scientist, Karpathy's autoresearch, Google's co-scientist, Kosmos, Meta's AIRA — and hard-codes defenses against their documented failure modes. The full reasoning lives in [Design rationale](DESIGN.md).
+
+<figure markdown>
+![The Vivarium dashboard — the whole lab as a living world](assets/dashboard-world-dark.png){ .as-shot }
+<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — every idea, project, and working agent a critter in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
+</figure>
 
 ## The shape of the lab
 
@@ -19,7 +24,7 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │
-                │   ┌── SPOKE (../AutoScientist-Projects/<slug>) ┴───┐
+                │   ┌── SPOKE (../kartr-lab-projects/<slug>) ┴───┐
                 └── │  /spawn-project → /experiment → /improve →     │
           findings  │  /analyze   (own git repo, own env, own        │
                     │  control.yaml — independently reproducible)    │
@@ -79,7 +84,7 @@ Everything between gates runs autonomously. Everything at a gate stops for you.
 
     ---
 
-    All 20 procedures: what each does, what it reads, where it stops.
+    Every procedure: what each does, what it reads, where it stops.
 
     [Skills reference →](skills.md)
 

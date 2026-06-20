@@ -5,7 +5,7 @@ The procedures of the lab, invoked as slash commands in Claude Code. Source of t
 ## Setup & autonomy
 
 ### `/setup-lab`
-One-time interview (re-runnable): research directions → `OPEN-QUESTIONS.md` seeds; compute reality → `compute.*`; autonomy appetite → envelope/oversight defaults; models and API keys. Writes `lab/config.yaml`, verifies the environment (git/uv/tools/docs/template smoke), hands off to `/ideate`, `/adopt`, `/advance`, or `/autopilot`.
+One-time interview (re-runnable): research directions → `OPEN-QUESTIONS.md` seeds; compute reality → `compute.*`; autonomy appetite → envelope/oversight defaults; models and API keys. Writes `lab/config.yaml`, verifies the environment (git/uv/tools/docs/template smoke), hands off to `/ideate`, `/adopt`, `/compete`, `/advance`, or `/autopilot`.
 
 ### `/autopilot`
 The unattended end-to-end campaign: one authorization conversation → a signed campaign brief (`lab/campaigns/`) that delegates Gate 1 *within bounds*, derives Gate 2 envelopes, and **never delegates Gate 3** — then runs ideation → … → internal-review for a portfolio of ideas, finishing with a morning report. Wrap in the built-in scheduler for crash-resilience: `/loop 30m /autopilot continue <campaign-file>`. See [Autonomy & modes](autonomy.md).
@@ -16,6 +16,9 @@ The stage-gated (semi-autonomous) mode: runs **exactly the next lifecycle stage*
 ### `/adopt`
 Enter the lifecycle anywhere: a short interview scaffolds the prerequisite files for your starting point — an idea you already have (skip ideation), known literature (PI-waived lit review), a settled design, or an **existing code/results repo** registered as a project. Skipped stages are recorded as PI-waived in `IDEA.md`; pre-existing numbers without artifacts still can't enter papers (hard rule 1) — they become planned reproduction experiments.
 
+### `/compete [slug-or-task]`
+The on-ramp for a task with a **fixed, straightforward target** — a benchmark to beat, a metric to hit, a leaderboard to climb, an internal KPI. A short interview spins off a project that enters **directly at `active`** and iterates toward the target (fanning out ideas via `/improve explore` + `/ideate --in-project`, running experiments, logging everything). Reuses the whole engine; **skips the paper layer** (no novelty gate, no headline-hypothesis boundary — the method space is open). The frozen set becomes `{task data, metric, output contract, rules, deadline}`. Sending output to an *external* scorer is an outward action under a PI-signed `target.score_envelope`; selecting the final output is Gate 3. Host-agnostic — Kaggle is one instance the agent adapts to. See [Target-driven projects](compete.md).
+
 ## Orientation
 
 ### `/lab-status`
@@ -25,6 +28,9 @@ Reads the registry, latest notebook entries, and open questions; runs `tools/che
 Views the effective 3-layer config with provenance (`tools/show_config.py`) or edits the right layer. PI-owned keys (budgets, envelope, `eval_frozen`, `critique.*`, `lab.*`, `compute.*`, `agents.*`, `oversight.level`, `writing.page_limit`) require explicit PI confirmation — see the Owner column in [Configuration](configuration.md). `gate2_envelope.pi_signed` may also be set transitively under a PI-signed `/autopilot` campaign brief.
 
 ## Ideation → proposal
+
+### `/discuss <purpose> [target]`
+Optional collaborative human↔agent session — a one-question-at-a-time **grilling** loop (it reuses the vendored `grilling` skill: agent asks a focused question with its recommended answer, waits, walks the tree) **plus live, logged research** of the questions raised (`tools/s2.py search` / web / arXiv, capped by `discuss.max_research_minutes`). Produces a session doc and seeds the next stage. Purposes: `direction` (before `/ideate`), `target` (before `/compete`), `scope` (before `/scope`), `in-project` (before `/ideate --in-project`), `paper` (before `/write-paper`). Pre-slug docs land in `lab/ideation/`; per-slug in `studies/<slug>/sessions/`. It produces framing only — it crosses no PI gate.
 
 ### `/ideate [direction]`
 Phased pipeline (depth from `ideation.*` config): **research** (knowledge mining + focused web scan) → **generate** (`ideation.candidates` mechanism-diverse candidates) → **reflect** (parallel fresh-context critic subagents per idea — novelty/feasibility/value skeptics) → **evolve** (revise or kill against critiques, `reflection_rounds` cycles) → **combine** (crossovers of complementary survivors) → **tournament** (pairwise ranking) → **triage** (top 1–3 persisted with their strongest surviving critique). Mirrors the co-scientist Generate/Reflect/Evolve/Rank loop.
@@ -71,6 +77,13 @@ Part A: mechanical claims audit (`tools/audit_claims.py`) + bib verification (`s
 
 ### `/finalize <slug>`
 Reproducibility pass on the project repo (fresh `uv sync` → tests green → figures regenerate → tag `paper-v1`), knowledge write-back (including future-work threads → OPEN-QUESTIONS), a procedure retrospective (proposed edits to the skills themselves), registry → `final`.
+
+## Design & collaboration helpers (vendored)
+
+General engineering-design skills, vendored from [github.com/mattpocock/skills](https://github.com/mattpocock/skills) (MIT — see each vendored dir's `NOTICE`/`LICENSE`). They are **distinct from the research lifecycle**: use them when designing the lab's own tooling, a refactor, or a new module — *not* for research design decisions (those live in `studies/<slug>/decisions.md`). Shipped in the hub **and** copied into every project repo, so they work standalone for any agent (Claude or Codex).
+
+### `/grill-with-docs`
+A relentless one-question-at-a-time grilling session that also builds docs as you go: a glossary (`CONTEXT.md` at the repo root) + Architecture Decision Records (in `adr/` — adapted from upstream's `docs/adr/` so it never collides with this repo's rendered `docs/` site). Composes the reusable `grilling` loop and the `domain-modeling` skill. (`grilling` and `domain-modeling` are also invocable on their own.)
 
 ## Subagents used by skills
 

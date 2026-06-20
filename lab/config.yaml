@@ -1,5 +1,5 @@
 # ============================================================================
-# AutoScientist — lab-wide configuration (layer 1 of 3)
+# Kartr Lab — lab-wide configuration (layer 1 of 3)
 #
 # Resolution order:  experiment yaml  >  project control.yaml  >  THIS FILE
 #
@@ -11,11 +11,13 @@
 # ============================================================================
 
 lab:                            # ── hub behavior · PI-owned ──
-  projects_root: "../AutoScientist-Projects"  # where /spawn-project creates project repos (relative to hub)
+  projects_root: "../kartr-lab-projects"  # where /spawn-project creates project repos (relative to hub)
   stale_days: 14                # registry rows older than this get flagged by check_lab.py
 
 compute:                        # ── CROSS-project run coordination · PI-owned ──
-  max_concurrent_runs: 1        # training campaigns allowed at once across ALL projects
+  max_concurrent_runs: 1        # training campaigns allowed at once across ALL projects. 1 (default) =
+                                # training is globally serialized (the safe single-machine default).
+                                # Raise it to the number of GPUs/slots your machine can run in parallel.
                                 # (one slot = one run.py run or one sweep; tools/run_slots.py)
   stale_slot_minutes: 360       # slots older than this are presumed crashed and reclaimed
 
@@ -29,6 +31,46 @@ agents:                         # ── subagent settings · PI-owned ──
   critic_model: inherit         # ideation critics / scoping advocates — these are INLINE
                                 # (general-purpose) subagents with no agent file, so this value
                                 # cannot be applied; they always run at the session model.
+
+  programmatic:                 # ── headless TOP-LEVEL agents launched by tools/agent_runner.py ──
+                                # The hub orchestrator can spawn an independent headless session
+                                # (claude -p / codex exec) PER project, coordinated by the compute-
+                                # slot ledger — NOT a nested subagent. This WIDENS autonomy (N
+                                # autonomous sessions writing to N repos), so it is PI-owned and OFF
+                                # by default. Widen it only on explicit PI request (/configure) or
+                                # transitively under a PI-signed /autopilot campaign brief — the same
+                                # rule as ideation.in_project_approval / loop.explore_*.
+    enabled: false              # MASTER SWITCH · ships OFF (the safe default). false = manual sessions +
+                                # in-session Task subagents only (no headless launching). Set true (via
+                                # /configure, or transitively under a signed /autopilot brief) to let
+                                # agent_runner launch headless top-level agents. Required for
+                                # autopilot.max_concurrent_projects > 1.
+    backend: claude             # default backend: claude | codex. Default ALL to claude. (codex needs
+                                # the `codex` CLI + auth; per-launch override via --backend.)
+    model: inherit              # backend model (inherit = the backend's own default)
+    permission_mode: acceptEdits  # claude --permission-mode — keeps gates/human-in-loop; NOT
+                                # bypassPermissions. (codex uses sandbox below, runs -a never.)
+    max_minutes: 240            # wall-clock cap per launched agent — the watchdog kills the tree on breach
+    max_concurrent: 3           # PER-PROJECT ceiling on concurrently-launched agents. Lab-wide fleet
+                                # size ≈ autopilot.max_concurrent_projects × this; the expensive part
+                                # (TRAINING) is globally serialized by compute.max_concurrent_runs.
+    max_depth: 1                # launch-recursion cap. 1 = hub→project only; a launched agent may NOT
+                                # launch further agents (mirrors the no-nested-subagents rule)
+    backends:                   # per-backend invocation knobs (agent_runner knows the flag grammar)
+      claude:
+        extra_args: ""          # appended to the `claude -p` invocation (advanced)
+      codex:
+        sandbox: workspace-write  # codex --sandbox (workspace-write lets it edit the project repo)
+        extra_args: ""
+
+autopilot:                      # ── /autopilot campaign defaults · PI-owned ──
+  max_concurrent_projects: 1    # how many projects /autopilot drives end-to-end AT ONCE. 1 (default) =
+                                # ONE project carried fully through the pipeline before the next is
+                                # spawned (the safe, single-session default). >1 = concurrent multi-
+                                # project mode, which REQUIRES agents.programmatic.enabled (one headless
+                                # top-level session per project, slot-coordinated); without that enable
+                                # flag, autopilot stays single-session and works one project at a time.
+                                # TRAINING is still capped by compute.max_concurrent_runs either way.
 
 oversight:                      # ── confabulation circuit-breakers (overseer agent) ──
   level: standard               # off | standard | strict
@@ -51,20 +93,25 @@ ideation:                       # ── /ideate pipeline depth ──
   in_project_rounds: 1          # max in-project ideation rounds before stopping (so recursion
                                 # terminates by config, not convention; each round charges its cost
                                 # against the loop envelope minutes / iteration budget)
-  in_project_approval: pi       # PI-owned (WIDENS authority — edit only on explicit PI request, or
-                                # transitively under a PI-signed /autopilot campaign brief; same rule
-                                # as loop.explore_*).  pi | campaign_auto :
+  in_project_approval: pi       # CAMPAIGN-ONLY knob: it ONLY changes behavior under a signed
+                                # /autopilot campaign. MANUAL `/ideate --in-project` runs are ALWAYS
+                                # PI-gated regardless of this value. PI-owned (WIDENS authority — edit
+                                # only on explicit PI request, or transitively under a PI-signed
+                                # /autopilot campaign brief; same rule as loop.explore_*). pi | campaign_auto:
                                 #   pi            = surviving approaches always queue at /propose for
-                                #                   human Gate 1 (the manual default).
-                                #   campaign_auto = under a signed /autopilot campaign, a surviving
-                                #                   approach is auto-approved WITHIN the campaign's
-                                #                   delegation bounds + an overseer `support` check
-                                #                   (exactly like a Gate-1 self-approval); a campaign
-                                #                   brief may override back to `pi`. Manual runs are
-                                #                   ALWAYS PI-gated regardless of this value. Any
-                                #                   headline-hypothesis change re-enters /propose
-                                #                   (mini-proposal) or a successor idea — never a bare
-                                #                   PI note. Gate 3 is never delegated.
+                                #                   human Gate 1 (the safe default, incl. under campaigns).
+                                #   campaign_auto = UNDER A SIGNED CAMPAIGN ONLY, a surviving approach is
+                                #                   auto-approved WITHIN the campaign's delegation bounds +
+                                #                   an overseer `support` check (exactly like a Gate-1
+                                #                   self-approval); a campaign brief may override back to
+                                #                   `pi`. Any headline-hypothesis change re-enters /propose
+                                #                   (mini-proposal) or a successor idea — never a bare PI
+                                #                   note. Gate 3 is never delegated.
+
+discuss:                        # ── /discuss collaborative human↔agent session ──
+  max_research_minutes: 15      # cap on live web/arXiv/Semantic-Scholar research DURING a /discuss
+                                # session (it's discussion fuel, not the lit review). 0 = no live
+                                # research (Q&A only). The session itself is human-paced and unbounded.
 
 scoping:                        # ── /scope deliberation depth ──
   options_per_decision: 3       # alternatives generated per design-decision branch
@@ -72,9 +119,22 @@ scoping:                        # ── /scope deliberation depth ──
   max_open_questions: 3         # decisions allowed to stay open (resolved by pilots) before /propose
 
 writing:                        # ── /write-paper · /make-figures ──
+  venue: neurips                # target paper format · project control.yaml may override per-project.
+                                # /write-paper copies the whole templates/paper/venues/<venue>/ dir —
+                                # the official .sty/.bst are VENDORED there, so it compiles offline (no
+                                # fetch). See that dir's README.md for versions/limits/anonymity + how to
+                                # refresh to a newer cycle. One of:
+                                #   neurips  · 1-col, plainnat, ~9pp   (the default; NeurIPS 2025)
+                                #   icml     · 2-col, icml2025.bst, ~8pp
+                                #   iclr     · 1-col, iclr2026.bst, ~9pp
+                                #   aclarr   · 2-col, acl_natbib, ~8pp (ACL Rolling Review)
+                                #   aaai     · 2-col, aaai2026.bst, ~7pp (anon submission, strict format)
+                                #   generic  · venue-agnostic article (templates/paper/main.tex)
+  page_limit: 9                 # target main-text pages; over-length trimmed gradually. Set this to the
+                                # chosen venue's limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) — it is
+                                # the authoritative knob; `venue` selects the template, not the count.
   max_reflection_rounds: 3      # verifier-gated revision rounds (gains plateau ~3, regress after)
   citation_match_threshold: 0.85 # title-similarity gate for tools/s2.py verify
-  page_limit: 9                 # target main-text pages; over-length trimmed gradually
 
 critique:                       # ── /critique-paper · /review-paper · PI-owned ──
   ensemble_external: 3          # reviewer lenses for external-paper triage

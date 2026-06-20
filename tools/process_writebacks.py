@@ -50,7 +50,7 @@ def _append(path: Path, text: str) -> None:
 
 def projects_root() -> Path:
     config = yaml.safe_load((LAB / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../AutoScientist-Projects"
+    root = ((config.get("lab") or {}).get("projects_root")) or "../kartr-lab-projects"
     return (HUB / root).resolve()
 
 

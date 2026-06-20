@@ -1,35 +1,46 @@
 ---
 name: write-paper
-description: Draft the LaTeX paper in papers/<slug>/ from project artifacts — evidence-first ordering, mechanical citation resolution, verifier-gated reflection rounds with claims re-audit. Argument; the idea slug.
+description: Draft the LaTeX paper in studies/<slug>/paper/ from project artifacts — evidence-first ordering, mechanical citation resolution, verifier-gated reflection rounds with claims re-audit. Argument; the idea slug.
 ---
 
 # Write Paper
 
-Input: idea in state `writing` with a completed analysis. Output: `papers/<slug>/`
+Input: idea in state `writing` with a completed analysis. Output: `studies/<slug>/paper/`
 with compiling LaTeX, complete `claims.yaml`, verified bibliography. Knobs:
 `writing.*` in `lab/config.yaml`.
 
-The ordering below is evidence-first (ablated in prior systems: whole-paper single
-passes degrade the Method section; numbers passing through prose generation get
-transcribed wrong; Related Work written early gets invented).
+The ordering below is evidence-first: whole-paper single passes degrade the Method section,
+numbers passing through prose get transcribed wrong, and Related Work written early gets invented.
 
 ## 1. Evidence before words
 
-1. Create `papers/<slug>/` from `templates/paper/`.
+1. Create `studies/<slug>/paper/` from `templates/paper/`. **Select the venue** from the resolved
+   `writing.venue` (project `control.yaml` overrides `lab/config.yaml`): for a non-`generic`
+   venue, copy the **entire** `templates/paper/venues/<venue>/` directory into `studies/<slug>/paper/`
+   — the official `.sty`/`.bst` are vendored there, so it compiles offline with no fetch. For
+   `generic`, use the venue-agnostic `templates/paper/main.tex` (`\documentclass{article}`).
+   Only if the deadline targets a **newer cycle** than the vendored version, refresh the style
+   file per `templates/paper/venues/README.md` (and if offline, keep the vendored one and queue
+   a finalize note — **never leave a non-compiling preamble**). Set `page_limit` from
+   `writing.page_limit` (the venue's typical limit is in that README).
 2. **Figures and tables first**: run `/make-figures <slug>`. Result tables are `.tex`
    files the paper `\input`s — no result numeral is ever typed into prose.
-   **Every quantitative claim gets a `claims.yaml` entry — whether it lives in a table
-   cell or a sentence** (claim, numbers, location, run ids, artifacts, derivation).
-   `/make-figures` registers the table/figure numbers as it emits them; you add the
-   prose-only ones (abstract, contributions) as you write them, each annotated `% C00N`
-   in the LaTeX. A number with no entry is invisible to the blocking audit — so it must
-   not exist.
+   **Every quantitative claim gets a `claims.yaml` entry — table cell or sentence**
+   (claim, numbers, location, run ids, artifacts, derivation). `/make-figures` registers
+   the table/figure numbers as it emits them; you add the prose-only ones (abstract,
+   contributions) as you write them, each annotated `% C00N` in the LaTeX. A number with
+   no entry is invisible to the blocking audit — so it must not exist.
 3. **Seed the bibliography**: pull the load-bearing entries from
-   `ideas/<slug>/lit-review.md` via `tools/s2.py bibtex <id>` (mechanical BibTeX — no
-   hand-typed entries). Sparse, stale bibliographies are a known tell of AI-written
-   papers; the lit review should yield 20+ candidates.
+   `studies/<slug>/lit-review.md` via `tools/s2.py bibtex <id>` (mechanical BibTeX — no
+   hand-typed entries). Sparse bibliographies tell of AI-written papers; the lit review
+   should yield 20+ candidates.
 
 ## 2. Draft — in this order
+
+*Optional author-interrogation first:* `/discuss paper <slug>` shapes the narrative with the PI —
+the single headline claim, 2–3 load-bearing results, positioning vs the closest work, the weakest
+result and why. Its session doc in `studies/<slug>/sessions/` seeds the outline (step 2) and the
+contributions. Framing only; adds no result, crosses no gate. Skip in autonomous runs.
 
 1. **Method** (first — it degrades when written late): from `decisions.md` and the
    project's actual code. Precise enough to reimplement.
@@ -48,7 +59,7 @@ transcribed wrong; Related Work written early gets invented).
    (include the analysis's interpretation risks — honest limitations score better than
    their absence), **Abstract**.
 7. **Interpretation discipline**: interpretive statements ("this suggests X because Y")
-   are ~3× more error-prone than data statements in audited AI-written papers. Every
+   are markedly more error-prone than data statements in audited AI-written papers. Every
    discussion claim either points at evidence or is explicitly hedged as conjecture.
 
 ## 3. Verifier-gated reflection (max `writing.max_reflection_rounds`)
@@ -63,34 +74,32 @@ Each round, in order — and stop early when a round changes nothing substantive
    per round, never a single slash-cut). **No LaTeX toolchain on this machine?** Record
    it, run every non-compile check, and flag the paper as *not-compiled* — Gate 3 cannot
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
-2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (the hub figures still
+2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
    match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
-   `tools/audit_claims.py papers/<slug>` (runs a completeness scan —
-   every numeral in Results/Ablations/Abstract must carry a `% CNNN` annotation — plus the
-   per-claim artifact check) — after EVERY round, not just at the end. Revision is when
-   fabrication happens: systems that revised against reviewer feedback invented supporting
-   ablations, and phantom experiments hide in ablation/analysis subsections. Any number the
-   audit can't trace gets deleted, not defended.
+   `tools/audit_claims.py studies/<slug>/paper` (completeness scan — every numeral in
+   Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check)
+   — after EVERY round, not just at the end. Revision is when fabrication happens: phantom
+   experiments hide in ablation/analysis subsections. Any number the audit can't trace gets
+   deleted, not defended.
 3. **Read the PDF** (you can see it): figures render and are legible, tables aligned,
    no orphaned floats, section flow reads.
 
 ## 4. Bibliography verification (blocking)
 
-`tools/s2.py verify papers/<slug>/references.bib --threshold <writing.citation_match_threshold>`
+`tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>`
 — every entry checked against the real record (title match ≥ threshold, year, retraction
 via OpenAlex). **Any nonzero exit blocks** — NOT-FOUND, RETRACTED, *and* MISMATCH
-(below-threshold title or wrong year, the near-miss-fabrication case the threshold exists
-for) are re-resolved via `s2.py bibtex` against the lit-review note, or removed, before
-review. Free-generated citations are fabricated at ~18% base rate, which is why this is
-mechanical and blocking.
+(below-threshold title or wrong year — the near-miss-fabrication case) are re-resolved via
+`s2.py bibtex` against the lit-review note, or removed, before review. Free-generated citations
+are fabricated at ~18% base rate, which is why this is mechanical and blocking.
 
 ## 5. Revision entry (cycles after the first review)
 
 When entering from a review cycle, the worklist is `reviews/response-N.md` — **ACCEPT
-items only**. REBUT items change nothing. NEEDS-EXPERIMENT items may only be written up
-once their experiments have actually run (artifacts exist; claims.yaml entries first).
-Then the full reflection gate (§3) runs again — the claims re-audit each round exists
-precisely because revision is when fabrication happens.
+items only**. REBUT items change nothing. NEEDS-EXPERIMENT items are written up only once
+their experiments have actually run (artifacts exist; claims.yaml entries first). Then the
+full reflection gate (§3) runs again — the claims re-audit each round exists precisely
+because revision is when fabrication happens.
 
 ## 6. Hand off
 

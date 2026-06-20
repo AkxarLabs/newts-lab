@@ -1,0 +1,14 @@
+# exp-001: SMOKE — verify the TARGET pipeline end-to-end:
+# run → artifacts → a local metric → (if the target has an output contract) a VALID output
+# file → registry. Then: `uv run --with pyyaml python scripts/check_output.py runs/<run_id>/<file>`
+# Experiment configs are immutable after first run: new variant = new file.
+
+experiment_name: exp-001-smoke
+stage: SMOKE
+seed: 0
+
+# Toy output size when target.output.expected_rows is not yet known. Once the real expected
+# row count is in control.yaml, the run emits exactly that many rows. (Ignored for a
+# local-metric-only target with no output contract.)
+toy:
+  n_rows: 20

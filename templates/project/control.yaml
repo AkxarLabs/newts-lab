@@ -14,6 +14,23 @@ project: "{{slug}}"
 hub_path: "{{hub_path}}"        # absolute path to the hub repo, filled at spawn. Tools that
                                 # bridge back to the hub (e.g. tools/hub_writeback.py) read it.
                                 # Informational — do not edit.
+package: project_pkg            # the importable package under src/ that scripts/run.py +
+                                # sweep.py drive (config/experiment/seeding/tracking). Spawned
+                                # projects keep `project_pkg`; an ADOPTED repo that wraps existing
+                                # code sets this to its OWN package name instead of renaming it
+                                # (autodetected when src/ holds exactly one package; this pins it).
+
+project_type: ml               # the project's methodology TYPE (card: TYPE.md; registry:
+                               # <hub>/templates/project-types/). ml (default) | empirical | simulation |
+                               # theory | target-driven. Decides what an "experiment" is and how the hard
+                               # rules map (staged scale, multi-seed, frozen eval). Chosen at spawn; a
+                               # domain (econ, bio, …) is a separate light profile the agent may attach.
+runner: python-import          # how scripts/run.py executes a run, per the project type:
+                               #   python-import (default) = import <package>.experiment.run(cfg, ctx)
+                               #   shell-command            = run `runner_command` below (ANY language);
+                               #     it reads $CONFIG_PATH/$SEED/$RUN_DIR and writes a flat JSON metrics
+                               #     dict to $RUN_DIR/result.json (same artifact contract either way).
+# runner_command: ["Rscript", "analysis.R"]   # REQUIRED when runner: shell-command (string or list)
 
 budgets:                        # PI-owned after Gate 1 — enforced by the run.py watchdog.
   smoke_max_minutes: 10         # applied per-stage when an experiment yaml doesn't set
@@ -53,6 +70,12 @@ monitoring:
 figures:
   theme: clean                  # clean | warm | bold | mono — see src/project_pkg/figures.py
                                 # (same sizing/fonts/vector rules; different palette & vibe)
+
+# writing:                      # OPTIONAL per-project override of the hub writing.* defaults.
+#   venue: neurips              #   target venue for THIS project's paper: neurips | icml | iclr |
+#                               #   aclarr | aaai | generic. Absent (this block commented) = inherit
+#                               #   lab/config.yaml. Uncomment to pin a venue for this project only.
+#   page_limit: 9               #   set to the venue's limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7)
 
 gate2_envelope:                 # PI-owned. Pre-authorized FULL runs; all zeros/null = no envelope,
   full_runs: 0                  # every FULL run needs fresh PI approval.
