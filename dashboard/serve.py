@@ -30,6 +30,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -55,6 +56,11 @@ SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots"}
 
 
 # ── bus writers (directives, commands) ──────────────────────────────────────
+# ThreadingHTTPServer serves each POST on its own thread; serialize id-compute + append so two
+# concurrent directives can't read the same max id and write a duplicate d-NNN (which would mis-route
+# later acks/withdraws onto the wrong directive).
+_BUS_LOCK = threading.Lock()
+
 
 def _next_id(directives_path: Path) -> str:
     # max(existing d-NNN) + 1 — NOT a line count: a withdrawn/edited/missing row must never
@@ -78,11 +84,12 @@ def _append(target: str, rec: dict) -> dict:
     bus = _bus_dir(target)
     bus.mkdir(parents=True, exist_ok=True)
     path = bus / "directives.jsonl"
-    rec.setdefault("id", _next_id(path))
-    rec.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S"))
-    rec.setdefault("from", "PI via dashboard")
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec) + "\n")
+    with _BUS_LOCK:
+        rec.setdefault("id", _next_id(path))
+        rec.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S"))
+        rec.setdefault("from", "PI via dashboard")
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
     return rec
 
 
@@ -117,6 +124,39 @@ def _emit_hub(kind: str, **fields) -> None:
 
 
 # ── gate approval (PI-only, local, explicit) ─────────────────────────────────
+
+def _sign_gate2_block(text: str, ts: str) -> tuple[str, bool]:
+    """Flip pi_signed -> true and signed_via -> dashboard:<ts> WITHIN the gate2_envelope block only,
+    tolerating YAML's `False`/`no`/`off` and an empty/`null`/`~` signed_via. Block-scoped so it can't
+    flip a different envelope's pi_signed (e.g. a /compete target.score_envelope earlier in the file).
+    Comment/format preserving. Returns (new_text, pi_signed_changed)."""
+    lines = text.split("\n")
+    start = next((i for i, ln in enumerate(lines)
+                  if re.match(r"\s*gate2_envelope:\s*(#.*)?$", ln)), None)
+    if start is None:
+        return text, False
+    base_indent = len(lines[start]) - len(lines[start].lstrip())
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        ln = lines[j]
+        if ln.strip() and (len(ln) - len(ln.lstrip())) <= base_indent:
+            end = j
+            break
+    pi_changed = sv_set = False
+    for j in range(start + 1, end):
+        if not pi_changed:
+            m = re.match(r"(\s*pi_signed:\s*)(\S+)(.*)$", lines[j], re.I)
+            if m and m.group(2).lower() in ("false", "no", "off"):
+                lines[j] = f"{m.group(1)}true{m.group(3)}"
+                pi_changed = True
+                continue
+        if not sv_set:
+            m = re.match(r"(\s*signed_via:\s*)(\S*)(.*)$", lines[j], re.I)
+            if m and m.group(2).lower() in ("null", "~", "none", ""):
+                lines[j] = f"{m.group(1)}dashboard:{ts}{m.group(3)}"
+                sv_set = True
+    return "\n".join(lines), pi_changed
+
 
 def approve_gate(idea: str, gate: int) -> dict:
     """Record a PI gate approval. Gate 1: sign the proposal + leave the follow-through
@@ -155,11 +195,13 @@ def approve_gate(idea: str, gate: int) -> dict:
     warnings = []
     if not any(env.get(k) for k in ("full_runs", "per_run_max_minutes", "total_max_minutes")):
         warnings.append("envelope authorizes nothing (all caps are 0/null) — signing it is a no-op; every FULL run will still need fresh PI approval")
-    import re
-    text = re.sub(r"pi_signed:\s*false", "pi_signed: true", text, count=1)
-    text = re.sub(r"signed_via:\s*null", f"signed_via: dashboard:{ts}", text, count=1)
-    control.write_text(text, encoding="utf-8")
+    new_text, pi_changed = _sign_gate2_block(text, ts)
+    if not pi_changed:
+        return {"error": "could not set gate2_envelope.pi_signed (unexpected format) — sign via /configure"}
+    control.write_text(new_text, encoding="utf-8")
     env_after = sources._load_yaml(control).get("gate2_envelope") or {}
+    if not env_after.get("pi_signed"):   # verify the write actually parsed to signed — never report a phantom ok
+        return {"error": "gate2_envelope.pi_signed did not take effect after write — check control.yaml format"}
     _emit_hub("gate_resolved", idea=idea, detail="Gate 2 envelope signed (PI via dashboard)")
     _pi_log({"action": "approve_gate", "gate": 2, "idea": idea, "control": str(control),
              "envelope_before": env, "envelope_after": env_after})
@@ -324,7 +366,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            length = 0
+        length = max(0, min(length, 1 << 20))   # ignore a non-numeric/absurd Content-Length; cap at 1 MB
         try:
             return json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
@@ -365,7 +411,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, b"not found", "text/plain")
 
     def _serve_index(self) -> None:
-        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        try:
+            html = (STATIC / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            return self._send(500, b"dashboard assets missing (dashboard/static/index.html)", "text/plain")
         try:
             seed = json.dumps(sources.snapshot())
         except Exception:  # noqa: BLE001

@@ -115,8 +115,9 @@ function renderMeters(s) {
   // never float over a panel/modal). The topbar gate badge above stays visible in every view.
   if (s.gates_waiting > 0 && MODE === 'terrarium' && !OVERLAY_OPEN) { lan.hidden = false; $('#lanternN').textContent = s.gates_waiting; }
   else lan.hidden = true;
-  const ff = $('#fireflies'); ff.innerHTML = ''; ff.title = `${s.slots.in_use}/${s.slots.cap} compute slots in use`;
-  for (let i = 0; i < s.slots.cap; i++) ff.appendChild(el('i', i < s.slots.in_use ? 'lit' : ''));
+  const sl = s.slots || { in_use: 0, cap: 0 };   // a snapshot/replay without slots must not abort render()
+  const ff = $('#fireflies'); ff.innerHTML = ''; ff.title = `${sl.in_use}/${sl.cap} compute slots in use`;
+  for (let i = 0; i < sl.cap; i++) ff.appendChild(el('i', i < sl.in_use ? 'lit' : ''));
   const c = $('#clock'); c.textContent = hhmm(s.now); c.classList.remove('stopped');
 }
 
@@ -1114,13 +1115,15 @@ function createWorld(canvas, opts) {
         e.faceVis = lerp(e.faceVis == null ? e.facing : e.faceVis, e.facing, Math.min(1, dt * 9));   // smooth turn (no instant flip)
         const pos = samplePath(P, e.pt); e._nx = pos.x; e._ny = pos.y;
       } else { e._nx = pl.sx; e._ny = pl.sy; e.moving = false; }
-      e.blinkT -= dt; if (e.blinkT < 0) { e.blinkT = 2.6 + Math.random() * 3.6; e.blinkOn = 0.13; } if (e.blinkOn > 0) e.blinkOn -= dt; e.blink = e.blinkOn > 0;
-      if (e.dying) { e.dieT += dt; if (e.dieT >= 1.0 && e.w) ents.delete('wk:' + e.w.worker_id); }
+      e.blinkT -= dt; if (e.blinkT < 0) { e.blinkT = 2.6 + Math.random() * 3.6; e.blinkOn = 0.13; } if (e.blinkOn > 0) e.blinkOn -= dt; e.blink = !reduced && e.blinkOn > 0;
+      // reduced-motion has no rAF loop (one drawOnce per ~1.5s sync), so advance the dissolve in a
+      // single step — else a finished worker lingers half-faded for ~90s. Blink is disabled above too.
+      if (e.dying) { e.dieT += reduced ? 1.0 : dt; if (e.dieT >= 1.0 && e.w) ents.delete('wk:' + e.w.worker_id); }
       e.fade = lerp(e.fade, 1, dt * 3); if (!e.init) { e.fade = 1; e.init = true; }
     }
     newt.idle += dt; newt.bounce = lerp(newt.bounce, 0, dt * 2.4);
     newt.look = Math.sin(newt.idle * 0.5) * 0.5;
-    newt.blinkT -= dt; if (newt.blinkT < 0) { newt.blinkT = 2 + Math.random() * 3; newt.blinkOn = 0.13; } if (newt.blinkOn > 0) newt.blinkOn -= dt; newt.blink = newt.blinkOn > 0;
+    newt.blinkT -= dt; if (newt.blinkT < 0) { newt.blinkT = 2 + Math.random() * 3; newt.blinkOn = 0.13; } if (newt.blinkOn > 0) newt.blinkOn -= dt; newt.blink = !reduced && newt.blinkOn > 0;
     newt.glowP = lerp(newt.glowP, (POSE_PARAMS[pose] || POSE_PARAMS.idle).glow, dt * 2);
     if (regenT > 0) regenT -= dt;
     for (const sp of spores) { sp.y += sp.sp * dt * 8; sp.x += Math.sin(t * 0.2 + sp.ph) * 0.0003; if (sp.y > 1.05) { sp.y = -0.05; sp.x = Math.random(); } }
@@ -1276,6 +1279,7 @@ function createWorld(canvas, opts) {
   function clampCam() { const b = boxesBBox(); cam.x = clamp(cam.x, b.x - 400, b.x + b.w + 400); cam.y = clamp(cam.y, b.y - 400, b.y + b.h + 400); }
   let down = null, panned = false;
   canvas.addEventListener('pointerdown', ev => { down = toCanvas(ev); panned = false; try { canvas.setPointerCapture(ev.pointerId); } catch (e) {} });
+  canvas.addEventListener('pointerleave', () => { if (hot) { hot = null; if (reduced) drawOnce(); } });   // clear a stuck hover ring/cursor when the cursor leaves the canvas
   canvas.addEventListener('pointermove', ev => { const p = toCanvas(ev); if (down) { const dx = p.x - down.x, dy = p.y - down.y; if (panned || Math.hypot(dx, dy) > 6) { panned = true; if (followId !== null) { followId = null; fireFollow(); } cam.q = []; camFrom = null; cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom; clampCam(); down = p; userT = t; if (reduced) drawOnce(); } } else { hot = pick(p); if (reduced) drawOnce(); } });
   canvas.addEventListener('pointerup', ev => { const p = toCanvas(ev); if (down && !panned) { const h = pick(p); if (h) { if (h.kind === 'item') { const o = items.find(x => x.id === h.id); if (o && o.has_project) { userT = t; focusProject(h.id); } else if (onItem) onItem(h.id); } else if (h.kind === 'worker' && onWorker) onWorker(h.id); else if (h.kind === 'newt' && onNewt) onNewt(); } else { const rk = boxAt(p); if (rk && !(view.level !== 'WORLD' && view.room === rk)) { userT = t; goRegion(rk); } } } down = null; panned = false; });
   canvas.addEventListener('wheel', ev => { ev.preventDefault(); if (followId !== null) { followId = null; fireFollow(); } const cp = toCanvas(ev), before = s2w(cp.x, cp.y); cam.q = []; camFrom = null; cam.zoom = clamp(cam.zoom * (1 + (ev.deltaY < 0 ? 0.14 : -0.14)), 0.06, 2.6); const after = w2s(before.x, before.y); cam.x += (after.x - cp.x) / cam.zoom; cam.y += (after.y - cp.y) / cam.zoom; clampCam(); userT = t; if (reduced) drawOnce(); }, { passive: false });
@@ -1512,14 +1516,19 @@ function connect() {
   if (connect._es) { try { connect._es.close(); } catch (e) {} }   // never leak a prior stream on reconnect
   const es = connect._es = new EventSource('/api/events');
   es.onmessage = ev => {
-    if (connect._p) { clearInterval(connect._p); connect._p = null; }  // SSE live again → drop the poll fallback
+    connect._n = 0;   // SSE healthy → reset the reconnect backoff
+    if (connect._p) { clearInterval(connect._p); connect._p = null; }  // drop the poll fallback
     try { ingest(JSON.parse(ev.data)); $('#staleVeil').hidden = true; } catch (e) {}
   };
   es.onerror = () => {
     $('#clock').classList.add('stopped');
     try { es.close(); } catch (e) {}   // stop the browser's auto-reconnect storm (each reconnect = a server thread)
-    if (!connect._p) connect._p = setInterval(() => fetch('/api/state').then(r => r.json()).then(ingest).catch(() => $('#staleVeil').hidden = false), 5000);
-    if (!connect._r) connect._r = setTimeout(() => { connect._r = null; connect(); }, 15000);  // one delayed SSE retry
+    if (!connect._p) connect._p = setInterval(() => fetch('/api/state').then(r => r.json())
+      .then(d => { ingest(d); $('#staleVeil').hidden = true; }).catch(() => $('#staleVeil').hidden = false), 5000);
+    if (!connect._r) {   // back the SSE rebuild off 15s→90s instead of recreating the stream every 15s forever
+      connect._n = Math.min((connect._n || 0) + 1, 6);
+      connect._r = setTimeout(() => { connect._r = null; connect(); }, Math.min(15000 * connect._n, 90000));
+    }
   };
 }
 
