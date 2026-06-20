@@ -1,0 +1,33 @@
+Vendored third-party skills
+===========================
+
+The following skills are vendored from the open-source "skills" collection by
+Matt Pocock, redistributed here under the MIT License (see ./LICENSE):
+
+  Source repo : https://github.com/mattpocock/skills
+  Commit (pinned) : 6eeb81b5fcfeeb5bd531dd47ab2f9f2bbea27461
+  License : MIT, Copyright (c) 2026 Matt Pocock
+
+Files covered by this NOTICE + LICENSE:
+
+  .claude/skills/grilling/SKILL.md
+        ← upstream skills/productivity/grilling/SKILL.md   (body verbatim)
+  .claude/skills/domain-modeling/SKILL.md
+        ← upstream skills/engineering/domain-modeling/SKILL.md
+  .claude/skills/domain-modeling/ADR-FORMAT.md
+        ← upstream skills/engineering/domain-modeling/ADR-FORMAT.md
+  .claude/skills/domain-modeling/CONTEXT-FORMAT.md
+        ← upstream skills/engineering/domain-modeling/CONTEXT-FORMAT.md   (verbatim)
+  .claude/skills/grill-with-docs/SKILL.md
+        ← upstream skills/engineering/grill-with-docs/SKILL.md   (body verbatim)
+
+Adaptations from upstream (behaviour-preserving):
+  * ADR save location changed from `docs/adr/` to a top-level `adr/` in
+    domain-modeling/SKILL.md and ADR-FORMAT.md — because in this repo `docs/` is the
+    rendered documentation site (mkdocs, built `--strict`), so a stray `docs/adr/*.md`
+    would break the docs build. `CONTEXT.md` still lives at the repo root.
+  * No other changes. Frontmatter (`name`/`description`/`disable-model-invocation`) is
+    upstream-faithful.
+
+The lab's own derivative research-collaboration skill, `.claude/skills/discuss/SKILL.md`,
+reuses the `/grilling` loop conceptually but is original lab work (not vendored).
