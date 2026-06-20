@@ -55,15 +55,16 @@ def _latest_output(rel_path: str) -> Path | None:
 def _deadline_passed(deadline) -> bool:
     """True only if `deadline` parses as a date strictly before today (robust to non-zero-
     padded ISO like `2026-6-9`, which a naive string-slice compare got wrong)."""
+    import re
     d = str(deadline or "").strip()
     if not d or d.lower() in ("null", "none"):
         return False
-    head = d[:10]
+    datepart = re.split(r"[T ]", d, 1)[0]   # drop any time component BEFORE parsing the date
     try:
-        dl = date.fromisoformat(head)
+        dl = date.fromisoformat(datepart)
     except ValueError:
         try:
-            y, m, dd = (int(x) for x in head.replace("/", "-").split("-")[:3])
+            y, m, dd = (int(x) for x in datepart.replace("/", "-").split("-")[:3])
             dl = date(y, m, dd)
         except (ValueError, IndexError):
             return False
@@ -101,8 +102,10 @@ def main() -> int:
     problems: list[str] = []
     warnings: list[str] = []
     if not id_col or not target_cols:
-        warnings.append("control.yaml target.output is missing id_column/target_columns — "
-                        "header check skipped; fill it from TARGET.md")
+        # A declared output contract with no column names can't have its content / empty-cell checked,
+        # so an all-empty submission would pass as 'valid' and burn an external read. Refuse instead.
+        problems.append("control.yaml target.output declares a path but no id_column/target_columns — "
+                        "the content & empty-cell checks cannot run; fill them from TARGET.md")
 
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as f:

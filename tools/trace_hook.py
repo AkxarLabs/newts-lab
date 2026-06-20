@@ -31,8 +31,11 @@ from pathlib import Path
 MAX_SUMMARY = 200
 SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
-# a hub session touching a project's artifacts (analyze/write/finalize) → attribute it to
-# that project, so its back-half work isn't blank on the project's trace.
+# a hub session touching a project's artifacts (analyze/write/finalize) → attribute it to that
+# project, so its back-half work isn't blank on the project's trace. NOTE: a config-free heuristic —
+# it can't tell a real project name from any other `<word>/runs|PLAN.md|EXPERIMENT_LOG.md` path, so an
+# unrelated path may yield a phantom 'idea'. Acceptable: attribution is best-effort dashboard colour,
+# never a correctness signal (the canonical record is the project's ledgers, not this trace).
 PROJ_RE = re.compile(r"([a-z0-9][a-z0-9._-]*)/(?:runs/|PLAN\.md|EXPERIMENT_LOG\.md)", re.I)
 
 
@@ -97,9 +100,6 @@ def _summary(tool: str, ti: dict) -> str:
 
 def _kind(tool: str, ti: dict) -> str:
     t = tool or ""
-    blob = ""
-    if isinstance(ti, dict):
-        blob = f"{ti.get('command', '')}{ti.get('file_path', '')}"
     if t in ("Task", "Agent"):
         return "spawn"
     if t in ("Edit", "Write", "NotebookEdit"):
@@ -107,9 +107,11 @@ def _kind(tool: str, ti: dict) -> str:
     if t in ("Read", "Grep", "Glob"):
         return "read"
     if t in ("Bash", "PowerShell"):
-        if re.search(r"run\.py|sweep\.py", blob):
+        cmd = ti.get("command", "") if isinstance(ti, dict) else ""
+        # an actual invocation, not `cat run.py` / a path mention / `overrun.py`
+        if re.search(r"\b(?:python3?|uv|py)\b.*\b(?:run|sweep)\.py\b", cmd):
             return "run"
-        if re.search(r"\bgit\b", blob):
+        if re.search(r"\bgit\b", cmd):
             return "git"
         return "bash"
     if t == "Skill":
@@ -153,7 +155,14 @@ def main() -> None:
 
     if event == "SessionStart":
         rec.update(event="start", status="working")
-    elif event in ("SessionEnd", "SubagentStop"):
+    elif event == "SessionEnd":
+        rec.update(event="stop", status="done")
+    elif event == "SubagentStop":
+        # SubagentStop can fire in the PARENT's context with no child id — writing 'done' to
+        # worker_id (=session_id=orchestrator) would mark the still-running orchestrator finished.
+        # Only record the stop when we can attribute it to the subagent itself.
+        if not agent_id:
+            return
         rec.update(event="stop", status="done")
     elif event == "PreToolUse" and tool in ("Task", "Agent"):
         child = ti.get("subagent_type") if isinstance(ti, dict) else ""

@@ -21,8 +21,11 @@ Exit codes:  0 = recorded · 1 = BLOCKED (not authorized / invalid) · 2 = recor
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -36,6 +39,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "runs" / "scores.jsonl"
+LOCK = ROOT / "runs" / "scores.jsonl.lock"
+SCORE_TIMEOUT_S = 600
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling lab_bus
 try:
@@ -71,6 +76,50 @@ def _append(record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+@contextlib.contextmanager
+def _read_lock():
+    """Serialize authorized EXTERNAL reads so the PI-signed cap can't be raced (the cap-check and the
+    append must be atomic, and two leaderboard submissions must never run in parallel). Held across the
+    whole check -> submit -> record section. A crashed holder (lockfile >20 min old) is reclaimed."""
+    LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.time() + SCORE_TIMEOUT_S + 60
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(str(LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            broke = False
+            with contextlib.suppress(OSError):
+                if time.time() - LOCK.stat().st_mtime > 1200:
+                    LOCK.unlink(); broke = True
+            if broke:
+                continue
+            if time.time() > deadline:
+                raise TimeoutError("another external read is in progress")
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            LOCK.unlink()
+
+
+def _kill_tree(proc) -> None:
+    """Kill a score_command and its children so a hung external submission can't outlive the timeout
+    (a bare proc.kill() leaves the grandchild — kaggle/curl/grader — running on Windows)."""
+    if proc is None or proc.poll() is not None:
+        return
+    with contextlib.suppress(Exception):
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    with contextlib.suppress(Exception):
+        proc.wait(timeout=5)
+
+
 def _deadline_passed(deadline) -> bool:
     """True only if `deadline` parses as a date strictly before today. Tolerates non-zero-
     padded ISO (`2026-6-9`); empty / truly unparseable input never blocks here (a naive
@@ -78,12 +127,12 @@ def _deadline_passed(deadline) -> bool:
     d = str(deadline or "").strip()
     if not d or d.lower() in ("null", "none"):
         return False
-    head = d[:10]
+    datepart = re.split(r"[T ]", d, 1)[0]   # drop any time component BEFORE parsing the date
     try:
-        dl = date.fromisoformat(head)
+        dl = date.fromisoformat(datepart)
     except ValueError:
         try:
-            y, m, dd = (int(x) for x in head.replace("/", "-").split("-")[:3])
+            y, m, dd = (int(x) for x in datepart.replace("/", "-").split("-")[:3])
             dl = date(y, m, dd)
         except (ValueError, IndexError):
             return False
@@ -130,12 +179,21 @@ def _run_score_command(tmpl: str, run_id: str, note: str, name: str,
         out_path = str(ROOT / "runs" / run_id / output["path"])
     cmd = (tmpl.replace("{file}", out_path).replace("{run_id}", run_id)
                .replace("{note}", note or run_id).replace("{name}", name or ""))
+    # Own the process group so a timeout reaps the whole tree (the shell AND the grandchild
+    # submitter), not just cmd.exe — otherwise an in-flight external submission is orphaned.
+    grp = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=ROOT, timeout=600)
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, cwd=ROOT, **grp)
+    except OSError as e:
+        return False, f"score_command failed to launch: {e}", None
+    try:
+        out_s, err_s = proc.communicate(timeout=SCORE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        return False, "score_command timed out (600s)", None
-    out = (proc.stdout or proc.stderr or "").strip()
-    return (proc.returncode == 0), out[:500], _parse_score(proc.stdout or "")
+        _kill_tree(proc)
+        return False, f"score_command timed out ({SCORE_TIMEOUT_S}s) — killed", None
+    out = (out_s or err_s or "").strip()
+    return (proc.returncode == 0), out[:500], _parse_score(out_s or "")
 
 
 def main() -> int:
@@ -169,62 +227,78 @@ def main() -> int:
         print(f"[report_score] recorded score for {args.run_id} (no slot consumed)")
         return 0
 
-    # --- authorization (only when the read is an OUTWARD action) ------------------------
-    if external:
-        env = target.get("score_envelope") or {}
-        if not env.get("pi_signed"):
-            print("[report_score] BLOCKED: scoring is external but no PI-signed target.score_envelope — "
-                  "the PI must authorize external reads (/configure or the /compete interview)")
-            return 1
-        if _deadline_passed(target.get("deadline")):
-            print(f"[report_score] BLOCKED: deadline {target.get('deadline')} has passed — scoring window closed")
-            return 1
-        reads = [r for r in _ledger_rows() if r.get("status") == "read"]
-        per_day_max = int(env.get("per_day_max") or 0)
-        total_max = int(env.get("total_max") or 0)
-        today_n = sum(1 for r in reads if str(r.get("ts", ""))[:10] == today)
-        # total_max is THE authorization cap: 0 means "none authorized" (matching the
-        # control.yaml doc + guard.py's all-zero-envelope rule), NOT "unlimited".
-        if total_max <= 0:
-            print("[report_score] BLOCKED: score_envelope.total_max is 0 — no external reads "
-                  "authorized; the PI must set a cap > 0")
-            return 1
-        if len(reads) >= total_max:
-            print(f"[report_score] BLOCKED: total external-read cap reached ({len(reads)}/{total_max})")
-            return 1
-        # per_day_max is an OPTIONAL daily rate limit (0 = no daily sub-limit, total still binds).
-        if per_day_max > 0 and today_n >= per_day_max:
-            print(f"[report_score] BLOCKED: daily external-read cap reached ({today_n}/{per_day_max} today)")
-            return 1
+    # --- the authorized-read flow. An EXTERNAL (outward) read runs under an exclusive lock so the
+    #     PI-signed cap can't be raced (check + append are atomic) and two submissions can't overlap. ---
+    status = "read"
+    with contextlib.ExitStack() as stack:
+        if external:
+            try:
+                stack.enter_context(_read_lock())
+            except TimeoutError:
+                print("[report_score] BLOCKED: another external read is in progress — try again shortly")
+                return 1
+            env = target.get("score_envelope") or {}
+            if not env.get("pi_signed"):
+                print("[report_score] BLOCKED: scoring is external but no PI-signed target.score_envelope — "
+                      "the PI must authorize external reads (/configure or the /compete interview)")
+                return 1
+            if _deadline_passed(target.get("deadline")):
+                print(f"[report_score] BLOCKED: deadline {target.get('deadline')} has passed — scoring window closed")
+                return 1
+            reads = [r for r in _ledger_rows() if r.get("status") == "read"]   # re-read INSIDE the lock
+            per_day_max = int(env.get("per_day_max") or 0)
+            total_max = int(env.get("total_max") or 0)
+            today_n = sum(1 for r in reads if str(r.get("ts", ""))[:10] == today)
+            # total_max is THE authorization cap: 0 means "none authorized" (matching the
+            # control.yaml doc + guard.py's all-zero-envelope rule), NOT "unlimited".
+            if total_max <= 0:
+                print("[report_score] BLOCKED: score_envelope.total_max is 0 — no external reads "
+                      "authorized; the PI must set a cap > 0")
+                return 1
+            if len(reads) >= total_max:
+                print(f"[report_score] BLOCKED: total external-read cap reached ({len(reads)}/{total_max})")
+                return 1
+            # per_day_max is an OPTIONAL daily rate limit (0 = no daily sub-limit, total still binds).
+            if per_day_max > 0 and today_n >= per_day_max:
+                print(f"[report_score] BLOCKED: daily external-read cap reached ({today_n}/{per_day_max} today)")
+                return 1
 
-    # --- validate the output before spending an external read --------------------------
-    rc = _validate_output(args.run_id, output)
-    if rc == 1:
-        print("[report_score] BLOCKED: output failed check_output.py — fix it before an external read")
-        return 1
-    if rc == 2:
-        warnings.append("check_output reported warnings (see above)")
-
-    # --- obtain the score via the task's configured command, or record a manual read ---
-    if args.via == "command":
-        tmpl = scoring.get("score_command") or ""
-        if not tmpl:
-            print("[report_score] BLOCKED: --via command but target.scoring.score_command is empty — "
-                  "fill it in control.yaml (any tool; placeholders {file}{run_id}{note}{name})")
+        # validate the output before spending an external read
+        rc = _validate_output(args.run_id, output)
+        if rc == 1:
+            print("[report_score] BLOCKED: output failed check_output.py — fix it before an external read")
             return 1
-        ok, msg, parsed = _run_score_command(tmpl, args.run_id, args.note, target.get("name") or "", output)
-        print(f"[report_score] score_command: {msg}")
-        if parsed is not None and args.score is None:
-            args.score = parsed
-            print(f"[report_score] parsed score from command output: {parsed}")
-        if not ok:
-            warnings.append("score_command did not exit 0 — recording the attempt; verify the score")
+        if rc == 2:
+            warnings.append("check_output reported warnings (see above)")
 
-    _record(args, status="read", warnings=warnings)
-    if lab_bus:
-        lab_bus.emit("score_read", detail=target.get("name") or args.run_id,
-                     data={"run_id": args.run_id, "score": args.score, "external": external})
+        # obtain the score via the task's configured command, or record a manual read
+        read_ok = True
+        if args.via == "command":
+            tmpl = scoring.get("score_command") or ""
+            if not tmpl:
+                print("[report_score] BLOCKED: --via command but target.scoring.score_command is empty — "
+                      "fill it in control.yaml (any tool; placeholders {file}{run_id}{note}{name})")
+                return 1
+            read_ok, msg, parsed = _run_score_command(tmpl, args.run_id, args.note, target.get("name") or "", output)
+            print(f"[report_score] score_command: {msg}")
+            if parsed is not None and args.score is None:
+                args.score = parsed
+                print(f"[report_score] parsed score from command output: {parsed}")
 
+        # A failed/scoreless EXTERNAL command read is logged as 'read_failed', which the cap filter
+        # above excludes — so a transient failure (auth/network) does NOT burn the PI-signed budget.
+        if external and args.via == "command" and (not read_ok or args.score is None):
+            status = "read_failed"
+            warnings.append("score_command produced no usable score — logged as a failed attempt "
+                            "(no cap slot consumed); verify and retry")
+        _record(args, status=status, warnings=warnings)
+        if lab_bus:
+            lab_bus.emit("score_read", detail=target.get("name") or args.run_id,
+                         data={"run_id": args.run_id, "score": args.score, "external": external, "status": status})
+
+    if status == "read_failed":
+        print(f"[report_score] external read FAILED for {args.run_id} — no cap slot consumed; retry.")
+        return 2
     where = "external read recorded" if external else "score recorded (internal)"
     print(f"[report_score] {where} for {args.run_id} (score={args.score}). "
           "Final-output selection is a PI Gate-3 action.")

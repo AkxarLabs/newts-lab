@@ -14,7 +14,8 @@ Keys (optional but recommended — keyless S2 shares a saturated global pool):
     S2_API_KEY        header x-api-key (free: semanticscholar.org/product/api)
     OPENALEX_API_KEY  param api_key (free account: openalex.org; required since 2026-02)
 
-Exit codes (verify): 0 all verified · 2 title/year mismatches only · 1 not-found or retracted.
+Exit codes (verify): 0 all verified · 2 title/year mismatches only · 1 not-found or retracted ·
+3 BLOCKED (S2 unreachable for ≥1 entry — NOT evidence of a bad citation; retry).
 Exit codes (search): 0 results (or a genuinely empty literature) · 3 BOTH backends
 unreachable — an empty result then is NOT evidence of absence (matters for /lit-review's
 novelty verdict).
@@ -41,6 +42,11 @@ S2 = "https://api.semanticscholar.org/graph/v1"
 OPENALEX = "https://api.openalex.org"
 FIELDS = "title,abstract,year,venue,citationCount,externalIds,authors.name,tldr"
 
+# Sentinel: the request could not reach the backend (network error / non-404 HTTP / exhausted
+# retries) — distinct from a successful-but-empty result (a dict) and from a 404 (None). "Unreachable"
+# must NEVER be read as "this paper does not exist".
+UNREACHABLE = object()
+
 
 def http_get(url: str, retries: int = 4) -> dict | None:
     headers = {"User-Agent": "kartr-lab-tools"}
@@ -60,11 +66,11 @@ def http_get(url: str, retries: int = 4) -> dict | None:
             if e.code == 404:
                 return None
             print(f"[s2] HTTP {e.code} for {url}", file=sys.stderr)
-            return None
+            return UNREACHABLE
         except Exception as e:  # noqa: BLE001 — network tool, report and move on
             print(f"[s2] {e}", file=sys.stderr)
-            return None
-    return None
+            return UNREACHABLE
+    return UNREACHABLE
 
 
 def openalex_url(path: str, params: dict) -> str:
@@ -81,20 +87,20 @@ def cmd_search(args) -> int:
     if args.year:
         params["year"] = args.year
     data = http_get(f"{S2}/paper/{endpoint}?{urllib.parse.urlencode(params)}")
-    papers = (data or {}).get("data") or []
+    papers = (data.get("data") if isinstance(data, dict) else None) or []
 
-    if not papers:  # S2 down/saturated -> OpenAlex
+    if not papers:  # S2 empty or unreachable -> OpenAlex
         print("[s2] no S2 results/unreachable — falling back to OpenAlex", file=sys.stderr)
         oa = http_get(openalex_url("/works", {"search": args.query, "per-page": args.limit,
                                               "select": "title,publication_year,doi,cited_by_count,primary_location"}))
-        # Distinguish a genuine empty literature from both backends being unreachable:
-        # http_get returns None on request failure, {} (truthy-empty .get) on a real empty hit.
-        if data is None and oa is None:
+        # Distinguish a genuine empty literature from both backends being unreachable: http_get returns
+        # UNREACHABLE on a request failure and a dict (possibly with an empty list) on a real hit.
+        if data is UNREACHABLE and oa is UNREACHABLE:
             print("\n**BOTH BACKENDS UNREACHABLE — this empty result is NOT evidence of "
                   "absence.** Do not issue a novelty verdict from it; record the search as "
                   "blocked and retry, or fall back to web search.", flush=True)
             return 3
-        for w in (oa or {}).get("results") or []:
+        for w in (oa.get("results") if isinstance(oa, dict) else None) or []:
             venue = ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or ""
             print(f"- **{w.get('title')}** ({w.get('publication_year')}, {venue}; "
                   f"cites={w.get('cited_by_count')}) {w.get('doi') or ''}")
@@ -114,7 +120,7 @@ def cmd_search(args) -> int:
 
 def cmd_bibtex(args) -> int:
     data = http_get(f"{S2}/paper/{urllib.parse.quote(args.paper_id)}?fields=citationStyles,title")
-    bib = ((data or {}).get("citationStyles") or {}).get("bibtex")
+    bib = ((data.get("citationStyles") if isinstance(data, dict) else None) or {}).get("bibtex")
     if not bib:
         print(f"no bibtex for {args.paper_id}", file=sys.stderr)
         return 1
@@ -183,8 +189,12 @@ def normalize(title: str) -> str:
 
 
 def check_retracted(doi: str) -> bool | None:
-    work = http_get(openalex_url(f"/works/https://doi.org/{doi}", {"select": "is_retracted"}))
-    return None if work is None else bool(work.get("is_retracted"))
+    """True/False when OpenAlex could be read; None when the status is UNKNOWN (DOI not found or
+    OpenAlex unreachable). Callers must not treat None as 'not retracted'. The DOI is quoted (safe='/'
+    keeps the registrant/object slash) so spaces/parens in messy .bib DOIs don't break the request."""
+    work = http_get(openalex_url(f"/works/https://doi.org/{urllib.parse.quote(doi, safe='/')}",
+                                 {"select": "is_retracted"}))
+    return bool(work.get("is_retracted")) if isinstance(work, dict) else None
 
 
 def cmd_verify(args) -> int:
@@ -200,6 +210,7 @@ def cmd_verify(args) -> int:
     print("| key | status | detail |")
     print("|---|---|---|")
     worst = 0
+    blocked = False
     for idx, e in enumerate(entries):
         if idx:  # client-side rate limit, paid on EVERY iteration incl. the continue paths
             time.sleep(1.1 if os.environ.get("S2_API_KEY") else 2.0)
@@ -210,7 +221,14 @@ def cmd_verify(args) -> int:
             continue
         match = http_get(f"{S2}/paper/search/match?query={urllib.parse.quote(title)}"
                          f"&fields=title,year,externalIds")
-        found = (match or {}).get("data") or ([match] if match and match.get("title") else [])
+        if match is UNREACHABLE:
+            # NOT a fabricated/missing citation — S2 just couldn't be reached. Mirror cmd_search:
+            # an unreachable backend is never evidence of absence. Reported as exit 3 (blocked).
+            print(f"| {e['key']} | BLOCKED | S2 unreachable — verification could not run |")
+            blocked = True
+            continue
+        found = (match.get("data") if isinstance(match, dict) else None) or \
+                ([match] if isinstance(match, dict) and match.get("title") else [])
         if not found:
             print(f"| {e['key']} | **NOT-FOUND** | no S2 match for title |")
             worst = max(worst, 2)
@@ -224,18 +242,25 @@ def cmd_verify(args) -> int:
         if bib_year and real_year and str(real_year) != str(bib_year):
             notes.append(f"year {bib_year} != {real_year}")
         doi = e.get("doi") or ((hit.get("externalIds") or {}).get("DOI"))
+        retr_note = ""
         if doi:
             retracted = check_retracted(doi)
-            if retracted:
+            if retracted is True:
                 print(f"| {e['key']} | **RETRACTED** | OpenAlex is_retracted=true |")
                 worst = max(worst, 2)
                 continue
+            if retracted is None:   # unknown (OpenAlex unreachable / no key) — surface it, don't fail
+                retr_note = " · retraction check unavailable"
         if notes:
-            print(f"| {e['key']} | MISMATCH | {'; '.join(notes)} |")
+            print(f"| {e['key']} | MISMATCH | {'; '.join(notes)}{retr_note} |")
             worst = max(worst, 1)
         else:
-            print(f"| {e['key']} | verified | sim {ratio:.2f} |")
+            print(f"| {e['key']} | verified | sim {ratio:.2f}{retr_note} |")
 
+    if blocked:
+        print("\n**S2 UNREACHABLE for one or more entries — verification BLOCKED, not failed. Retry; "
+              "do not treat this as fabricated/missing citations.**", flush=True)
+        return 3
     return {0: 0, 1: 2, 2: 1}[worst]
 
 

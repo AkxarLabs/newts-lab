@@ -16,7 +16,9 @@ it is running in the hub or in a project:
 
 Emitting is always safe and cheap and never required: it is wrapped so a bus failure can
 never break the lab. The dashboard (optional) tails these files; with no dashboard running
-they are simply a local audit trail.
+they are simply a local audit trail. events.jsonl is best-effort and lossy under concurrent
+writers (a torn line is skipped on read) — it is NEVER the source of truth for a hard-rule
+claim; the append-only ledgers in the project repo are.
 
 Event line:  {ts, source, kind, idea, run_id, stage, status, detail, data{}}
 Directive line (written by the dashboard to directives.jsonl): a free-text note
@@ -30,6 +32,7 @@ touch a frozen/PI-owned setting is acked `blocked` — directives/commands are n
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -91,22 +94,29 @@ def unresolved_directives() -> list[dict]:
     """Directives with no terminal ack (done/blocked) and not withdrawn."""
     directives = _read_jsonl(BUS / "directives.jsonl")
     withdrawn = {d["ref"] for d in directives if d.get("kind") == "withdraw" and d.get("ref")}
-    acked: dict[str, str] = {}
+    terminal, seen = set(), set()
     for e in _read_jsonl(BUS / "events.jsonl"):
         if e.get("kind", "").startswith("directive_"):
             ref = (e.get("data") or {}).get("ref")
-            if ref:
-                acked[ref] = e["kind"]
+            if not ref:
+                continue
+            if e["kind"] in ("directive_done", "directive_blocked"):
+                terminal.add(ref)       # terminal acks are STICKY — a later 'seen' can't reopen a done directive
+            elif e["kind"] == "directive_seen":
+                seen.add(ref)
     pending = []
     for d in directives:
-        if d.get("kind") == "withdraw" or not d.get("id"):
+        if d.get("kind") == "withdraw":
             continue
-        if d["id"] in withdrawn:
+        did = d.get("id")
+        if not did:
+            # legacy / hand-written directive with no id: surface it (don't silently drop a PI note),
+            # with a stable synthesized id so it can still be acked.
+            did = "d?" + hashlib.sha1(f"{d.get('ts', '')}|{d.get('text', '')}".encode()).hexdigest()[:8]
+            d = {**d, "id": did}
+        if did in withdrawn or did in terminal:
             continue
-        last = acked.get(d["id"])
-        if last in ("directive_done", "directive_blocked"):
-            continue
-        pending.append({**d, "_status": "seen" if last == "directive_seen" else "pending"})
+        pending.append({**d, "_status": "seen" if did in seen else "pending"})
     return pending
 
 
@@ -132,8 +142,8 @@ def cmd_inbox(args) -> int:
     for d in pending:
         label = (d.get("text", "") or "").strip()
         if d.get("kind") == "command":
-            args = d.get("args") or {}
-            label = f"[command: {d.get('action')}]" + (f" {args}" if args else "") + (f" — {label}" if label else "")
+            cargs = d.get("args") or {}   # not `args`: would shadow the function's argparse namespace
+            label = f"[command: {d.get('action')}]" + (f" {cargs}" if cargs else "") + (f" — {label}" if label else "")
         print(f"- [{d['_status']}] `{d['id']}` ({d.get('ts', '?')}) — {label}")
     print("\nAct within the protocol, then ack: `lab_bus.py ack <id> done --evidence <path>`.")
     print("A `command` directive is a structured PI instruction (start_loop, set_mode, park, …);")
@@ -157,6 +167,9 @@ def cmd_ack(args) -> int:
     if args.state not in ("seen", "done", "blocked"):
         print("state must be seen | done | blocked", file=sys.stderr)
         return 1
+    known = {d.get("id") for d in _read_jsonl(BUS / "directives.jsonl") if d.get("id")}
+    if known and args.id not in known:
+        print(f"[bus] warning: no directive '{args.id}' in this bus — acking anyway (typo?)", file=sys.stderr)
     data = {"ref": args.id}
     if args.note:
         data["note"] = args.note

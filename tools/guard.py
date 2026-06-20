@@ -108,7 +108,7 @@ def c_spawn(a) -> int:
         return _verdict(1, f"Gate 1 not recorded in studies/{a.slug}/proposal.md — needs PI sign-off before spawn")
     row = _row(a.slug)
     pd = _project_dir(a.slug, row)
-    if pd and any(pd.glob("runs/*")):
+    if pd and any(p.is_dir() for p in pd.glob("runs/*")):   # a run is a dir; ignore the template's runs/README.md
         return _verdict(1, f"{pd.name} already has runs — refusing to overwrite (reused slug?)")
     if row and row["state"] != "proposal":
         return _verdict(2, f"Gate 1 present, but registry state is '{row['state']}' (expected 'proposal')")
@@ -187,9 +187,13 @@ def c_append_only(a) -> int:
     base_dir = pdir / ".guard"
     base_dir.mkdir(exist_ok=True)
     base_path = base_dir / "ledger-baseline.json"
-    base = json.loads(base_path.read_text(encoding="utf-8")) if base_path.exists() else {}
-    violations, new_base = [], {}
+    try:
+        base = json.loads(base_path.read_text(encoding="utf-8")) if base_path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        base = {}   # corrupt/unreadable baseline -> re-baseline (fail-safe), like _load_yaml
+    violations, new_base, present = [], {}, set()
     for f in files:
+        present.add(f.name)
         lines = f.read_text(encoding="utf-8-sig").splitlines()
         prev = base.get(f.name)
         if prev:
@@ -200,11 +204,19 @@ def c_append_only(a) -> int:
                 violations.append(f"{f.name}: the first {n} lines changed (append-only history rewritten)")
         new_base[f.name] = {"lines": len(lines),
                             "sha": hashlib.sha256("\n".join(lines).encode()).hexdigest()}
-    base_path.write_text(json.dumps(new_base, indent=2), encoding="utf-8")
+    # a baselined ledger that has VANISHED entirely is the most extreme history removal
+    for name in base:
+        if name not in present:
+            violations.append(f"{name}: ledger file deleted (history removed)")
     if violations:
         for v in violations:
             print(f"  - {v}")
+        # Do NOT overwrite the baseline on a violation: that would launder the tamper so a re-run
+        # reports clean and loses the trail. Keep the prior baseline until a human resolves it.
         return _verdict(1, f"append-only VIOLATION in {pdir.name}")
+    tmp = base_path.parent / (base_path.name + ".tmp")   # atomic write (no half-written baseline on a race)
+    tmp.write_text(json.dumps(new_base, indent=2), encoding="utf-8")
+    tmp.replace(base_path)
     return _verdict(0, f"append-only intact ({', '.join(f.name for f in files) or 'no ledgers yet'}); baseline updated")
 
 
@@ -284,7 +296,9 @@ def c_decisions(a) -> int:
 
 
 def _experiment_rows(text: str):
-    """Yield (id, question, criterion) for each PLAN.md Experiments-table row."""
+    """Yield (id, full_row_text) for each PLAN.md Experiments-table data row. Id-convention-agnostic
+    (theory/simulation projects may label rows E-002/run-002, not just exp-002), and the whole row is
+    returned so a Headline-change / D-NNN marker is seen no matter which column it sits in."""
     in_tbl = False
     for ln in text.splitlines():
         s = ln.strip()
@@ -297,8 +311,8 @@ def _experiment_rows(text: str):
             cells = [c.strip() for c in s.strip("|").split("|")]
             if not cells or set("".join(cells)) <= {"-", ":", " "}:
                 continue
-            if re.match(r"exp-\d+", cells[0], re.I):
-                yield cells[0], (cells[1] if len(cells) > 1 else ""), (cells[4] if len(cells) > 4 else "")
+            if cells[0]:                       # any non-empty id cell, not just 'exp-*'
+                yield cells[0], " ".join(cells)
 
 
 def c_plan_trace(a) -> int:
@@ -319,16 +333,15 @@ def c_plan_trace(a) -> int:
     has_expand_log = bool(re.search(r"frontier_expand|decision_revisit", replan))
     rows = list(_experiment_rows(text))
     untraceable, blocked = [], []
-    for rid, question, criterion in rows:
-        if re.fullmatch(r"exp-0*1", rid, re.I):
-            continue  # the seed smoke baseline
-        blob = f"{question} {criterion}"
-        # A Headline-change:yes row is ALWAYS blocked — it must re-enter /propose, and a decisions.md
-        # D-NNN is not a /propose origin. Classify it BEFORE the traced short-circuit so citing any
-        # D-NNN cannot smuggle a headline change past the gate.
+    for i, (rid, blob) in enumerate(rows):
+        # A Headline-change:yes row is ALWAYS blocked (even the seed) — it must re-enter /propose, and a
+        # decisions.md D-NNN is not a /propose origin. Classified BEFORE the seed/traced short-circuits,
+        # and scanned over the WHOLE row so the marker can't hide in an unscanned column.
         if re.search(r"headline[-\s]?change:\s*yes", blob, re.I):
             blocked.append(rid)
             continue
+        if i == 0 or re.fullmatch(r"[a-z]*[-_]?0*1", rid, re.I):
+            continue  # the seed/baseline row (first row, or an *-001 id) needs no D-NNN origin
         traced = any(d in blob for d in dids) or \
             (bool(re.search(r"\(expand\s+R\d+\)", blob, re.I)) and has_expand_log)
         if not traced:

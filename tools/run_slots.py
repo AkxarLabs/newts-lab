@@ -27,6 +27,7 @@ warning); status — always 0.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -55,8 +56,39 @@ def _bus(kind: str, **data) -> None:
 
 
 def config() -> dict:
-    cfg = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8")) or {}
+    try:
+        cfg = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}   # no/broken config (fresh checkout) -> documented defaults apply
     return cfg.get("compute") or {}
+
+
+@contextlib.contextmanager
+def _acquire_lock(timeout: float = 30.0):
+    """Serialize the cap-check-and-create so two near-simultaneous acquires can't BOTH pass the cap.
+    (A post-create rank re-check can't guarantee this — a racer that re-checks before a competitor's
+    file lands wrongly survives.) A crashed holder's lock (>2 min old) is reclaimed."""
+    SLOTS.mkdir(parents=True, exist_ok=True)
+    lock = SLOTS / ".acquire.lock"
+    deadline = time.time() + timeout
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            with contextlib.suppress(OSError):
+                if time.time() - lock.stat().st_mtime > 120:
+                    lock.unlink(); continue
+            if time.time() > deadline:
+                raise TimeoutError("slot ledger busy")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def prune_stale(stale_minutes: float) -> list[str]:
@@ -65,9 +97,17 @@ def prune_stale(stale_minutes: float) -> list[str]:
         return reclaimed
     now = time.time()
     for f in SLOTS.glob("*.json"):
-        if (now - f.stat().st_mtime) > stale_minutes * 60:
-            reclaimed.append(f.stem)
-            f.unlink(missing_ok=True)
+        try:
+            stale = (now - f.stat().st_mtime) > stale_minutes * 60
+        except OSError:
+            continue
+        if stale:
+            # A locked/held file (Windows) must never crash the ledger for every project — skip it.
+            try:
+                f.unlink()
+                reclaimed.append(f.stem)
+            except OSError:
+                continue
     return reclaimed
 
 
@@ -110,33 +150,35 @@ def main() -> int:
         slots = active()
         print(f"{len(slots)}/{max_runs} slots in use")
         for s in slots:
-            age = (time.time() - s["acquired"]) / 60
-            print(f"- {s['slot_id']}  project={s['project']}  label={s['label']}  age={age:.0f}m")
+            acq = s.get("acquired")
+            age = f"{(time.time() - acq) / 60:.0f}m" if isinstance(acq, (int, float)) else "?"
+            print(f"- {s['slot_id']}  project={s.get('project', '?')}  label={s.get('label', '?')}  age={age}")
         return 0
 
     if args.cmd == "acquire":
-        if len(active()) >= max_runs:
-            print(f"DENIED — {max_runs}/{max_runs} slots in use:")
-            for s in active():
-                print(f"- {s['slot_id']} ({s['project']}: {s['label']})")
-            _bus("slot_denied", project=args.project, label=args.label)
-            return 1
-        raw = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.project}-{args.label}"
-        slot_id = re.sub(r"[^A-Za-z0-9._-]", "_", raw)  # filesystem-safe on Windows too
-        path = SLOTS / f"{slot_id}.json"
+        # The whole cap-check + create runs under one lock so two acquires can't both pass the cap,
+        # and the slot file is published atomically so a concurrent reader never sees it half-written.
         try:
-            with path.open("x", encoding="utf-8") as f:
-                json.dump({"project": args.project, "label": args.label, "acquired": time.time()}, f)
-        except FileExistsError:
-            print("DENIED — slot id collision, retry")
-            return 1
-        # Close the check-then-create race: if a concurrent acquire pushed us over the cap,
-        # the lexicographically-latest slot ids beyond max_runs yield (self-delete + DENIED).
-        ids = sorted(s["slot_id"] for s in active())
-        if len(ids) > max_runs and slot_id in ids[max_runs:]:
-            path.unlink(missing_ok=True)
-            print(f"DENIED — lost the {max_runs}-slot race, retry")
-            _bus("slot_denied", project=args.project, label=args.label)
+            with _acquire_lock():
+                current = active()
+                if len(current) >= max_runs:
+                    print(f"DENIED — {max_runs}/{max_runs} slots in use:")
+                    for s in current:
+                        print(f"- {s['slot_id']} ({s.get('project', '?')}: {s.get('label', '?')})")
+                    _bus("slot_denied", project=args.project, label=args.label)
+                    return 1
+                raw = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.project}-{args.label}"
+                slot_id = re.sub(r"[^A-Za-z0-9._-]", "_", raw)  # filesystem-safe on Windows too
+                path = SLOTS / f"{slot_id}.json"
+                if path.exists():
+                    print("DENIED — slot id collision, retry")
+                    return 1
+                tmp = SLOTS / f"{slot_id}.json.tmp"
+                tmp.write_text(json.dumps({"project": args.project, "label": args.label,
+                                           "acquired": time.time()}), encoding="utf-8")
+                tmp.replace(path)   # atomic publish
+        except TimeoutError:
+            print("DENIED — slot ledger busy, retry")
             return 1
         print(slot_id)
         _bus("slot_acquired", slot_id=slot_id, project=args.project, label=args.label)

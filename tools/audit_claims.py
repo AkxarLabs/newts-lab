@@ -24,10 +24,12 @@ Tolerance per number = half-ULP of its printed precision. QUOTE numbers in claim
 preserve trailing zeros ("71.30" -> +/-0.005; the bare float 71.30 parses to 71.3 ->
 +/-0.05, 10x looser), or |value| * --rel-tol, whichever is looser.
 
-Completeness scan (unless --no-coverage): every measurement-like numeral (a decimal or a
+Completeness scan (unless --no-coverage): every measurement-like numeral (a DECIMAL or a
 percentage) in main.tex body prose must carry a `% CNNN` annotation — an unannotated one
 is a number typed into the paper without a claims entry, which the per-claim audit can
-never see. Each is a FAIL.
+never see. Each is a FAIL. NOTE: bare integers are deliberately NOT scanned (years, counts,
+section/figure numbers would swamp it with false positives); annotate integer headline
+results with `% CNNN` yourself — the scan won't force it.
 
 Exit codes: 0 all PASS/PASS-derived · 2 MANUAL items remain · 1 any FAIL.
 """
@@ -172,10 +174,20 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
     hashes = claim.get("artifact_sha256") or {}
 
     if check_commits and claim.get("commit"):
-        ok = subprocess.run(["git", "-C", str(project_dir), "cat-file", "-e", str(claim["commit"])],
-                            capture_output=True).returncode == 0
-        if not ok:
-            return "FAIL", f"commit {claim['commit']} not found in {project_dir.name}"
+        if not (project_dir / ".git").exists():
+            # No repo to check against (an /adopt project, or a hub-only archived audit) is NOT a
+            # provenance failure — note it and skip, rather than reporting the commit as missing.
+            print(f"[audit] note: {project_dir.name} is not a git repo — commit check skipped for "
+                  f"{claim.get('id')}", file=sys.stderr)
+        else:
+            try:
+                ok = subprocess.run(["git", "-C", str(project_dir), "cat-file", "-e", str(claim["commit"])],
+                                    capture_output=True).returncode == 0
+            except FileNotFoundError:
+                print("[audit] note: git not on PATH — commit checks skipped", file=sys.stderr)
+                ok = True
+            if not ok:
+                return "FAIL", f"commit {claim['commit']} not found in {project_dir.name}"
 
     per_artifact: list[list[tuple[str, float]]] = []
     for rel in artifacts:
@@ -192,6 +204,9 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
             per_artifact.append(extract_numbers(path))
         except (json.JSONDecodeError, ValueError) as e:
             return "FAIL", f"unreadable artifact {rel}: {e}"
+    # An unstructured artifact (not .json/.jsonl) exposes EVERY float (timestamps, seeds, paths) to
+    # the match pool, so without a `metric:` key a coincidental hit is possible — tracked below.
+    unstructured = any(Path(rel).suffix not in (".json", ".jsonl") for rel in artifacts)
 
     # Optional metric: restricts matching to leaves whose final key equals it, so a number
     # can't pass on a coincidental match against an unrelated leaf.
@@ -212,6 +227,11 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
         if len(vals) >= 2:
             derived.append(statistics.stdev(vals))
 
+    if not numbers:
+        if str(claim.get("derivation", "")).strip():
+            return "MANUAL", "claim states a derivation but lists no numbers — verify by hand"
+        return "FAIL", "claim has no numbers to verify (hard rule 1: a claim that checks nothing must not pass)"
+
     all_direct, any_derived, misses = True, False, []
     for n in numbers:
         value = float(n)
@@ -230,6 +250,10 @@ def audit_claim(claim: dict, paper_dir: Path, rel_tol: float, check_commits: boo
             return "MANUAL", f"unmatched: {', '.join(misses)}; verify derivation by hand"
         return "FAIL", f"unmatched: {', '.join(misses)}"
     if all_direct:
+        if unstructured and not want:
+            # every match came from an unstructured artifact with no `metric:` key — a coincidental
+            # hit (a timestamp, a seed) can't be ruled out, so a human must confirm it.
+            return "MANUAL", "matched only in an unstructured artifact without a `metric:` — verify by hand"
         return "PASS", "all numbers found directly"
     return "PASS-derived", "matched via mean/std across artifacts" + (" + direct" if any_derived else "")
 
@@ -252,7 +276,12 @@ def main() -> int:
         return 1
     claims = (yaml.safe_load(claims_path.read_text(encoding="utf-8-sig")) or {}).get("claims") or []
     if not claims:
-        print("claims.yaml has no claims — nothing to audit (a results paper with zero claims is suspicious)")
+        if (paper_dir / "main.tex").exists():
+            print("claims.yaml has no claims but main.tex exists — a results paper with zero traced "
+                  "claims FAILS hard rule 1 (every quantitative claim must map to an artifact).")
+            return 1
+        print("claims.yaml has no claims and there is no main.tex yet — nothing to audit.")
+        return 0
 
     print(f"## Claims audit — {args.paper_dir} ({len(claims)} claims)\n")
     print("| id | status | detail | location |")
