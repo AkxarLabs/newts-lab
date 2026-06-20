@@ -69,9 +69,15 @@ def main() -> int:
             if m.get("status") != "running":
                 continue
             rid = m.get("run_id", d.name)
-            stream = d / "metrics.jsonl"
-            anchor = stream if (stream.exists() and stream.stat().st_size) else meta
-            age = now - anchor.stat().st_mtime
+            # Liveness anchor = the most-recently-touched file in the run dir. meta.json is written
+            # ONCE at start, so anchoring on it falsely flags a healthy slow-/sparse-logging run as
+            # dead; a live run touches SOMETHING (metrics, a checkpoint, a log) more recently.
+            try:
+                anchor_mtime = max((f.stat().st_mtime for f in d.rglob("*") if f.is_file()),
+                                   default=meta.stat().st_mtime)
+            except OSError:
+                anchor_mtime = meta.stat().st_mtime
+            age = now - anchor_mtime
             if age > 2 * log_interval:
                 dead.append((rid, round(age)))
             if rid not in registered:

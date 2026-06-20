@@ -56,14 +56,14 @@ def cmd_list(args) -> None:
     print("| run_id | experiment | stage | seed | status | wall_s |")
     print("|---|---|---|---|---|---|")
     for r in rows:
-        print(f"| {r['run_id']} | {r['experiment_name']} | {r.get('stage')} | {r.get('seed')} "
-              f"| {r['status']} | {r.get('wall_seconds')} |")
+        print(f"| {r.get('run_id', '?')} | {r.get('experiment_name', '?')} | {r.get('stage')} | {r.get('seed')} "
+              f"| {r.get('status', '?')} | {r.get('wall_seconds')} |")
 
 
 def cmd_best(args) -> None:
     rows = load()
     if args.experiment:
-        rows = [r for r in rows if r["experiment_name"] == args.experiment]
+        rows = [r for r in rows if r.get("experiment_name") == args.experiment]
     if args.stage:
         rows = [r for r in rows if r.get("stage") == args.stage]
     scored = [(metric_of(r, args.metric), r) for r in rows]
@@ -79,18 +79,18 @@ def cmd_best(args) -> None:
 
 def cmd_seeds(args) -> None:
     rows = load()
-    names = args.experiments or sorted({r["experiment_name"] for r in rows})
+    names = args.experiments or sorted({n for r in rows if (n := r.get("experiment_name"))})
     print(f"| experiment | {args.metric} (mean ± std) | seeds |")
     print("|---|---|---|")
     for name in names:
-        group = [r for r in rows if r["experiment_name"] == name]
+        group = [r for r in rows if r.get("experiment_name") == name]
         seeds = sorted({r.get("seed") for r in group})
         print(f"| {name} | {agg(group, args.metric)} | {seeds} |")
 
 
 def cmd_experiments(args) -> None:
     rows = load()
-    groups = {name: [r for r in rows if r["experiment_name"] == name] for name in args.experiments}
+    groups = {name: [r for r in rows if r.get("experiment_name") == name] for name in args.experiments}
     baseline_vals = [v for r in groups[args.experiments[0]] if (v := metric_of(r, args.metric)) is not None]
     baseline = statistics.mean(baseline_vals) if baseline_vals else None
     print(f"| experiment | {args.metric} | delta vs {args.experiments[0]} | n |")

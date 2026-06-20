@@ -94,7 +94,9 @@ def _run_command(cfg: dict, ctx) -> dict:
     spec = cfg.get("runner_command") or (cfg.get("experiment") or {}).get("command")
     if not spec:
         raise SystemExit("[run] runner: shell-command needs `runner_command` (a string or list) in the config")
-    cmd = spec if isinstance(spec, list) else shlex.split(spec)
+    # posix=False on Windows so a backslash path (C:\tools\Rscript.exe) isn't mangled into one token;
+    # prefer the LIST form of runner_command on Windows when the path contains spaces.
+    cmd = spec if isinstance(spec, list) else shlex.split(spec, posix=(os.name != "nt"))
     repo = Path(__file__).resolve().parents[1]
     env = dict(os.environ, RUN_DIR=str(ctx.run_dir), RUN_ID=str(ctx.run_id),
                CONFIG_PATH=str(cfg.get("_config_path", "")), SEED=str(cfg.get("seed", 0)),
@@ -109,7 +111,15 @@ def _run_command(cfg: dict, ctx) -> dict:
     if not out.exists():
         raise RuntimeError(f"runner wrote no {out.name} in the run dir — the metrics contract is: "
                            "write a flat JSON dict of final metrics to $RUN_DIR/result.json")
-    return json.loads(out.read_text(encoding="utf-8-sig"))
+    try:
+        data = json.loads(out.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"{out.name} is not valid JSON ({e}) — write a flat JSON dict of metrics")
+    if not isinstance(data, dict):
+        # a list/scalar/null would corrupt the registry + crash every metrics.get(...) consumer
+        raise RuntimeError(f"{out.name}: the metrics contract is a flat JSON DICT, got "
+                           f"{type(data).__name__} — wrap your metrics in an object")
+    return data
 
 
 def main() -> int:
@@ -146,6 +156,8 @@ def main() -> int:
 
         def _watchdog() -> None:
             if not done.wait(timeout=float(max_minutes) * 60):
+                if done.is_set():   # the run finished in the wake-up window — don't mislabel it 'timeout'
+                    return
                 child = _CHILD["proc"]
                 if child is not None and child.poll() is None:
                     _kill_tree(child)   # shell-command: reap the external tool tree first
@@ -163,6 +175,9 @@ def main() -> int:
             final_metrics = run_experiment(cfg, ctx)
     except Exception:
         done.set()
+        child = _CHILD["proc"]   # shell-command: reap a still-live tool tree on the failure path too
+        if child is not None and child.poll() is None:
+            _kill_tree(child)
         ctx.fail(traceback.format_exc())
         print(f"[run] FAILED — see {ctx.run_dir / 'error.txt'}")
         return 1

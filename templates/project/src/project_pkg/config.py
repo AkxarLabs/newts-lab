@@ -36,7 +36,13 @@ def _deep_merge(base: dict, override: dict) -> dict:
 def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        # a bare list/scalar document would later AttributeError in _deep_merge/.get — name the file
+        raise ValueError(f"{path.name}: top-level YAML must be a mapping, got {type(data).__name__}")
+    return data
 
 
 def _validate(cfg: dict[str, Any]) -> None:
@@ -68,9 +74,10 @@ def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None)
     control_path = exp_path.parent.parent.parent / "control.yaml"  # project root
 
     control_cfg = _load_yaml(control_path)
+    base_cfg = _load_yaml(base_path)
     exp_cfg = _load_yaml(exp_path)
 
-    cfg = _deep_merge(control_cfg, _load_yaml(base_path))
+    cfg = _deep_merge(control_cfg, base_cfg)
     cfg = _deep_merge(cfg, exp_cfg)
 
     overrides = overrides or []
@@ -79,16 +86,20 @@ def load_config(experiment_yaml: str | Path, overrides: list[str] | None = None)
         node = cfg
         parts = key.strip().split(".")
         for part in parts[:-1]:
-            node = node.setdefault(part, {})
+            cur = node.get(part)
+            if not isinstance(cur, dict):   # a scalar layer can't hold a dotted child — replace it
+                cur = {}
+                node[part] = cur
+            node = cur
         node[parts[-1]] = yaml.safe_load(raw)
 
     # Stage-budget mapping: control.yaml's per-stage cap applies unless budget.max_minutes was
     # set explicitly — by a higher layer (experiment yaml, base.yaml, a CLI override) OR by a
     # deliberate top-level `budget:` block in control.yaml itself (a PI override must not be
-    # silently replaced by the per-stage default — hard rule 4).
+    # silently replaced by the per-stage default — hard rule 4). base.yaml is loaded once above.
     explicit = (
         "max_minutes" in (exp_cfg.get("budget") or {})
-        or "max_minutes" in (_load_yaml(base_path).get("budget") or {})
+        or "max_minutes" in (base_cfg.get("budget") or {})
         or "max_minutes" in (control_cfg.get("budget") or {})
         or any(o.partition("=")[0].strip() == "budget.max_minutes" for o in overrides)
     )

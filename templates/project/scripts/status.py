@@ -50,7 +50,11 @@ def probe(run_id: str | None, log_interval: float) -> int:
     if not meta_path.exists():
         print(f"{run_dir.name} status=dead (no meta.json)")
         return 1
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        print(f"{run_dir.name} status=pending (meta.json mid-write/unreadable)")
+        return 0   # not dead — almost certainly a concurrent write; a watcher keeps polling
 
     budget = meta.get("budget") or {}
     budget_str = f"{budget['max_minutes']}m" if budget.get("max_minutes") else "none"
@@ -77,7 +81,14 @@ def probe(run_id: str | None, log_interval: float) -> int:
         pairs = [f"{k}={v:.6g}" for k, v in record.items()
                  if isinstance(v, (int, float)) and k not in ("t", "step")]
         last = " · last: " + " ".join(pairs[:3]) if pairs else ""
-    state = "alive" if (age is None or age <= 2 * log_interval) else "stalled"
+    grace = 2 * log_interval
+    if age is not None:
+        state = "alive" if age <= grace else "stalled"
+    else:
+        # No metric has streamed yet (metrics.jsonl exists but is empty from construction). A run that
+        # has produced NOTHING for > grace since start is a setup hang, not "alive forever" — flag it
+        # stalled so --watch / the loop can act. Set --log-interval to match a slow-logging cadence.
+        state = "alive" if elapsed <= grace else "stalled"
     print(f"{run_dir.name} status={state} · elapsed={elapsed:.0f}s/budget={budget_str}{last}")
     return 0 if state == "alive" else 3
 
@@ -91,7 +102,13 @@ def watch(run_id: str | None, log_interval: float, poll: float) -> int:
             return 1
         # rc 0 from a non-running meta status = terminal; from a running+alive = keep going.
         run_dir = _resolve_run_dir(run_id)
-        meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8")) if run_dir else {}
+        meta = {}
+        if run_dir:
+            mp = run_dir / "meta.json"
+            try:
+                meta = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
+            except (OSError, json.JSONDecodeError):
+                meta = {}   # a sweep's next run dir mid-creation — keep polling, never crash the monitor
         if meta.get("status") not in (None, "running"):
             return 0
         consecutive_stalls = consecutive_stalls + 1 if rc == 3 else 0

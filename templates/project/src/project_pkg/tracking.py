@@ -26,31 +26,45 @@ import yaml
 
 @contextlib.contextmanager
 def _locked_append(path: Path):
-    """Append one record to `path` while holding a portable sidecar lock, so parallel sweep
-    jobs that finalize at the same instant don't interleave/garble lines in the append-only
-    registry. The lock is a `<path>.lock` file created with O_EXCL and spun on; it is
-    best-effort (a stale lock from a crash is force-broken after a few seconds)."""
+    """Append one record to `path` while holding a portable sidecar lock, so parallel sweep jobs that
+    finalize at the same instant don't interleave/garble lines in the append-only registry. The lock is
+    a `<path>.lock` file (O_EXCL, PID-stamped). A registry append takes milliseconds, so a lock whose
+    OWN mtime is older than ~10s is a crashed holder and is reclaimed — a live, slow-but-recent holder
+    is left alone. The spin is hard-bounded; if the lock can't be taken (e.g. a wedged .lock on
+    Windows) we append anyway rather than LOSE the run record (hard rule 7) — a rare interleave is
+    recoverable, a dropped line is not."""
     path.parent.mkdir(parents=True, exist_ok=True)
     lock = path.with_suffix(path.suffix + ".lock")
-    deadline = time.time() + 10
-    while True:
+    end = time.time() + 15
+    have_lock = False
+    while time.time() < end:
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, f"{os.getpid()} {int(time.time())}".encode())
             os.close(fd)
+            have_lock = True
             break
         except FileExistsError:
-            if time.time() > deadline:
-                with contextlib.suppress(OSError):
-                    lock.unlink()  # presumed crashed holder — break it
+            try:
+                if time.time() - lock.stat().st_mtime > 10:   # reclaim only a stale (crashed) holder
+                    lock.unlink()
+                    continue
+            except OSError:
+                pass
             time.sleep(0.05)
     try:
+        if not have_lock:
+            import sys as _sys
+            print(f"[tracking] WARNING: appending to {path.name} without the lock (could not acquire) "
+                  "— record preserved; check for interleaving", file=_sys.stderr)
         with path.open("a", encoding="utf-8") as f:
             yield f
             f.flush()
             os.fsync(f.fileno())
     finally:
-        with contextlib.suppress(OSError):
-            lock.unlink()
+        if have_lock:
+            with contextlib.suppress(OSError):
+                lock.unlink()
 
 
 def _bus_emit(repo_root: Path, kind: str, **fields: Any) -> None:
