@@ -29,10 +29,12 @@ uv run --with pyyaml python dashboard/serve.py --port 9000
 Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface but stays
 honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)).
 
-!!! tip "Try it with no lab — `?demo`"
-    Open `http://127.0.0.1:8787/?demo` for a fully synthetic, living lab (agents come and go,
-    runs progress, gates wait) — entirely client-side, touching no files. Add `&lamp=day` for the
-    light theme. Every screenshot on this page is the demo. Click a room or a critter to zoom in.
+!!! tip "Try it with no lab — demo mode (debugging)"
+    Demo is a synthetic, living lab (agents come and go, runs progress, gates wait) — entirely
+    client-side, touching no files. It's a debugging/showcase mode, so it's **off by default and not
+    exposed in the UI**: start the server with `--demo` (or `VIVARIUM_DEMO=1`), then open
+    `http://127.0.0.1:8787/?demo` (add `&lamp=day` for the light theme). Every screenshot on this
+    page is the demo. Click a room or a critter to zoom in.
 
 ## What it shows — the views
 

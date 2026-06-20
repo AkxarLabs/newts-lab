@@ -11,10 +11,16 @@ handle. Optional: delete this folder and the lab is unchanged.
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
 ```
 
-**See it alive without a session — demo mode.** Append `?demo` to the URL
-(`http://127.0.0.1:8787/?demo`, add `&lamp=day` for daylight) to load a synthetic, living lab:
-studies/projects in every room, agents that spawn, despawn, and stroll around. Click a room (or a
-buddy) to zoom in and watch the crew move. It's pure client-side and touches no lab files.
+**See it alive without a session — demo mode (debugging).** Demo is a synthetic, living lab —
+studies/projects in every room, agents that spawn, despawn, and stroll around — for development and
+screenshots. It's a debugging mode, so it's **off by default and not exposed in the UI**: start the
+server with `--demo` (or `VIVARIUM_DEMO=1`), then visit `/?demo`:
+
+```bash
+uv run --with pyyaml python dashboard/serve.py --demo   # then open http://127.0.0.1:8787/?demo
+```
+
+A bare `?demo` on a normally-served dashboard is inert. It's pure client-side and touches no lab files.
 
 - `serve.py`   — stdlib HTTP server. Reads: `/api/state` (snapshot), `/api/events` (SSE),
                  `POST /api/read` (a whitelisted read-only text view — lab knowledge / a gate's

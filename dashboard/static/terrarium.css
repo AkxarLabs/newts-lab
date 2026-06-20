@@ -597,10 +597,6 @@ html[data-lamp="day"] .camp-name{color:#1b1e25}
 .help-card small{color:var(--ink-soft); font-size:.78rem; line-height:1.45}
 .help-card small b{font-family:var(--round); font-size:inherit; color:var(--ink)}
 .help-foot{margin:16px 0 0; color:var(--ink-soft); font-size:.82rem}
-.help-demo{font-family:var(--round); font-weight:700; font-size:.8rem; cursor:pointer; padding:5px 12px; border-radius:8px;
-  border:1px solid var(--teal); background:linear-gradient(180deg,rgba(143,179,138,.22),rgba(121,179,166,.14)); color:#eef6ea; margin:0 3px}
-.help-demo:hover{box-shadow:0 0 14px rgba(143,179,138,.3)}
-html[data-lamp="day"] .help-demo{color:#123a2b}
 .help kbd{font-family:var(--mono); font-size:.74rem; background:rgba(143,179,138,.12); border:1px solid var(--glass-edge); border-radius:5px; padding:1px 5px}
 .help .mono{font-family:var(--mono); color:var(--teal)}
 @media (max-width:560px){ .help-grid{grid-template-columns:1fr} }

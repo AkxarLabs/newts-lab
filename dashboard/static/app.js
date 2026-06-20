@@ -421,11 +421,8 @@ function paletteKey(e) {
 
 /* ── onboarding / help overlay (the ? button; auto-shown on first visit) ────── */
 function openHelp() {
-  const demo = location.search.includes('demo'), b = $('#helpDemo');
-  if (b) b.textContent = demo ? '⤺ exit demo mode' : '▶ open demo mode';
   $('#helpScrim').hidden = false; $('#help').hidden = false; syncOverlay();
 }
-function toggleDemo() { const demo = location.search.includes('demo'); location.href = location.pathname + (demo ? '' : '?demo'); }
 function closeHelp() { $('#helpScrim').hidden = true; $('#help').hidden = true; try { localStorage.setItem('viv-seen-help', '1'); } catch (e) {} syncOverlay(); }
 function maybeAutoHelp() { if (location.search.includes('static')) return; let seen = '1'; try { seen = localStorage.getItem('viv-seen-help'); } catch (e) {} if (!seen) setTimeout(openHelp, 900); }
 
@@ -1023,7 +1020,7 @@ function createWorld(canvas, opts) {
   function reconcile() {
     const seen = new Set();
     items.forEach(o => { const k = 'it:' + o.id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'item', o, jx: hash01(o.id + 'a') - 0.5, jy: hash01(o.id + 'b') - 0.5 }); ents.set(k, e); } e.o = o; });
-    workforce.forEach(w => { if (w.role === 'orchestrator') return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: hash01(w.worker_id + 'a') - 0.5, jy: hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; if (w.status === 'done' && !e.dying) { e.dying = true; e.dieT = 0; } });
+    workforce.forEach(w => { if (w.role === 'orchestrator') return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: hash01(w.worker_id + 'a') - 0.5, jy: hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; });   // despawn is handled below (a worker that left the live set), so done workers never reach here
     for (const [k, e] of ents) { if (!seen.has(k)) { if (e.kind === 'worker' && !e.dying) { e.dying = true; e.dieT = 0; } else if (e.kind === 'item') ents.delete(k); } }
   }
   // which room + station an entity belongs to, and whether it's visible in this view
@@ -1289,7 +1286,11 @@ function createWorld(canvas, opts) {
     kind: 'canvas2d',
     sync(s) {
       items = (s.items || []).map(it => ({ id: it.id, title: it.title || it.id, state: it.state, has_project: !!it.has_project, hasProject: !!it.has_project, hasPaper: !!it.has_paper, gate: it.gate || 0, nWorkers: it.n_workers || 0, n_workers: it.n_workers || 0, loop_active: !!it.loop_active, inflight: it.inflight || [], live: (it.inflight || []).some(r => r.state !== 'stalled') && (it.inflight || []).length > 0, dead: it.state === 'killed', parked: it.state === 'parked' }));
-      workforce = (s.workers || []); slots = s.slots || slots; gates = s.gates_waiting || 0; cold = !!s.cold;
+      // Exclude DONE workers. The despawn (shrink-out) animation is driven by a worker LEAVING this
+      // live set (see reconcile's "not in seen" branch). 'done' workers linger in the snapshot for a
+      // while (sources._WORKER_LINGER_S), so keeping them here re-created + re-killed their sprite every
+      // tick → an endless "minimizing" loop. The roster/legend/pulse already filter status !== 'done'.
+      workforce = (s.workers || []).filter(w => w.status !== 'done'); slots = s.slots || slots; gates = s.gates_waiting || 0; cold = !!s.cold;
       if (reduced) drawOnce();
     },
     setPose(p) { setPoseW(p); if (reduced) drawOnce(); },
@@ -1429,7 +1430,6 @@ $('#paletteInput').addEventListener('input', renderPalette);
 $('#paletteInput').addEventListener('keydown', paletteKey);
 $('#bell').onclick = toggleAttention;
 $('#helpClose').onclick = closeHelp; $('#helpScrim').onclick = closeHelp;
-$('#helpDemo').onclick = toggleDemo;
 $('#attentionClose').onclick = () => { $('#attention').hidden = true; syncOverlay(); };
 $('#detailClose').onclick = closeDetail;
 // global keys: "/" opens the palette (when not typing in a field); Esc closes overlays
@@ -1605,7 +1605,10 @@ let startMode = location.hash.slice(1) || (() => { try { return localStorage.get
 if (startMode === 'night') startMode = 'gates';   // the old In-flight tab folded into Activity
 if (VIEWS[startMode]) MODE = startMode;
 const STATIC = location.search.includes('static');
-const DEMO = location.search.includes('demo');
+// Demo is a DEBUGGING/showcase mode, not a user-facing dashboard feature: it only turns on when the
+// server was started with `--demo` (or VIVARIUM_DEMO=1), which injects window.__VIV_DEMO__. A bare
+// `?demo` on a normally-served dashboard is inert. (file:// kept as a no-server dev preview escape.)
+const DEMO = location.search.includes('demo') && (window.__VIV_DEMO__ === true || location.protocol === 'file:');
 if (DEMO) MODE = 'terrarium';   // the demo is about the living world — always open there
 if (DEMO) startDemo();
 else if (window.__STATE__) ingest(window.__STATE__);

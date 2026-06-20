@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -300,6 +301,11 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 class Handler(BaseHTTPRequestHandler):
+    # Demo mode is a debugging/showcase world, NOT a user-facing dashboard feature. It is OFF unless
+    # the server is started with `--demo` (or VIVARIUM_DEMO=1); only then is window.__VIV_DEMO__ injected
+    # so a `?demo` URL activates the synthetic lab. There is no in-dashboard control to enable it.
+    demo = False
+
     def log_message(self, *args):  # quiet
         pass
 
@@ -364,7 +370,9 @@ class Handler(BaseHTTPRequestHandler):
             seed = json.dumps(sources.snapshot())
         except Exception:  # noqa: BLE001
             seed = "null"
-        html = html.replace("</head>", f"<script>window.__STATE__={seed};</script></head>", 1)
+        demo = "true" if self.demo else "false"
+        html = html.replace(
+            "</head>", f"<script>window.__STATE__={seed};window.__VIV_DEMO__={demo};</script></head>", 1)
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
 
     def _serve_static(self, rel: str) -> None:
@@ -441,9 +449,15 @@ def main() -> int:
     cfg = sources._load_yaml(LAB / "config.yaml").get("dashboard") or {}
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=int(cfg.get("port", 8787)))
+    parser.add_argument("--demo", action="store_true",
+                        help="enable the synthetic demo world (debugging/showcase; visit /?demo). "
+                             "Off by default; also enabled by VIVARIUM_DEMO=1.")
     args = parser.parse_args()
+    Handler.demo = bool(args.demo) or os.environ.get("VIVARIUM_DEMO", "").lower() in ("1", "true", "yes")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
+    if Handler.demo:
+        print(f"  demo mode ENABLED (debugging) · synthetic world at http://127.0.0.1:{args.port}/?demo")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
