@@ -109,6 +109,31 @@ def test_template_trace_hook_in_lockstep_with_hub():
     tpl = load("templates/project/scripts/trace_hook")
     assert tpl.IDEA_RE.pattern == hub.IDEA_RE.pattern
     assert tpl.PROJ_RE.pattern == hub.PROJ_RE.pattern
+    assert tpl.WORKER_RETENTION_S == hub.WORKER_RETENTION_S   # retention stays in lockstep too
+
+
+# ── _prune_workers: SessionStart retention bounds the workers dir ─────────────────
+
+def test_prune_workers_drops_old_keeps_recent(tmp_path):
+    import os
+    import time
+    m = _mod()
+    wdir = tmp_path / "workers"
+    wdir.mkdir()
+    old = wdir / "dead-session.jsonl"
+    old.write_text("{}\n", encoding="utf-8")
+    fresh = wdir / "live-session.jsonl"
+    fresh.write_text("{}\n", encoding="utf-8")
+    stale = time.time() - (m.WORKER_RETENTION_S + 3600)
+    os.utime(old, (stale, stale))
+    m._prune_workers(wdir)
+    assert not old.exists()      # untouched past retention -> pruned
+    assert fresh.exists()        # recent -> kept
+
+
+def test_prune_workers_never_raises_on_missing_dir(tmp_path):
+    m = _mod()
+    m._prune_workers(tmp_path / "does-not-exist")   # fail-safe: no dir, no raise
 
 
 def test_template_idea_of_resolves_studies_paths():

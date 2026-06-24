@@ -233,6 +233,17 @@ def _workers(bus_dir: Path, project: str | None = None) -> list[dict]:
     now = time.time()
     out = []
     for f in sorted(wdir.glob("*.jsonl")):
+        # Age-gate BEFORE parsing: a file untouched past the linger window is off the roster
+        # regardless of whether it finished cleanly — a 'done' worker that lingered out, or a
+        # dead/crashed session that never wrote a 'stop' (orchestrator files only get one on a
+        # clean SessionEnd). Skipping here means old logs are never read, so the roster cost
+        # stays O(recent) even before trace_hook's retention sweep trims them from disk.
+        try:
+            age = now - f.stat().st_mtime
+        except OSError:
+            age = 0
+        if age > _WORKER_LINGER_S:
+            continue
         lines = _read_jsonl(f)
         if not lines:
             continue
@@ -251,13 +262,7 @@ def _workers(bus_dir: Path, project: str | None = None) -> list[dict]:
                 actions.append({"ts": ln.get("ts"),
                                 "text": ln.get("summary") or ln.get("tool") or ev,
                                 "kind": ln.get("kind") or ev})
-        try:
-            age = now - f.stat().st_mtime
-        except OSError:
-            age = 0
         if done:
-            if age > _WORKER_LINGER_S:
-                continue                       # finished a while ago -> off the roster
             status = "done"
         elif age > _WORKER_STALE_S:
             status = "idle"

@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 MAX_SUMMARY = 200
+WORKER_RETENTION_S = 48 * 3600   # SessionStart prunes worker logs untouched longer than this
 SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
 # a hub session touching a project's artifacts (analyze/write/finalize) → attribute it to that
@@ -58,6 +59,20 @@ def _resolve_bus(cwd: str) -> Path:
                     root = sib
             return root / ".bus"
     return start / ".bus"
+
+
+def _prune_workers(wdir: Path) -> None:
+    """Best-effort retention: drop worker logs untouched past WORKER_RETENTION_S. Bounds the
+    directory so sessions that died WITHOUT a clean SessionEnd (crash, closed terminal, kill)
+    don't accumulate forever — the dashboard's read-time filter hides them, this removes them.
+    Runs once per session (SessionStart); never raises (we are on the never-block-a-tool path)."""
+    cutoff = datetime.now().timestamp() - WORKER_RETENTION_S
+    for f in wdir.glob("*.jsonl"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
 
 
 def _clean(s: str) -> str:
@@ -178,6 +193,9 @@ def main() -> None:
     safe = SAFE_RE.sub("-", worker_id)[:80] or "unknown"
     with open(wdir / f"{safe}.jsonl", "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    if event == "SessionStart":
+        _prune_workers(wdir)   # once-per-session retention sweep (the fresh file above is kept)
 
 
 if __name__ == "__main__":
