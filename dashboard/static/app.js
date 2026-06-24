@@ -1062,7 +1062,8 @@ function createWorld(canvas, opts) {
       const C = calib();                       // K + per-frame feet offsets, measured from the assets (size-matched to idle)
       const wc = o.walkAnim * Math.PI / 2;     // walk-cycle phase: ~2 footfalls per 8-frame stride
       const stride = reduced ? 0 : 1;          // master switch for walk-coupled motion (off under reduced-motion)
-      const Hw = s * C.K, fw = Hw * (cw / ch);
+      const WALK_GAIN = 1.04;                  // K matches idle only at the median stride frame, so most of the cycle reads a hair short — a slight uniform bump evens it out
+      const Hw = s * C.K * WALK_GAIN, fw = Hw * (cw / ch);
       const bounce = stride * Hw * 0.035 * Math.abs(Math.sin(wc));   // a little spring: lift at apex, zero at footfall (feet stay glued)
       const topw = baseY - (o.bob || 0) - idleBob - s * (1 - C.botFrac_idle) - C.botFrac_walk[idx] * Hw - bounce;
       // a little dust kicked up behind the trailing foot (procedural; subtle)
