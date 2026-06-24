@@ -2,26 +2,22 @@
 
 *Optional. Local-only. Delete the `dashboard/` folder and the lab is unchanged.*
 
-A **vivarium** is an enclosure for keeping and watching living things — which is exactly what
-this is. The lab is rendered as a hand-drawn, 2.5D **living lab world** in the design language of
-the game *Rain World*: muted, painterly, lo-fi, cozy-melancholic. The whole lab is **one
-continuous world**, and each lifecycle stage is a **room** of it. Every idea and project is a cute
-**critter** living in the room that matches its state; every working agent or subagent is its own
-colour-coded **sub-newt** doing visible work; and through it all roams **Newt** — the prime newt and
-orchestrator, a larger, unique creature who reacts to everything and is your control handle (click it
-to command). The lab is a colony of newts: one prime Newt coordinating, many sub-newts spawning into
-the rooms to run projects and experiments. It keeps you in the loop while
-agents iterate (hub lifecycle *and* every running external project, live) and it lets you **drive**
-them.
+Vivarium renders the lab as a hand-drawn, 2.5D **living world**: the whole lab is **one continuous
+scene**, and each lifecycle stage is a **room** of it. Every idea and project is a **critter**
+living in the room that matches its state; every working agent or subagent is its own colour-coded
+**sub-newt** doing visible work; and through it all roams **Newt** — the orchestrator, a larger
+creature that reacts to lab state and is your control handle (click it to command). It keeps you in
+the loop while agents iterate (hub lifecycle *and* every running external project, live) and lets
+you **drive** them.
 
 <figure markdown>
 ![The Vivarium world — six lifecycle rooms in one continuous lab, each with its critters](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>The <strong>World</strong> view — the whole lab as one continuous terrarium. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and sub-newts currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
+<figcaption>The <strong>World</strong> view — the whole lab as one continuous scene. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and sub-newts currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
 </figure>
 
-The whole scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
-dependencies, fully offline (see [Tech notes](#tech-notes)). There is no WebGL and nothing
-vendored; the same renderer produces a still frame for `prefers-reduced-motion` and `?static`.
+The scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
+dependencies, fully offline (see [Tech notes](#tech-notes)). The same renderer produces a still
+frame for `prefers-reduced-motion` and `?static`.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py            # http://127.0.0.1:8787
@@ -66,10 +62,10 @@ dusk. If file-tailing stalls, the masthead clock turns red, so degraded data nev
 
 ## The world — the rooms
 
-The lab is one world — a dense, organic region whose rooms sit at varied heights and join by
-tunnels (it is deliberately *not* a tidy left-to-right row), though they still follow the lifecycle
-order. Each stage is a **room** whose art signals what that stage *is*; an idea or project lives in
-the room matching its current registry state, and moves rooms as it advances. The rooms:
+The lab is one world — a dense region whose rooms sit at varied heights and join by tunnels
+(deliberately *not* a tidy left-to-right row), though they still follow the lifecycle order. Each
+stage is a **room** whose art signals what that stage *is*; an idea or project lives in the room
+matching its current registry state, and moves rooms as it advances.
 
 The world groups the lifecycle into **six rooms** (a presentation grouping over the registry
 states — it never changes the lifecycle itself; see `DASHBOARD.md` §4). Gates are the *doorways*
@@ -85,8 +81,7 @@ between rooms:
 | **the margins** | `parked` (dimmed) and `killed` (sunk, desaturated) — out of play |
 
 Each idea/project critter's look reflects its situation: a live run makes its room and its critter
-active, a killed idea's critter sinks and greys out in the compost, a parked one rests dim on the
-quiet shelf.
+active, a killed idea's critter sinks and greys out, a parked one rests dim.
 
 <figure markdown>
 ![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
@@ -95,21 +90,19 @@ quiet shelf.
 
 ## Newt — the buddy that is also the controller
 
-Newt is the lab's buddy and its **orchestrator** — the prime newt: a unique, procedurally-animated
-creature, larger than the sub-newts (its own simple, cute salamander-like look; deliberately *not* an axolotl
-and *not* a Rain-World slugcat). It roams the world toward wherever the lab's attention is, and you
-**click it to command the lab** (the legend's *Orchestrator (Newt)* row is this same creature). Its body is an honest
-one-glance summary of the lab, driven by the same nine poses as before, by priority:
+Newt is the lab's buddy and its **orchestrator**: a unique, procedurally-animated creature, larger
+than the sub-newts. It roams the world toward wherever the lab's attention is, and you **click it to
+command the lab** (the legend's *Orchestrator (Newt)* row is this same creature). Its body is an
+honest one-glance summary of the lab, driven by nine poses, by priority:
 **gate-waiting > fresh-failure > success > regenerating (a pivot) > running > writing > composing a
 letter > idle > asleep**. Newt drifts low and dim when the lab is cold, perks up while runs are
 live, blooms on a success, dims on a failure, turns toward the proposal/review rooms when a gate
 waits, and forms a letter when you’re composing a command.
 
-The **regeneration lore is preserved**, now made literal in the new art: on a re-plan or explore
-event (`replan` / `decision_revisit` / `frontier_expand` / `approach_ideate`) one of Newt's
-**fronds dissolves into motes and regrows** — explore-mode's discard-and-regrow shown, not just
-told, with the original wink at Newton. Speech bubbles quote event fields **verbatim** — no number
-Newt can’t cite to an event.
+On a re-plan or explore event (`replan` / `decision_revisit` / `frontier_expand` /
+`approach_ideate`) one of Newt's **fronds dissolves into motes and regrows** — explore-mode's
+discard-and-regrow, shown rather than told. Speech bubbles quote event fields **verbatim** — no
+number Newt can’t cite to an event.
 
 ## The workers — a sub-newt per agent
 
@@ -118,7 +111,7 @@ agent or subagent is **its own sub-newt**, colour-coded by role. Six roles:
 
 | Role | Colour | Note |
 |---|---|---|
-| **orchestrator** | gold | this *is* **Newt**, the prime newt — the larger, haloed creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
+| **orchestrator** | gold | this *is* **Newt** — the larger creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
 | **experiment-runner** | teal | |
 | **fresh-context-reviewer** | violet | |
 | **overseer** | slate-blue | |
@@ -126,7 +119,7 @@ agent or subagent is **its own sub-newt**, colour-coded by role. Six roles:
 | **scoping-advocate** | amber | |
 
 Each sub-newt lives in the room where its task is happening, so you can *see* a review
-ensemble fill the review panel or runners crowd the wet lab. Same-role workers are differentiated
+ensemble fill the review panel or runners crowd the lab. Same-role workers are differentiated
 **deterministically** — hue, marking, and walk-phase are derived from the worker's id, so the same
 worker always looks the same. When a worker finishes its task it plays a **despawn animation**
 (it dissolves into motes). When a room gets crowded, the extra workers collapse into a single
@@ -217,9 +210,9 @@ one file per worker:
 - `<project>/.bus/workers/<worker_id>.jsonl` in each project.
 
 One file per worker means each agent's trace is clean and separated from every other's — which is
-exactly what the worker inspector renders. `dashboard/sources.py` aggregates these files into a new
+exactly what the worker inspector renders. `dashboard/sources.py` aggregates these files into
 `snapshot().workers[]`, and the dashboard draws one sub-newt plus one inspectable history per
-worker.
+worker. To bound growth, the hook prunes worker logs untouched for over 48 hours once per session.
 
 Two properties keep this safe and lightweight:
 
@@ -238,13 +231,11 @@ native watcher), `POST /api/directive` and `POST /api/command` (append to the bu
 (run a whitelisted read-only tool), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3
 refused). The first HTML response is seeded with the snapshot inline for an instant cold load.
 `dashboard/sources.py` holds the tolerant tailers (a bad line is skipped, a moved project is
-reported unreachable, never a crash) and now also aggregates the per-worker logs into `workers[]`.
+reported unreachable, never a crash) and aggregates the per-worker logs into `workers[]`.
 
 The frontend (`static/index.html`, `terrarium.css`, `app.js`) is **vanilla JavaScript — no build,
-no dependencies, fully offline**. The living world renders entirely on a single **Canvas-2D**
-surface (a hand-drawn, painterly 2.5D scene); there is **no WebGL**, and **Three.js and the whole
-`static/vendor/` tree have been removed** — the Canvas-2D renderer is the only renderer. It honors
-`prefers-reduced-motion` and `?static` by drawing a single **still frame** of the same scene
-instead of animating, so the dashboard stays delete-it-and-nothing-changes and always works
+no dependencies, fully offline**. The world renders entirely on a single **Canvas-2D** surface;
+there is no WebGL and nothing vendored. It honors `prefers-reduced-motion` and `?static` by drawing
+a single **still frame** of the same scene instead of animating, so the dashboard always works
 offline with zero assets to fetch. A handy deep link: `?open=<idea|hub>` opens the command console
 straight to that target.

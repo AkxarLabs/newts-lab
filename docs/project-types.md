@@ -57,7 +57,7 @@ At `/spawn-project` (**latest binding**): the agent reads the approved proposal 
 recommends a `{type, domain}`, and the **PI confirms it** (it shapes the whole project — a
 Gate-1-adjacent decision; under a signed `/autopilot` campaign, within its delegation bounds). The
 choice is recorded in `control.yaml` `project_type:` and the card is dropped into the project root.
-`ml` is the default and behaves exactly as before, so existing projects are unaffected.
+`ml` is the default.
 
 ## Adding a type or domain
 

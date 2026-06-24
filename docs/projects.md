@@ -77,7 +77,7 @@ The paper lives in the hub but its evidence lives in the project — so the boun
 
 ## Extensibility rules (how the code stays extendable)
 
-These are the project-level hard rules, written for auto-research but exactly what makes human extension pleasant:
+These are the project-level hard rules that keep every past experiment re-runnable as the code grows:
 
 1. **A new experiment is a new config file.** Experiment yamls are immutable once run; variants are new files. History never breaks.
 2. **New method variants live beside the baseline, never replace it.** New module/function behind a config switch; the baseline path stays runnable forever.
