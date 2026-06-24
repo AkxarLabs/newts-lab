@@ -1,0 +1,12 @@
+# Cross-platform line endings. `text=auto` stores text files with LF in the repo (so a checkout on
+# mac/linux is clean LF) while letting Windows keep its native CRLF in the working tree — and it
+# prevents a contributor with autocrlf disabled from ever committing CRLF. Repo blobs are already LF;
+# this just makes the contract explicit.
+* text=auto
+
+# Known binaries — never normalize or munge.
+*.png  binary
+*.pdf  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
