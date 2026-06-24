@@ -3,8 +3,9 @@
 *Optional. Local-only. Delete the `dashboard/` folder and the lab is unchanged.*
 
 Vivarium renders the lab as a hand-drawn, 2.5D **living world**: the whole lab is **one continuous
-scene**, and each lifecycle stage is a **room** of it. Every idea and project is a **critter**
-living in the room that matches its state; every working agent or subagent is its own colour-coded
+scene**, and each lifecycle stage is a **room** of it. Every idea and project is a single **critter**
+living in the room that matches its state (an idea and the project it grows into are the *same*
+critter, not two); every working agent or subagent is its own colour-coded
 **sub-newt** doing visible work; and through it all roams **Newt** — the orchestrator, a larger
 creature that reacts to lab state and is your control handle (click it to command). It keeps you in
 the loop while agents iterate (hub lifecycle *and* every running external project, live) and lets

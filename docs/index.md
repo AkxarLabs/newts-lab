@@ -12,7 +12,7 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
 
 <figure markdown>
 ![The Vivarium dashboard — the whole lab as a living world](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — every idea and project a critter, every working agent a sub-newt, in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
+<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — each idea or project a critter, every working agent a sub-newt, in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
 </figure>
 
 ## The shape of the lab

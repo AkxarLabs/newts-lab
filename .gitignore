@@ -39,6 +39,9 @@ studies/**/*.log
 studies/**/*.out
 studies/**/*.synctex.gz
 
+# Local research scratch (deep-dives, competitive surveys) — notes, not part of the public template
+/research/
+
 # OS
 .DS_Store
 Thumbs.db
