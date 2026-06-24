@@ -1,6 +1,6 @@
 # AGENTS.md — operating this lab with any coding agent
 
-This file makes Kartr Lab drivable by **any** agent that reads AGENTS.md (Codex,
+This file makes Newts' Lab drivable by **any** agent that reads AGENTS.md (Codex,
 Cursor, Gemini CLI, …). Claude Code is the first-class driver — it reads `CLAUDE.md`
 and gets the procedures as native slash-command skills — but everything here is plain
 files, so other agents can run the same lab.
@@ -70,14 +70,14 @@ parallelism:
   `lab_bus.py`). Invoke hub tools via `uv run --with pyyaml python tools/<script>.py`.
 - An optional local dashboard lives in `dashboard/` (Vivarium) — the lab as a hand-drawn,
   *Rain-World*-style **living lab world** (each lifecycle stage a room, every idea/project a
-  critter, every working agent its own worker critter with a click-to-inspect history) with a
-  buddy, **Newt**, you click to command. It reads the bus, the registry, and the per-worker
+  critter, every working agent its own **sub-newt** with a click-to-inspect history) with a
+  prime newt, **Newt**, you click to command. It reads the bus, the registry, and the per-worker
   traceability logs; its writes are bus directives/commands and (PI-confirmed, local) Gate 1/2
   approvals — never Gate 3. Delete the folder and the lab is unchanged. See `docs/dashboard.md`.
 - Configuration is 3-layered (experiment yaml > project `control.yaml` >
   `lab/config.yaml`) — see `docs/configuration.md`.
 - Projects live OUTSIDE this repo at `lab.projects_root` (default
-  `../kartr-lab-projects/<slug>`); each is its own git repo with its own AGENTS.md.
+  `../newts-lab-projects/<slug>`); each is its own git repo with its own AGENTS.md.
 
 ## Non-negotiables (compressed from CLAUDE.md — the full text governs)
 

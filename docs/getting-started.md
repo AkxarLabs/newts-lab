@@ -14,11 +14,11 @@
 
 ## Instantiate your lab
 
-Kartr Lab is a **template repository** — each lab is a living instance of it:
+Newts' Lab is a **template repository** — each lab is a living instance of it:
 
 1. On GitHub: **Use this template** → create your lab repo (or `npx degit <repo> my-lab`, or plain clone).
 2. Open `lab/config.yaml` and check the two keys that matter on day one:
-   - `lab.projects_root` — where project repos are created (default: `../kartr-lab-projects`, a sibling folder next to the hub)
+   - `lab.projects_root` — where project repos are created (default: `../newts-lab-projects`, a sibling folder next to the hub)
    - the `critique` / `experiment` / `loop` defaults (sane as shipped)
 3. That's it. Lab state (`lab/REGISTRY.md`, knowledge, notebook) starts empty and fills as you work.
 
@@ -58,7 +58,7 @@ You'll be stopped at the gates and otherwise left to read the notebook.
 To keep an eye on the lab while agents iterate — every lifecycle stage and every running
 project, live — launch the optional [Vivarium dashboard](dashboard.md): the lab rendered as a
 hand-drawn, *Rain-World*-style **living lab world** — each lifecycle stage is a room, every idea
-and project is a critter living in its room, and every working agent is its own worker critter you
+and project is a critter living in its room, and every working agent is its own **sub-newt** you
 can **click to inspect** (a legend bottom-left maps role → colour with live head-counts). A buddy
 named Newt moves through it, and you click to **command** the agents (start/stop loops, request
 runs, approve Gate 1 & 2), all from the scene.

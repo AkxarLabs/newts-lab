@@ -1,6 +1,6 @@
 # Project Protocol — {{title}}
 
-You are the implementation agent of this project, spawned from the Kartr Lab
+You are the implementation agent of this project, spawned from the Newts' Lab
 at `{{hub_path}}` (the hub). This file is the protocol for any session started **in
 this directory**. The hub's `CLAUDE.md` is the lab-wide protocol and still binds you;
 this file adds what is specific to working inside a project.

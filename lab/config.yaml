@@ -1,5 +1,5 @@
 # ============================================================================
-# Kartr Lab — lab-wide configuration (layer 1 of 3)
+# Newts' Lab — lab-wide configuration (layer 1 of 3)
 #
 # Resolution order:  experiment yaml  >  project control.yaml  >  THIS FILE
 #
@@ -11,7 +11,7 @@
 # ============================================================================
 
 lab:                            # ── hub behavior · PI-owned ──
-  projects_root: "../kartr-lab-projects"  # where /spawn-project creates project repos (relative to hub)
+  projects_root: "../newts-lab-projects"  # where /spawn-project creates project repos (relative to hub)
   stale_days: 14                # registry rows older than this get flagged by check_lab.py
 
 compute:                        # ── CROSS-project run coordination · PI-owned ──

@@ -1,7 +1,7 @@
 # AGENTS.md — {{title}}
 
 Operating notes for ANY coding agent working in this project repo (spawned from the
-Kartr Lab at `{{hub_path}}`). **Read `CLAUDE.md` in this directory first — it
+Newts' Lab at `{{hub_path}}`). **Read `CLAUDE.md` in this directory first — it
 is the project protocol and binds you fully** (orientation order, autonomy bounds,
 subagent policy, the extensibility rules, session write-back). This file adds the
 command crib and what's specific to non-Claude agents.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-safe activity tracer for a spawned Kartr Lab project (a Claude Code hook).
+"""Fail-safe activity tracer for a spawned Newts' Lab project (a Claude Code hook).
 
 Registered in this project's `.claude/settings.json` on SessionStart,
 PreToolUse(Task|Agent), PostToolUse(*), SubagentStop(*) and SessionEnd. It reads one

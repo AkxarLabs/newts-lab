@@ -1,4 +1,4 @@
-# Contributing to Kartr Lab
+# Contributing to Newts' Lab
 
 Thanks for improving the lab. This guide is about contributing to the **lab machinery**
 — the skills, tools, templates, dashboard, and docs in this repo. It is *not* about
@@ -19,7 +19,7 @@ No install step — everything runs through [`uv`](https://docs.astral.sh/uv/), 
 resolves dependencies per-command:
 
 ```bash
-git clone <your-fork> && cd kartr-lab
+git clone <your-fork> && cd newts-lab
 uv run --with pyyaml --with pytest python -m pytest tests/ -q     # tools regression suite
 ```
 

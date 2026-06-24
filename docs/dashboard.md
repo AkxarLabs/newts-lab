@@ -7,14 +7,16 @@ this is. The lab is rendered as a hand-drawn, 2.5D **living lab world** in the d
 the game *Rain World*: muted, painterly, lo-fi, cozy-melancholic. The whole lab is **one
 continuous world**, and each lifecycle stage is a **room** of it. Every idea and project is a cute
 **critter** living in the room that matches its state; every working agent or subagent is its own
-colour-coded critter doing visible work; and through it all roams **Newt**, the orchestrator — a
-larger, unique creature who reacts to everything and is your control handle (click it to command). It keeps you in the loop while
+colour-coded **sub-newt** doing visible work; and through it all roams **Newt** — the prime newt and
+orchestrator, a larger, unique creature who reacts to everything and is your control handle (click it
+to command). The lab is a colony of newts: one prime Newt coordinating, many sub-newts spawning into
+the rooms to run projects and experiments. It keeps you in the loop while
 agents iterate (hub lifecycle *and* every running external project, live) and it lets you **drive**
 them.
 
 <figure markdown>
 ![The Vivarium world — six lifecycle rooms in one continuous lab, each with its critters](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>The <strong>World</strong> view — the whole lab as one continuous terrarium. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and worker critters currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
+<figcaption>The <strong>World</strong> view — the whole lab as one continuous terrarium. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and sub-newts currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
 </figure>
 
 The whole scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
@@ -38,14 +40,14 @@ honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)
 
 ## What it shows — the views
 
-The living world (the rooms + the critters + Newt + the worker critters) is the canvas under
+The living world (the rooms + the critters + Newt + the sub-newts) is the canvas under
 every view; the data views float over it as soft, paper-toned panels.
 
 | View | What it is |
 |---|---|
-| **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment workers live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's workers up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as critters in their own room. |
+| **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment sub-newts live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's sub-newts up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as sub-newts in their own room. |
 | **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. |
-| **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the worker critters you see in the world. |
+| **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
 | **Activity** | the live state that **needs you or is running** — two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
 
@@ -88,13 +90,13 @@ quiet shelf.
 
 <figure markdown>
 ![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
-<figcaption>Click a room (or a project critter) to <strong>zoom in</strong>. Here, inside <em>the lab</em>: stations for smoke/pilot/full, improve/debug, in-project ideation, quality-check, and analysis — with each running worker critter standing at its task, labelled with what it's doing.</figcaption>
+<figcaption>Click a room (or a project critter) to <strong>zoom in</strong>. Here, inside <em>the lab</em>: stations for smoke/pilot/full, improve/debug, in-project ideation, quality-check, and analysis — with each running sub-newt standing at its task, labelled with what it's doing.</figcaption>
 </figure>
 
 ## Newt — the buddy that is also the controller
 
-Newt is the lab's buddy and its **orchestrator** — a unique, procedurally-animated creature, larger
-than the worker critters (its own simple, cute salamander-like look; deliberately *not* an axolotl
+Newt is the lab's buddy and its **orchestrator** — the prime newt: a unique, procedurally-animated
+creature, larger than the sub-newts (its own simple, cute salamander-like look; deliberately *not* an axolotl
 and *not* a Rain-World slugcat). It roams the world toward wherever the lab's attention is, and you
 **click it to command the lab** (the legend's *Orchestrator (Newt)* row is this same creature). Its body is an honest
 one-glance summary of the lab, driven by the same nine poses as before, by priority:
@@ -109,21 +111,21 @@ event (`replan` / `decision_revisit` / `frontier_expand` / `approach_ideate`) on
 told, with the original wink at Newton. Speech bubbles quote event fields **verbatim** — no number
 Newt can’t cite to an event.
 
-## The workers — a critter per agent
+## The workers — a sub-newt per agent
 
 Underneath the idea/project critters, the world shows **the work itself**: every running
-agent or subagent is **its own critter**, colour-coded by role. Six roles:
+agent or subagent is **its own sub-newt**, colour-coded by role. Six roles:
 
 | Role | Colour | Note |
 |---|---|---|
-| **orchestrator** | gold | this *is* **Newt** — the larger, haloed creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
+| **orchestrator** | gold | this *is* **Newt**, the prime newt — the larger, haloed creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
 | **experiment-runner** | teal | |
 | **fresh-context-reviewer** | violet | |
 | **overseer** | slate-blue | |
 | **ideation-critic** | rose | |
 | **scoping-advocate** | amber | |
 
-Each worker critter lives in the room where its task is happening, so you can *see* a review
+Each sub-newt lives in the room where its task is happening, so you can *see* a review
 ensemble fill the review panel or runners crowd the wet lab. Same-role workers are differentiated
 **deterministically** — hue, marking, and walk-phase are derived from the worker's id, so the same
 worker always looks the same. When a worker finishes its task it plays a **despawn animation**
@@ -131,9 +133,9 @@ worker always looks the same. When a worker finishes its task it plays a **despa
 **"+N more"** cluster so the scene stays readable.
 
 A **legend** ("Who's working", bottom-left) is always visible: each role → its colour with a live
-head-count. Click a role to **highlight** every critter of that role across the world.
+head-count. Click a role to **highlight** every sub-newt of that role across the world.
 
-**Click a worker critter** to open an **inspector panel** showing that one worker's own clean
+**Click a sub-newt** to open an **inspector panel** showing that one worker's own clean
 action history — exactly what *that* agent did, in order, separated from everyone else's. This is
 backed by the per-worker logs described in [Traceability](#traceability-one-log-per-worker).
 
@@ -204,7 +206,7 @@ runs/registry/liveness — events only enrich.
 
 ## Traceability — one log per worker
 
-The worker critters and their per-worker inspector histories are backed by a **lab feature that is
+The sub-newts and their per-worker inspector histories are backed by a **lab feature that is
 independent of the dashboard**: even if you delete `dashboard/`, these logs still get written.
 
 Claude Code **hooks** (`.claude/settings.json` → `tools/trace_hook.py`, and the same hook shipped
@@ -216,7 +218,7 @@ one file per worker:
 
 One file per worker means each agent's trace is clean and separated from every other's — which is
 exactly what the worker inspector renders. `dashboard/sources.py` aggregates these files into a new
-`snapshot().workers[]`, and the dashboard draws one critter plus one inspectable history per
+`snapshot().workers[]`, and the dashboard draws one sub-newt plus one inspectable history per
 worker.
 
 Two properties keep this safe and lightweight:

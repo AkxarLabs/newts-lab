@@ -1,7 +1,7 @@
 [project]
 name = "{{slug}}"
 version = "0.1.0"
-description = "{{title}} — spawned from Kartr Lab"
+description = "{{title}} — spawned from Newts' Lab"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",

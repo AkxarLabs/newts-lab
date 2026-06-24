@@ -76,7 +76,7 @@ def _row(slug: str) -> dict | None:
 
 def _projects_root() -> Path:
     root = ((_load_yaml(LAB / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../kartr-lab-projects"
+        or "../newts-lab-projects"
     return (HUB / root).resolve()
 
 

@@ -35,7 +35,7 @@ EXTS = (".pdf", ".tex", ".png")
 
 def projects_root() -> Path:
     config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../kartr-lab-projects"
+    root = ((config.get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
     return (HUB / root).resolve()
 
 

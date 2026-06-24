@@ -1,9 +1,9 @@
 # Spawned project repos live OUTSIDE the hub at lab.projects_root (default
-# ../kartr-lab-projects), so they're normally not in this tree at all. These
+# ../newts-lab-projects), so they're normally not in this tree at all. These
 # entries are a SAFETY NET: if the PI points lab.projects_root at a path INSIDE the
 # hub, the project repos (each its own git repo, with its own large runs/) must not
 # be committed into the hub. The hub only ever tracks studies/<slug>/ (idea + paper/).
-/kartr-lab-projects/
+/newts-lab-projects/
 /projects/
 /Projects/
 

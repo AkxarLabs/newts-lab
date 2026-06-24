@@ -1,6 +1,6 @@
 # Project types
 
-Not every project is ML training. Kartr Lab's lifecycle (ideate → … → paper) is
+Not every project is ML training. Newts' Lab's lifecycle (ideate → … → paper) is
 domain-agnostic; only the **project spoke** (what a "run" is) varies. That variation is captured
 as a **project type**, chosen once at `/spawn-project`.
 

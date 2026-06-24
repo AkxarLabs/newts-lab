@@ -11,9 +11,9 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
 ## Procedure
 
 1. Verify Gate 1 approval — mechanically: `uv run --with pyyaml python tools/guard.py spawn <slug>` (checks the Gate-1 marker in `studies/<slug>/proposal.md`, the registry state, and that no existing project would be overwritten). A nonzero exit stops the spawn and routes back to `/propose`.
-2. Resolve `lab.projects_root` from `lab/config.yaml` (default `../kartr-lab-projects`,
+2. Resolve `lab.projects_root` from `lab/config.yaml` (default `../newts-lab-projects`,
    relative to the hub). If the container directory doesn't exist, create it with a
-   one-paragraph README ("Projects spawned by the Kartr Lab at <hub path>; each
+   one-paragraph README ("Projects spawned by the Newts' Lab at <hub path>; each
    is an independent git repo — index in the hub's lab/REGISTRY.md").
 3. **If `<projects_root>/<slug>` already exists, STOP before copying.** If it has any
    commits or a non-empty `runs/`, never overwrite — report the collision to the PI (a
@@ -68,13 +68,13 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    - `uv run python scripts/run.py --config configs/experiments/exp-001-smoke.yaml`
    - `uv run pytest tests/`
    - `uv run --with pyyaml python scripts/check_project.py` (readiness lint — exit 0)
-   Commit (with `uv.lock`) only once all pass ("scaffold: spawn from Kartr Lab template, smoke green").
+   Commit (with `uv.lock`) only once all pass ("scaffold: spawn from Newts' Lab template, smoke green").
    If any of `uv sync` / smoke / tests / check_project fail: debug up to `experiment.max_debug_depth`
    attempts; still red → leave the directory **uncommitted**, set the registry next action
    back to "/spawn-project" with the failure noted, and report to the PI — never commit a
    red scaffold.
 8. Update hub state: IDEA.md → `active`, registry row's Project column = the relative
-   path (e.g. `../kartr-lab-projects/<slug>`), next action = "/experiment exp-002".
+   path (e.g. `../newts-lab-projects/<slug>`), next action = "/experiment exp-002".
    Append a lab notebook entry.
 9. Report to the user: project path, smoke/test status, control.yaml summary, first
    planned experiment.

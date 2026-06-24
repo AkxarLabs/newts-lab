@@ -1,8 +1,8 @@
-# Kartr Lab
+# Newts' Lab
 
 <div class="as-hero" markdown>
 <p class="as-kicker">A research lab for an AI agent</p>
-<p class="as-lede">Kartr Lab takes a research direction from <strong>ideation</strong> through literature review, proposal, experimentation, analysis and ablations, to a <strong>finished LaTeX paper</strong> — driven by an agent, with you as the PI at three explicit gates.</p>
+<p class="as-lede">Newts' Lab takes a research direction from <strong>ideation</strong> through literature review, proposal, experimentation, analysis and ablations, to a <strong>finished LaTeX paper</strong> — driven by an agent, with you as the PI at three explicit gates.</p>
 
 [Getting started](getting-started.md){ .md-button }
 [Autonomy & modes](autonomy.md){ .md-button .md-button--secondary }
@@ -12,7 +12,7 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
 
 <figure markdown>
 ![The Vivarium dashboard — the whole lab as a living world](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — every idea, project, and working agent a critter in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
+<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — every idea and project a critter, every working agent a sub-newt, in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
 </figure>
 
 ## The shape of the lab
@@ -24,7 +24,7 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │
-                │   ┌── SPOKE (../kartr-lab-projects/<slug>) ┴───┐
+                │   ┌── SPOKE (../newts-lab-projects/<slug>) ┴───┐
                 └── │  /spawn-project → /experiment → /improve →     │
           findings  │  /analyze   (own git repo, own env, own        │
                     │  control.yaml — independently reproducible)    │

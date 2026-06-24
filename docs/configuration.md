@@ -11,8 +11,8 @@ View the effective merged configuration — with the layer that set each key —
 
 ```bash
 uv run --with pyyaml python tools/show_config.py                          # lab layer
-uv run --with pyyaml python tools/show_config.py ../kartr-lab-projects/my-proj
-uv run --with pyyaml python tools/show_config.py ../kartr-lab-projects/my-proj exp-004.yaml
+uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj
+uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj exp-004.yaml
 ```
 
 …or just run `/configure` and let the agent present it. Edits go through `/configure [slug] set key=value` (or by hand — they're YAML files).
@@ -21,7 +21,7 @@ uv run --with pyyaml python tools/show_config.py ../kartr-lab-projects/my-proj e
 
 | Key | Default | Owner | Effect |
 |---|---|---|---|
-| `lab.projects_root` | `../kartr-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
+| `lab.projects_root` | `../newts-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |

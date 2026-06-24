@@ -71,7 +71,7 @@ def parse_registry() -> list[dict]:
 
 def projects_root() -> Path:
     lab_cfg = (_load_yaml(LAB / "config.yaml").get("lab") or {})
-    return (HUB / (lab_cfg.get("projects_root") or "../kartr-lab-projects")).resolve()
+    return (HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
 
 
 def _project_path(row: dict) -> Path | None:

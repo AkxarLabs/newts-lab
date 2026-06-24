@@ -1,6 +1,6 @@
 name: ci
 
-# Smoke CI for a spawned Kartr Lab project: proves the pipeline runs end-to-end
+# Smoke CI for a spawned Newts' Lab project: proves the pipeline runs end-to-end
 # from a clean clone (config -> seed -> run -> artifacts -> registry). Domain deps you
 # add to pyproject.toml install here automatically; keep this smoke test green forever
 # and add experiment-specific tests alongside it.

@@ -1,4 +1,4 @@
-"""Vivarium — the Kartr Lab, rendered as a living terrarium. Optional, local-only.
+"""Vivarium — the Newts' Lab, rendered as a living terrarium. Optional, local-only.
 
     uv run --with pyyaml python dashboard/serve.py [--port 8787]
 

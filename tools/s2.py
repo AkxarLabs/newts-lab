@@ -49,7 +49,7 @@ UNREACHABLE = object()
 
 
 def http_get(url: str, retries: int = 4) -> dict | None:
-    headers = {"User-Agent": "kartr-lab-tools"}
+    headers = {"User-Agent": "newts-lab-tools"}
     if "semanticscholar" in url and os.environ.get("S2_API_KEY"):
         headers["x-api-key"] = os.environ["S2_API_KEY"]
     for attempt in range(retries):

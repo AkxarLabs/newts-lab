@@ -67,7 +67,7 @@ def main() -> int:
     config = (yaml.safe_load(config_path.read_text(encoding="utf-8-sig")) or {}) if config_path.exists() else {}
     lab_cfg = config.get("lab") or {}
     stale_days = args.stale_days if args.stale_days is not None else lab_cfg.get("stale_days", 14)
-    projects_root = (HUB / (lab_cfg.get("projects_root") or "../kartr-lab-projects")).resolve()
+    projects_root = (HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
 
     rows = {r["id"]: r for r in parse_registry()}
     problems, stale = [], []

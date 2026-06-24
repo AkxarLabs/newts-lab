@@ -3,9 +3,10 @@
 A local-only, no-build dashboard that renders the lab as a hand-drawn, 2.5D **living lab world**
 in the design language of the game *Rain World* — muted, painterly, cozy-melancholic. Each
 lifecycle stage is a **room**; every idea and project is a cute **critter** living in its room;
-every working agent or subagent is its own colour-coded **worker critter** (with a click-to-inspect
-action history); and a small unique creature named **Newt** moves through it all as your control
-handle. Optional: delete this folder and the lab is unchanged.
+every working agent or subagent is its own colour-coded **sub-newt** (with a click-to-inspect
+action history); and a larger, unique creature named **Newt** — the prime newt — moves through it
+all as your control handle. The lab is a colony of newts: one prime Newt orchestrating, many
+sub-newts spawning into the rooms to do the work. Optional: delete this folder and the lab is unchanged.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
@@ -31,7 +32,7 @@ A bare `?demo` on a normally-served dashboard is inert. It's pure client-side an
                  slots, in-flight liveness, and the per-worker traceability logs
                  (`.bus/workers/*.jsonl`) folded into `snapshot().workers[]`.
 - `static/`    — the single-page frontend: `index.html`, `terrarium.css`, `app.js`. The whole
-                 world (rooms + critters + Newt + the worker critters) is drawn on a single
+                 world (rooms + critters + Newt + the sub-newts) is drawn on a single
                  **hand-drawn Canvas-2D** surface — vanilla JS, no deps, no build, fully offline.
                  No WebGL, nothing vendored; `prefers-reduced-motion` / `?static` renders the same
                  scene as a still frame.
@@ -44,10 +45,10 @@ A bare `?demo` on a normally-served dashboard is inert. It's pure client-side an
                  only — the dashboard never reads it, so it's kept out of git history (it's large)
                  and can be deleted without affecting the running app.
 
-The worker critters are backed by a **lab feature, independent of this folder**: Claude Code hooks
+The sub-newts are backed by a **lab feature, independent of this folder**: Claude Code hooks
 (`tools/trace_hook.py`) write one per-worker log per agent (`.bus/workers/<id>.jsonl`) — delete
 `dashboard/` and the traces are still written.
 
-Full guide — the views, the rooms, Newt's poses, the worker critters & legend, the inspector, the
+Full guide — the views, the rooms, Newt's poses, the sub-newts & legend, the inspector, the
 camera, and the gate/control contract: **docs/dashboard.md**. The signal layer it reads (the bus +
 `lab_bus.py`) ships with the lab and works without it.

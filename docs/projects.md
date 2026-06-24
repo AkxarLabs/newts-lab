@@ -6,12 +6,12 @@ Every project has a **type** (`ml` by default, or `empirical` / `simulation` / `
 
 ## Where projects live
 
-**Outside the hub**, at `lab.projects_root` — default `../kartr-lab-projects/<slug>`, a sibling folder next to your lab:
+**Outside the hub**, at `lab.projects_root` — default `../newts-lab-projects/<slug>`, a sibling folder next to your lab:
 
 ```
 Documents/
-├── kartr-lab/                  ← hub (ideas, papers, knowledge, procedures)
-└── kartr-lab-projects/
+├── newts-lab/                  ← hub (ideas, papers, knowledge, procedures)
+└── newts-lab-projects/
     ├── slm-distill-router/         ← project: own git repo
     ├── slm-distill-router-wt-exp-007/   ← transient worktree (parallel /improve variant)
     └── tiny-rlhf-probe/            ← another project

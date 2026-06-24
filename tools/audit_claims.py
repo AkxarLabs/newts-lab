@@ -60,7 +60,7 @@ CLAIM_ANNOT_RE = re.compile(r"%.*\bC\d+\b")
 def projects_root() -> Path:
     """Resolve lab.projects_root from lab/config.yaml (relative paths anchor at the hub)."""
     config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../kartr-lab-projects"
+    root = ((config.get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
     return (HUB / root).resolve()
 
 

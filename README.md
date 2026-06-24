@@ -1,4 +1,4 @@
-# Kartr Lab
+# Newts' Lab
 
 A self-contained **research lab for an AI agent**. This repo holds the procedures, state, and templates that let an agent (Claude Code or similar) take a research direction from **ideation → literature review → proposal → experimentation → analysis & ablations → paper writing → internal review → finalization**, with the human acting as PI at a small number of explicit gates.
 
@@ -16,7 +16,7 @@ Start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-starte
 
 ## Use as a template
 
-Kartr Lab is a **template repository** — each lab is a living instance:
+Newts' Lab is a **template repository** — each lab is a living instance:
 
 1. **Use this template** on GitHub (or `npx degit`/clone) → your own lab repo.
 2. Check `lab/config.yaml` (`lab.projects_root` is the one key worth a look on day one).
@@ -26,7 +26,7 @@ To pull template improvements into a running lab later: `git remote add template
 
 ## The model
 
-**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo outside the hub** — at `lab.projects_root` (default `../kartr-lab-projects/<slug>`) — from a reproducible template; that's where all code and experiments live, so the hub never bloats with experiment state. Results flow back to the hub for analysis, writing, and knowledge accumulation.
+**Hub and spoke.** This repo is the hub (the "lab"): it holds ideation, literature reviews, proposals, papers, lab-wide knowledge, and the executable procedures. Each approved proposal **spawns a self-contained project repo outside the hub** — at `lab.projects_root` (default `../newts-lab-projects/<slug>`) — from a reproducible template; that's where all code and experiments live, so the hub never bloats with experiment state. Results flow back to the hub for analysis, writing, and knowledge accumulation.
 
 ```
         ┌────────────────────────  HUB (this repo)  ────────────────────────┐
@@ -35,7 +35,7 @@ To pull template improvements into a running lab later: `git remote add template
         │  lab/knowledge ◄── /finalize ◄── /review-paper ◄── /write-paper   │
         └───────▲────────────────────────────────────────────────▲──────────┘
                 │                                                │
-                │   ┌── SPOKE (../kartr-lab-projects/<slug>) ┴───┐
+                │   ┌── SPOKE (../newts-lab-projects/<slug>) ┴───┐
                 └── │  /spawn-project → /experiment → /improve →     │
           findings  │  /analyze   (own git repo, own env, own        │
                     │  control.yaml — independently reproducible)    │
@@ -87,7 +87,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 ## Directory map
 
 ```
-kartr-lab/
+newts-lab/
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
 ├── .github/workflows/   # CI: docs build+deploy (Pages), lab lint, cross-platform template smoke
@@ -102,14 +102,14 @@ kartr-lab/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
 ├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py, lab_bus.py
-├── dashboard/           # Vivarium — optional local Rain-World-style living-lab-world dashboard (rooms, critters, worker critters + Newt; delete it and nothing changes)
-└── (projects live at ../kartr-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
+├── dashboard/           # Vivarium — optional local Rain-World-style living-lab-world dashboard (rooms, critters, sub-newts + Newt; delete it and nothing changes)
+└── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
 ## Quickstart
 
 ```bash
-cd kartr-lab
+cd newts-lab
 claude        # start the agent
 > /setup-lab                  # first time: 5-minute configuration interview
 > /ideate efficient small-LM post-training   # or any direction

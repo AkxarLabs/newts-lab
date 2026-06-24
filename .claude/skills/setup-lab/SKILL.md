@@ -37,7 +37,7 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   `OPENALEX_API_KEY`.
 
 **Projects location**
-- Keep `lab.projects_root` at `../kartr-lab-projects` or elsewhere?
+- Keep `lab.projects_root` at `../newts-lab-projects` or elsewhere?
 
 **The machine itself (optional)**
 - Anything the implementation agent should know about the machine(s) experiments run
