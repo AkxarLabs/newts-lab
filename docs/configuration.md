@@ -28,6 +28,7 @@ uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj e
 | `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor `/critique-paper` substitutes into every reviewer prompt |
 | `critique.accept_bar` | 7 | PI | median Overall at/above this (+ zero unrefuted fatal flaws) = accept |
 | `critique.max_review_cycles` | 3 | PI | revision cycles before escalating to the PI |
+| `critique.claim_rel_tol` | 0.001 | agent-readable | relative tolerance `tools/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) |
 | `experiment.max_debug_depth` | 3 | agent-readable | consecutive debug attempts before record-and-move-on |
 | `experiment.num_drafts` | 3 | agent-readable | distinct solution lines `/improve` maintains |
 | `experiment.max_parallel_subagents` | 3 | agent-readable | concurrent worktree subagents (project may override) |
@@ -60,6 +61,7 @@ uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj e
 | `writing.venue` | `neurips` | PI | paper format `/write-paper` builds from. `neurips` \| `icml` \| `iclr` \| `aclarr` \| `aaai` \| `generic`; picks `templates/paper/venues/<venue>/main.tex` + fetches that venue's style file (URLs/limits in that dir's `README.md`). Project `control.yaml` may override per-project |
 | `writing.max_reflection_rounds` | 3 | agent-readable | verifier-gated revision rounds in `/write-paper` (gains plateau ~3) |
 | `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
+| `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
 | `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
 
 ### Headless launch backends — `agents.programmatic.*` (optional, PI-owned, OFF by default)

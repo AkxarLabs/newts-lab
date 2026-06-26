@@ -400,7 +400,7 @@ def cmd_launch(a) -> int:
     max_minutes = _pos_float(prog.get("max_minutes"), 0.0)
     if max_minutes <= 0:
         max_minutes = 240.0
-    cap = _pos_int(prog.get("max_concurrent", 2), 2, 1)
+    cap = _pos_int(prog.get("max_concurrent", 3), 3, 1)   # matches lab/config.yaml default
     cmd, fires_hooks = _build_command(backend, prompt, pdir, model, perm, prog)  # may SystemExit on the extra-args guard
     adir = _agents_dir(pdir)
 

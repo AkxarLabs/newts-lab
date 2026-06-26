@@ -82,8 +82,8 @@ Each round, in order — and stop early when a round changes nothing substantive
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
 2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
    match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
-   `tools/audit_claims.py studies/<slug>/paper` (completeness scan — every numeral in
-   Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check)
+   `tools/audit_claims.py studies/<slug>/paper --rel-tol <critique.claim_rel_tol>` (completeness scan —
+   every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check)
    — after EVERY round, not just at the end. Revision is when fabrication happens: phantom
    experiments hide in ablation/analysis subsections. Any number the audit can't trace gets
    deleted, not defended.

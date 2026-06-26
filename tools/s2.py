@@ -404,9 +404,9 @@ def cmd_verify(args) -> int:
 CITE_RE = re.compile(r"\\[a-zA-Z]*cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]+)\}")
 
 
-def _grounded(entry: dict, lit_norm: str, lit_raw: str) -> bool:
+def _grounded(entry: dict, lit_norm: str, lit_raw: str, threshold: float = 0.7) -> bool:
     """Is this cited paper present in the lit-review? Strong signal: its DOI or arXiv id appears
-    verbatim; else ≥70% of the title's content words (>3 chars) appear in the normalized notes."""
+    verbatim; else ≥`threshold` of the title's content words (>3 chars) appear in the notes."""
     doi = (entry.get("doi") or "").lower()
     if doi and doi in lit_raw:
         return True
@@ -415,7 +415,7 @@ def _grounded(entry: dict, lit_norm: str, lit_raw: str) -> bool:
         return True
     title = normalize(entry.get("title", ""))
     toks = [w for w in title.split() if len(w) > 3] or title.split()
-    return bool(toks) and sum(1 for w in toks if w in lit_norm) / len(toks) >= 0.7
+    return bool(toks) and sum(1 for w in toks if w in lit_norm) / len(toks) >= threshold
 
 
 def cmd_citecheck(args) -> int:
@@ -436,6 +436,7 @@ def cmd_citecheck(args) -> int:
     lit_path = Path(args.lit_review) if args.lit_review else (paper.parent / "lit-review.md")
     lit_raw = lit_path.read_text(encoding="utf-8-sig").lower() if lit_path.exists() else ""
     lit_norm = normalize(lit_raw)
+    threshold = getattr(args, "threshold", 0.7)
 
     print(f"## Cite-from-lit-review — {paper} ({len(cited)} cite keys, {len(entries)} bib entries, "
           f"lit-review {'found' if lit_raw else 'MISSING'})\n")
@@ -449,7 +450,7 @@ def cmd_citecheck(args) -> int:
         elif not lit_raw:
             print(f"| {key} | UNGROUNDED | lit-review.md not found at {lit_path} |")
             ungrounded += 1
-        elif not _grounded(entries[key], lit_norm, lit_raw):
+        elif not _grounded(entries[key], lit_norm, lit_raw, threshold):
             print(f"| {key} | UNGROUNDED | no lit-review note matches \"{entries[key].get('title', '')[:60]}\" |")
             ungrounded += 1
         else:
@@ -486,6 +487,8 @@ def main() -> int:
     p.add_argument("paper_dir", help="studies/<slug>/paper")
     p.add_argument("--bib", help="references.bib (default <paper_dir>/references.bib)")
     p.add_argument("--lit-review", dest="lit_review", help="lit-review.md (default <paper_dir>/../lit-review.md)")
+    p.add_argument("--threshold", type=float, default=0.7,
+                   help="title-word overlap to call a cite 'grounded' (lab writing.cite_grounding_threshold)")
     p.set_defaults(fn=cmd_citecheck)
     args = parser.parse_args()
     return args.fn(args)

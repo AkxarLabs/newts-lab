@@ -124,6 +124,21 @@ def test_citecheck_ungrounded_is_warn(tmp_path):
     assert rc == 2                                                                       # in bib, not in lit-review
 
 
+def test_citecheck_threshold_is_configurable(tmp_path):
+    m = _m()
+    paper = tmp_path / "studies" / "demo" / "paper"
+    paper.mkdir(parents=True)
+    # title shares ~half its content words with the lit-review note
+    (paper / "main.tex").write_text(r"\cite{partial}", encoding="utf-8")
+    (paper / "references.bib").write_text(
+        "@article{partial, title={Sparse Mixture Routing Transformers}}\n", encoding="utf-8")
+    (paper.parent / "lit-review.md").write_text("notes on sparse mixture models.", encoding="utf-8")
+    # lenient threshold -> grounded (exit 0); strict threshold -> ungrounded (exit 2)
+    lenient = m.cmd_citecheck(types.SimpleNamespace(paper_dir=str(paper), bib=None, lit_review=None, threshold=0.4))
+    strict = m.cmd_citecheck(types.SimpleNamespace(paper_dir=str(paper), bib=None, lit_review=None, threshold=0.95))
+    assert lenient == 0 and strict == 2
+
+
 def test_citecheck_all_grounded_passes(tmp_path):
     m = _m()
     paper = tmp_path / "studies" / "demo" / "paper"

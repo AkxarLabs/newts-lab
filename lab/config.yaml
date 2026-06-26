@@ -200,6 +200,8 @@ writing:                        # ── /write-paper · /make-figures ──
                                 # the authoritative knob; `venue` selects the template, not the count.
   max_reflection_rounds: 3      # verifier-gated revision rounds (gains plateau ~3, regress after)
   citation_match_threshold: 0.85 # title-similarity gate for tools/s2.py verify
+  cite_grounding_threshold: 0.7 # fraction of a cited paper's title words that must appear in
+                                # lit-review.md for tools/s2.py citecheck to call it "grounded"
 
 critique:                       # ── /critique-paper · /review-paper · PI-owned ──
   ensemble_external: 3          # reviewer lenses for external-paper triage
@@ -208,6 +210,9 @@ critique:                       # ── /critique-paper · /review-paper · PI-
                                 # (mirrored in critique-lenses.md; /critique-paper substitutes it)
   accept_bar: 7                 # median Overall at/above this + zero unrefuted fatal flaws = accept
   max_review_cycles: 3          # revision cycles before escalating to the PI
+  claim_rel_tol: 0.001          # relative tolerance tools/audit_claims.py uses to match a paper
+                                # number to its run artifact (looser of this · printed precision).
+                                # Written 0.001 not 1e-3 so YAML parses it as a float, not a string.
 
 experiment:                     # ── experiment loop defaults · project-overridable via control.yaml ──
   max_debug_depth: 3            # consecutive debug attempts before record-and-move-on
