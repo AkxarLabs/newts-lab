@@ -168,10 +168,12 @@ Canonical invocations:
 
 What to know about `/loop` itself: it is **session-scoped** — it fires only while the
 Claude Code session is open and idle (keep the machine awake), expires after 7 days,
-and is restored by `claude --resume`. For unattended runs start the session with a
-permission mode that won't stop to ask (`claude --permission-mode acceptEdits`, or
-`permissions.allow` rules in `.claude/settings.json` covering the project's commands)
-— a permission prompt at 3am blocks the night. Related built-ins, for completeness:
+and is restored by `claude --resume`. For unattended runs start the session with
+permissions that won't stop to ask — `permissions.allow` rules in `.claude/settings.json`
+covering the project's commands (the reliable way), and/or a non-stopping
+`--permission-mode` (`auto` broadly approves in-repo work; `acceptEdits` covers file edits
+but still prompts for shell) — a permission prompt at 3am blocks the night. Related
+built-ins, for completeness:
 `/goal` drives toward a single checkable condition (good for "make the smoke test
 pass", too narrow for a campaign); cloud routines (`/schedule`) run without an open
 session but in a fresh clone — only useful if your lab state is pushed and your

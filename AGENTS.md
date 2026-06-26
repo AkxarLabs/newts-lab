@@ -68,12 +68,12 @@ parallelism:
   `audit_claims.py`, `show_config.py`, `run_slots.py`, `s2.py`, `lab_bus.py`), project
   `scripts/` (`run.py`, `sweep.py`, `compare.py`, `status.py`, `check_project.py`,
   `lab_bus.py`). Invoke hub tools via `uv run --with pyyaml python tools/<script>.py`.
-- An optional local dashboard lives in `dashboard/` (Vivarium) — the lab as a hand-drawn,
-  *Rain-World*-style **living lab world** (each lifecycle stage a room, every idea/project a
-  critter, every working agent its own **sub-newt** with a click-to-inspect history) with a
-  prime newt, **Newt**, you click to command. It reads the bus, the registry, and the per-worker
-  traceability logs; its writes are bus directives/commands and (PI-confirmed, local) Gate 1/2
-  approvals — never Gate 3. Delete the folder and the lab is unchanged. See `docs/dashboard.md`.
+- An optional local dashboard lives in `dashboard/` (Vivarium) — a live map of the lab: each
+  lifecycle stage a room, every idea/project a critter, every working agent its own sub-newt with a
+  click-to-inspect history, and a prime newt, **Newt**, you click to command. It reads the bus, the
+  registry, and the per-worker traceability logs; its writes are bus directives/commands and
+  (PI-confirmed, local) Gate 1/2 approvals — never Gate 3. Delete the folder and the lab is
+  unchanged. See `docs/dashboard.md`.
 - Configuration is 3-layered (experiment yaml > project `control.yaml` >
   `lab/config.yaml`) — see `docs/configuration.md`.
 - Projects live OUTSIDE this repo at `lab.projects_root` (default

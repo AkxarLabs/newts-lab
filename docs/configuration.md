@@ -62,6 +62,19 @@ uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj e
 | `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
 | `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
 
+### Headless launch backends — `agents.programmatic.*` (optional, PI-owned, OFF by default)
+
+The "one headless session per project" launcher (`tools/agent_runner.py`; see [Autonomy](autonomy.md)). Stays off until the PI enables it. The per-backend comments in `lab/config.yaml` are the full reference — this is the map.
+
+| Key | Default | Owner | Effect |
+|---|---|---|---|
+| `agents.programmatic.enabled` | false | PI | master switch — `true` lets the orchestrator launch headless top-level agents into projects (also required for `autopilot.max_concurrent_projects > 1`) |
+| `agents.programmatic.backend` | claude | PI | which CLI: `claude` (`claude -p`) · `codex` (`codex exec`) · `opencode` (`opencode run`). codex/opencode are **optional installs**, needed only when selected |
+| `agents.programmatic.model` | inherit | PI | global model override across backends; `inherit` = each backend uses its own `backends.<x>.model` default |
+| `agents.programmatic.permission_mode` | auto | PI | claude `--permission-mode` (`auto` = broad in-repo approval that still blocks dangerous ops, paired with the project `.claude/settings.json` allowlist; `dontAsk` stricter, `bypassPermissions` wider). A blocked op is denied → the agent escalates via the bus |
+| `agents.programmatic.max_minutes` · `max_concurrent` · `max_depth` · `max_transcript_mb` | 240 · 3 · 1 · 200 | PI | per-agent wall-clock cap (watchdog) · per-project concurrency · launch-recursion cap (1 = no nesting) · stored-transcript cap (MB) |
+| `agents.programmatic.backends.<backend>.*` | — | PI | per-backend model/effort + safety knobs: claude `{model, effort, permission_mode}` · codex `{model, reasoning_effort, sandbox, approval, network_access}` · opencode `{model, variant, permission, agent, skip_permissions}` · all `{extra_args}`. The safety flags are *refused* in `extra_args` and must go through these dedicated keys |
+
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 
 **Created automatically at spawn** — the first set-up step generates this config from the approved proposal — and editable for the project's whole life. This is where you control a project's runs end to end:

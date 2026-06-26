@@ -102,7 +102,7 @@ newts-lab/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
 ├── tools/               # audit_claims.py, check_lab.py, show_config.py, run_slots.py, s2.py, lab_bus.py
-├── dashboard/           # Vivarium — optional local Rain-World-style living-lab-world dashboard (rooms, critters, sub-newts + Newt; delete it and nothing changes)
+├── dashboard/           # Vivarium — optional local living-world dashboard (rooms, critters, sub-newts + Newt; delete it and nothing changes)
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
