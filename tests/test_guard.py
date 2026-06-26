@@ -207,6 +207,97 @@ def test_writeback_warn_when_nothing(hub, monkeypatch):
     assert m.c_writeback(types.SimpleNamespace(slug="demo")) == 2
 
 
+# ── evolve (triggered write-back operators) ───────────────────────────────────
+
+_NOTES_TEMPLATE = """\
+# NOTES — distilled memory
+
+## Gotchas & fixes (environment / data / infra)
+
+<!-- One line each: the trap -> the fix, with evidence.
+     e.g.  - data path stalls -> stage to scratch (exp-004) -->
+
+{gotchas}
+
+## Tried & abandoned (approaches that didn't work — do not re-try blindly)
+
+<!-- approach -> where -> why it failed -> "don't retry unless <cond>".
+     e.g.  - label smoothing 0.1: exp-006, no gain, reverted -->
+
+{abandoned}
+
+## What worked / settled here (keepers + key results)
+
+<!-- decisions/results that HOLD, with run-id evidence. -->
+
+{worked}
+"""
+
+
+def _make_notes(pdir, *, abandoned="*(none yet)*", worked="*(none yet)*", gotchas="*(none yet)*"):
+    (pdir / "NOTES.md").write_text(
+        _NOTES_TEMPLATE.format(gotchas=gotchas, abandoned=abandoned, worked=worked), encoding="utf-8")
+
+
+def test_evolve_kill_blocked_without_correction(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj)  # all placeholders
+    hub.add_registry_row("demo", state="killed", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 1
+
+
+def test_evolve_kill_ok_with_notes_correction(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj, abandoned="- curriculum LR: exp-005, diverged, reverted; skip unless data shifts")
+    hub.add_registry_row("demo", state="killed", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_evolve_kill_ok_with_hub_failure(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj)  # placeholders, but the hub FAILURES.md carries the correction
+    (hub.lab / "knowledge" / "FAILURES.md").write_text(
+        "# Failures\n\n- [2026-06-26] (demo) approach X diverged — wrong scale\n", encoding="utf-8")
+    hub.add_registry_row("demo", state="killed", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_evolve_results_stage_warns_without_recipe(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj)
+    hub.add_registry_row("demo", state="writing", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 2
+
+
+def test_evolve_results_stage_ok_with_recipe(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj, worked="- cosine LR is the keeper: +0.6% val (exp-007)")
+    hub.add_registry_row("demo", state="writing", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_evolve_active_state_is_ok_operators_optional(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj)  # nothing recorded yet, but mid-flight nothing is forced
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_evolve_placeholder_and_comment_dont_count_as_filled(hub, monkeypatch):
+    # The example in the HTML comment + the *(none yet)* placeholder must NOT register as a real line.
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    _make_notes(proj)
+    assert m._notes_section_filled(proj, "abandoned") is False
+    assert m._notes_section_filled(proj, "worked") is False
+
+
 # ── decisions (Revisit-predicate lint) ────────────────────────────────────────
 
 def _write_decisions(hub, slug, decisions):

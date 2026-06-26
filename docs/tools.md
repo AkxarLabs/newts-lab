@@ -60,10 +60,10 @@ Prints the lab layer, the project's control.yaml, the effective skill values (co
 ### `guard.py` — mechanical lifecycle guards
 
 ```bash
-uv run --with pyyaml python tools/guard.py <spawn|full-run|frozen|state|append-only|writeback|decisions|plan-trace> <slug> [args]
+uv run --with pyyaml python tools/guard.py <spawn|full-run|frozen|state|append-only|writeback|evolve|decisions|plan-trace> <slug> [args]
 ```
 
-The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move.
+The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move.
 
 ### `agent_runner.py` — launch + capture headless top-level agents
 

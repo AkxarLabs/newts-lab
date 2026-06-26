@@ -116,12 +116,15 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
 ## Session end (write-back)
 
 **First, distill locally.** If this session learned something a future session here would
-otherwise re-learn the hard way — an environment/data gotcha + its fix, an approach that was
-tried and abandoned (and why), or a result that's now settled — append **one line** (with an
-`exp-NNN`/`run_id` evidence pointer) to the right section of `NOTES.md`. This is a project-local
-cache, append-only; it does **not** replace the hub promotion below — a durable *cross-project*
-lesson goes to **both** (NOTES.md = "don't repeat this *here*"; hub knowledge = the transferable
-version). Keep `NOTES.md` lean: a line earns its place only if it saves a future session real work.
+otherwise re-learn the hard way, append **one line** (with an `exp-NNN`/`run_id` evidence pointer)
+to the right `NOTES.md` section — pick by which of the three write-back operators the moment earned:
+a **CORRECTION** (an approach tried and abandoned + why, especially on a kill or budget-exhaust →
+"Tried & abandoned"), a **RECIPE** (a result/keeper that's now settled → "What worked / settled
+here"), or an environment/data gotcha + its fix → "Gotchas & fixes". This is a project-local cache,
+append-only; it does **not** replace the hub promotion below — a durable *cross-project* lesson goes
+to **both** (NOTES.md = "don't repeat this *here*"; hub knowledge = the transferable version, where
+the same operators land as FAILURES / FINDINGS / OPEN-QUESTIONS). Keep `NOTES.md` lean: a line earns
+its place only if it saves a future session real work.
 
 Then findings flow back to the hub. **The normal path** (hub reachable — `hub_path` is in
 `control.yaml`): one atomic call —

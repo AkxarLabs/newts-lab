@@ -6,6 +6,7 @@
     uv run --with pyyaml python tools/guard.py state <slug> <from> <to>
     uv run --with pyyaml python tools/guard.py append-only <slug | project-path>
     uv run --with pyyaml python tools/guard.py writeback <slug>
+    uv run --with pyyaml python tools/guard.py evolve <slug>
     uv run --with pyyaml python tools/guard.py decisions <slug> [--strict]
     uv run --with pyyaml python tools/guard.py plan-trace <slug>
 
@@ -176,6 +177,56 @@ def _ledger_files(target: str):
             if f.exists():
                 files.append(f)
     return pdir, files
+
+
+def _knowledge_has(name: str, slug: str) -> bool:
+    """A hub knowledge file carries a line promoted for this slug (hub_writeback tags them `(slug)`)."""
+    f = LAB / "knowledge" / name
+    return f.exists() and f"({slug})" in f.read_text(encoding="utf-8-sig")
+
+
+def _notes_section_filled(pdir: Path | None, needle: str) -> bool:
+    """True if the project NOTES.md section whose heading contains `needle` has a real line —
+    not the `*(none yet)*` placeholder and not the example HTML comment (single- or multi-line)."""
+    notes = (pdir / "NOTES.md") if pdir else None
+    if not notes or not notes.exists():
+        return False
+    in_sec, in_comment = False, False
+    for ln in notes.read_text(encoding="utf-8-sig").splitlines():
+        s = ln.strip()
+        if in_comment:
+            in_comment = "-->" not in s
+            continue
+        if s.startswith("<!--"):
+            in_comment = "-->" not in s
+            continue
+        if s.startswith("## "):
+            in_sec = needle.lower() in s.lower()
+        elif in_sec and s and "none yet" not in s.lower() and not s.startswith("#"):
+            return True
+    return False
+
+
+def c_evolve(a) -> int:
+    """The triggered write-back operators (rule 11) fired where the state demands them: a KILL must
+    leave a CORRECTION (a failed direction + reason, so the next project doesn't retry it), and a
+    project that reached the results half should leave a RECIPE (a settled keeper). A DIRECTION
+    (feasible next thread) is opportunistic, never forced. Read-only."""
+    row = _row(a.slug)
+    if not row:
+        return _verdict(2, f"no registry row for {a.slug} — nothing to check")
+    state = (row.get("state") or "").lower()
+    pdir = _project_dir(a.slug, row)
+    correction = _knowledge_has("FAILURES.md", a.slug) or _notes_section_filled(pdir, "abandoned")
+    recipe = _knowledge_has("FINDINGS.md", a.slug) or _notes_section_filled(pdir, "worked")
+    if state == "killed" and not correction:
+        return _verdict(1, f"{a.slug} is killed but no CORRECTION recorded — add a FAILURES.md entry "
+                           "(or NOTES.md 'Tried & abandoned') so the next project doesn't retry it")
+    if state in ("analysis", "writing", "internal-review", "final") and not recipe:
+        return _verdict(2, f"{a.slug} reached {state} but no RECIPE distilled — add a FINDINGS.md entry "
+                           "(or NOTES.md 'What worked / settled here')")
+    return _verdict(0, f"write-back operators satisfied for {a.slug} (state={state}; "
+                       f"correction={'y' if correction else '—'}, recipe={'y' if recipe else '—'})")
 
 
 def c_append_only(a) -> int:
@@ -361,7 +412,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="mechanical lifecycle guards")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name, fn in [("spawn", c_spawn), ("full-run", c_full_run), ("frozen", c_frozen),
-                     ("writeback", c_writeback), ("plan-trace", c_plan_trace)]:
+                     ("writeback", c_writeback), ("evolve", c_evolve), ("plan-trace", c_plan_trace)]:
         p = sub.add_parser(name)
         p.add_argument("slug")
         p.set_defaults(fn=fn)
