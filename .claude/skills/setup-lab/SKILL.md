@@ -33,15 +33,17 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   (reviewer_model→fresh-context-reviewer, runner_model→experiment-runner,
   overseer_model→overseer); `critic_model` maps to no file (inline subagents — can't apply).
 - **Headless launch backend** (matters once you run programmatic / multi-project autonomy —
-  `agents.programmatic`): which backend (`claude` default, or `codex`), and the per-backend
-  **default model + reasoning effort**? Ship-defaults are claude `claude-opus-4-8` at `--effort
-  high` and codex `gpt-5.5` at `medium` reasoning — confirm or change per the PI's account/quota
-  (codex model availability is auth-dependent; verify the slug on the host). Also the **permission
-  posture** — claude `permission_mode: auto` + the project allowlist, codex `sandbox:
-  workspace-write` + `approval: never` — keep the human-in-loop defaults unless the PI wants
-  stricter (`dontAsk`) or needs network for codex (`network_access: true`). → write
-  `agents.programmatic.backend` and `agents.programmatic.backends.{claude,codex}.{model,effort/
-  reasoning_effort,…}`.
+  `agents.programmatic`): which backend — `claude` (default), `codex`, or `opencode` (the last two
+  are **optional installs**, needed only if selected) — and the per-backend **default model +
+  reasoning effort**? Ship-defaults are claude `claude-opus-4-8` at `--effort high` and codex
+  `gpt-5.5` at `medium`; opencode ships blank (set a `provider/model` slug like
+  `anthropic/claude-sonnet-4-5` + optional `--variant` effort once its provider is authed). Confirm
+  or change per the PI's account/quota (codex/opencode model availability is auth-dependent; verify
+  the slug on the host, and run `opencode auth login` if chosen). Also the **permission posture** —
+  claude `permission_mode: auto` + the project allowlist, codex `sandbox: workspace-write` +
+  `approval: never`, opencode's defaults (in-repo allow + out-of-repo auto-deny) — keep the
+  human-in-loop defaults unless the PI wants stricter or wider. → write `agents.programmatic.backend`
+  and `agents.programmatic.backends.{claude,codex,opencode}.{model,effort/reasoning_effort/variant,…}`.
 - Semantic Scholar API key? (Free with an institutional email — strongly recommended;
   keyless access is saturated.) → tell them to set `S2_API_KEY`; same for
   `OPENALEX_API_KEY`.

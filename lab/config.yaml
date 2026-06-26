@@ -45,8 +45,9 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # /configure, or transitively under a signed /autopilot brief) to let
                                 # agent_runner launch headless top-level agents. Required for
                                 # autopilot.max_concurrent_projects > 1.
-    backend: claude             # default backend: claude | codex. Default ALL to claude. (codex needs
-                                # the `codex` CLI + auth; per-launch override via --backend.)
+    backend: claude             # default backend: claude | codex | opencode. Default ALL to claude.
+                                # (codex/opencode are OPTIONAL installs, needed only when selected — each
+                                # needs its own CLI + auth; per-launch override via --backend.)
     model: inherit              # GLOBAL model override across backends. inherit/blank = each backend uses
                                 # its own backends.<x>.model default below; a real value here forces ALL.
     permission_mode: auto       # claude --permission-mode. `auto` broadly auto-approves work INSIDE
@@ -105,6 +106,27 @@ agents:                         # ── subagent settings · PI-owned ──
         extra_args: ""          # appended to `codex exec` (advanced; --sandbox / -a /
                                 # --dangerously-bypass-approvals-and-sandbox / --yolo are refused — use
                                 # the sandbox / approval keys above)
+      opencode:                 # SST opencode (`opencode run --format json`). OPTIONAL install — only
+                                # needed if selected: `curl -fsSL https://opencode.ai/install | bash` (or
+                                # `npm i -g opencode-ai`), then `opencode auth login`. Binary: `opencode`.
+        model: ""               # opencode -m. MUST be provider/model form, e.g. anthropic/claude-sonnet-4-5
+                                # or openai/gpt-5.1 (a bare id is rejected). Blank = opencode's own default.
+        variant: ""             # opencode --variant: provider-specific reasoning effort (Anthropic high|
+                                # max; OpenAI none|minimal|low|medium|high|xhigh; Google low|high). Blank =
+                                # model default. This is opencode's --effort analogue.
+        permission: ""          # autonomous posture (via the OPENCODE_PERMISSION env, not a flag). BLANK =
+                                # opencode's defaults, which already match codex workspace-write: bash/edit
+                                # allow (autonomous in-repo) + external_directory auto-deny (contained out of
+                                # repo). `allow` = force FULL allow (removes the out-of-repo boundary); or a
+                                # YAML object like {bash: {"*": allow, "rm -rf *": deny}, edit: allow} for
+                                # fine-grained hardening. PI-owned. NB: opencode has no OS sandbox.
+        agent: ""               # optional: pin a primary orchestrator agent shipped in the project's
+                                # .opencode/agents/ (mode: primary). Blank = opencode's built-in agent.
+        skip_permissions: false # also pass --dangerously-skip-permissions. Default OFF: that flag is
+                                # version-dependent (an open request on some builds); the env above is the
+                                # stable control. Turn on only if a host smoke shows the env alone stalls.
+        extra_args: ""          # appended to `opencode run` (advanced; --format / --dir /
+                                # --dangerously-skip-permissions are refused — use the keys above)
 
 autopilot:                      # ── /autopilot campaign defaults · PI-owned ──
   max_concurrent_projects: 1    # how many projects /autopilot drives end-to-end AT ONCE. 1 (default) =

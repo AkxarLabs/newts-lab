@@ -253,6 +253,53 @@ def test_per_backend_model_and_effort_defaults():
     assert cc2[cc2.index("--model") + 1] == "claude-sonnet-4-6"
 
 
+def test_build_command_opencode(hub, monkeypatch):
+    from pathlib import Path
+    import pytest
+    m, proj = _setup(hub, monkeypatch)
+    prog = {"backends": {"opencode": {}}}
+    cmd, fires = m._build_command("opencode", "do X", proj, "inherit", "auto", prog)
+    assert cmd[:6] == ["opencode", "run", "do X", "--format", "json", "--dir"]
+    assert cmd[6] == str(proj)
+    assert fires is False                                     # opencode needs a synthesized worker log
+    assert "--model" not in cmd                               # inherit + blank backend model -> no -m
+    # model (provider/model form) + variant + skip_permissions all flow from the backend cfg
+    prog2 = {"backends": {"opencode": {
+        "model": "anthropic/claude-sonnet-4-5", "variant": "high", "skip_permissions": True}}}
+    cmd2, _ = m._build_command("opencode", "hi", proj, "inherit", "auto", prog2)
+    assert cmd2[cmd2.index("--model") + 1] == "anthropic/claude-sonnet-4-5"
+    assert cmd2[cmd2.index("--variant") + 1] == "high"
+    assert "--dangerously-skip-permissions" in cmd2
+    # default (no skip_permissions) omits the version-dependent flag
+    cmd3, _ = m._build_command("opencode", "hi", proj, "inherit", "auto", prog)
+    assert "--dangerously-skip-permissions" not in cmd3
+    # the launcher owns --format/--dir/--dangerously-skip-permissions: refused in extra_args
+    for bad in ("--format text", "--dir /tmp", "--dangerously-skip-permissions"):
+        progx = {"backends": {"opencode": {"extra_args": bad}}}
+        with pytest.raises(SystemExit):
+            m._build_command("opencode", "hi", proj, "inherit", "auto", progx)
+
+
+def test_parse_activity_opencode_shape(hub, monkeypatch):
+    """opencode NDJSON: sessionID on every line, tool_use -> action, text -> result (last wins on EOF)."""
+    m, _ = _setup(hub, monkeypatch)
+    a = m._parse_activity("opencode", {"type": "step_start", "sessionID": "ses_AB", "part": {}})
+    assert a["event"] == "start" and a["session_id"] == "ses_AB"
+    a = m._parse_activity("opencode", {"type": "tool_use", "sessionID": "ses_AB", "part": {
+        "tool": "bash", "state": {"status": "completed", "title": "Print hi", "input": {"command": "echo hi"}}}})
+    assert a["event"] == "action" and a["tool"] == "bash" and "Print hi" in a["summary"] and a["session_id"] == "ses_AB"
+    a = m._parse_activity("opencode", {"type": "text", "sessionID": "ses_AB", "part": {"text": "All done."}})
+    assert a["event"] == "result" and a["last_message"] == "All done." and a["session_id"] == "ses_AB"
+    a = m._parse_activity("opencode", {"type": "step_finish", "sessionID": "ses_AB", "part": {"reason": "stop"}})
+    assert a["session_id"] == "ses_AB" and a["event"] != "result"   # never relied on for last_message
+    a = m._parse_activity("opencode", {"type": "error", "sessionID": "ses_AB",
+                                       "error": {"name": "APIError", "data": {"message": "rate limit"}}})
+    assert a["event"] == "result" and "rate limit" in a["last_message"]
+    # defensive: a tool_use missing the nested fields must not raise
+    a = m._parse_activity("opencode", {"type": "tool_use", "sessionID": "ses_AB", "part": {}})
+    assert a["event"] == "action" and not a["tool"]
+
+
 def test_per_backend_safety_knobs_are_configurable(hub, monkeypatch):
     """Every safety flag the guard refuses in extra_args is settable via its dedicated per-backend key."""
     m, proj = _setup(hub, monkeypatch)
@@ -289,6 +336,43 @@ def test_project_settings_ship_engine_allowlist():
     assert "Bash" not in allow and "Bash()" not in allow
     # hooks must survive alongside the new permissions block (trace_hook → dashboard).
     assert settings.get("hooks", {}).get("SessionStart")
+
+
+# A portable emitter that mimics `opencode run --format json` NDJSON — note: NO terminal step_finish
+# (the documented dropped-event case), so this proves last_message is finalized on stdout EOF.
+_OPENCODE_EMITTER = textwrap.dedent(
+    """\
+    import json, sys
+    for obj in [
+        {"type": "step_start", "sessionID": "ses_AB", "part": {"type": "step-start"}},
+        {"type": "tool_use", "sessionID": "ses_AB", "part": {"tool": "bash",
+            "state": {"status": "completed", "title": "smoke", "input": {"command": "python run.py"}}}},
+        {"type": "text", "sessionID": "ses_AB", "part": {"text": "smoke green; cv=0.91"}},
+    ]:
+        sys.stdout.write(json.dumps(obj) + "\\n")
+    sys.stdout.flush()
+    """
+)
+
+
+def test_opencode_end_to_end_via_dummy_emitter(hub, monkeypatch):
+    """cmd_launch must route backend='opencode' through the opencode parser, set the env, and
+    finalize last_message on EOF — captured into the manifest + the synthesized worker log."""
+    m, proj = _setup(hub, monkeypatch)
+    emitter = hub.root / "oc_emitter.py"
+    emitter.write_text(_OPENCODE_EMITTER, encoding="utf-8")
+    # Focus on the launch+parse integration (the real opencode argv is covered separately): make
+    # _build_command yield a portable emitter while keeping fires_hooks=False (synthesized worker log).
+    monkeypatch.setattr(m, "_build_command", lambda *a, **k: ([sys.executable, str(emitter)], False))
+    rc = m.cmd_launch(_launch_args(backend="opencode"))
+    assert rc == 0
+    man = json.loads(next((proj / ".bus" / "agents").glob("*.json")).read_text(encoding="utf-8"))
+    assert man["status"] == "completed"
+    assert man["session_id"] == "ses_AB"                       # sessionID rides every line
+    assert man["last_message"] == "smoke green; cv=0.91"       # final `text`, finalized on EOF
+    wlog = next((proj / ".bus" / "workers").glob("*.jsonl"))
+    events = [ln.get("event") for ln in _read_jsonl(wlog)]
+    assert events[0] == "start" and events[-1] == "stop" and events.count("action") == 1  # one tool_use
 
 
 # ── watchdog: a backend that overruns max_minutes is KILLED and recorded 'timeout' ─

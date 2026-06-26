@@ -71,7 +71,7 @@ The lock on the door behind the prose: the highest-risk rules turned into checks
 uv run --with pyyaml python tools/agent_runner.py <launch|list|kill|reconcile> --project <slug> [--prompt-file <f>]
 ```
 
-The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p` / `codex exec`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. See [Autonomy & modes](autonomy.md).
+The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p`, or the optional `codex exec` / `opencode run`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. See [Autonomy & modes](autonomy.md).
 
 > The remaining helpers are contextual and documented where they're used: `lab_bus.py` (the event bus) and `trace_hook.py` in [Dashboard](dashboard.md); `hub_writeback.py` / `process_writebacks.py` (project→hub write-back) and `lock_artifacts.py` / `sync_figures.py` (finalization) in [Projects](projects.md).
 

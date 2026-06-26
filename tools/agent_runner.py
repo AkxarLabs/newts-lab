@@ -1,14 +1,14 @@
 """Launch a headless TOP-LEVEL agent into a project repo and capture everything it does.
 
     uv run --with pyyaml python tools/agent_runner.py launch --project <slug|path> \
-        --prompt-file <f> [--role R] [--label L] [--backend claude|codex] [--model M]
+        --prompt-file <f> [--role R] [--label L] [--backend claude|codex|opencode] [--model M]
     uv run --with pyyaml python tools/agent_runner.py list      --project <slug|path>
     uv run --with pyyaml python tools/agent_runner.py reconcile --project <slug|path>
     uv run --with pyyaml python tools/agent_runner.py kill      --project <slug|path> [--agent ID | --all]
 
 The hub orchestrator (e.g. an `/autopilot` coordinator) calls `launch` to spin up ONE headless
-session **per project** — a **top-level session** (`claude -p` / `codex exec`), NOT a nested
-subagent — so it sidesteps the no-nested-subagents rule and can itself spawn its own
+session **per project** — a **top-level session** (`claude -p` / `codex exec` / `opencode run`), NOT a
+nested subagent — so it sidesteps the no-nested-subagents rule and can itself spawn its own
 experiment-runner subagents. It runs in the project's cwd, so the project's `.claude/settings.json`
 hooks + `run.py` already emit run/worker signals into `<project>/.bus/` (the dashboard catches them
 live). On top of that, this tool persists, so **nothing is lost** even on a crash:
@@ -16,7 +16,7 @@ live). On top of that, this tool persists, so **nothing is lost** even on a cras
   - `<project>/.bus/agents/<id>.json`        — a manifest (status running→terminal, pid, timing)
   - `agent_launched` / `agent_finished`      — bus events on the project bus
   - a synthesized `<project>/.bus/workers/<id>.jsonl` worker log for backends that DON'T fire
-    Claude Code hooks (codex), so they still render as a dashboard sprite (claude relies on hooks).
+    Claude Code hooks (codex, opencode), so they still render as a dashboard sprite (claude relies on hooks).
 
 Safety (the lab is "full autonomy WITH many human-intervention points"):
   - **PI-owned opt-in:** refuses unless `agents.programmatic.enabled: true` (default OFF).
@@ -274,12 +274,30 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
         if extra:
             cmd += extra.split()
         return cmd, False
+    if backend == "opencode":
+        # `opencode run <prompt> --format json` is the non-interactive entrypoint; it streams NDJSON to
+        # stdout and exits when idle. Autonomy is NOT a flag — opencode's defaults already give the codex
+        # posture (bash/edit allow = autonomous in-repo; external_directory auto-deny = contained), and the
+        # override rides OPENCODE_PERMISSION in the child env (set in cmd_launch), not extra_args.
+        _guard_extra(("--dangerously-skip-permissions", "--dir", "--format"))
+        cmd = ["opencode", "run", prompt, "--format", "json", "--dir", str(pdir)]
+        if eff_model and eff_model != "inherit":
+            cmd += ["--model", str(eff_model)]   # MUST be provider/model form, e.g. anthropic/claude-...
+        if bcfg.get("variant"):
+            cmd += ["--variant", str(bcfg["variant"])]   # opencode's reasoning-effort analogue
+        if bcfg.get("agent"):
+            cmd += ["--agent", str(bcfg["agent"])]       # pin a primary orchestrator agent (optional)
+        if bcfg.get("skip_permissions"):   # version-dependent flag; the stable control is the env above
+            cmd += ["--dangerously-skip-permissions"]
+        if extra:
+            cmd += extra.split()
+        return cmd, False
     if backend == "_dummy":  # test backend: a portable JSONL emitter configured in lab/config.yaml
         c = bcfg.get("command")
         if not c:
             raise SystemExit("_dummy backend needs agents.programmatic.backends._dummy.command")
         return (c if isinstance(c, list) else str(c).split()), False
-    raise SystemExit(f"[agent_runner] unknown backend {backend!r} (claude | codex)")
+    raise SystemExit(f"[agent_runner] unknown backend {backend!r} (claude | codex | opencode)")
 
 
 def _parse_activity(backend: str, obj: dict) -> dict | None:
@@ -300,6 +318,27 @@ def _parse_activity(backend: str, obj: dict) -> dict | None:
         if t == "result":
             return {"event": "result", "last_message": obj.get("result"), "session_id": obj.get("session_id")}
         return None
+    if backend == "opencode":
+        # `opencode run --format json` emits NDJSON: each line {type, timestamp, sessionID, ...data},
+        # type ∈ {step_start, step_finish, tool_use, text, reasoning, error}. There is NO init event and
+        # NO single result envelope — sessionID rides EVERY line, and the final message is the LAST `text`
+        # part (the terminal step_finish can be dropped, so finalize on stdout EOF, never on a sentinel).
+        # Nested part.* paths are community-sourced — every access is defensive (.get).
+        sid = obj.get("sessionID")
+        part = obj.get("part") or {}
+        if t == "tool_use":
+            state = part.get("state") or {}
+            summary = state.get("title") or state.get("input") or part.get("tool")
+            return {"event": "action", "tool": part.get("tool"), "kind": "tool",
+                    "summary": str(summary or "")[:200], "session_id": sid}
+        if t == "text" and part.get("text"):
+            return {"event": "result", "last_message": str(part["text"]), "session_id": sid}
+        if t == "error":
+            err = obj.get("error") or {}
+            msg = (err.get("data") or {}).get("message") or err.get("name") or "opencode error"
+            return {"event": "result", "last_message": f"[error] {msg}", "session_id": sid}
+        # step_start / step_finish / reasoning / unknown: capture session_id only, no activity line
+        return {"event": "start", "status": "working", "session_id": sid} if sid else None
     # codex (and the _dummy test backend mimics codex's ThreadEvent JSONL shape)
     if t in ("thread.started",):
         return {"event": "start", "status": "working",
@@ -391,17 +430,30 @@ def cmd_launch(a) -> int:
 
     env = dict(os.environ)
     env[_DEPTH_ENV] = str(depth + 1)
+    if backend == "opencode":
+        env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "1")   # no mid-run autoupdate in a headless launch
+        operm = ((prog.get("backends") or {}).get("opencode") or {}).get("permission")
+        if operm:   # blank = opencode's defaults (in-repo allow + external_directory auto-deny = contained)
+            env["OPENCODE_PERMISSION"] = json.dumps(operm)   # string "allow" or a full {bash,edit,…} object
     print(f"[agent_runner] launching {backend} agent '{agent_id}' in {pdir.name} (depth {depth + 1})", flush=True)
     try:
-        proc = subprocess.Popen(cmd, cwd=str(pdir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        # stdin=DEVNULL: a headless launch must never inherit the orchestrator's stdin (and it heads off
+        # the opencode --format json first-readline hang seen when stdin is a live tty).
+        proc = subprocess.Popen(cmd, cwd=str(pdir), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace", env=env, **_NEW_GROUP)
     except FileNotFoundError:
         manifest.update(status="failed", finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
                         last_message=f"backend CLI not found on PATH: {cmd[0]}")
         _write_manifest(manifest_path, manifest)
         _emit(pdir, "agent_finished", detail=agent_id, status="failed", data={"reason": "cli-not-found"})
-        print(f"[agent_runner] FAILED: backend CLI '{cmd[0]}' not found on PATH "
-              f"({'install/login the Claude CLI' if backend == 'claude' else 'install/auth the codex CLI'}).")
+        hint = {
+            "claude": "install/login the Claude CLI",
+            "codex": "install/auth the codex CLI",
+            "opencode": "install opencode (curl -fsSL https://opencode.ai/install | bash, or "
+                        "npm i -g opencode-ai) then 'opencode auth login'",
+        }.get(backend, "install the backend CLI")
+        print(f"[agent_runner] FAILED: backend CLI '{cmd[0]}' not found on PATH ({hint}).")
         return 1
 
     manifest["pid"] = proc.pid
@@ -544,7 +596,7 @@ def main() -> int:
     p.add_argument("--prompt-file", help="file containing the instruction")
     p.add_argument("--role", default=None, help="worker role label (default: orchestrator)")
     p.add_argument("--label", default=None, help="agent id prefix (default: the role)")
-    p.add_argument("--backend", default=None, choices=("claude", "codex"),
+    p.add_argument("--backend", default=None, choices=("claude", "codex", "opencode"),
                    help="override agents.programmatic.backend")
     p.add_argument("--model", default=None, help="override the backend model")
     p.set_defaults(fn=cmd_launch)

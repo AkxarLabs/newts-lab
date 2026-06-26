@@ -194,9 +194,16 @@ uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project 
 ```
 
 - **Backends, via config (default claude).** `agents.programmatic.backend: claude` runs `claude -p`
-  (headless); `codex` runs `codex exec`. Each launched agent is a **top-level** session in the
-  project's cwd (so it *can* spawn its own experiment-runners) — **not** a nested subagent — and is
-  **depth-capped** (`max_depth: 1`) so it can't launch more.
+  (headless); `codex` runs `codex exec`; `opencode` runs `opencode run --format json`. Each launched
+  agent is a **top-level** session in the project's cwd (so it *can* spawn its own experiment-runners /
+  subagents) — **not** a nested subagent — and is **depth-capped** (`max_depth: 1`) so it can't launch
+  more. **codex and opencode are OPTIONAL installs** — only the selected backend's CLI need be present;
+  claude is the default and the only one assumed installed. A missing CLI fails the launch cleanly (the
+  launcher prints the install command), launches nothing, and never blocks the lab. opencode parses to
+  the same per-tool activity / session / last-message contract as codex (its NDJSON `--format json`
+  stream), so it renders as a live dashboard sprite identically; its autonomous posture comes from
+  opencode's own defaults (in-repo allow, out-of-repo auto-deny — the codex `workspace-write` analogue),
+  tunable via `backends.opencode.permission`.
 - **Permissions: `auto` + an engine allowlist, blocked ops escalate.** A launched Claude agent runs
   `--permission-mode auto` (`agents.programmatic.permission_mode`), which broadly auto-approves work
   inside the project repo yet still blocks dangerous ops (curl|bash, force-push, destructive git,
