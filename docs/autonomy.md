@@ -205,7 +205,12 @@ uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project 
   blocked op is **denied, never silently bypassed**, and the agent raises a `lab_bus.py escalate` the PI
   answers via a dashboard directive — the existing human-in-loop channel, no per-call approval UI needed.
   (`bypassPermissions` is deliberately *not* the default; `dontAsk` is the stricter fail-closed
-  alternative if a project wants only the allowlist to run.)
+  alternative if a project wants only the allowlist to run.) A **Codex** agent gets the equivalent from
+  its OS-enforced sandbox: `--sandbox workspace-write -a never` (edit + run inside the repo, network off
+  by default; a sandbox-forbidden op fails and escalates the same way). Every one of these safety knobs is
+  a **dedicated per-backend config key** — `agents.programmatic.permission_mode` (and
+  `backends.claude.permission_mode`), `backends.codex.{sandbox,approval,network_access}` — so they can be
+  tuned as needed; the same flags are *refused* in `extra_args` so they can't be smuggled past review.
 - **Nothing is lost.** Running in the project cwd means the project's `.claude/settings.json` hooks
   (Claude backends) and `run.py` already emit run/worker signals into `<project>/.bus/`. On top of
   that the launcher persists the **full stdout transcript** (`<project>/.bus/agents/<id>.stream.jsonl`),

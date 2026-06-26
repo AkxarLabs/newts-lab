@@ -221,13 +221,38 @@ def test_extra_args_protected_flag_refused(hub, monkeypatch):
 def test_build_command_claude_and_codex(hub, monkeypatch):
     m, proj = _setup(hub, monkeypatch)
     prog = m._prog_cfg()
-    claude_cmd, fires = m._build_command("claude", "hi", proj, "inherit", "acceptEdits", prog)
+    claude_cmd, fires = m._build_command("claude", "hi", proj, "inherit", "auto", prog)
     assert claude_cmd[:2] == ["claude", "-p"] and "--output-format" in claude_cmd
     assert "stream-json" in claude_cmd and fires is True     # claude fires hooks
-    codex_cmd, fires2 = m._build_command("codex", "hi", proj, "gpt-5", "acceptEdits", prog)
+    assert claude_cmd[claude_cmd.index("--permission-mode") + 1] == "auto"  # launch default flows through
+    codex_cmd, fires2 = m._build_command("codex", "hi", proj, "gpt-5", "auto", prog)
     assert codex_cmd[:2] == ["codex", "exec"] and "--json" in codex_cmd
     assert "-C" in codex_cmd and ["-m", "gpt-5"] == codex_cmd[codex_cmd.index("-m"):codex_cmd.index("-m") + 2]
+    assert codex_cmd[codex_cmd.index("-a") + 1] == "never"    # codex approval default
+    assert codex_cmd[codex_cmd.index("--sandbox") + 1] == "workspace-write"
+    assert "-c" not in codex_cmd                              # network off by default (no -c override)
     assert fires2 is False                                    # codex needs a synthesized worker log
+
+
+def test_per_backend_safety_knobs_are_configurable(hub, monkeypatch):
+    """Every safety flag the guard refuses in extra_args is settable via its dedicated per-backend key."""
+    m, proj = _setup(hub, monkeypatch)
+    prog = m._prog_cfg()
+    backends = prog.setdefault("backends", {})
+    backends.setdefault("claude", {})["permission_mode"] = "plan"      # overrides the launch default
+    cx = backends.setdefault("codex", {})
+    cx["approval"] = "untrusted"
+    cx["sandbox"] = "read-only"
+    cx["network_access"] = True
+
+    claude_cmd, _ = m._build_command("claude", "hi", proj, "inherit", "auto", prog)
+    assert claude_cmd[claude_cmd.index("--permission-mode") + 1] == "plan"  # per-backend key wins
+
+    codex_cmd, _ = m._build_command("codex", "hi", proj, "inherit", "auto", prog)
+    assert codex_cmd[codex_cmd.index("-a") + 1] == "untrusted"
+    assert codex_cmd[codex_cmd.index("--sandbox") + 1] == "read-only"
+    assert ["-c", "sandbox_workspace_write.network_access=true"] == \
+        codex_cmd[codex_cmd.index("-c"):codex_cmd.index("-c") + 2]      # opt-in network override emitted
 
 
 # ── headless permission contract: the project ships an engine allowlist ────────────

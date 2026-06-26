@@ -59,7 +59,7 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # bus and the PI answers via a directive. NOT bypassPermissions.
                                 # (Fail-safe: in headless -p, repeated blocks abort the session — the
                                 #  allowlist keeps routine work from ever tripping it.)
-                                # (codex uses sandbox below, runs -a never.)
+                                # (codex uses the sandbox + approval keys below, not this knob.)
     max_minutes: 240            # wall-clock cap per launched agent — the watchdog kills the tree on breach
     max_concurrent: 3           # PER-PROJECT ceiling on concurrently-launched agents. Lab-wide fleet
                                 # size ≈ autopilot.max_concurrent_projects × this; the expensive part
@@ -68,20 +68,34 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # launch further agents (mirrors the no-nested-subagents rule)
     max_transcript_mb: 200      # cap each agent's stored stdout transcript (.bus/agents/*.stream.jsonl);
                                 # a runaway/looping agent can't fill the disk before the watchdog. 0 = unlimited.
-    backends:                   # per-backend invocation knobs (agent_runner knows the flag grammar)
+    backends:                   # per-backend invocation knobs. The safety-critical flags are REFUSED in
+                                # extra_args (so they can't silently negate human-in-loop); set them
+                                # through these DEDICATED keys instead — change as needed.
       claude:
-        extra_args: ""          # appended to the `claude -p` invocation (advanced)
+        permission_mode: ""     # per-backend override of programmatic.permission_mode above (blank =
+                                # use that default). e.g. `acceptEdits` / `plan` / `dontAsk` /
+                                # `bypassPermissions` (PI-owned) for the claude backend only.
+        extra_args: ""          # appended to `claude -p` (advanced; --permission-mode and
+                                # --dangerously-skip-permissions are refused — use permission_mode above)
       codex:
         sandbox: workspace-write  # codex --sandbox — the codex equivalent of claude's auto+allowlist.
                                 # workspace-write = OS-enforced sandbox: edit files + run commands
                                 # INSIDE the repo, network OFF by default (a HARDER boundary than the
-                                # claude classifier, so codex needs no allowlist). Launched with
-                                # `-a never` (no approval prompts; fixed — the only sane value for
-                                # non-interactive `codex exec`): a sandbox-forbidden op FAILS and the
-                                # agent escalates it to the bus — codex exec has no per-call human
-                                # approval routing. read-only = stricter; danger-full-access removes the
-                                # boundary entirely (PI-owned escape hatch — avoid).
-        extra_args: ""
+                                # claude classifier, so codex needs no allowlist). Paired with the
+                                # `approval` key below (default `never`): a sandbox-forbidden op FAILS
+                                # and the agent escalates it to the bus — codex exec has no per-call
+                                # human approval routing. read-only = stricter; danger-full-access
+                                # removes the boundary entirely (PI-owned escape hatch — avoid).
+        approval: never         # codex -a (--ask-for-approval): `never` = autonomous headless (the only
+                                # sane value for codex exec — `on-request`/`untrusted` are interactive
+                                # and will stall or fail in exec). PI-owned.
+        network_access: false   # workspace-write turns network OFF by default; set true to let codex
+                                # reach the network for a genuine need (passes
+                                # `-c sandbox_workspace_write.network_access=true`). PI-owned capability
+                                # widening; the codex config key is version-dependent — verify if it errors.
+        extra_args: ""          # appended to `codex exec` (advanced; --sandbox / -a /
+                                # --dangerously-bypass-approvals-and-sandbox / --yolo are refused — use
+                                # the sandbox / approval keys above)
 
 autopilot:                      # ── /autopilot campaign defaults · PI-owned ──
   max_concurrent_projects: 1    # how many projects /autopilot drives end-to-end AT ONCE. 1 (default) =

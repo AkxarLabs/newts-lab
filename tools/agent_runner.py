@@ -246,18 +246,23 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
 
     if backend == "claude":
         _guard_extra(("--permission-mode", "--dangerously-skip-permissions"))
+        mode = bcfg.get("permission_mode") or permission_mode   # per-backend key overrides the launch default
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose"]
         if model and model != "inherit":
             cmd += ["--model", str(model)]
-        if permission_mode:
-            cmd += ["--permission-mode", str(permission_mode)]
+        if mode:
+            cmd += ["--permission-mode", str(mode)]
         if extra:
             cmd += extra.split()
         return cmd, True
     if backend == "codex":
         _guard_extra(("--sandbox", "-a", "--ask-for-approval", "--dangerously-bypass-approvals-and-sandbox", "--yolo"))
-        cmd = ["codex", "exec", prompt, "--json", "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
-               "-a", "never", "--skip-git-repo-check", "-C", str(pdir)]
+        cmd = ["codex", "exec", prompt, "--json",
+               "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
+               "-a", str(bcfg.get("approval") or "never"),
+               "--skip-git-repo-check", "-C", str(pdir)]
+        if bcfg.get("network_access"):   # workspace-write disables network by default; opt-in per genuine need
+            cmd += ["-c", "sandbox_workspace_write.network_access=true"]
         if model and model != "inherit":
             cmd += ["-m", str(model)]
         if extra:
@@ -336,7 +341,7 @@ def cmd_launch(a) -> int:
 
     backend = a.backend or prog.get("backend") or "claude"
     model = a.model or prog.get("model") or "inherit"
-    perm = prog.get("permission_mode") or "acceptEdits"
+    perm = prog.get("permission_mode") or "auto"
     role = a.role or "orchestrator"
     # A headless agent ALWAYS has a wall-clock cap — 0/unset is the default, never "unbounded"
     # (the watchdog is the only kill for a hung/non-terminating child, so it must always run).
