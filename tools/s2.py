@@ -1,16 +1,25 @@
-"""Literature API helper — Semantic Scholar (primary) with OpenAlex fallback.
+"""Literature API helper — Semantic Scholar primary, with keyless DOI fallbacks + OpenAlex.
 
     uv run --with pyyaml python tools/s2.py search "small language model distillation" [--limit 10] [--year 2023:] [--bulk]
-    uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066
+    uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
+    uv run --with pyyaml python tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
     uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
+    uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper          # every \\cite traces to bib + lit-review
 
-Why: replayable, logged literature searches for /lit-review and /scope, mechanical
-BibTeX from paper ids for /write-paper, and zero-assumption citation verification for
-/review-paper (every bib entry checked against the real record; retractions via
-OpenAlex `is_retracted`). LLM-free-generated citations are fabricated at ~18% (GPT-4
-class) — verification is mandatory, not optional.
+Why: replayable, logged literature searches for /lit-review and /scope; mechanical BibTeX from
+paper ids for /write-paper (no hand-typed entries); zero-assumption citation verification for
+/review-paper (every bib entry checked against the real record; retractions via OpenAlex
+`is_retracted`); and a cite-from-lit-review lint. LLM-free-generated citations are fabricated at
+~18% (GPT-4 class) — generation and verification are mechanical, not optional.
 
-Keys (optional but recommended — keyless S2 shares a saturated global pool):
+BibTeX resolution chain — all KEYLESS except the optional S2 key: Semantic Scholar `citationStyles`
+→ doi.org content-negotiation (`Accept: application/x-bibtex`) → Crossref transform → OpenAlex
+(reconstructed from fields). arXiv ids resolve via their DataCite DOI (`10.48550/arXiv.<id>`). When a
+paper has no usable id/DOI, the intended fallback is AGENTIC: web-search the title for its DOI, then
+`s2.py bibtex DOI:<doi> --append <bibfile>` fills the entry and returns the cite-key — you supply the
+DOI, the script does the rest. Never hand-type a BibTeX entry.
+
+Keys (optional — keyless works, just rate-limited):
     S2_API_KEY        header x-api-key (free: semanticscholar.org/product/api)
     OPENALEX_API_KEY  param api_key (free account: openalex.org; required since 2026-02)
 
@@ -19,6 +28,8 @@ Exit codes (verify): 0 all verified · 2 title/year mismatches only · 1 not-fou
 Exit codes (search): 0 results (or a genuinely empty literature) · 3 BOTH backends
 unreachable — an empty result then is NOT evidence of absence (matters for /lit-review's
 novelty verdict).
+Exit codes (citecheck): 0 every \\cite resolves to a bib entry AND a lit-review note · 1 a DANGLING
+cite (no bib entry — LaTeX would fail) · 2 UNGROUNDED cite(s) (no lit-review note — confirm by hand).
 stdlib only (urllib); pyyaml unused but kept for uniform tool invocation.
 """
 
@@ -34,6 +45,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -68,6 +80,29 @@ def http_get(url: str, retries: int = 4) -> dict | None:
             print(f"[s2] HTTP {e.code} for {url}", file=sys.stderr)
             return UNREACHABLE
         except Exception as e:  # noqa: BLE001 — network tool, report and move on
+            print(f"[s2] {e}", file=sys.stderr)
+            return UNREACHABLE
+    return UNREACHABLE
+
+
+def http_get_text(url: str, accept: str, retries: int = 4):
+    """Like http_get but returns the raw response TEXT (for BibTeX content-negotiation endpoints).
+    Same sentinels: a str on success, None on 404, UNREACHABLE on a request failure."""
+    headers = {"User-Agent": "newts-lab-tools", "Accept": accept}
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < retries - 1:
+                time.sleep((2 ** attempt) + random.random())
+                continue
+            if e.code == 404:
+                return None
+            print(f"[s2] HTTP {e.code} for {url}", file=sys.stderr)
+            return UNREACHABLE
+        except Exception as e:  # noqa: BLE001
             print(f"[s2] {e}", file=sys.stderr)
             return UNREACHABLE
     return UNREACHABLE
@@ -118,13 +153,113 @@ def cmd_search(args) -> int:
 
 # ── bibtex ──────────────────────────────────────────────────────────────────
 
+def _doi_of(paper_id: str) -> str | None:
+    """A DOI the keyless fallbacks can use. arXiv ids map to their DataCite DOI; a bare 10.* is a DOI."""
+    pid = paper_id.strip()
+    low = pid.lower()
+    if low.startswith("doi:"):
+        return pid[4:].strip() or None
+    if low.startswith("arxiv:"):
+        arxiv = pid[6:].strip()
+        return f"10.48550/arXiv.{arxiv}" if arxiv else None
+    if low.startswith("10."):
+        return pid
+    return None
+
+
+def _bib_key(bib: str) -> str:
+    m = re.search(r"@\w+\s*\{\s*([^,\s]+)", bib)
+    return m.group(1).strip() if m else ""
+
+
+def bibtex_from_doi_org(doi: str):
+    """DOI content negotiation — the registrar (Crossref/DataCite) returns the record AS BibTeX."""
+    return http_get_text(f"https://doi.org/{urllib.parse.quote(doi, safe='/')}", "application/x-bibtex")
+
+
+def bibtex_from_crossref(doi: str):
+    return http_get_text(
+        f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='/')}/transform/application/x-bibtex",
+        "application/x-bibtex")
+
+
+def bibtex_from_openalex(doi: str):
+    """Last resort: reconstruct a BibTeX entry from OpenAlex fields when no source ships a ready one."""
+    work = http_get(openalex_url(f"/works/https://doi.org/{urllib.parse.quote(doi, safe='/')}",
+                                 {"select": "title,authorships,publication_year,primary_location,type"}))
+    if not isinstance(work, dict) or not work.get("title"):
+        return work if work is UNREACHABLE else None
+    authors = [a for a in ((au.get("author") or {}).get("display_name", "")
+                           for au in (work.get("authorships") or [])) if a]
+    year = work.get("publication_year") or ""
+    venue = ((work.get("primary_location") or {}).get("source") or {}).get("display_name") or ""
+    first_last = re.sub(r"[^a-z]", "", authors[0].split()[-1].lower()) if authors else "anon"
+    first_word = next((w for w in re.findall(r"[a-z0-9]+", work["title"].lower()) if len(w) > 3), "ref")
+    key = f"{first_last}{year}{first_word}"
+
+    def _lastfirst(name: str) -> str:
+        parts = name.split()
+        return f"{parts[-1]}, {' '.join(parts[:-1])}" if len(parts) > 1 else name
+
+    author_field = " and ".join(_lastfirst(a) for a in authors) or "Unknown"
+    etype = "article" if work.get("type") in (None, "article", "journal-article") else "misc"
+    lines = [f"@{etype}{{{key},", f"  title = {{{work['title']}}},", f"  author = {{{author_field}}},"]
+    if year:
+        lines.append(f"  year = {{{year}}},")
+    if venue:
+        lines.append(f"  journal = {{{venue}}},")
+    lines += [f"  doi = {{{doi}}},", "}"]
+    return "\n".join(lines)
+
+
+def _append_bib(path: str, bib: str, key: str) -> str:
+    """Append the entry unless its key OR doi is already present (dedup). Returns 'added' | 'present'."""
+    p = Path(path)
+    existing = p.read_text(encoding="utf-8-sig") if p.exists() else ""
+    present = parse_bib(existing)
+    parsed_new = parse_bib(bib)
+    new_doi = (parsed_new[0].get("doi") or "").lower() if parsed_new else ""
+    if key in {e["key"] for e in present} or \
+            (new_doi and new_doi in {(e.get("doi") or "").lower() for e in present if e.get("doi")}):
+        return "present"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        f.write(bib.rstrip() + "\n")
+    return "added"
+
+
 def cmd_bibtex(args) -> int:
+    bib = None
+    # 1. Semantic Scholar (paperId / arXiv: / DOI: all resolve here) — ships a clean BibTeX string.
     data = http_get(f"{S2}/paper/{urllib.parse.quote(args.paper_id)}?fields=citationStyles,title")
-    bib = ((data.get("citationStyles") if isinstance(data, dict) else None) or {}).get("bibtex")
+    if isinstance(data, dict):
+        bib = (data.get("citationStyles") or {}).get("bibtex")
+    # 2-4. keyless DOI fallbacks when S2 is down / keyless-throttled / has no bibtex for the id.
+    doi = _doi_of(args.paper_id)
+    if not bib and doi:
+        for src in (bibtex_from_doi_org, bibtex_from_crossref, bibtex_from_openalex):
+            r = src(doi)
+            if isinstance(r, str) and r.lstrip().startswith("@"):
+                bib = r
+                break
     if not bib:
-        print(f"no bibtex for {args.paper_id}", file=sys.stderr)
+        print(f"no bibtex for {args.paper_id} via S2 / doi.org / Crossref / OpenAlex", file=sys.stderr)
+        if not doi:
+            print("  → no DOI in the id. AGENTIC FALLBACK: web-search the paper title for its DOI, then\n"
+                  "    uv run --with pyyaml python tools/s2.py bibtex DOI:<doi> --append <references.bib>",
+                  file=sys.stderr)
         return 1
-    print(bib.strip())
+    bib = bib.strip()
+    key = _bib_key(bib)
+    if args.append:
+        status = _append_bib(args.append, bib, key)
+        print(f"cite-key: {key}")                                   # stdout: the \cite{...} key
+        print(f"[{status}] {args.append}", file=sys.stderr)
+        return 0
+    print(bib)                                                      # stdout: the entry (for capture)
+    print(f"\ncite-key: {key}", file=sys.stderr)                    # stderr: the \cite{...} key
     return 0
 
 
@@ -264,6 +399,75 @@ def cmd_verify(args) -> int:
     return {0: 0, 1: 2, 2: 1}[worst]
 
 
+# ── citecheck (cite-from-lit-review lint) ────────────────────────────────────
+
+CITE_RE = re.compile(r"\\[a-zA-Z]*cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]+)\}")
+
+
+def _grounded(entry: dict, lit_norm: str, lit_raw: str) -> bool:
+    """Is this cited paper present in the lit-review? Strong signal: its DOI or arXiv id appears
+    verbatim; else ≥70% of the title's content words (>3 chars) appear in the normalized notes."""
+    doi = (entry.get("doi") or "").lower()
+    if doi and doi in lit_raw:
+        return True
+    arxiv = (entry.get("eprint") or "").lower()
+    if arxiv and arxiv in lit_raw:
+        return True
+    title = normalize(entry.get("title", ""))
+    toks = [w for w in title.split() if len(w) > 3] or title.split()
+    return bool(toks) and sum(1 for w in toks if w in lit_norm) / len(toks) >= 0.7
+
+
+def cmd_citecheck(args) -> int:
+    paper = Path(args.paper_dir)
+    texs = sorted(paper.glob("*.tex"))
+    if not texs:
+        print(f"no .tex files in {paper}", file=sys.stderr)
+        return 1
+    cited: dict[str, str] = {}
+    for t in texs:
+        for m in CITE_RE.finditer(t.read_text(encoding="utf-8-sig")):
+            for k in (x.strip() for x in m.group(1).split(",")):
+                if k:
+                    cited.setdefault(k, t.name)
+    bibfile = Path(args.bib) if args.bib else (paper / "references.bib")
+    entries = {e["key"]: e for e in parse_bib(bibfile.read_text(encoding="utf-8-sig"))} \
+        if bibfile.exists() else {}
+    lit_path = Path(args.lit_review) if args.lit_review else (paper.parent / "lit-review.md")
+    lit_raw = lit_path.read_text(encoding="utf-8-sig").lower() if lit_path.exists() else ""
+    lit_norm = normalize(lit_raw)
+
+    print(f"## Cite-from-lit-review — {paper} ({len(cited)} cite keys, {len(entries)} bib entries, "
+          f"lit-review {'found' if lit_raw else 'MISSING'})\n")
+    print("| cite key | status | detail |")
+    print("|---|---|---|")
+    dangling = ungrounded = 0
+    for key in sorted(cited):
+        if key not in entries:
+            print(f"| {key} | **DANGLING** | \\cite in {cited[key]} has no references.bib entry |")
+            dangling += 1
+        elif not lit_raw:
+            print(f"| {key} | UNGROUNDED | lit-review.md not found at {lit_path} |")
+            ungrounded += 1
+        elif not _grounded(entries[key], lit_norm, lit_raw):
+            print(f"| {key} | UNGROUNDED | no lit-review note matches \"{entries[key].get('title', '')[:60]}\" |")
+            ungrounded += 1
+        else:
+            print(f"| {key} | verified | |")
+    orphans = sorted(set(entries) - set(cited))
+    if orphans:
+        print(f"\n_{len(orphans)} bib entries never \\cite'd (informational): "
+              f"{', '.join(orphans[:8])}{' …' if len(orphans) > 8 else ''}_")
+    if dangling:
+        print(f"\n**{dangling} DANGLING cite(s) — no references.bib entry (LaTeX would fail). FAIL.**", flush=True)
+        return 1
+    if ungrounded:
+        print(f"\n**{ungrounded} UNGROUNDED cite(s) — cited but no lit-review note. Add the paper to "
+              "lit-review.md (with a note) or cut the citation; confirm each by hand.**", flush=True)
+        return 2
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -272,11 +476,17 @@ def main() -> int:
     p.add_argument("--year"); p.add_argument("--bulk", action="store_true")
     p.set_defaults(fn=cmd_search)
     p = sub.add_parser("bibtex")
-    p.add_argument("paper_id", help="S2 paperId, arXiv:NNNN.NNNNN, or DOI:...")
+    p.add_argument("paper_id", help="S2 paperId, arXiv:NNNN.NNNNN, DOI:..., or a bare 10.* DOI")
+    p.add_argument("--append", help="append the resolved entry to this references.bib (dedup) and print the cite-key")
     p.set_defaults(fn=cmd_bibtex)
     p = sub.add_parser("verify")
     p.add_argument("bibfile"); p.add_argument("--threshold", type=float, default=0.85)
     p.set_defaults(fn=cmd_verify)
+    p = sub.add_parser("citecheck")
+    p.add_argument("paper_dir", help="studies/<slug>/paper")
+    p.add_argument("--bib", help="references.bib (default <paper_dir>/references.bib)")
+    p.add_argument("--lit-review", dest="lit_review", help="lit-review.md (default <paper_dir>/../lit-review.md)")
+    p.set_defaults(fn=cmd_citecheck)
     args = parser.parse_args()
     return args.fn(args)
 

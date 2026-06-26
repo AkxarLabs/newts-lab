@@ -31,9 +31,11 @@ numbers passing through prose get transcribed wrong, and Related Work written ea
    contributions) as you write them, each annotated `% C00N` in the LaTeX. A number with
    no entry is invisible to the blocking audit — so it must not exist.
 3. **Seed the bibliography**: pull the load-bearing entries from
-   `studies/<slug>/lit-review.md` via `tools/s2.py bibtex <id>` (mechanical BibTeX — no
-   hand-typed entries). Sparse bibliographies tell of AI-written papers; the lit review
-   should yield 20+ candidates.
+   `studies/<slug>/lit-review.md` via `tools/s2.py bibtex <id> --append references.bib` —
+   mechanical BibTeX appended straight into the bib (dedup'd) with the `cite-key` printed
+   back; the resolver falls back **keylessly** S2 → doi.org → Crossref → OpenAlex, so it
+   works without any API key. **Never hand-type a BibTeX entry.** Sparse bibliographies tell
+   of AI-written papers; the lit review should yield 20+ candidates.
 
 ## 2. Draft — in this order
 
@@ -51,8 +53,12 @@ contributions. Framing only; adds no result, crosses no gate. Skip in autonomous
    figures; they assert nothing the artifacts don't show.
 4. **Citations as placeholders while drafting**: where a source is needed, write
    `[cite: short description]` inline; afterwards resolve each mechanically —
-   lit-review note → `s2.py bibtex` → replace with `\cite{key}`. Need a source not in
-   the lit review? Add it to the lit review (with a note) first, or cut the sentence.
+   lit-review note → `s2.py bibtex <id> --append references.bib` → `\cite{<returned cite-key>}`.
+   If the note has no usable id, or the resolver can't find the paper, the fallback is
+   **agentic**: web-search the title for its **DOI**, then
+   `s2.py bibtex DOI:<doi> --append references.bib` (still mechanical — you supply the DOI,
+   the script fills the entry and returns the key). Need a source not in the lit review? Add
+   it to the lit review (with a note) first, or cut the sentence.
 5. **Related Work last** (it's the most hallucination-prone section): from lit-review
    notes only, positioning against the closest works by what they *actually showed*.
 6. **Introduction** (contributions-first, each pointing at its claim id), **Limitations**

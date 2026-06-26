@@ -39,15 +39,25 @@ uv run --with pyyaml python tools/run_slots.py status
 
 Within a project, the experiment loop controls its own runs; the hub-level risk is two projects (or a loop plus an interactive session) launching training on the same GPU. One slot = one training campaign (a run **or** a sweep — the sweep manages its own internal parallelism); the cap is `compute.max_concurrent_runs`. Slots are files under `lab/.slots/` (atomic create, stale-reclaimed after `compute.stale_slot_minutes`). Hard rule 13: acquire before any PILOT/FULL campaign, release when the ledger entry is written; SMOKE is exempt; subagents never manage slots — the parent does.
 
-### `s2.py` — literature search, BibTeX, citation verification
+### `s2.py` — literature search, BibTeX, citation verification, cite-from-lit-review lint
 
 ```bash
 uv run --with pyyaml python tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
-uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066
+uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
+uv run --with pyyaml python tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
 uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
+uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper
 ```
 
-Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit); it exits **3** when *both* backends are unreachable, so an empty result is never mistaken for "no prior work". `bibtex` returns the canonical entry for a paper id — no hand-typed bibliography. `verify` is the zero-assumption citation audit `/review-paper` runs: every bib entry title-matched against the real record (pass `--threshold <writing.citation_match_threshold>`), year-checked, and retraction-checked via OpenAlex `is_retracted`. **Any nonzero exit blocks** — NOT-FOUND/RETRACTED *and* MISMATCH (near-miss/wrong-year). Free-generated LLM citations are fabricated at ~18% base rate — this check is blocking, not advisory. Env keys: `S2_API_KEY` (keyless S2 shares a saturated global pool; backoff built in), `OPENALEX_API_KEY` (required for OpenAlex calls since 2026-02 — **without it the fallback search and the retraction check silently degrade**).
+Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit); it exits **3** when *both* backends are unreachable, so an empty result is never mistaken for "no prior work".
+
+`bibtex` returns the canonical entry for a paper id — no hand-typed bibliography — through a **keyless fallback chain**: Semantic Scholar `citationStyles` → **doi.org content-negotiation** → **Crossref** transform → **OpenAlex** (reconstructed from fields), so it works with no API key even when S2 is down or throttling a keyless caller. arXiv ids resolve via their DataCite DOI (`10.48550/arXiv.<id>`). `--append <references.bib>` writes the entry straight into the bib (dedup'd by key/DOI) and prints the `cite-key` to add to the paper. When a paper has no usable id/DOI, the resolver prints the **agentic fallback**: web-search the title for its DOI, then `bibtex DOI:<doi> --append …` — you supply the DOI, the script fills the entry.
+
+`verify` is the zero-assumption citation audit `/review-paper` runs: every bib entry title-matched against the real record (pass `--threshold <writing.citation_match_threshold>`), year-checked, and retraction-checked via OpenAlex `is_retracted`. **Any nonzero exit blocks** — NOT-FOUND/RETRACTED *and* MISMATCH (near-miss/wrong-year). Free-generated LLM citations are fabricated at ~18% base rate — this check is blocking, not advisory.
+
+`citecheck` is the **cite-from-lit-review** lint: every `\cite` in the paper's `.tex` must resolve to a `references.bib` entry (**DANGLING** → exit 1) and to a `studies/<slug>/lit-review.md` note (matched by DOI/arXiv id, else ≥70% title-word overlap; **UNGROUNDED** → exit 2, the by-hand confirm list). Catches a citation that's real but was never in the lit review.
+
+Env keys: `S2_API_KEY` (keyless S2 shares a saturated global pool; backoff built in), `OPENALEX_API_KEY` (required for OpenAlex calls since 2026-02 — **without it the OpenAlex fallback and the retraction check silently degrade; the keyless doi.org + Crossref bibtex paths still work**).
 
 ### `show_config.py` — 3-layer config with provenance
 

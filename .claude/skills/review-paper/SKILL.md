@@ -22,11 +22,15 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
 3. Run `uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>` —
    **any nonzero exit blocks**: NOT-FOUND, RETRACTED, *and* MISMATCH (below-threshold title
    or wrong year — the near-miss-fabrication case).
-4. Manual checks the scripts can't do:
+4. **Cite-from-lit-review (mechanical):**
+   `uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper` — every `\cite`
+   must resolve to a `references.bib` entry (**DANGLING** → exit 1, blocks, LaTeX would fail too)
+   and to a `studies/<slug>/lit-review.md` note (**UNGROUNDED** → exit 2, the by-hand confirm list:
+   add the paper to the lit review with a note, or cut the citation).
+5. Manual checks the scripts can't do:
    - Figure/table scripts exist in the project repo's `scripts/figures/`, are committed,
      and regenerate the paper's figures (spot-check ≥2).
    - Multi-seed coverage (`experiment.multi_seed_n`) for all headline numbers, variance reported.
-   - Every citation has a corresponding note in `studies/<slug>/lit-review.md`.
    - Val/test discipline: nothing in the paper was selected on the test set.
    - **Phantom-experiment sweep**: AI-written papers hide fabricated experiments in
      ablation/analysis subsections (not main results), especially after revision
