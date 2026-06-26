@@ -41,7 +41,7 @@ function setPref(k, v) { PREFS[k] = v; try { localStorage.setItem('viv-prefs', J
    listening command bar) must recede so nothing floats over a "screen". One source of truth — the DOM
    itself — drives a `body.overlay-open` class, so it can never drift out of sync with the individual
    open/close fns. Every opener/closer calls syncOverlay() as its last act; render() calls it too. */
-const OVERLAY_IDS = ['#sheet', '#modal', '#drawer', '#inspector', '#detail', '#attention', '#help', '#settings', '#palette'];
+const OVERLAY_IDS = ['#sheet', '#modal', '#drawer', '#inspector', '#detail', '#attention', '#help', '#settings', '#palette', '#paper', '#claims'];
 let OVERLAY_OPEN = false;
 function syncOverlay() {
   OVERLAY_OPEN = OVERLAY_IDS.some(id => { const n = $(id); return n && !n.hidden; });
@@ -52,7 +52,7 @@ function syncOverlay() {
 // The right-side drawers (detail · inspector · attention · command sheet · settings) are mutually
 // exclusive — only one open at a time. Each opener calls this first (a no-op on itself).
 function closeRightDrawers(except) {
-  const drawers = [['#detail', null], ['#inspector', null], ['#attention', null], ['#sheet', '#sheetScrim'], ['#settings', '#settingsScrim']];
+  const drawers = [['#detail', null], ['#inspector', null], ['#attention', null], ['#claims', null], ['#sheet', '#sheetScrim'], ['#settings', '#settingsScrim']];
   drawers.forEach(([id, scrim]) => { if (id === except) return; const n = $(id); if (n && !n.hidden) { n.hidden = true; if (scrim) { const sc = $(scrim); if (sc) sc.hidden = true; } } });
 }
 
@@ -201,6 +201,8 @@ function renderShelf(s) {
       br.appendChild(btn('compare', 'tool', () => runTool('compare', it.id)));
       br.appendChild(btn('inbox', 'tool', () => runTool('inbox', it.id)));
     }
+    if (it.paper && it.paper.pdf) br.appendChild(btn('view paper', 'go', () => openPaper(it.id, it.title || it.id)));
+    if (it.claims) br.appendChild(btn(`claims (${it.claims})`, 'tool', () => openClaimsMap(it.id, it.title || it.id)));
     c.appendChild(br); grid.appendChild(c);
   });
   p.appendChild(grid); stage.appendChild(p);
@@ -228,8 +230,10 @@ function renderGates(s) {
       const card = el('div', 'letter' + (g === 3 ? ' g3' : ''));
       card.innerHTML = `<div class="seal">${g}</div><h3>${esc(it.title || it.id)} — Gate ${g}</h3><div class="sub">${esc(it.next || what)}</div>`;
       const row = el('div', 'btnrow');
-      const previewLabel = g === 1 ? 'read the proposal ▸' : g === 3 ? 'read claims + review ▸' : 'review the envelope ▸';
-      row.appendChild(btn(previewLabel, 'tool', () => openDoc('gate', it.id, g, `Gate ${g} · ${it.title || it.id}`)));   // read-only preview, in-dashboard
+      const previewLabel = g === 1 ? 'review proposal + novelty ▸' : g === 3 ? 'review claims + meta-review ▸' : 'review envelope + pilots ▸';
+      row.appendChild(btn(previewLabel, 'tool', () => openDoc('gate', it.id, g, `Gate ${g} · ${it.title || it.id}`)));   // the composed gate bundle, in-dashboard
+      if (g === 3 && it.paper && it.paper.pdf) row.appendChild(btn('view paper ▸', 'go', () => openPaper(it.id, it.title || it.id)));
+      if (g === 3 && it.claims) row.appendChild(btn(`claims (${it.claims}) ▸`, 'tool', () => openClaimsMap(it.id, it.title || it.id)));
       if (g !== 3) row.appendChild(btn(`✓ Approve Gate ${g} (PI)`, 'go', () => openGate(it.id, g)));
       card.appendChild(row);
       if (g === 3) card.appendChild(el('div', 'sub', 'Gate 3 (anything leaving the lab) is never one-click — open a session and run /finalize.'));
@@ -388,6 +392,8 @@ function paletteActions() {
     if (it.has_project) out.push({ label: 'Enter lab · ' + nm, hint: 'project', run: () => { enterTerrarium(); Scene.focusProject(it.id); } });
     out.push({ label: 'Details · ' + nm, hint: 'info', run: () => openDetail(it.id) });
     out.push({ label: 'Command · ' + nm, hint: 'steer', run: () => openSheet(it.id) });
+    if (it.paper && it.paper.pdf) out.push({ label: 'Open paper · ' + nm, hint: 'paper', run: () => openPaper(it.id, nm) });
+    if (it.claims) out.push({ label: 'Claims ↔ artifacts · ' + nm, hint: 'claims', run: () => openClaimsMap(it.id, nm) });
     if (it.gate && it.gate !== 3) out.push({ label: `Approve Gate ${it.gate} · ${nm}`, hint: 'gate', run: () => openGate(it.id, it.gate) });
   });
   out.push({ label: 'Command the lab (Newt)', hint: 'hub', run: () => openSheet('hub') });
@@ -509,6 +515,9 @@ function openDetail(id) {
   const br = el('div', 'btnrow');
   br.appendChild(btn('command ▸', 'go', () => { closeDetail(); openSheet(it.id); }));
   if (it.has_project) { br.appendChild(btn('enter lab', '', () => { closeDetail(); enterTerrarium(); Scene.focusProject(it.id); })); br.appendChild(btn('status', 'tool', () => runTool('status', it.id))); br.appendChild(btn('compare', 'tool', () => runTool('compare', it.id))); }
+  if (it.paper && it.paper.pdf) br.appendChild(btn('view paper', 'go', () => { closeDetail(); openPaper(it.id, it.title || it.id); }));
+  if (it.claims) br.appendChild(btn(`claims (${it.claims})`, 'tool', () => { closeDetail(); openClaimsMap(it.id, it.title || it.id); }));
+  if (it.project_dir && editorUri(it.project_dir)) br.appendChild(btn('open in editor', '', () => openInEditor(it.project_dir)));
   if (it.gate && it.gate !== 3) br.appendChild(btn(`✓ Gate ${it.gate}`, 'go', () => { closeDetail(); openGate(it.id, it.gate); }));
   body.appendChild(br);
   closeRightDrawers('#detail');   // one right-drawer at a time
@@ -607,6 +616,7 @@ function render() {
     if (!workerById(INSPECT_ID)) closeInspector();
     else { const sc = $('#inspectorBody').scrollTop; openWorkerInspector(INSPECT_ID); $('#inspectorBody').scrollTop = sc; }
   }
+  refreshPaper();   // if the open paper recompiled, reload its PDF live
   const terr = MODE === 'terrarium' && !STATE.cold;
   $('#commandBar').hidden = !terr; if (!terr) $('#speech').hidden = true;
   setPose(newtPoseFor(STATE)); narrate(STATE);
@@ -700,7 +710,7 @@ function openGate(idea, gate) {
     ? `Records your PI signature on <span class="mono">studies/${esc(idea)}/proposal.md</span> and lets the agent spawn the project.`
     : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`;
   const read = $('#modalRead'); read.hidden = false;
-  read.textContent = gate === 1 ? 'read the proposal ▸' : 'review the envelope ▸';
+  read.textContent = gate === 1 ? 'review proposal + novelty ▸' : 'review envelope + pilots ▸';
   read.onclick = () => openDoc('gate', idea, gate, `Gate ${gate} · ${idea}`);
   $('#modalScrim').hidden = false; m.hidden = false; syncOverlay();
 }
@@ -734,6 +744,24 @@ function toast(msg) {
   setTimeout(() => { pill.classList.add('out'); setTimeout(() => { pill.remove(); if (!host.children.length) host.hidden = true; }, 300); }, 3400);
 }
 
+/* ── "open in editor" deep-links — the dashboard is local-only, so <scheme>://file/<abs> opens the
+   PI's own editor. Scheme comes from lab/config.yaml `dashboard.editor` (vscode|cursor|…|none). ── */
+const EDITOR_SCHEMES = { vscode: 'vscode', cursor: 'cursor', vscodium: 'vscodium', windsurf: 'windsurf', 'vscode-insiders': 'vscode-insiders' };
+function editorUri(absPath, line) {
+  const ed = (STATE && STATE.editor) || 'vscode';
+  if (!absPath || ed === 'none') return null;
+  const scheme = EDITOR_SCHEMES[ed] || (/^[a-z][a-z0-9+.-]*$/.test(ed) ? ed : 'vscode');
+  let p = String(absPath).replace(/\\/g, '/');         // windows backslashes → forward slashes
+  if (!p.startsWith('/')) p = '/' + p;                 // file authority wants a leading slash (C:/… → /C:/…)
+  return `${scheme}://file${p}${line ? ':' + line : ''}`;
+}
+function openInEditor(absPath, line) {
+  const uri = editorUri(absPath, line);
+  if (!uri) { toast('“open in editor” is off — set dashboard.editor in lab/config.yaml'); return; }
+  const a = el('a'); a.href = uri; a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
+}
+function editorLinkHtml(absPath) { const uri = editorUri(absPath); return uri ? ` <a class="ed-link" href="${esc(uri)}">open in editor ▸</a>` : ''; }
+
 /* ── read-only document viewer (lab knowledge · a gate's proposal/claims) ───── */
 async function openDoc(what, idea, gate, label, run) {
   $('#drawer').hidden = false; syncOverlay(); $('#drawerTitle').textContent = `${label || what} — reading…`; $('#drawerBody').textContent = '';
@@ -741,9 +769,113 @@ async function openDoc(what, idea, gate, label, run) {
     const r = await fetch('/api/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ what, idea, gate, run }) }).then(r => r.json());
     if (r.error) { $('#drawerTitle').textContent = label || what; $('#drawerBody').textContent = r.error; return; }
     $('#drawerTitle').textContent = r.title || label || what;
-    $('#drawerBody').textContent = (r.sections || []).map(s => `══ ${s.title} ${'═'.repeat(Math.max(0, 60 - s.title.length))}\n\n${(s.text || '').trim() || '(empty)'}`).join('\n\n\n');
+    // innerHTML (escaped) so a section header can carry an "open in editor" link when the server gave us its path
+    $('#drawerBody').innerHTML = (r.sections || []).map(s => {
+      const head = `══ ${esc(s.title)} ${esc('═'.repeat(Math.max(0, 60 - (s.title || '').length)))}${s.path ? editorLinkHtml(s.path) : ''}`;
+      return `${head}\n\n${esc((s.text || '').trim() || '(empty)')}`;
+    }).join('\n\n\n');
   } catch (e) { $('#drawerBody').textContent = 'could not reach the vivarium server'; }
 }
+
+/* ── paper viewer: the compiled PDF (browser-native render) + a figures strip; auto-refreshes on
+   recompile. Read-only — bytes streamed from studies/<slug>/paper/ by the local server. ────────── */
+let PAPER = null;   // {slug, mtime} of the open paper, or null
+function paperItem(slug) { return (STATE && STATE.items || []).find(i => i.id === slug); }
+function paperSrc(slug, mtime) { return `/api/paper?idea=${encodeURIComponent(slug)}&t=${mtime || 0}`; }
+async function loadFigures(slug) {
+  const host = $('#paperFigs'); host.innerHTML = '';
+  try {
+    const figs = ((await fetch(`/api/figs?idea=${encodeURIComponent(slug)}`).then(r => r.json())) || {}).figures || [];
+    if (!figs.length) { host.hidden = true; return; }
+    host.hidden = false; host.appendChild(el('div', 'figs-head', `Figures · ${figs.length}`));
+    const strip = el('div', 'figs-strip');
+    figs.forEach(name => {
+      const url = `/api/figure?idea=${encodeURIComponent(slug)}&name=${encodeURIComponent(name)}`;
+      const cell = el('a', 'fig-cell'); cell.href = url; cell.target = '_blank'; cell.title = name;
+      cell.innerHTML = /\.(png|jpe?g|svg|gif|webp)$/i.test(name) ? `<img loading="lazy" src="${esc(url)}" alt="${esc(name)}">` : `<span class="fig-pdf">▤ ${esc(name)}</span>`;
+      strip.appendChild(cell);
+    });
+    host.appendChild(strip);
+  } catch (e) { host.hidden = true; }
+}
+function openPaper(slug, title) {
+  const it = paperItem(slug); if (!it || !it.paper || !it.paper.pdf) { toast('no compiled paper yet'); return; }
+  PAPER = { slug, mtime: it.paper.mtime || 0 };
+  $('#paperTitle').textContent = `${title || slug} · paper`;
+  $('#paperFrame').src = paperSrc(slug, PAPER.mtime);
+  const ed = $('#paperEdit'); const tex = it.paper.tex && editorUri(it.paper.tex);
+  ed.hidden = !tex; ed.onclick = () => openInEditor(it.paper.tex);
+  const cl = $('#paperClaims'); cl.hidden = !it.claims; cl.onclick = () => openClaimsMap(slug, title || slug);
+  $('#paperPop').onclick = () => window.open(paperSrc(slug, PAPER.mtime), '_blank');
+  loadFigures(slug);
+  closeRightDrawers();   // it's a wide overlay — clear the right-side drawers
+  $('#paperScrim').hidden = false; $('#paper').hidden = false; syncOverlay();
+}
+function closePaper() { $('#paperScrim').hidden = true; $('#paper').hidden = true; $('#paperFrame').src = 'about:blank'; PAPER = null; syncOverlay(); }
+// called from render() on each snapshot: if the open paper recompiled (mtime bumped), reload it live
+function refreshPaper() {
+  if (!PAPER || $('#paper').hidden) return;
+  const it = paperItem(PAPER.slug);
+  if (!it || !it.paper || !it.paper.pdf) return;        // paper vanished mid-view → leave the last frame up
+  if ((it.paper.mtime || 0) !== PAPER.mtime) {
+    PAPER.mtime = it.paper.mtime || 0;
+    $('#paperFrame').src = paperSrc(PAPER.slug, PAPER.mtime); loadFigures(PAPER.slug); toast('paper recompiled — refreshed');
+  }
+}
+
+/* ── claims ↔ artifact map: every claimed number traced to its run artifact(s) — hard rule 1, made
+   visible. Read-only; "run audit ▸" launches the mechanical PASS/FAIL/MANUAL audit in the tool
+   drawer. A "● linked" pill means the artifact file is on disk (NOT that the number checks out — the
+   audit does that), "⚠ N missing" means a cited artifact can't be found. ───────────────────────── */
+let CLAIMS_SLUG = null;
+async function openClaimsMap(slug, title) {
+  CLAIMS_SLUG = slug;
+  $('#claimsTitle').textContent = `${title || slug} · claims ↔ artifacts`;
+  $('#claimsEdit').hidden = true;
+  $('#claimsAudit').onclick = () => runTool('audit_claims', slug);
+  const body = $('#claimsBody'); body.innerHTML = '<div class="empty-note">reading claims…</div>';
+  closeRightDrawers('#claims');
+  $('#claims').hidden = false; syncOverlay();
+  try {
+    const r = await fetch('/api/claims', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: slug }) }).then(r => r.json());
+    renderClaimsMap(r);
+  } catch (e) { body.innerHTML = '<div class="empty-note">could not reach the vivarium server</div>'; }
+}
+function renderClaimsMap(r) {
+  const body = $('#claimsBody'); body.innerHTML = '';
+  if (!r || r.error) { body.innerHTML = `<div class="empty-note">${esc((r && r.error) || 'no claims')}</div>`; $('#claimsEdit').hidden = true; return; }
+  const ed = $('#claimsEdit'), uri = r.claims_path && editorUri(r.claims_path);
+  ed.hidden = !uri; ed.onclick = () => openInEditor(r.claims_path);
+  if (!r.claims || !r.claims.length) { body.innerHTML = '<div class="empty-note">claims.yaml has no entries yet.</div>'; return; }
+  const linked = r.claims.filter(c => c.linked).length;
+  body.appendChild(el('div', 'leg-sec', `${r.claims.length} claim${r.claims.length === 1 ? '' : 's'} · ${linked} fully linked to artifacts on disk · “run audit ▸” checks the numbers`));
+  r.claims.forEach(c => {
+    const row = el('div', 'claim-row');
+    const arts = c.artifacts || [], missing = arts.filter(a => !a.exists).length;
+    const pill = c.linked ? '<span class="claim-link ok">● linked</span>'
+      : (arts.length ? `<span class="claim-link miss">⚠ ${missing} missing</span>` : '<span class="claim-link miss">no artifacts</span>');
+    row.appendChild(el('div', 'claim-top', `${c.id ? `<span class="claim-id">${esc(c.id)}</span>` : ''}${pill}<span class="claim-text">${esc(c.claim || '(no description)')}</span>`));
+    const meta = el('div', 'claim-meta');
+    (c.numbers || []).forEach(n => meta.appendChild(el('span', 'claim-chip num', esc(n))));
+    if (c.metric) meta.appendChild(el('span', 'claim-chip', 'metric: ' + esc(c.metric)));
+    if (c.location) meta.appendChild(el('span', 'claim-chip', esc(c.location)));
+    if (c.has_hashes) meta.appendChild(el('span', 'claim-chip', '🔒 hashed'));
+    if (meta.children.length) row.appendChild(meta);
+    if (c.derivation) row.appendChild(el('div', 'claim-deriv', 'derived: ' + esc(c.derivation)));
+    if (arts.length) {
+      const aw = el('div', 'claim-arts');
+      arts.forEach(a => {
+        const ar = el('div', 'art-row', `<span class="art-rel${a.exists ? '' : ' miss'}">${a.exists ? '' : '○ '}${esc(a.rel)}</span>`);
+        if (a.exists && a.run_id && a.project) { const b = el('button', 'art-peek', 'peek'); b.onclick = () => openDoc('run', a.project, null, `${a.project} · ${a.run_id}`, a.run_id); ar.appendChild(b); }
+        if (a.exists && a.abs && editorUri(a.abs)) { const b = el('button', 'art-peek', 'editor'); b.onclick = () => openInEditor(a.abs); ar.appendChild(b); }
+        aw.appendChild(ar);
+      });
+      row.appendChild(aw);
+    }
+    body.appendChild(row);
+  });
+}
+function closeClaims() { $('#claims').hidden = true; CLAIMS_SLUG = null; syncOverlay(); }
 
 /* ── worker inspector: a worker's own activity — what it's doing now + its full action timeline ── */
 function workerById(id) { return (STATE && STATE.workers || []).find(w => w.worker_id === id); }
@@ -1437,11 +1569,13 @@ $('#bell').onclick = toggleAttention;
 $('#helpClose').onclick = closeHelp; $('#helpScrim').onclick = closeHelp;
 $('#attentionClose').onclick = () => { $('#attention').hidden = true; syncOverlay(); };
 $('#detailClose').onclick = closeDetail;
+$('#paperClose').onclick = closePaper; $('#paperScrim').onclick = closePaper;
+$('#claimsClose').onclick = closeClaims;
 // global keys: "/" opens the palette (when not typing in a field); Esc closes overlays
 window.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
   if (e.key === '/' && !typing && $('#palette').hidden) { e.preventDefault(); openPalette(); }
-  else if (e.key === 'Escape') { if (!$('#help').hidden) closeHelp(); else if (!$('#settings').hidden) closeSettings(); else if (!$('#palette').hidden) closePalette(); else if (!$('#detail').hidden) closeDetail(); else if (!$('#attention').hidden) { $('#attention').hidden = true; syncOverlay(); } else if (!$('#scrubber').hidden) closeScrubber(); }
+  else if (e.key === 'Escape') { if (!$('#paper').hidden) closePaper(); else if (!$('#claims').hidden) closeClaims(); else if (!$('#help').hidden) closeHelp(); else if (!$('#settings').hidden) closeSettings(); else if (!$('#palette').hidden) closePalette(); else if (!$('#detail').hidden) closeDetail(); else if (!$('#attention').hidden) { $('#attention').hidden = true; syncOverlay(); } else if (!$('#scrubber').hidden) closeScrubber(); }
 });
 window.addEventListener('hashchange', () => { let m = location.hash.slice(1); if (m === 'night') m = 'gates'; if (VIEWS[m]) { MODE = m; render(); Scene.setView(m); } });
 // canvas clicks → the same console / gates / inspector the rest of the UI uses

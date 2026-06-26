@@ -69,6 +69,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
 | `dashboard.port` | 8787 | PI | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) |
+| `dashboard.editor` | `vscode` | PI | editor for the dashboard's "open in editor" deep-links: `vscode` \| `cursor` \| `vscodium` \| `windsurf` \| `none` (local-only `<scheme>://file/<abs>`) |
 | `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` (applied via the `model:` frontmatter of `.claude/agents/fresh-context-reviewer.md`; `inherit` \| `sonnet` \| `opus` \| `haiku`) |
 | `agents.runner_model` | inherit | PI | model for `experiment-runner` (→ its agent-file frontmatter) |
 | `agents.critic_model` | inherit | PI | ideation critics / scoping advocates — **inline subagents with no agent file, so this value cannot be applied** (they run at the session model) |

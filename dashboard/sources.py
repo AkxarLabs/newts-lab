@@ -177,6 +177,45 @@ def slot_cap() -> int:
     return int((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs", 1))
 
 
+def editor_scheme() -> str:
+    """URI scheme for the 'open in editor' deep-links (vscode|cursor|…|none). The dashboard is
+    local-only, so a `<scheme>://file/<abs-path>` opens the PI's own editor. Default vscode."""
+    return str((_load_yaml(LAB / "config.yaml").get("dashboard") or {}).get("editor", "vscode")).strip().lower()
+
+
+# ── paper artifacts (the compiled PDF a back-half session produced) ────────────
+#
+# A paper lives in the HUB at studies/<slug>/paper/ (main.tex → main.pdf via /write-paper's blocking
+# latexmk gate; figures synced into figures/). We only report whether the PDF exists + its mtime, so
+# the viewer's button shows and the snapshot diff (hence the SSE push) auto-refreshes it on recompile.
+
+def _paper_status(slug: str) -> dict | None:
+    pdir = HUB / "studies" / slug / "paper"
+    pdf = pdir / "main.pdf"
+    try:
+        if not pdf.is_file():
+            return None
+        out = {"pdf": True, "mtime": int(pdf.stat().st_mtime)}
+        tex = pdir / "main.tex"
+        if tex.is_file():
+            out["tex"] = str(tex.resolve())   # absolute, for the "edit source" editor link
+        return out
+    except OSError:
+        return None
+
+
+def _claims_count(slug: str) -> int:
+    """How many claims studies/<slug>/paper/claims.yaml holds (0 if absent/empty). Drives the
+    'claims (N)' button — claims.yaml can exist before the PDF, so this is independent of _paper_status."""
+    f = HUB / "studies" / slug / "paper" / "claims.yaml"
+    if not f.is_file():
+        return 0
+    doc = _load_yaml(f)
+    cl = doc.get("claims") if isinstance(doc, dict) else None
+    # count only dict items, matching serve.claims_map's filter so "claims (N)" == rendered rows
+    return sum(1 for c in cl if isinstance(c, dict)) if isinstance(cl, list) else 0
+
+
 # ── directives (threads with pending/seen/acted state) ────────────────────────
 
 def _directive_threads(bus_dir: Path) -> list[dict]:
@@ -372,6 +411,8 @@ def snapshot() -> dict:
             "updated": row["updated"], "next": row["next"],
             "has_project": pdir is not None, "has_paper": bool((row.get("paper") or "").strip(" -—`")),
             "project_dir": str(pdir) if pdir else None, "gate": _gate_of(row["next"]),
+            "paper": _paper_status(row["id"]),   # the compiled PDF on disk (drives the paper viewer)
+            "claims": _claims_count(row["id"]),  # number of claims in claims.yaml (drives the claims↔artifact map)
             "inflight": [], "best": None, "loop_active": False, "events": [],
         }
         item["directives"] = []
@@ -399,6 +440,7 @@ def snapshot() -> dict:
 
     return {
         "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "editor": editor_scheme(),
         "items": items,
         "events": all_events[-200:],
         "slots": {"in_use": len(slots()), "cap": slot_cap(), "held": slots()},

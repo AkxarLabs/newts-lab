@@ -115,3 +115,71 @@ def test_workers_marks_working(hub, monkeypatch):
     ])
     workers = m._workers(bus, None)
     assert workers[0]["status"] == "working"
+
+
+# ── editor deep-links + paper status ───────────────────────────────────────────
+
+def test_snapshot_includes_editor_scheme(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    # the fixture config has no `editor` key -> the documented default
+    assert m.snapshot()["editor"] == "vscode"
+
+
+def test_editor_scheme_reads_config(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    (hub.lab / "config.yaml").write_text("dashboard:\n  editor: cursor\n", encoding="utf-8")
+    assert m.editor_scheme() == "cursor"
+
+
+def test_paper_status_none_without_pdf(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    assert m._paper_status("demo") is None
+
+
+def test_paper_status_reports_pdf_and_tex(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    pdir = hub.root / "studies" / "demo" / "paper"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "main.pdf").write_bytes(b"%PDF-1.5")
+    (pdir / "main.tex").write_text("x", encoding="utf-8")
+    st = m._paper_status("demo")
+    assert st and st["pdf"] is True and isinstance(st["mtime"], int)
+    assert st["tex"].endswith("main.tex")
+
+
+def test_snapshot_item_carries_paper(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="writing", project="-")
+    pdir = hub.root / "studies" / "demo" / "paper"
+    pdir.mkdir(parents=True, exist_ok=True)
+    (pdir / "main.pdf").write_bytes(b"%PDF")
+    it = m.snapshot()["items"][0]
+    assert it["paper"] and it["paper"]["pdf"] is True
+
+
+def test_claims_count(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    assert m._claims_count("demo") == 0                  # no file
+    paper = hub.root / "studies" / "demo" / "paper"
+    paper.mkdir(parents=True, exist_ok=True)
+    (paper / "claims.yaml").write_text("claims:\n  - id: C001\n  - id: C002\n", encoding="utf-8")
+    assert m._claims_count("demo") == 2
+
+
+def test_claims_count_counts_only_dict_items(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    paper = hub.root / "studies" / "demo" / "paper"
+    paper.mkdir(parents=True, exist_ok=True)
+    # a bare-string list item must NOT be counted — parity with serve.claims_map's dict filter,
+    # so the "claims (N)" button never disagrees with the rendered rows
+    (paper / "claims.yaml").write_text("claims:\n  - id: C001\n  - just a string\n  - id: C002\n", encoding="utf-8")
+    assert m._claims_count("demo") == 2
+
+
+def test_snapshot_item_carries_claims_count(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="writing", project="-")
+    paper = hub.root / "studies" / "demo" / "paper"
+    paper.mkdir(parents=True, exist_ok=True)
+    (paper / "claims.yaml").write_text("claims:\n  - id: C001\n", encoding="utf-8")
+    assert m.snapshot()["items"][0]["claims"] == 1

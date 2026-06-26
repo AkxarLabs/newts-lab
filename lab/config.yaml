@@ -240,3 +240,5 @@ loop:                           # ── /research-loop defaults · project-over
 
 dashboard:                      # ── optional Vivarium dashboard (dashboard/serve.py) ──
   port: 8787                    # local-only; see docs/dashboard.md
+  editor: vscode                # "open in editor" deep-links: vscode|cursor|vscodium|windsurf|none
+                                # (local-only → <scheme>://file/<abs-path> opens YOUR editor; none = off)

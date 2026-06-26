@@ -52,7 +52,8 @@ COMMAND_ACTIONS = {
     "prioritize", "park", "kill", "analyze", "ideate",
 }
 # Read-only / safe tools the dashboard may run directly. Never anything that trains or writes.
-SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots"}
+# audit_claims runs tools/audit_claims.py (reads claims.yaml + artifacts, prints PASS/FAIL/MANUAL — writes nothing).
+SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots", "audit_claims"}
 
 
 # ── bus writers (directives, commands) ──────────────────────────────────────
@@ -223,6 +224,12 @@ def run_tool(name: str, idea: str | None = None) -> dict:
         cmd = [py, str(HUB / "tools" / "show_config.py")] + ([str(pdir)] if pdir else [])
     elif name == "slots":
         cmd = [py, str(HUB / "tools" / "run_slots.py"), "status"]
+    elif name == "audit_claims":
+        s = _slug(idea or "")
+        if not s:
+            return {"error": "audit_claims needs an idea slug"}
+        rel_tol = (sources._load_yaml(LAB / "config.yaml").get("critique") or {}).get("claim_rel_tol", 1e-3)
+        cmd = [py, str(HUB / "tools" / "audit_claims.py"), f"studies/{s}/paper", "--rel-tol", str(rel_tol)]
     elif name == "inbox":
         if pdir:
             cmd, cwd = [py, str(pdir / "scripts" / "lab_bus.py"), "inbox"], pdir
@@ -269,6 +276,238 @@ def _read_clip(path: Path) -> str:
     return txt if len(txt) <= _DOC_CLIP else txt[:_DOC_CLIP] + "\n\n… (clipped — open the file for the rest)"
 
 
+def _filesec(title: str, f: Path, fallback: str = "") -> dict:
+    """A doc-viewer section for a real file: its clipped text plus an absolute `path` (when the file
+    exists) so the frontend can offer an 'open in editor' deep-link. The dashboard is local-only."""
+    sec = {"title": title, "text": _read_clip(f) or fallback}
+    if f.exists() and f.is_file():
+        sec["path"] = str(f.resolve())
+    return sec
+
+
+def _read_full(path: Path) -> str:
+    """Unclipped read — for parsing/extraction where a 16 KB clip could cut a section mid-way (the
+    extracted section itself is small, so this never streams much). Empty string if absent."""
+    if not path.exists() or not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return ""
+
+
+_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+
+
+def _md_section(text: str, pattern) -> str:
+    """Return one markdown section (heading + body) whose HEADING TEXT matches `pattern` (a compiled
+    regex). Body runs until the next heading of equal-or-shallower level (## stops at ##/#). '' if
+    not found. Used to lift the decision-critical bits out of proposal.md / lit-review.md / a
+    meta-review — tolerant of the numbered ('## 5. Budget') and suffixed ('Kill criteria (…)') headings."""
+    lines = text.split("\n")
+    heads = [(i, len(m.group(1)), m.group(2)) for i, ln in enumerate(lines)
+             for m in (_HEADING.match(ln),) if m]
+    for n, (i, level, htext) in enumerate(heads):
+        if pattern.search(htext):
+            end = len(lines)
+            for (j, lvl, _h) in heads[n + 1:]:
+                if lvl <= level:
+                    end = j
+                    break
+            return "\n".join(lines[i:end]).strip()
+    return ""
+
+
+# ── gate review bundles — everything the PI needs to decide a gate, in one view ───────────────────
+#
+# Each gate gets a COMPOSED read-only view instead of a single file: Gate 1 = the lit-review's
+# novelty verdict + the proposal's budget/kill/success sections + the full proposal; Gate 2 = the
+# FULL-run envelope + the completed PILOT runs that justify scaling; Gate 3 = claims + the
+# meta-review verdict + every review/response (the PDF itself opens in the paper viewer). Every
+# section that maps to a real file still carries its `path`, so the editor deep-links keep working.
+
+def _gate1_bundle(slug: str) -> dict:
+    prop = HUB / "studies" / slug / "proposal.md"
+    lit = HUB / "studies" / slug / "lit-review.md"
+    secs = []
+    nov = _md_section(_read_full(lit), re.compile(r"Novelty verdict", re.I))
+    if nov:
+        secs.append({"title": "Novelty verdict (lit-review)", "text": nov, "path": str(lit.resolve())})
+    prop_full = _read_full(prop)
+    if prop_full:
+        crit = [s for s in (_md_section(prop_full, re.compile(pat, re.I))
+                            for pat in (r"\bBudget\b(?![-\w])", r"Kill criteria", r"Success criteria")) if s]
+        if crit:
+            secs.append({"title": "Decision-critical — budget · kill criteria · success criteria",
+                         "text": "\n\n".join(crit), "path": str(prop.resolve())})
+        secs.append(_filesec(f"studies/{slug}/proposal.md", prop))
+    else:
+        secs.append(_filesec(f"studies/{slug}/proposal.md", prop, f"no proposal at studies/{slug}/proposal.md"))
+    return {"ok": True, "title": f"Gate 1 · {slug} · proposal + novelty", "sections": secs}
+
+
+def _pilot_evidence(pdir: Path | None) -> dict:
+    """The completed PILOT runs — the evidence that justifies signing a FULL-run envelope."""
+    if not pdir:
+        return {"title": "Pilot evidence", "text": "project not reachable — no runs to show"}
+    reg = pdir / "runs" / "registry.jsonl"
+    rows = sources._read_jsonl(reg) if reg.exists() else []
+    pilots = [r for r in rows if r.get("status") == "completed" and str(r.get("stage", "")).upper() == "PILOT"]
+    sec = {"title": f"Pilot evidence — {len(pilots)} completed PILOT run(s)"}
+    if reg.exists():
+        sec["path"] = str(reg.resolve())
+    if not pilots:
+        sec["text"] = ("no completed PILOT runs yet — pilots are the evidence that justifies a "
+                       "FULL-scale launch (Gate 2 should usually wait for them)")
+        return sec
+    lines = []
+    for r in pilots[-12:]:
+        m = r.get("metrics") or {}
+        mtxt = " · ".join(f"{k}={v}" for k, v in list(m.items())[:4] if isinstance(v, (int, float)))
+        lines.append(f"{str(r.get('run_id', '?')):<34}  seed={r.get('seed', '?')}  {mtxt}")
+    sec["text"] = "\n".join(lines)
+    return sec
+
+
+def _gate2_bundle(slug: str) -> dict:
+    pdir = sources._project_path({"id": slug, "project": ""})
+    ctrl = (pdir / "control.yaml") if pdir else None
+    env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
+    secs = [{"title": "gate2_envelope (control.yaml)",
+             "text": json.dumps(env, indent=2, default=str) if env else "no gate2_envelope found — spawn the project first"}]
+    secs.append(_pilot_evidence(pdir))
+    if ctrl and ctrl.exists():
+        secs.append(_filesec("control.yaml", ctrl))
+    return {"ok": True, "title": f"Gate 2 · {slug} · envelope + pilot evidence", "sections": secs}
+
+
+def _find_review_files(paper: Path, pattern: str) -> list:
+    """Reviews live under studies/<slug>/paper/reviews/[critique-<date>/], so search RECURSIVELY
+    (a plain glob — what the old gate-3 view used — finds none of them). Bounded."""
+    if not paper.is_dir():
+        return []
+    return [f for f in sorted(paper.rglob(pattern)) if f.is_file()][:30]
+
+
+def _meta_verdict(text: str) -> str:
+    """Lift the headline decision + Overall-score row out of a meta-review.md."""
+    if not text:
+        return ""
+    out = []
+    for ln in text.split("\n"):
+        if re.search(r"\|\s*\*{0,2}Overall", ln, re.I):
+            out.append(ln.strip())
+            break
+    dec = _md_section(text, re.compile(r"^Decision\b", re.I))
+    if dec:
+        out.append(dec)
+    return "\n\n".join(out).strip()
+
+
+def _gate3_bundle(slug: str) -> dict:
+    paper = HUB / "studies" / slug / "paper"
+    secs = [_filesec(f"studies/{slug}/paper/claims.yaml", paper / "claims.yaml", "no claims.yaml yet")]
+    metas = _find_review_files(paper, "*meta*.md")
+    if metas:
+        verdict = _meta_verdict(_read_full(metas[-1]))
+        if verdict:
+            secs.append({"title": "Meta-review verdict", "text": verdict, "path": str(metas[-1].resolve())})
+    seen = set()
+    for f in _find_review_files(paper, "*review*.md") + metas + _find_review_files(paper, "*response*.md"):
+        if f in seen:
+            continue
+        seen.add(f)
+        secs.append(_filesec(f"paper/{f.relative_to(paper).as_posix()}", f))
+    return {"ok": True, "title": f"Gate 3 · {slug} · claims + review (read-only)", "sections": secs,
+            "note": "Gate 3 is never signed from the dashboard — read here (use “view paper ▸” for the PDF), then /finalize in a session."}
+
+
+# ── claims ↔ artifact map — hard rule 1, made visible ─────────────────────────────────────────────
+#
+# Renders studies/<slug>/paper/claims.yaml as a structured list: every claimed number, its metric /
+# location / derivation, and the artifact file(s) it traces to — each resolved on disk so the PI can
+# OPEN the artifact (a run peek + an editor link) and see the number is real. It reports artifact
+# *linkage* (file present / missing), NOT a numeric audit — the mechanical PASS/FAIL/MANUAL audit is
+# tools/audit_claims.py, runnable from the same view via the read-only tool runner.
+
+def _as_list(v) -> list:
+    """Coerce a YAML scalar to a one-item list — so a hand-edited `artifacts: foo` / `numbers: "0.9"`
+    (a string written where a list belongs) isn't iterated character-by-character."""
+    if isinstance(v, list):
+        return v
+    return [v] if v not in (None, "") else []
+
+
+def _within(base: Path | None, target: Path) -> bool:
+    """True iff `target` resolves to inside `base` — a cheap containment guard so a claim artifact
+    like `../../x` can't surface an out-of-project absolute path as an openable editor link."""
+    if not base:
+        return False
+    try:
+        target.resolve().relative_to(base.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _claim_project_dir(c: dict, slug: str) -> Path | None:
+    # project_path is a documented override for /adopt or oddly-located projects, so it is NOT
+    # contained to projects_root — it points wherever the PI's project actually lives.
+    pp = str(c.get("project_path") or "").strip()
+    if pp:
+        p = Path(pp)
+        return p if p.is_absolute() else (HUB / p).resolve()
+    return sources._project_path({"id": c.get("project") or slug, "project": ""})
+
+
+def claims_map(idea: str | None = None) -> dict:
+    slug = _slug(idea or "")
+    if not slug:
+        return {"error": "no idea given"}
+    cfile = HUB / "studies" / slug / "paper" / "claims.yaml"
+    if not cfile.exists():
+        return {"error": f"no claims.yaml at studies/{slug}/paper/claims.yaml"}
+    doc = sources._load_yaml(cfile)
+    if not isinstance(doc, dict):        # a malformed top-level scalar/list → empty map, never a 500
+        doc = {}
+    claims_in = doc.get("claims")
+    if not isinstance(claims_in, list):  # the schema's top-level `claims:` is a list; anything else → none
+        claims_in = []
+    archive = HUB / "studies" / slug / "paper" / "artifacts"
+    out = []
+    for c in claims_in:
+        if not isinstance(c, dict):      # count parity: sources._claims_count also counts dict items only
+            continue
+        proj = str(c.get("project") or slug)
+        pdir = _claim_project_dir(c, slug)
+        arts = []
+        for rel in _as_list(c.get("artifacts")):
+            rel = str(rel).replace("\\", "/")
+            info = {"rel": rel, "exists": False}
+            target = None
+            live = (pdir / rel) if pdir else None
+            if live and live.exists() and _within(pdir, live):                  # must stay inside its project
+                target = live
+            elif (archive / rel).exists() and _within(archive, archive / rel):  # hub archive (locked at /finalize)
+                target = archive / rel
+            if target:
+                info.update(exists=True, abs=str(target.resolve()))
+                mm = re.match(r"runs/([^/]+)/", rel)                            # a run artifact → peekable in the doc viewer
+                if mm and mm.group(1) not in ("..", "."):
+                    info.update(project=proj, run_id=mm.group(1))
+            arts.append(info)
+        out.append({
+            "id": str(c.get("id") or ""), "claim": str(c.get("claim") or ""),
+            "numbers": [str(n) for n in _as_list(c.get("numbers"))],
+            "metric": str(c.get("metric") or ""), "location": str(c.get("location") or ""),
+            "derivation": str(c.get("derivation") or ""), "project": proj,
+            "has_hashes": bool(c.get("artifact_sha256")), "artifacts": arts,
+            "linked": bool(arts) and all(a["exists"] for a in arts),
+        })
+    return {"ok": True, "title": f"{slug} · claims ↔ artifacts", "n": len(out),
+            "claims_path": str(cfile.resolve()), "claims": out}
+
+
 def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: str | None = None) -> dict:
     if what == "run":
         slug, rid = _slug(idea or ""), _slug(run or "")
@@ -282,13 +521,13 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
         for fn in ("metrics.json", "meta.json", "config.yaml"):
             f = rdir / fn
             if f.exists():
-                secs.append({"title": f"runs/{rid}/{fn}", "text": _read_clip(f)})
+                secs.append(_filesec(f"runs/{rid}/{fn}", f))
         stream = rdir / "metrics.jsonl"
         if stream.exists():
             lines = [ln for ln in _read_clip(stream).splitlines() if ln.strip()]
             if lines:
                 secs.append({"title": f"runs/{rid}/metrics.jsonl · last {min(8, len(lines))} of {len(lines)}",
-                             "text": "\n".join(lines[-8:])})
+                             "text": "\n".join(lines[-8:]), "path": str(stream.resolve())})
         if not secs:
             return {"error": f"no artifacts under {slug}/runs/{rid} (runs are gitignored; the project may be elsewhere)"}
         return {"ok": True, "title": f"{slug} · {rid}", "sections": secs}
@@ -296,14 +535,14 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
     if what == "knowledge":
         secs = []
         for name in ("FINDINGS", "FAILURES", "OPEN-QUESTIONS"):
-            secs.append({"title": name.replace("-", " ").title(),
-                         "text": _read_clip(LAB / "knowledge" / f"{name}.md") or "(none recorded yet)"})
+            secs.append(_filesec(name.replace("-", " ").title(),
+                                 LAB / "knowledge" / f"{name}.md", "(none recorded yet)"))
         nb_dir = LAB / "notebook"
         entries = sorted(nb_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True) if nb_dir.exists() else []
         dated = [f for f in entries if f.name.lower() != "readme.md"]
         latest = (dated or entries)[0] if (dated or entries) else None
         if latest:
-            secs.append({"title": "Latest notebook entry · " + latest.name, "text": _read_clip(latest)})
+            secs.append(_filesec("Latest notebook entry · " + latest.name, latest))
         return {"ok": True, "title": "Lab knowledge", "sections": secs}
 
     if what == "gate":
@@ -315,29 +554,57 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
         except (TypeError, ValueError):
             gate = 0
         if gate == 1:
-            f = HUB / "studies" / slug / "proposal.md"
-            return {"ok": True, "title": f"Gate 1 · {slug} · proposal",
-                    "sections": [{"title": f"studies/{slug}/proposal.md",
-                                  "text": _read_clip(f) or f"no proposal at studies/{slug}/proposal.md"}]}
+            return _gate1_bundle(slug)
         if gate == 2:
-            pdir = sources._project_path({"id": slug, "project": ""})
-            ctrl = (pdir / "control.yaml") if pdir else None
-            env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
-            secs = [{"title": "gate2_envelope (control.yaml)",
-                     "text": json.dumps(env, indent=2, default=str) if env else "no gate2_envelope found — spawn the project first"}]
-            if ctrl and ctrl.exists():
-                secs.append({"title": "control.yaml", "text": _read_clip(ctrl)})
-            return {"ok": True, "title": f"Gate 2 · {slug} · the FULL-run envelope", "sections": secs}
+            return _gate2_bundle(slug)
         if gate == 3:
-            pdir = HUB / "studies" / slug / "paper"
-            secs = [{"title": f"studies/{slug}/paper/claims.yaml", "text": _read_clip(pdir / "claims.yaml") or "no claims.yaml yet"}]
-            if pdir.exists():
-                for md in sorted(pdir.glob("*review*.md")) + sorted(pdir.glob("*meta*.md")):
-                    secs.append({"title": md.name, "text": _read_clip(md)})
-            return {"ok": True, "title": f"Gate 3 · {slug} · claims + review (read-only)",
-                    "sections": secs, "note": "Gate 3 is never signed from the dashboard — read here, then /finalize in a session."}
+            return _gate3_bundle(slug)
         return {"error": f"unknown gate {gate}"}
     return {"error": f"unknown document '{what}'"}
+
+
+# ── paper artifacts (compiled PDF + figures) — read-only binary views ─────────
+#
+# A back-half session compiles studies/<slug>/paper/main.pdf (the /write-paper latexmk gate) and
+# syncs figures into studies/<slug>/paper/figures/. We stream those bytes so the PI can read the
+# paper IN the dashboard and watch it refresh on each recompile. Read-only; fixed root + sanitized
+# slug; figure names are reduced to a basename and re-confirmed under the figures dir (no traversal).
+
+_FIG_EXTS = {".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp", ".pdf"}
+_FIG_CTYPE = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".svg": "image/svg+xml",
+              ".gif": "image/gif", ".webp": "image/webp", ".pdf": "application/pdf"}
+
+
+def _paper_dir(idea: str) -> Path | None:
+    slug = _slug(idea or "")
+    return (HUB / "studies" / slug / "paper") if slug else None
+
+
+def paper_pdf(idea: str) -> Path | None:
+    pdir = _paper_dir(idea)
+    f = (pdir / "main.pdf") if pdir else None
+    return f if (f and f.is_file()) else None
+
+
+def figure_list(idea: str) -> list[str]:
+    pdir = _paper_dir(idea)
+    fdir = (pdir / "figures") if pdir else None
+    if not fdir or not fdir.is_dir():
+        return []
+    return sorted(f.name for f in fdir.iterdir() if f.is_file() and f.suffix.lower() in _FIG_EXTS)
+
+
+def figure_file(idea: str, name: str) -> Path | None:
+    pdir = _paper_dir(idea)
+    fdir = (pdir / "figures") if pdir else None
+    if not fdir or not fdir.is_dir():
+        return None
+    target = (fdir / Path(name or "").name).resolve()   # basename only — strips any path components
+    if fdir.resolve() not in target.parents:            # re-confirm it lands inside figures/
+        return None
+    if not target.is_file() or target.suffix.lower() not in _FIG_EXTS:
+        return None
+    return target
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -406,9 +673,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
         if self.path.startswith("/api/events"):
             return self._serve_sse()
+        if self.path.startswith("/api/paper"):
+            return self._serve_paper()
+        if self.path.startswith("/api/figs"):
+            return self._serve_figs()
+        if self.path.startswith("/api/figure"):
+            return self._serve_figure()
         if self.path.startswith("/static/") or self.path.count("/") == 1:
             return self._serve_static(self.path.lstrip("/"))
         self._send(404, b"not found", "text/plain")
+
+    def _query(self) -> dict:
+        from urllib.parse import parse_qs, urlparse
+        return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+
+    def _serve_bytes(self, f: Path, ctype: str) -> None:
+        try:
+            self._send(200, f.read_bytes(), ctype)
+        except OSError:
+            self._send(404, b"unreadable", "text/plain")
+
+    def _serve_paper(self) -> None:
+        f = paper_pdf(self._query().get("idea", ""))
+        if not f:
+            return self._send(404, b"no compiled paper (studies/<slug>/paper/main.pdf)", "text/plain")
+        self._serve_bytes(f, "application/pdf")
+
+    def _serve_figs(self) -> None:
+        self._json({"figures": figure_list(self._query().get("idea", ""))})
+
+    def _serve_figure(self) -> None:
+        q = self._query()
+        f = figure_file(q.get("idea", ""), q.get("name", ""))
+        if not f:
+            return self._send(404, b"no such figure", "text/plain")
+        self._serve_bytes(f, _FIG_CTYPE.get(f.suffix.lower(), "application/octet-stream"))
 
     def _serve_index(self) -> None:
         try:
@@ -488,6 +787,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(run_tool(body.get("name", ""), body.get("idea")))
         if p.startswith("/api/read"):
             return self._json(read_doc(body.get("what", ""), body.get("idea"), body.get("gate"), body.get("run")))
+        if p.startswith("/api/claims"):
+            return self._json(claims_map(body.get("idea")))
         if p.startswith("/api/withdraw"):
             append_withdraw(body.get("target", "hub"), body.get("id", ""))
             return self._json({"ok": True})

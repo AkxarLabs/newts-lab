@@ -461,6 +461,52 @@ html[data-lamp="day"] .modal-read{color:#2f7d70}
 .iact .ik.git{color:var(--violet); border-color:var(--violet)}
 .inspector .empty-note{padding:24px 0}
 
+/* "open in editor" deep-link (in the read-only doc viewer's section headers) */
+.ed-link{font-family:var(--round); font-weight:700; font-size:.72rem; color:var(--cyan); text-decoration:none; cursor:pointer}
+.ed-link:hover{color:var(--teal); text-decoration:underline}
+
+/* paper viewer: a wide centred overlay — the compiled PDF (native browser render) + a figures strip */
+.paper-scrim{position:fixed; inset:0; background:rgba(4,7,10,.66); z-index:58; backdrop-filter:blur(6px)}
+.paper{position:fixed; left:50%; top:54px; transform:translateX(-50%); width:min(1100px,94vw); height:calc(100vh - 96px); z-index:60;
+  background:linear-gradient(180deg, rgba(17,23,29,.97), rgba(10,14,19,.98)); border:1px solid var(--glass-edge); border-radius:16px;
+  box-shadow:0 18px 70px rgba(0,0,0,.55); display:flex; flex-direction:column; animation:slidein .2s ease; backdrop-filter:blur(13px); overflow:hidden}
+.paper-head{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 15px; border-bottom:1px solid var(--hair); font-family:var(--mono); font-size:.84rem; color:var(--ink)}
+.paper-tools{display:flex; align-items:center; gap:8px}
+.paper-frame{flex:1 1 auto; width:100%; border:0; background:#52555b}
+.paper-figs{flex:0 0 auto; max-height:150px; overflow:auto; padding:8px 12px 12px; border-top:1px solid var(--hair)}
+.figs-head{font-family:var(--display); font-size:.6rem; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-soft); opacity:.7; margin:2px 0 6px}
+.figs-strip{display:flex; gap:10px; flex-wrap:wrap}
+.fig-cell{display:flex; align-items:center; justify-content:center; width:120px; height:84px; border:1px solid var(--card-edge); border-radius:9px; overflow:hidden; background:rgba(143,179,138,.06); transition:.15s}
+.fig-cell:hover{border-color:var(--cyan); box-shadow:0 0 12px rgba(121,179,166,.16)}
+.fig-cell img{max-width:100%; max-height:100%; object-fit:contain; background:#fff}
+.fig-cell .fig-pdf{font-family:var(--mono); font-size:.66rem; color:var(--ink-soft); padding:6px; text-align:center; word-break:break-all}
+
+/* claims ↔ artifact map: every claimed number traced to its run artifact (hard rule 1, visible) */
+.claims{position:fixed; right:22px; top:64px; bottom:96px; width:520px; max-width:94vw; z-index:62;
+  background:linear-gradient(180deg, rgba(17,23,29,.96), rgba(10,14,19,.98)); border:1px solid var(--glass-edge); border-radius:16px;
+  box-shadow:var(--shadow); display:flex; flex-direction:column; animation:slidein .2s ease; backdrop-filter:blur(13px)}
+.claims-head{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 15px; border-bottom:1px solid var(--hair); font-family:var(--mono); font-size:.84rem; color:var(--ink)}
+.claims-tools{display:flex; align-items:center; gap:8px}
+.claims-body{overflow:auto; padding:8px 12px 14px}
+.claim-row{border:1px solid var(--card-edge); border-radius:12px; padding:11px 13px; margin:8px 0; background:rgba(143,179,138,.04)}
+.claim-top{display:flex; align-items:baseline; gap:8px; margin-bottom:4px}
+.claim-id{font-family:var(--mono); font-size:.7rem; font-weight:700; color:var(--ink); flex:0 0 auto}
+.claim-link{font-family:var(--mono); font-size:.6rem; font-weight:700; padding:1px 7px; border-radius:999px; flex:0 0 auto; border:1px solid var(--hair)}
+.claim-link.ok{color:var(--teal); border-color:var(--teal)}
+.claim-link.miss{color:var(--warn); border-color:var(--warn)}
+.claim-text{flex:1 1 auto; font-size:.86rem; color:var(--ink); word-break:break-word}
+.claim-meta{display:flex; flex-wrap:wrap; gap:6px; margin:5px 0}
+.claim-chip{font-family:var(--mono); font-size:.66rem; padding:1px 7px; border-radius:7px; border:1px solid var(--hair); color:var(--ink-soft)}
+.claim-chip.num{color:var(--ink); border-color:var(--cyan)}
+.claim-deriv{font-size:.74rem; color:var(--ink-soft); font-style:italic; margin:3px 0}
+.claim-arts{display:flex; flex-direction:column; gap:4px; margin-top:5px}
+.art-row{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:.72rem}
+.art-rel{flex:1 1 auto; color:var(--ink-soft); word-break:break-all}
+.art-rel.miss{color:var(--warn)}
+.art-peek{flex:0 0 auto; cursor:pointer; color:var(--cyan); background:transparent; border:1px solid var(--hair); border-radius:6px; padding:0 6px; font-size:.66rem}
+.art-peek:hover{border-color:var(--cyan)}
+.claims-body .empty-note{padding:24px 0}
+
 .toast{position:fixed; left:50%; bottom:154px; transform:translateX(-50%); z-index:70;
   display:flex; flex-direction:column; align-items:center; gap:7px; pointer-events:none}
 .toast-pill{background:linear-gradient(180deg,rgba(143,179,138,.96),rgba(121,179,166,.92)); color:#0b1310;

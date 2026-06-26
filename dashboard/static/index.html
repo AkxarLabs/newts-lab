@@ -175,6 +175,35 @@
   <pre id="drawerBody"></pre>
 </div>
 
+<!-- paper viewer: the compiled PDF (auto-refreshes on recompile) + a figures strip; read-only -->
+<div class="paper-scrim" id="paperScrim" hidden></div>
+<aside class="paper" id="paper" hidden>
+  <div class="paper-head">
+    <span id="paperTitle">paper</span>
+    <span class="paper-tools">
+      <button class="btn" id="paperClaims" title="the claims ↔ artifact map for this paper" hidden>claims ↔ artifacts ▸</button>
+      <button class="btn" id="paperEdit" title="open the LaTeX source in your editor" hidden>edit source ▸</button>
+      <button class="btn" id="paperPop" title="open the PDF in a new tab">open PDF ▸</button>
+      <button class="x" id="paperClose">✕</button>
+    </span>
+  </div>
+  <iframe id="paperFrame" class="paper-frame" title="compiled paper"></iframe>
+  <div class="paper-figs" id="paperFigs" hidden></div>
+</aside>
+
+<!-- claims ↔ artifact map: every claimed number, its run artifact(s), and the mechanical audit -->
+<aside class="claims" id="claims" hidden>
+  <div class="claims-head">
+    <span id="claimsTitle">claims ↔ artifacts</span>
+    <span class="claims-tools">
+      <button class="btn" id="claimsEdit" title="open claims.yaml in your editor" hidden>claims.yaml ▸</button>
+      <button class="btn go" id="claimsAudit" title="run the mechanical claims audit (read-only)">run audit ▸</button>
+      <button class="x" id="claimsClose">✕</button>
+    </span>
+  </div>
+  <div class="claims-body" id="claimsBody"></div>
+</aside>
+
 <!-- worker inspector: what this agent/subagent has been doing (its own clean log) -->
 <aside class="inspector" id="inspector" hidden>
   <div class="inspector-head">
