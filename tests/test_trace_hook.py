@@ -7,7 +7,9 @@ given cwd, so we build fixture hub/project/worktree dirs under tmp_path.
 
 from __future__ import annotations
 
-from conftest import load
+import ast
+
+from conftest import REPO, load
 
 
 def _mod():
@@ -104,12 +106,28 @@ def test_kind_classifies_tools():
 # (Its docstring claims "verbatim copy of the hub's tools/trace_hook.py"; the studies/ refactor
 #  once let IDEA_RE drift to the stale (?:ideas|papers)/ form — this test pins them together.)
 
+def _src_after_module_docstring(rel: str) -> str:
+    """The file's source below its module docstring. The docstring is the ONLY intended
+    difference between the hub copy and the project-template copy, so everything after it must
+    be byte-identical — this pins the whole code body (regexes, _kind/_summary, main dispatch),
+    not just a few constants."""
+    path = REPO.joinpath(*rel.split("/"))
+    src = path.read_text(encoding="utf-8")
+    doc = ast.parse(src).body[0]
+    assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant), f"{rel}: no module docstring"
+    return "\n".join(src.splitlines()[doc.end_lineno:])
+
+
 def test_template_trace_hook_in_lockstep_with_hub():
     hub = load("trace_hook")
     tpl = load("templates/project/scripts/trace_hook")
+    # explicit named canaries (good failure messages for the constants that actually drifted before)
     assert tpl.IDEA_RE.pattern == hub.IDEA_RE.pattern
     assert tpl.PROJ_RE.pattern == hub.PROJ_RE.pattern
-    assert tpl.WORKER_RETENTION_S == hub.WORKER_RETENTION_S   # retention stays in lockstep too
+    assert tpl.WORKER_RETENTION_S == hub.WORKER_RETENTION_S
+    # strong guard: the entire body below the docstring must match, so NO logic can drift undetected
+    assert _src_after_module_docstring("templates/project/scripts/trace_hook.py") == \
+        _src_after_module_docstring("tools/trace_hook.py")
 
 
 # ── _prune_workers: SessionStart retention bounds the workers dir ─────────────────

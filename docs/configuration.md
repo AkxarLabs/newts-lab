@@ -74,6 +74,7 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | `agents.programmatic.permission_mode` | auto | PI | claude `--permission-mode` (`auto` = broad in-repo approval that still blocks dangerous ops, paired with the project `.claude/settings.json` allowlist; `dontAsk` stricter, `bypassPermissions` wider). A blocked op is denied → the agent escalates via the bus |
 | `agents.programmatic.max_minutes` · `max_concurrent` · `max_depth` · `max_transcript_mb` | 240 · 3 · 1 · 200 | PI | per-agent wall-clock cap (watchdog) · per-project concurrency · launch-recursion cap (1 = no nesting) · stored-transcript cap (MB) |
 | `agents.programmatic.backends.<backend>.*` | — | PI | per-backend model/effort + safety knobs: claude `{model, effort, permission_mode}` · codex `{model, reasoning_effort, sandbox, approval, network_access}` · opencode `{model, variant, permission, agent, skip_permissions}` · all `{extra_args}`. The safety flags are *refused* in `extra_args` and must go through these dedicated keys |
+| `autopilot.max_concurrent_projects` | 1 | PI | how many projects an `/autopilot` campaign drives at once. `1` = one project end-to-end (sequential). `>1` turns autopilot into a coordinator that launches one headless session per project — and **requires** `agents.programmatic.enabled: true` |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 
@@ -82,6 +83,9 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | Key | Owner | Effect |
 |---|---|---|
 | `package` | agent | the importable package under `src/` that `scripts/run.py` + `sweep.py` drive (config/experiment/seeding/tracking). Spawned projects keep `project_pkg`; an **adopted** repo sets this to its own package name instead of renaming it (autodetected when `src/` has exactly one package; this pins it) |
+| `hub_path` | set at spawn | absolute path back to the hub repo (lets the project resolve the hub's lifecycle skills + write-back targets). Substituted from `{{hub_path}}` when the template is instantiated |
+| `project_type` | PI-confirmed at spawn | the methodology axis: `ml` (default) · `empirical` · `simulation` · `theory` · `target-driven`. Selects the type card (`templates/project-types/<type>/TYPE.md`) that defines what an "experiment" is — see [Project types](project-types.md) |
+| `runner` / `runner_command` | agent | how `scripts/run.py` executes a run: `runner: python-import` (default, drives `package`) **or** `runner: shell-command` + `runner_command:` for a non-Python engine (R/Stata/Julia/proof-checker) that writes `result.json` to `$RUN_DIR`. Keeps hard-rule-1 traceability for any language |
 | `budgets.smoke_max_minutes` / `pilot_…` / `full_…` | **PI after Gate 1** | per-stage wall-clock caps, **enforced by the run watchdog** (a run that exceeds its stage budget is killed and recorded as `timeout`) |
 | `budgets.total_note` | PI | free-text total compute cap from the proposal |
 | `seeds.list` | agent | default seeds for `scripts/sweep.py` |

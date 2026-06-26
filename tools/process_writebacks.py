@@ -65,7 +65,7 @@ def registry_projects() -> list[tuple[str, Path]]:
         if not line.strip().startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < len(_COLS) or cells[0] in ("ID", "") or set(cells[0]) <= {"-"}:
+        if len(cells) < len(_COLS) or cells[0] in ("ID", "", "—") or set(cells[0]) <= {"-"}:
             continue
         row = dict(zip(_COLS, cells))
         raw = (row.get("project") or "").strip().strip("`")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import types
 
-from conftest import load
+from conftest import REPO, load
 
 
 def _mod(hub, monkeypatch, bus_dir=None):
@@ -19,6 +19,17 @@ def _mod(hub, monkeypatch, bus_dir=None):
 def _lines(bus):
     f = bus / "events.jsonl"
     return [json.loads(ln) for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+# ── drift guard: the project-template copy is byte-identical to the hub's ──────────
+# lab_bus.py auto-detects hub vs project at runtime (IS_HUB), so ONE source serves both and the
+# two files must stay byte-for-byte equal — a new KIND or directive-ack tweak in the hub copy
+# must not leave projects on stale bus semantics (the dashboard reads both).
+
+def test_template_lab_bus_byte_identical_to_hub():
+    hub = (REPO / "tools" / "lab_bus.py").read_text(encoding="utf-8")
+    tpl = (REPO / "templates" / "project" / "scripts" / "lab_bus.py").read_text(encoding="utf-8")
+    assert hub == tpl, "tools/lab_bus.py and templates/project/scripts/lab_bus.py have drifted"
 
 
 def test_kinds_include_escalation_and_approach_ideate(hub, monkeypatch):
