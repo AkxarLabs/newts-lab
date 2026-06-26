@@ -198,9 +198,17 @@ uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project 
 
 - **Backends, via config (default claude).** `agents.programmatic.backend: claude` runs `claude -p`
   (headless); `codex` runs `codex exec`; `opencode` runs `opencode run --format json`. Each launched
-  agent is a **top-level** session in the project's cwd (so it *can* spawn its own experiment-runners /
-  subagents) — **not** a nested subagent — and is **depth-capped** (`max_depth: 1`) so it can't launch
-  more. **codex and opencode are OPTIONAL installs** — only the selected backend's CLI need be present;
+  agent is a **top-level** session in the project's cwd (not a nested subagent) and is **depth-capped**
+  (`max_depth: 1`) so it can't launch more. All three backends can in turn spawn their own
+  sub-work — **Claude Code** via native parallel Task subagents (deterministic, clean context each);
+  **Codex** via its GA Subagents (`[agents]` in `config.toml`, `~/.codex/agents/`, the
+  `spawn_agents_on_csv` batch tool running through `codex exec`); **opencode** via the Task tool /
+  `@mention` in headless `opencode run` (`--agent` only pins the primary agent). For heterogeneous lab
+  ensembles the cleanest, backend-agnostic parallelism is this same launcher's "one headless process
+  per unit of work" pattern — one `codex exec --json` / `opencode run --format json` per lens or
+  variant — which gives true fresh-context isolation on any backend; the in-process Codex/opencode
+  fan-out is newer and more model-orchestrated, so pin it to your CLI version. Outcome, gates, and
+  discipline are identical across backends. **codex and opencode are OPTIONAL installs** — only the selected backend's CLI need be present;
   claude is the default and the only one assumed installed. A missing CLI fails the launch cleanly (the
   launcher prints the install command), launches nothing, and never blocks the lab. opencode parses to
   the same per-tool activity / session / last-message contract as codex (its NDJSON `--format json`
