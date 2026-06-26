@@ -121,12 +121,13 @@ normal operation minus waiting for you, not a relaxed mode.
 
 ## Autonomy inside the project directory
 
-A spawned project is autonomously operable on its own: it ships a **`CLAUDE.md`**
-(the project protocol — orientation order, autonomy bounds from `control.yaml`,
-when to parallelize with subagents, write-back duties) and an **`AGENTS.md`** (the
-same for any other agent, plus a cold-start checklist), so `cd project && claude`
-is a complete working session with no hub context needed. `scripts/check_project.py`
-lints readiness and suggests the next procedure.
+A spawned project is autonomously operable on its own: it ships an **`AGENTS.md`** —
+the project protocol and single source of truth (orientation order, autonomy bounds from
+`control.yaml`, when to parallelize with subagents, the cold-start checklist, write-back
+duties) — and a thin **`CLAUDE.md`** that imports it (`@AGENTS.md`) plus a few Claude-native
+notes. The same manual drives Claude Code and any other agent (Codex/opencode), so `cd
+project && claude` (or `codex`/`opencode`) is a complete working session with no hub context
+needed. `scripts/check_project.py` lints readiness and suggests the next procedure.
 
 Optionally, give the agent your machine's ground truth in a **`SYSTEM.md`** —
 hardware and its honest concurrency limits, data/cache locations, scheduling
