@@ -120,18 +120,18 @@ FULL) + the runs about to launch ≤ `full_runs` (a sweep counts as N runs); boo
   *new* run once expired.
 - All frozen things stay frozen (eval, test set, seeds policy, budgets). A loop that
   needs to change one stops and queues a PI note instead.
-- **Explore-mode escalation boundary:** expanding the frontier and reopening a `Headline: no`
-  decision are autonomous (within the frozen set + envelope). Reopening a **`Headline: yes`**
-  decision, abandoning the brief's headline hypothesis, exceeding the envelope, or any change to
-  the frozen set is the boundary — queue a **PI note** and emit `uv run python scripts/lab_bus.py
-  escalate --detail "<what & why>"` (so the hub/PI sees it mid-run, not only at loop exit; an
-  escalation never grants a gate); under a signed `/autopilot` campaign, run the
-  campaign-delegation + overseer `support` check (like a Gate-1 self-approval), then continue
-  with other in-bounds work. Never pivot the headline silently. **The reopen mechanics and the
-  `Headline: yes` → `/ideate --in-project` routing (and its `ideation.in_project*` gates) are
-  exactly `/improve`'s `revisit` operator — follow it.** Loop-specific: a `revisit`/`expand` is
-  recorded in PLAN.md's Re-planning log + `decisions.md`; emit `replan` (and `approach_ideate
-  --idea <slug>` when an in-project round runs) **mid-cycle, not only at loop exit**.
+- **Explore-mode escalation boundary:** the boundary and its routing are **exactly `/improve`'s
+  `revisit` operator — follow it, don't re-derive it here**: reopening a `Headline: no` decision is
+  autonomous (within the frozen set + envelope); a **`Headline: yes`** reopen, abandoning the
+  brief's headline hypothesis, exceeding the envelope, or any change to the frozen set is the
+  boundary and routes to `/ideate --in-project` (with its `ideation.in_project*` gates, or — under a
+  signed `/autopilot` campaign — the campaign-delegation + overseer `support` check like a Gate-1
+  self-approval, then continue with other in-bounds work). Never pivot the headline silently.
+  **Loop-specific deltas only:** at the boundary, queue a **PI note** and escalate **mid-run** —
+  `uv run python scripts/lab_bus.py escalate --detail "<what & why>"` (so the PI sees it before loop
+  exit; an escalation never grants a gate); record every `revisit`/`expand` in PLAN.md's Re-planning
+  log + `decisions.md`; and emit `replan` (plus `approach_ideate --idea <slug>` when an in-project
+  round runs) **mid-cycle, not only at loop exit**.
 
 ## Exit (any stop condition)
 
