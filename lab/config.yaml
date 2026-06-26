@@ -47,7 +47,8 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # autopilot.max_concurrent_projects > 1.
     backend: claude             # default backend: claude | codex. Default ALL to claude. (codex needs
                                 # the `codex` CLI + auth; per-launch override via --backend.)
-    model: inherit              # backend model (inherit = the backend's own default)
+    model: inherit              # GLOBAL model override across backends. inherit/blank = each backend uses
+                                # its own backends.<x>.model default below; a real value here forces ALL.
     permission_mode: auto       # claude --permission-mode. `auto` broadly auto-approves work INSIDE
                                 # the project repo (so it rarely stops to ask) yet still BLOCKS
                                 # dangerous ops — curl|bash, force-push / push to main, destructive
@@ -72,12 +73,20 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # extra_args (so they can't silently negate human-in-loop); set them
                                 # through these DEDICATED keys instead — change as needed.
       claude:
+        model: claude-opus-4-8  # per-backend default model. Full id PINS the version (the `opus` alias
+                                # can drift to a newer model over time); blank/inherit = the CLI default.
+        effort: high            # claude --effort: low | medium | high | xhigh | max (Opus 4.8 default
+                                # is high). Combines with --model. Blank = the model's default effort.
         permission_mode: ""     # per-backend override of programmatic.permission_mode above (blank =
                                 # use that default). e.g. `acceptEdits` / `plan` / `dontAsk` /
                                 # `bypassPermissions` (PI-owned) for the claude backend only.
         extra_args: ""          # appended to `claude -p` (advanced; --permission-mode and
                                 # --dangerously-skip-permissions are refused — use permission_mode above)
       codex:
+        model: gpt-5.5          # per-backend default model (codex -m). Slug pattern gpt-5.<minor>[-mini|
+                                # -codex]; availability is account/auth-dependent — verify on the host.
+        reasoning_effort: medium  # codex has NO --effort flag; this passes -c model_reasoning_effort=…
+                                # (minimal | low | medium | high | xhigh). Blank = the model default.
         sandbox: workspace-write  # codex --sandbox — the codex equivalent of claude's auto+allowlist.
                                 # workspace-write = OS-enforced sandbox: edit files + run commands
                                 # INSIDE the repo, network OFF by default (a HARDER boundary than the

@@ -232,6 +232,8 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
     backend does NOT fire Claude Code hooks (claude does; codex / test backends don't)."""
     bcfg = (prog.get("backends") or {}).get(backend) or {}
     extra = str(bcfg.get("extra_args") or "")
+    # Model resolution: an explicit launch/global model wins; otherwise the backend's own default.
+    eff_model = model if (model and model != "inherit") else (bcfg.get("model") or "inherit")
 
     def _guard_extra(forbidden: tuple[str, ...]) -> None:
         # extra_args is a PI-owned advanced knob; it must NOT silently negate the human-in-loop
@@ -248,10 +250,12 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
         _guard_extra(("--permission-mode", "--dangerously-skip-permissions"))
         mode = bcfg.get("permission_mode") or permission_mode   # per-backend key overrides the launch default
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose"]
-        if model and model != "inherit":
-            cmd += ["--model", str(model)]
+        if eff_model and eff_model != "inherit":
+            cmd += ["--model", str(eff_model)]
         if mode:
             cmd += ["--permission-mode", str(mode)]
+        if bcfg.get("effort"):
+            cmd += ["--effort", str(bcfg["effort"])]   # claude --effort: low|medium|high|xhigh|max
         if extra:
             cmd += extra.split()
         return cmd, True
@@ -263,8 +267,10 @@ def _build_command(backend: str, prompt: str, pdir: Path, model: str,
                "--skip-git-repo-check", "-C", str(pdir)]
         if bcfg.get("network_access"):   # workspace-write disables network by default; opt-in per genuine need
             cmd += ["-c", "sandbox_workspace_write.network_access=true"]
-        if model and model != "inherit":
-            cmd += ["-m", str(model)]
+        if bcfg.get("reasoning_effort"):   # codex has no --effort flag; it's a config override
+            cmd += ["-c", f"model_reasoning_effort={bcfg['reasoning_effort']}"]
+        if eff_model and eff_model != "inherit":
+            cmd += ["-m", str(eff_model)]
         if extra:
             cmd += extra.split()
         return cmd, False

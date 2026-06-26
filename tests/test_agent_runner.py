@@ -230,8 +230,27 @@ def test_build_command_claude_and_codex(hub, monkeypatch):
     assert "-C" in codex_cmd and ["-m", "gpt-5"] == codex_cmd[codex_cmd.index("-m"):codex_cmd.index("-m") + 2]
     assert codex_cmd[codex_cmd.index("-a") + 1] == "never"    # codex approval default
     assert codex_cmd[codex_cmd.index("--sandbox") + 1] == "workspace-write"
-    assert "-c" not in codex_cmd                              # network off by default (no -c override)
+    assert "-c" not in codex_cmd                              # network off + no reasoning override by default
     assert fires2 is False                                    # codex needs a synthesized worker log
+
+
+def test_per_backend_model_and_effort_defaults():
+    """A backend with no launch/global model falls back to its own model + effort/reasoning keys."""
+    m = load("agent_runner")
+    prog = {"backends": {
+        "claude": {"model": "claude-opus-4-8", "effort": "high"},
+        "codex": {"model": "gpt-5.5", "reasoning_effort": "medium"},
+    }}
+    from pathlib import Path
+    cc, _ = m._build_command("claude", "hi", Path("."), "inherit", "auto", prog)
+    assert cc[cc.index("--model") + 1] == "claude-opus-4-8"   # per-backend default used (launch=inherit)
+    assert cc[cc.index("--effort") + 1] == "high"
+    xc, _ = m._build_command("codex", "hi", Path("."), "inherit", "auto", prog)
+    assert xc[xc.index("-m") + 1] == "gpt-5.5"
+    assert "model_reasoning_effort=medium" in xc             # passed as a -c override (no --effort flag)
+    # an explicit launch/global model overrides the per-backend default
+    cc2, _ = m._build_command("claude", "hi", Path("."), "claude-sonnet-4-6", "auto", prog)
+    assert cc2[cc2.index("--model") + 1] == "claude-sonnet-4-6"
 
 
 def test_per_backend_safety_knobs_are_configurable(hub, monkeypatch):
