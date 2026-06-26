@@ -78,13 +78,15 @@ subordinate to gates and hard rules; a directive is never gate approval. A direc
 within the protocol, then ack. A `gate2_envelope.pi_signed: true` with `signed_via: dashboard:*`
 in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is never dashboard-signed.
 
-**A permission-denied tool call is a signal, not a wall.** The project's routine engine commands
-(`uv run …`, file edits) are pre-approved in `.claude/settings.json`; anything the permission layer
-blocks is a genuinely-sensitive op (e.g. a destructive git command, a network fetch). When you hit
-one, **`escalate` it to the bus** (`scripts/lab_bus.py escalate --detail "blocked on: <op> — <why I
-need it>"`) so the PI can answer with a directive — then continue other planned work meanwhile.
-Never route around a denial by editing `.claude/settings.json`, `control.yaml`, the harness, or the
-budget (hard rule 12); a denial you can't justify is a finding, not an obstacle to remove.
+**A blocked tool call is a signal, not a wall.** Routine engine commands (`uv run …`, file edits)
+run without prompting — for a Claude agent via the `.claude/settings.json` `permissions.allow`
+allowlist, for a Codex agent within its `workspace-write` sandbox. Anything the permission layer or
+sandbox blocks is a genuinely-sensitive op (a destructive git command, a network fetch, a write
+outside the workspace): it is **denied/failed, never silently bypassed**. When you hit one,
+**`escalate` it to the bus** (`scripts/lab_bus.py escalate --detail "blocked on: <op> — <why I need
+it>"`) so the PI can answer with a directive — then continue other planned work meanwhile. Never
+route around it by editing `.claude/settings.json`, `control.yaml`, the sandbox, the harness, or the
+budget (hard rule 12); a block you can't justify is a finding, not an obstacle to remove.
 
 ## Subagents (you decide when)
 

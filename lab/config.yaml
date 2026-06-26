@@ -72,7 +72,15 @@ agents:                         # ── subagent settings · PI-owned ──
       claude:
         extra_args: ""          # appended to the `claude -p` invocation (advanced)
       codex:
-        sandbox: workspace-write  # codex --sandbox (workspace-write lets it edit the project repo)
+        sandbox: workspace-write  # codex --sandbox — the codex equivalent of claude's auto+allowlist.
+                                # workspace-write = OS-enforced sandbox: edit files + run commands
+                                # INSIDE the repo, network OFF by default (a HARDER boundary than the
+                                # claude classifier, so codex needs no allowlist). Launched with
+                                # `-a never` (no approval prompts; fixed — the only sane value for
+                                # non-interactive `codex exec`): a sandbox-forbidden op FAILS and the
+                                # agent escalates it to the bus — codex exec has no per-call human
+                                # approval routing. read-only = stricter; danger-full-access removes the
+                                # boundary entirely (PI-owned escape hatch — avoid).
         extra_args: ""
 
 autopilot:                      # ── /autopilot campaign defaults · PI-owned ──
