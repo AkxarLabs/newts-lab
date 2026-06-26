@@ -167,7 +167,14 @@ def _kill_tree(pid) -> None:
         if os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
         else:
-            os.killpg(os.getpgid(int(pid)), signal.SIGKILL)
+            pgid = os.getpgid(int(pid))
+            # Safety belt: every launched agent is its own session leader (**_NEW_GROUP), so pgid==pid.
+            # If a caller ever spawns the child WITHOUT start_new_session, pgid resolves to OUR group and
+            # killpg would SIGKILL the orchestrator itself — refuse the group kill, target the pid alone.
+            if pgid == os.getpgid(0):
+                os.kill(int(pid), signal.SIGKILL)
+            else:
+                os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, OSError):
         pass
 

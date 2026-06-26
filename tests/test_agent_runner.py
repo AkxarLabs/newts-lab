@@ -428,7 +428,11 @@ def test_cmd_kill_terminates_running_agent(hub, monkeypatch):
     m, proj = _setup(hub, monkeypatch)
     adir = proj / ".bus" / "agents"
     adir.mkdir(parents=True, exist_ok=True)
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    # Spawn the stand-in child exactly as production spawns a real agent: in its OWN process
+    # group/session (**_NEW_GROUP). Without this, on POSIX the child inherits pytest's process
+    # group, so _kill_tree's os.killpg(os.getpgid(pid)) would SIGKILL the whole group — pytest
+    # included (exit 137). Windows' taskkill /T /F /PID is pid-scoped, so it never showed there.
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], **m._NEW_GROUP)
     try:
         (adir / "live.json").write_text(json.dumps(
             {"agent_id": "live", "backend": "_dummy", "status": "running", "pid": child.pid}),
