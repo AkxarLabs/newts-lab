@@ -219,9 +219,13 @@ def c_evolve(a) -> int:
     pdir = _project_dir(a.slug, row)
     correction = _knowledge_has("FAILURES.md", a.slug) or _notes_section_filled(pdir, "abandoned")
     recipe = _knowledge_has("FINDINGS.md", a.slug) or _notes_section_filled(pdir, "worked")
-    if state == "killed" and not correction:
-        return _verdict(1, f"{a.slug} is killed but no CORRECTION recorded — add a FAILURES.md entry "
-                           "(or NOTES.md 'Tried & abandoned') so the next project doesn't retry it")
+    # A CORRECTION is only owed when something was actually TRIED — i.e. a project exists. A kill at
+    # triage (no project: non-novel / out of scope) is recorded in IDEA.md + OPEN-QUESTIONS, never in
+    # FAILURES.md (that file is for tried-and-failed only), so it must not be forced here.
+    if state == "killed" and pdir and not correction:
+        return _verdict(1, f"{a.slug} is killed after work began but no CORRECTION recorded — add a "
+                           "FAILURES.md entry (or NOTES.md 'Tried & abandoned') so the next project "
+                           "doesn't retry it")
     if state in ("analysis", "writing", "internal-review", "final") and not recipe:
         return _verdict(2, f"{a.slug} reached {state} but no RECIPE distilled — add a FINDINGS.md entry "
                            "(or NOTES.md 'What worked / settled here')")

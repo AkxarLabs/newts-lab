@@ -265,6 +265,14 @@ def test_evolve_kill_ok_with_hub_failure(hub, monkeypatch):
     assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
 
 
+def test_evolve_triage_kill_without_project_not_blocked(hub, monkeypatch):
+    # A kill at triage (no project — non-novel / out of scope) is recorded in IDEA.md/OPEN-QUESTIONS,
+    # NOT FAILURES.md; the guard must not demand a correction it would be wrong to file.
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="killed", project="-")  # never spawned a project
+    assert m.c_evolve(types.SimpleNamespace(slug="demo")) == 0
+
+
 def test_evolve_results_stage_warns_without_recipe(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     proj = hub.make_project("demo")
