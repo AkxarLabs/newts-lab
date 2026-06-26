@@ -16,6 +16,13 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   → seed each as an entry in `lab/knowledge/OPEN-QUESTIONS.md` (Q-001…), which
   `/ideate` reads first.
 
+**Budget tier (a fast starting point)**
+- How much should the lab spend by default — `low` (few subagents, single-ish idea search, cheaper
+  models), `medium` (the balanced default), or `high` (max parallelism, more ideas, strongest
+  models)? → `tools/profiles.py apply <tier>` stamps the whole set of depth/parallelism/model knobs
+  at once; the questions below then fine-tune it. (Tiers never lower the integrity floors — seeds,
+  oversight, frozen eval, gates stay safe at every tier.) See `docs/configuration.md` → Profiles.
+
 **Compute reality**
 - What hardware runs experiments (GPU? how many concurrent training runs can it take)?
   → `compute.max_concurrent_runs`.

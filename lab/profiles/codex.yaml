@@ -1,0 +1,10 @@
+# Engine preset: CODEX — headless launches use the codex CLI (OPTIONAL install; needs its own auth).
+# Compose with a budget tier for fan-out. The in-session per-role agent models are Claude-specific,
+# so they're left to the budget tier / session model.
+agents:
+  programmatic:
+    backend: codex
+    backends:
+      codex:
+        model: gpt-5.5
+        reasoning_effort: medium

@@ -67,6 +67,14 @@ uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]
 
 Prints the lab layer, the project's control.yaml, the effective skill values (control-first, lab fallback), and — given an experiment — the fully resolved run config with the layer that set each key. Backs `/configure`. See [Configuration](configuration.md).
 
+### `profiles.py` — budget tiers & engine config profiles
+
+```bash
+uv run --with pyyaml python tools/profiles.py list|show <name>|diff <name>|validate <name>|apply <name>|save <name>
+```
+
+Named, *partial* bundles of `lab/config.yaml` overrides (built-ins in `lab/profiles/`): budget tiers (`low`/`medium`/`high`, scaling agent/subagent counts, parallelism, per-role model strength) and engine presets (`claude-*`/`codex`/`opencode`/`mixed`, setting the headless backend). `apply` **stamps each value into `lab/config.yaml` in place — comments preserved** (no YAML round-trip that would strip the documented reference file), **syncs the `.claude/agents/*.md` `model:` frontmatter** for per-role model changes, and **refuses any profile that lowers an integrity floor** (`multi_seed_n` < 3, `oversight: off`, touching `eval_frozen`/`gate2_envelope`) — budget scales exploration, never rigor. `save` snapshots the current settings as a new named profile. Backs `/configure profile …`. See [Configuration → Profiles](configuration.md).
+
 ### `guard.py` — mechanical lifecycle guards
 
 ```bash

@@ -1,0 +1,9 @@
+# Engine preset: CLAUDE-BALANCED — headless launches use Claude Sonnet (cheaper, fast).
+# Pair with a budget tier whose per-role models keep the strong model on VERIFICATION.
+agents:
+  programmatic:
+    backend: claude
+    backends:
+      claude:
+        model: claude-sonnet-4-6
+        effort: medium

@@ -1,0 +1,32 @@
+# Budget tier: MEDIUM — the lab's default settings. Applying this RESETS the budget knobs to default.
+#   uv run --with pyyaml python tools/profiles.py apply medium
+ideation:
+  candidates: 8
+  reflection_rounds: 2
+  critics_per_idea: 2
+  enable_combination: true
+  in_project_candidates: 4
+scoping:
+  options_per_decision: 3
+  advocate_subagents: true
+critique:
+  ensemble_external: 3
+  ensemble_own_draft: 5
+  max_review_cycles: 3
+experiment:
+  num_drafts: 3
+  max_parallel_subagents: 3
+  multi_seed_n: 3
+loop:
+  explore_max_expansion_rounds: 0
+  explore_max_new_lines_per_round: 3
+discuss:
+  max_research_minutes: 15
+oversight:
+  level: standard
+agents:
+  reviewer_model: inherit  # session model (the default)
+  runner_model: inherit
+  overseer_model: inherit
+  programmatic:
+    max_concurrent: 3

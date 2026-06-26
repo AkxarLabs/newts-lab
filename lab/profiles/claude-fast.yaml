@@ -1,0 +1,8 @@
+# Engine preset: CLAUDE-FAST — headless launches use Claude Haiku (cheapest, fastest).
+agents:
+  programmatic:
+    backend: claude
+    backends:
+      claude:
+        model: claude-haiku-4-5-20251001
+        effort: low

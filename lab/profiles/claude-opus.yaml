@@ -1,0 +1,10 @@
+# Engine preset: CLAUDE-OPUS — headless launches use Claude Opus 4.8 at high effort.
+# Engine presets set only WHICH backend + its model; compose them on top of a budget tier
+# (apply the tier first, the engine preset second — later keys win on overlap).
+agents:
+  programmatic:
+    backend: claude
+    backends:
+      claude:
+        model: claude-opus-4-8
+        effort: high

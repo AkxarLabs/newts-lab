@@ -1,0 +1,9 @@
+# Engine preset: OPENCODE — headless launches use the opencode CLI (OPTIONAL install; needs auth).
+# Set a provider/model (a bare id is rejected by opencode). Compose with a budget tier.
+agents:
+  programmatic:
+    backend: opencode
+    backends:
+      opencode:
+        model: anthropic/claude-sonnet-4-5
+        variant: high

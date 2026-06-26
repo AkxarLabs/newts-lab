@@ -1,0 +1,35 @@
+# Budget tier: LOW — thrifty search, fewer agents/subagents, cheaper models.
+#   uv run --with pyyaml python tools/profiles.py apply low
+# Scales EXPLORATION only. The integrity floors here are held at their SAFE values and a profile
+# may never go under them (tools/profiles.py validate / apply refuses it):
+#   experiment.multi_seed_n >= 3 · oversight.level != off · eval_frozen / gates untouched.
+ideation:
+  candidates: 4
+  reflection_rounds: 1
+  critics_per_idea: 1
+  enable_combination: false
+  in_project_candidates: 2
+scoping:
+  options_per_decision: 2
+  advocate_subagents: false
+critique:
+  ensemble_external: 1
+  ensemble_own_draft: 3
+  max_review_cycles: 2
+experiment:
+  num_drafts: 2
+  max_parallel_subagents: 1
+  multi_seed_n: 3          # FLOOR — never below 3
+loop:
+  explore_max_expansion_rounds: 0
+  explore_max_new_lines_per_round: 2
+discuss:
+  max_research_minutes: 5
+oversight:
+  level: standard          # FLOOR — never below standard
+agents:
+  reviewer_model: sonnet   # weaker models on a low budget — but verification stays mid-tier
+  runner_model: haiku      # cheapest model for running variants (where errors are cheap)
+  overseer_model: sonnet
+  programmatic:
+    max_concurrent: 1

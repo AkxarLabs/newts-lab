@@ -1,0 +1,14 @@
+# Engine preset: MIXED — Claude backend, but the in-session per-role models put the STRONG model on
+# VERIFICATION (overseer + reviewer) and a cheaper one on running variants (where an error is cheap).
+# This is the "spend where mistakes are expensive" preset. Apply it AFTER a budget tier so its
+# per-role models win.
+agents:
+  reviewer_model: opus
+  runner_model: sonnet
+  overseer_model: opus
+  programmatic:
+    backend: claude
+    backends:
+      claude:
+        model: claude-opus-4-8
+        effort: high

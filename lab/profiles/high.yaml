@@ -1,0 +1,34 @@
+# Budget tier: HIGH — thorough, max fan-out, strongest models, high parallelism.
+#   uv run --with pyyaml python tools/profiles.py apply high
+# Note the integrity floors are RAISED here (more rigor), never lowered:
+#   multi_seed_n 3 -> 5 · oversight standard -> strict.
+ideation:
+  candidates: 16
+  reflection_rounds: 3
+  critics_per_idea: 3
+  enable_combination: true
+  in_project_candidates: 6
+scoping:
+  options_per_decision: 4
+  advocate_subagents: true
+critique:
+  ensemble_external: 5
+  ensemble_own_draft: 7
+  max_review_cycles: 4
+experiment:
+  num_drafts: 5
+  max_parallel_subagents: 6
+  multi_seed_n: 5          # RAISED — more seeds, more rigor (never below 3)
+loop:
+  explore_max_expansion_rounds: 2
+  explore_max_new_lines_per_round: 4
+discuss:
+  max_research_minutes: 30
+oversight:
+  level: strict            # RAISED — grade every fatal flaw, audit loop progress
+agents:
+  reviewer_model: opus     # strongest model on generation AND verification
+  runner_model: opus
+  overseer_model: opus
+  programmatic:
+    max_concurrent: 6

@@ -1,6 +1,6 @@
 ---
 name: configure
-description: View and edit the lab's 3-layer configuration — lab defaults, a project's control.yaml, or experiment values — with provenance. Usage; /configure [project-slug] [set key=value] (slug first).
+description: View and edit the lab's 3-layer configuration — lab defaults, a project's control.yaml, or experiment values — with provenance; and apply/save budget-tier & engine config profiles. Usage; /configure [project-slug] [set key=value] (slug first), or /configure profile <list|show|diff|apply|save> <name>.
 ---
 
 # Configure
@@ -30,6 +30,29 @@ hub `lab/config.yaml`**. Full key reference: `docs/configuration.md`.
    .claude/agents/fresh-context-reviewer.md`, `runner_model → experiment-runner.md`,
    `overseer_model → overseer.md`. `critic_model` maps to no file (inline subagents) — tell
    the PI it cannot take effect.
+
+## Profiles & budget tiers — `profile <verb> <name>`
+
+Named bundles of `lab/config.yaml` overrides (built-ins live in `lab/profiles/`; full reference:
+`docs/configuration.md` → "Profiles & budget tiers"). **Budget tiers** (`low` / `medium` / `high`)
+scale *exploration* — agent/subagent counts, parallelism, per-role model strength; **engine presets**
+(`claude-opus` · `claude-balanced` · `claude-fast` · `codex` · `opencode` · `mixed`) set the headless
+backend. They compose — apply a tier, then an engine preset.
+
+- `/configure profile list` — `uv run --with pyyaml python tools/profiles.py list`.
+- `/configure profile show|diff <name>` — the profile, or exactly what `apply` would change.
+- `/configure profile apply <name>` — **always `diff` first and show it to the PI** (this rewrites
+  `lab/config.yaml`); then `tools/profiles.py apply <name>`. The tool stamps each value **in place
+  (comments preserved)**, **syncs the `.claude/agents/*.md` `model:` frontmatter** for any per-role
+  model change (so you don't do step 4 above by hand), and **refuses** any profile that would lower an
+  integrity floor (`multi_seed_n` < 3, `oversight: off`, touching `eval_frozen`/`gate2_envelope`) —
+  budget scales exploration, never rigor. Note the change in the notebook (hard rule 11).
+- `/configure profile save <name>` — snapshot the current budget/model settings as a new named
+  profile in `lab/profiles/` (the "make your own" path: apply the closest tier, tweak with
+  `set …`, then `save`).
+
+A profile is **PI-owned** (it moves PI-owned keys like `oversight.level` and the model choices): only
+apply/save on explicit PI request, or transitively under a signed `/autopilot` campaign brief.
 
 ## Retrofit
 

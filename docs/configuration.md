@@ -17,6 +17,34 @@ uv run --with pyyaml python tools/show_config.py ../newts-lab-projects/my-proj e
 
 …or just run `/configure` and let the agent present it. Edits go through `/configure [slug] set key=value` (or by hand — they're YAML files).
 
+## Profiles & budget tiers
+
+A **profile** is a named, *partial* bundle of `lab/config.yaml` overrides (built-ins in `lab/profiles/`). Applying one **stamps its values into `lab/config.yaml` in place — comments preserved** (no new resolution layer; the 3-layer model above is untouched). Two composable axes:
+
+- **Budget tiers** — `low` · `medium` (the defaults) · `high` — scale *exploration*: how many agents/subagents, ideas, reviewer lenses, drafts, parallel subagents, and how strong the per-role models are. Rough token cost ≈ 0.3× / 1× / 3×.
+- **Engine presets** — `claude-opus` · `claude-balanced` · `claude-fast` · `codex` · `opencode` · `mixed` — set *which* headless backend (`agents.programmatic.backend`) + its model. `mixed` puts the strong model on verification (overseer/reviewer) and a cheap one on running.
+
+```bash
+uv run --with pyyaml python tools/profiles.py list
+uv run --with pyyaml python tools/profiles.py diff high      # what would change
+uv run --with pyyaml python tools/profiles.py apply high      # stamp into lab/config.yaml (+ sync agent models)
+uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current settings as a named profile
+```
+…or `/configure profile <list|show|diff|apply|save> <name>`.
+
+| | `low` | `medium` (default) | `high` |
+|---|---|---|---|
+| `ideation.candidates` / `critics_per_idea` | 4 / 1 | 8 / 2 | 16 / 3 |
+| `scoping.advocate_subagents` | false | true | true |
+| `critique.ensemble_own_draft` | 3 | 5 | 7 |
+| `experiment.num_drafts` / `max_parallel_subagents` | 2 / 1 | 3 / 3 | 5 / 6 |
+| `agents.{reviewer,runner,overseer}_model` | sonnet / haiku / sonnet | inherit | opus |
+| `agents.programmatic.max_concurrent` | 1 | 3 | 6 |
+| **`experiment.multi_seed_n` (floor)** | **3** | **3** | **5** |
+| **`oversight.level` (floor)** | **standard** | **standard** | **strict** |
+
+**The one rule: budget scales exploration, never rigor.** A profile may **never** lower `experiment.multi_seed_n` below 3, set `oversight.level: off`, or touch `eval_frozen` / `gate2_envelope` — `tools/profiles.py apply` (and `validate`) **refuses** any that does. A `low` run is *cheaper, not sloppier* — it explores less but is held to the same gates, seeds, and verification. Make your own: apply the closest tier, tweak with `/configure set …`, then `tools/profiles.py save <name>`. See `lab/profiles/README.md`.
+
 ## Layer 1 — `lab/config.yaml` (lab-wide defaults)
 
 | Key | Default | Owner | Effect |
