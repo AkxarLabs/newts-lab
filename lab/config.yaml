@@ -48,8 +48,18 @@ agents:                         # ── subagent settings · PI-owned ──
     backend: claude             # default backend: claude | codex. Default ALL to claude. (codex needs
                                 # the `codex` CLI + auth; per-launch override via --backend.)
     model: inherit              # backend model (inherit = the backend's own default)
-    permission_mode: acceptEdits  # claude --permission-mode — keeps gates/human-in-loop; NOT
-                                # bypassPermissions. (codex uses sandbox below, runs -a never.)
+    permission_mode: auto       # claude --permission-mode. `auto` broadly auto-approves work INSIDE
+                                # the project repo (so it rarely stops to ask) yet still BLOCKS
+                                # dangerous ops — curl|bash, force-push / push to main, destructive
+                                # git (reset --hard, clean -fd), irreversible deletes, infra destroy.
+                                # Paired with the project's permissions.allow engine allowlist
+                                # (templates/project/.claude/settings.json) so routine `uv run …`
+                                # commands are ALWAYS allowed and never accumulate blocks. A blocked
+                                # op is denied (never silently bypassed); the agent escalates it to the
+                                # bus and the PI answers via a directive. NOT bypassPermissions.
+                                # (Fail-safe: in headless -p, repeated blocks abort the session — the
+                                #  allowlist keeps routine work from ever tripping it.)
+                                # (codex uses sandbox below, runs -a never.)
     max_minutes: 240            # wall-clock cap per launched agent — the watchdog kills the tree on breach
     max_concurrent: 3           # PER-PROJECT ceiling on concurrently-launched agents. Lab-wide fleet
                                 # size ≈ autopilot.max_concurrent_projects × this; the expensive part

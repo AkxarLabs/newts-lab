@@ -197,6 +197,15 @@ uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project 
   (headless); `codex` runs `codex exec`. Each launched agent is a **top-level** session in the
   project's cwd (so it *can* spawn its own experiment-runners) — **not** a nested subagent — and is
   **depth-capped** (`max_depth: 1`) so it can't launch more.
+- **Permissions: `auto` + an engine allowlist, blocked ops escalate.** A launched Claude agent runs
+  `--permission-mode auto` (`agents.programmatic.permission_mode`), which broadly auto-approves work
+  inside the project repo yet still blocks dangerous ops (curl|bash, force-push, destructive git,
+  irreversible deletes). The project's `.claude/settings.json` `permissions.allow` pre-approves the
+  routine engine commands (`uv run *`, file edits) so they never stall or accumulate blocks. A genuinely
+  blocked op is **denied, never silently bypassed**, and the agent raises a `lab_bus.py escalate` the PI
+  answers via a dashboard directive — the existing human-in-loop channel, no per-call approval UI needed.
+  (`bypassPermissions` is deliberately *not* the default; `dontAsk` is the stricter fail-closed
+  alternative if a project wants only the allowlist to run.)
 - **Nothing is lost.** Running in the project cwd means the project's `.claude/settings.json` hooks
   (Claude backends) and `run.py` already emit run/worker signals into `<project>/.bus/`. On top of
   that the launcher persists the **full stdout transcript** (`<project>/.bus/agents/<id>.stream.jsonl`),

@@ -18,7 +18,7 @@ import time
 import types
 from pathlib import Path
 
-from conftest import load
+from conftest import REPO, load
 
 # A portable emitter that mimics `codex exec --json` output, then exits 0.
 _EMITTER = textwrap.dedent(
@@ -228,6 +228,23 @@ def test_build_command_claude_and_codex(hub, monkeypatch):
     assert codex_cmd[:2] == ["codex", "exec"] and "--json" in codex_cmd
     assert "-C" in codex_cmd and ["-m", "gpt-5"] == codex_cmd[codex_cmd.index("-m"):codex_cmd.index("-m") + 2]
     assert fires2 is False                                    # codex needs a synthesized worker log
+
+
+# ── headless permission contract: the project ships an engine allowlist ────────────
+
+def test_project_settings_ship_engine_allowlist():
+    """A headless launched agent runs --permission-mode auto; the project's settings.json must
+    pre-approve the routine engine commands (`uv run …`) so they never stall/accumulate blocks.
+    Without this the agent can edit files but can't run experiments. Guards the regression."""
+    settings = json.loads(
+        (REPO / "templates" / "project" / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    allow = (settings.get("permissions") or {}).get("allow") or []
+    assert any(r.startswith("Bash(uv run") for r in allow), f"no uv-run allow rule in {allow}"
+    # the rule must be a prefix-scoped Bash rule, not a blanket Bash() that would also auto-approve
+    # destructive shell ops auto-mode is meant to still block.
+    assert "Bash" not in allow and "Bash()" not in allow
+    # hooks must survive alongside the new permissions block (trace_hook → dashboard).
+    assert settings.get("hooks", {}).get("SessionStart")
 
 
 # ── watchdog: a backend that overruns max_minutes is KILLED and recorded 'timeout' ─

@@ -78,6 +78,14 @@ subordinate to gates and hard rules; a directive is never gate approval. A direc
 within the protocol, then ack. A `gate2_envelope.pi_signed: true` with `signed_via: dashboard:*`
 in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is never dashboard-signed.
 
+**A permission-denied tool call is a signal, not a wall.** The project's routine engine commands
+(`uv run …`, file edits) are pre-approved in `.claude/settings.json`; anything the permission layer
+blocks is a genuinely-sensitive op (e.g. a destructive git command, a network fetch). When you hit
+one, **`escalate` it to the bus** (`scripts/lab_bus.py escalate --detail "blocked on: <op> — <why I
+need it>"`) so the PI can answer with a directive — then continue other planned work meanwhile.
+Never route around a denial by editing `.claude/settings.json`, `control.yaml`, the harness, or the
+budget (hard rule 12); a denial you can't justify is a finding, not an obstacle to remove.
+
 ## Subagents (you decide when)
 
 Parallelize when ≥2 *mechanism-distinct* variants are ready to test and the machine

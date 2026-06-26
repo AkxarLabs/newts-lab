@@ -1,4 +1,17 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(uv sync*)",
+      "Bash(uv pip *)",
+      "Bash(uv lock*)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }
