@@ -1,6 +1,6 @@
 ---
 name: discuss
-description: Collaborative human↔agent session — a one-question-at-a-time grilling loop where the agent researches your questions live (logged) and records a session doc that seeds the next stage. Usage; /discuss <purpose> [target], purpose ∈ {direction, scope, in-project, target, paper}. Optional pre-step to /ideate, /scope, /compete, /ideate --in-project, /write-paper.
+description: Collaborative human↔agent session — a one-question-at-a-time grilling loop where the agent researches your questions live (logged) and records a session doc that seeds the next stage. Usage; /discuss <purpose> [target], purpose ∈ {direction, scope, in-project, target, paper}. Optional pre-step to /ideate or /adopt, /scope, /compete, /ideate --in-project, /write-paper.
 ---
 
 # Discuss — collaborative direction-setting & ideation
@@ -19,7 +19,7 @@ session only produces a better-informed entry point. Never run it inside an unat
 
 | `<purpose>` | Run before | Reads first | Session doc | Seeds (handoff) |
 |---|---|---|---|---|
-| `direction` *(pre-slug)* | `/ideate` | `lab/knowledge/{OPEN-QUESTIONS,FINDINGS,FAILURES}.md`, `lab/REGISTRY.md` | `lab/ideation/<date>-<HHMMSS>-<topic>.md` | `OPEN-QUESTIONS.md` `Q-NNN` (`source: discuss`) + a direction doc `/ideate` Phase 0 reads |
+| `direction` *(pre-slug)* | `/ideate` **or** `/adopt` | `lab/knowledge/{OPEN-QUESTIONS,FINDINGS,FAILURES}.md`, `lab/REGISTRY.md` | `lab/ideation/<date>-<HHMMSS>-<topic>.md` | `OPEN-QUESTIONS.md` `Q-NNN` (`source: discuss`) + a direction doc `/ideate`'s Phase 0 (explore) or `/adopt`'s interview (commit) reads |
 | `scope` *(per-slug)* | `/scope <slug>` | `studies/<slug>/{IDEA.md,lit-review.md}` | `studies/<slug>/sessions/<date>-scope.md` | a starter decision list for `/scope` |
 | `target` *(pre- or per-slug)* | `/compete` | `IDEA.md`/`TARGET.md` if any | per-slug → `studies/<slug>/sessions/<date>-target.md`; else `lab/ideation/<date>-<HHMMSS>-<topic>.md` | the answers `/compete`'s interview transcribes into `TARGET.md` + `control.yaml` `target:` |
 | `in-project` *(per-slug)* | `/ideate --in-project <slug>` | project `PLAN.md`, `decisions.md`, `EXPERIMENT_LOG.md` tail, `control.yaml` (across the boundary) | `studies/<slug>/sessions/<date>-in-project.md` | candidate-approach framing, **held to the frozen set** (problem/eval/test/seeds/budgets never moved) |
@@ -63,8 +63,9 @@ Write the **Outcomes** (decided / open threads) and **Routed to** sections, then
 artifact for the purpose:
 
 - `direction` → append the open threads to `lab/knowledge/OPEN-QUESTIONS.md` as `Q-NNN` entries
-  (mark `source: discuss`), and leave the direction doc at its `lab/ideation/` path for
-  `/ideate`'s Phase 0 to read as its research-scan seed.
+  (mark `source: discuss`), and leave the direction doc at its `lab/ideation/` path for the next
+  front door to read — `/ideate`'s Phase 0 (explore the direction into ranked candidates) **or**
+  `/adopt`'s interview (commit this one idea straight to `triaged`). Same doc; the PI picks the door.
 - `target` → list the task / done-condition / metric+direction / data / scoring / rules / budgets
   the PI settled, in the shape `/compete`'s interview expects (so it transcribes them into
   `TARGET.md` + `control.yaml` rather than re-asking).
@@ -83,4 +84,5 @@ directions still enter the normal pipeline (and its gates) via the skill it hand
 1. Append a dated `lab/notebook/<date>-discuss.md` entry (Hard rule 11 — Context/Did/Decided/Next).
 2. Best-effort bus event: `uv run python tools/lab_bus.py emit cycle --detail "discuss: <purpose> → <next-skill>"`.
 3. Report to the PI: what was decided, the session-doc path, what was seeded, and the **exact next
-   command** (e.g. "run `/ideate <topic>` — it will read `lab/ideation/<file>`").
+   command** — for `direction`, offer both doors (e.g. "run `/ideate <topic>` to explore, or
+   `/adopt` to commit this idea — either reads `lab/ideation/<file>`").

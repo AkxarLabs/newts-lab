@@ -31,7 +31,7 @@ How fast an idea moves through the machine is up to you: invoke each procedure y
 
 ## Start anywhere
 
-You don't have to enter at `seed`. `/adopt` interviews you briefly, scaffolds exactly the prerequisite files for your starting point, registers the idea, and routes onward:
+You don't have to enter at `seed`. `/adopt` interviews you briefly (optionally after a `/discuss direction` session, whose `lab/ideation/` doc it reads so settled framing isn't re-asked), scaffolds exactly the prerequisite files for your starting point, registers the idea, and routes onward:
 
 | You arrive with | Enter at | `/adopt` scaffolds | Next command |
 |---|---|---|---|

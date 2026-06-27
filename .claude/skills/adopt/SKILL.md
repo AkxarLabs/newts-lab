@@ -12,6 +12,13 @@ workflow is usable alone.
 
 ## 1. Short interview — establish the entry point
 
+**Optional pre-step:** `/discuss direction [topic]` grills the idea with the PI (researching the
+literature live) and leaves a session doc in `lab/ideation/`. **If a recent direction doc exists
+there, read it first** and seed this interview from its Outcomes + open threads — carry the settled
+framing into `IDEA.md` and don't re-ask what's already decided. This is the same `lab/ideation/`
+handoff `/ideate`'s Phase 0 uses, so `/discuss → /adopt` (commit this idea) is as wired as
+`/discuss → /ideate` (explore the direction).
+
 Ask what exists (don't make the PI pick a state name; infer it):
 - Just an idea / hypothesis? → enter at **`triaged`** (skip ideation).
 - Also knows the related literature? → enter at **`scoping`** (PI-waived lit review).

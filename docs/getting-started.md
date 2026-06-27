@@ -39,7 +39,7 @@ Then pick your on-ramp — there is one for every starting point and autonomy ap
 | You have / you want | Start with |
 |---|---|
 | Nothing yet — explore a direction | `/ideate <direction>` — walk the lifecycle with gates |
-| An idea, a known literature, or an existing codebase | `/adopt` — scaffold the right files and enter mid-lifecycle |
+| An idea, a known literature, or an existing codebase | `/adopt` — scaffold the right files and enter mid-lifecycle (optionally `/discuss direction` first to sharpen it; `/adopt` reads its session doc) |
 | One stage at a time, verifying between stages | `/advance <slug>` — runs exactly the next stage, then stops for you |
 | Hands-off: sign once, read drafts in the morning | `/autopilot` — authorize a campaign and go to sleep |
 

@@ -27,7 +27,7 @@ never asserting an unlogged claim (the same discipline as `/lit-review`).
 
 | `<purpose>` | Run before | Pre/per-slug | Session doc → seeds |
 |---|---|---|---|
-| `direction` | `/ideate` | pre-slug | `lab/ideation/…` → `OPEN-QUESTIONS.md` + a direction doc Phase 0 reads |
+| `direction` | `/ideate` or `/adopt` | pre-slug | `lab/ideation/…` → `OPEN-QUESTIONS.md` + a direction doc `/ideate`'s Phase 0 (explore) or `/adopt`'s interview (commit) reads |
 | `target` | `/compete` | either | the task / metric / scoring / rules `/compete` transcribes into `TARGET.md` |
 | `scope` | `/scope` | per-slug | `studies/<slug>/sessions/…` → a starter decision list |
 | `in-project` | `/ideate --in-project` | per-slug | candidate approaches **held to the frozen set** |
