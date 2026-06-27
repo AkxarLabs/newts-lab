@@ -88,7 +88,7 @@ uv run --with properdocs --with mkdocs-material properdocs build    # static sit
 
 | When | What happens |
 |---|---|
-| Monday | `/ideate` from `lab/knowledge/OPEN-QUESTIONS.md`; pick one; `/lit-review` overnight |
+| Monday | `/ideate` from `lab/knowledge/OPEN-QUESTIONS.md` (skim `REFERENCES.md` for prior reading); pick one; `/lit-review` overnight |
 | Tuesday | Read the proposal, approve Gate 1 with a small Gate 2 envelope |
 | Tue–Thu | `/spawn-project`, pilots via `/experiment`, then `/research-loop` overnight under the envelope |
 | Friday | Read the PI morning report, `/analyze`, decide: ablate further or start `/write-paper` |

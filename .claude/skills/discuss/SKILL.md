@@ -19,7 +19,7 @@ session only produces a better-informed entry point. Never run it inside an unat
 
 | `<purpose>` | Run before | Reads first | Session doc | Seeds (handoff) |
 |---|---|---|---|---|
-| `direction` *(pre-slug)* | `/ideate` **or** `/adopt` | `lab/knowledge/{OPEN-QUESTIONS,FINDINGS,FAILURES}.md`, `lab/REGISTRY.md` | `lab/ideation/<date>-<HHMMSS>-<topic>.md` | `OPEN-QUESTIONS.md` `Q-NNN` (`source: discuss`) + a direction doc `/ideate`'s Phase 0 (explore) or `/adopt`'s interview (commit) reads |
+| `direction` *(pre-slug)* | `/ideate` **or** `/adopt` | `lab/knowledge/{OPEN-QUESTIONS,FINDINGS,FAILURES,REFERENCES}.md`, `lab/REGISTRY.md` | `lab/ideation/<date>-<HHMMSS>-<topic>.md` | `OPEN-QUESTIONS.md` `Q-NNN` (`source: discuss`) + a direction doc `/ideate`'s Phase 0 (explore) or `/adopt`'s interview (commit) reads |
 | `scope` *(per-slug)* | `/scope <slug>` | `studies/<slug>/{IDEA.md,lit-review.md}` | `studies/<slug>/sessions/<date>-scope.md` | a starter decision list for `/scope` |
 | `target` *(pre- or per-slug)* | `/compete` | `IDEA.md`/`TARGET.md` if any | per-slug → `studies/<slug>/sessions/<date>-target.md`; else `lab/ideation/<date>-<HHMMSS>-<topic>.md` | the answers `/compete`'s interview transcribes into `TARGET.md` + `control.yaml` `target:` |
 | `in-project` *(per-slug)* | `/ideate --in-project <slug>` | project `PLAN.md`, `decisions.md`, `EXPERIMENT_LOG.md` tail, `control.yaml` (across the boundary) | `studies/<slug>/sessions/<date>-in-project.md` | candidate-approach framing, **held to the frozen set** (problem/eval/test/seeds/budgets never moved) |

@@ -534,7 +534,7 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
 
     if what == "knowledge":
         secs = []
-        for name in ("FINDINGS", "FAILURES", "OPEN-QUESTIONS"):
+        for name in ("FINDINGS", "FAILURES", "OPEN-QUESTIONS", "REFERENCES"):
             secs.append(_filesec(name.replace("-", " ").title(),
                                  LAB / "knowledge" / f"{name}.md", "(none recorded yet)"))
         nb_dir = LAB / "notebook"

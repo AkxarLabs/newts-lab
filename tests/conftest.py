@@ -145,7 +145,7 @@ def hub(tmp_path) -> FakeHub:
     (lab / "notebook").mkdir(parents=True, exist_ok=True)
     (lab / "config.yaml").write_text(_CONFIG_YAML, encoding="utf-8")
     (lab / "REGISTRY.md").write_text(_REGISTRY_HEADER, encoding="utf-8")
-    for kf in ("FINDINGS.md", "FAILURES.md", "OPEN-QUESTIONS.md"):
+    for kf in ("FINDINGS.md", "FAILURES.md", "OPEN-QUESTIONS.md", "REFERENCES.md"):
         (lab / "knowledge" / kf).write_text(f"# {kf}\n", encoding="utf-8")
     h = FakeHub(root)
     h.projects_root.mkdir(parents=True, exist_ok=True)

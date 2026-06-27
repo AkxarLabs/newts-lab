@@ -31,7 +31,7 @@ It is a *template*, not a framework: procedures are Markdown skills the agent ex
                     └────────────────────────────────────────────────┘
 ```
 
-The **hub** (this repo) holds ideas, literature reviews, proposals, papers, accumulated knowledge, and the executable procedures. Every approved proposal **spawns a project repo outside the hub** — independently cloneable, reproducible, and extensible by humans. Findings flow back and compound in `lab/knowledge/`, so each project starts smarter than the last.
+The **hub** (this repo) holds ideas, literature reviews, proposals, papers, accumulated knowledge, and the executable procedures. Every approved proposal **spawns a project repo outside the hub** — independently cloneable, reproducible, and extensible by humans. Findings flow back and compound in `lab/knowledge/`, so each project starts smarter than the last — both results (FINDINGS / FAILURES) and literature (a shared `REFERENCES.md` reading index) accumulate, seeding faster discovery next time.
 
 ## The three PI gates
 

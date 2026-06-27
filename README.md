@@ -96,7 +96,7 @@ newts-lab/
 ├── lab/
 │   ├── REGISTRY.md      # Single source of truth for all studies/projects + states
 │   ├── config.yaml      # Lab-wide tunables (ensemble sizes, debug depth, backoff, ...)
-│   ├── knowledge/       # Lab world model: FINDINGS, FAILURES, OPEN-QUESTIONS
+│   ├── knowledge/       # Lab world model: FINDINGS, FAILURES, OPEN-QUESTIONS, REFERENCES (reading index)
 │   └── notebook/        # Dated lab-notebook entries (one per working session)
 ├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)

@@ -55,6 +55,7 @@ Everything between gates is autonomous.
 - `FINDINGS.md` — confirmed results, each with an artifact pointer.
 - `FAILURES.md` — what didn't work and the diagnosed reason (this is what makes the *next* project smarter; most systems lose it entirely).
 - `OPEN-QUESTIONS.md` — threads worth pursuing, feeding the next `/ideate`.
+- `REFERENCES.md` — a shared, append-only **reading index**: one row per paper worth remembering, logged during `/ideate` scans and `/lit-review`, so reading compounds across ideas instead of being re-fetched. Unlike the three above it is not a *triggered* write-back operator — it has no kill/result gate and is maintained continuously.
 - `lab/notebook/YYYY-MM-DD-*.md` — session journal (raw, chronological).
 
 The flow is notebook (raw) → knowledge (distilled) → next ideation (compounding), which closes the meta-review loop without standing agents.

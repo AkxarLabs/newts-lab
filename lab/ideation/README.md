@@ -18,7 +18,7 @@ and keeps files chronologically sortable (no directory scan needed to pick a nam
 
 This is durable lab state (**not** gitignored), distinct from:
 - `lab/notebook/` — the dated session journal (Hard rule 11, one entry per working session), and
-- `lab/knowledge/` — the promoted, compounding world model (FINDINGS / FAILURES / OPEN-QUESTIONS).
+- `lab/knowledge/` — the promoted, compounding world model (FINDINGS / FAILURES / OPEN-QUESTIONS, plus the always-on `REFERENCES.md` reading index).
 
 A promising thread that outlives the session is promoted to `OPEN-QUESTIONS.md` (a one-line `Q-NNN`
 entry); the full debate stays in the worksheet/session doc here for anyone who wants to reopen it.

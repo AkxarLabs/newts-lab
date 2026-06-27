@@ -17,9 +17,14 @@ reflection — not a long list of shallow ones. Depth knobs: `ideation.*` in
   research-scan seed. Skip silently in autonomous / `/autopilot` runs.
 - Read `lab/knowledge/OPEN-QUESTIONS.md`, `FINDINGS.md`, `FAILURES.md`. Failures are fuel:
   "X failed because Y" suggests "avoid Y" ideas.
+- **Skim `lab/knowledge/REFERENCES.md`** (the shared reading index): a paper already logged
+  for a prior idea is grounding here, not something to re-fetch.
 - Read `lab/REGISTRY.md` to avoid duplicating live or killed ideas.
 - **Research scan**: if the user gave a direction, do a focused web/arXiv sweep (recent
-  papers, saturated vs open — 15–25 min, logged queries); fuel, NOT the lit review.
+  papers, saturated vs open — 15–25 min, logged queries); fuel, NOT the lit review. Append a
+  one-line row to `lab/knowledge/REFERENCES.md` for each *keeper* the scan surfaces (a paper
+  that changed your thinking or you'd want back — not every hit; skip a bibkey already in the
+  index), so the reading compounds.
 - **Keep all working state** (scan queries, sketches, every critique, parentage, tournament
   records) in one worksheet at `lab/ideation/<date>-<HHMMSS>-ideation.md` (`HHMMSS` keeps
   same-day reruns collision-free; create `lab/ideation/` if absent). Only finalists graduate
@@ -108,7 +113,8 @@ framing below. Skip silently in autonomous / `/autopilot` runs.
 
 1. **Generate** `ideation.in_project_candidates` mechanism-distinct **approach** candidates,
    each grounded in the results digest (best node + outcome per line from `EXPERIMENT_LOG.md`;
-   the idea's `FINDINGS.md`/`FAILURES.md`) and the **headline hypothesis verbatim** from PLAN.md.
+   the idea's `FINDINGS.md`/`FAILURES.md`; the shared `REFERENCES.md` reading index) and the
+   **headline hypothesis verbatim** from PLAN.md.
    For each: one-sentence approach statement, why results so far make it promising, the cheapest
    decisive experiment under the frozen budgets, and — explicitly — **whether it changes the
    headline hypothesis** (`Headline-change: yes/no`).

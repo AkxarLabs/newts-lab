@@ -76,7 +76,7 @@ Safeguards, layered:
 
 ## Session protocol (interactive)
 
-Every session: orient first (`/lab-status` → registry, latest notebook entry, consistency lint), work the highest-leverage item, and **write back before ending** — a dated notebook entry, registry sync, and any durable insight promoted to `lab/knowledge/` via three triggered operators: a **correction** (a kill / budget-exhaust → FAILURES, so the next project never retries it), a **recipe** (a settled success → FINDINGS), and a **direction** (a result that opens a new thread → OPEN-QUESTIONS). An insight that lives only in a chat transcript is lost; this write-back is hard rule 11 (a kill's correction is enforced by `guard.py evolve`) and the mechanism by which the lab compounds.
+Every session: orient first (`/lab-status` → registry, latest notebook entry, consistency lint), work the highest-leverage item, and **write back before ending** — a dated notebook entry, registry sync, and any durable insight promoted to `lab/knowledge/` via three triggered operators: a **correction** (a kill / budget-exhaust → FAILURES, so the next project never retries it), a **recipe** (a settled success → FINDINGS), and a **direction** (a result that opens a new thread → OPEN-QUESTIONS). An insight that lives only in a chat transcript is lost; this write-back is hard rule 11 (a kill's correction is enforced by `guard.py evolve`) and the mechanism by which the lab compounds. Orthogonally — *not* a fourth triggered operator — papers worth remembering are logged continuously to `lab/knowledge/REFERENCES.md` during `/ideate` and `/lit-review` research scans: a shared reading index with no kill/result gate, so literature compounds across ideas the way findings do.
 
 ## Unattended protocol (/research-loop)
 

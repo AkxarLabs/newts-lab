@@ -147,6 +147,14 @@ def test_read_doc_section_carries_editor_path(hub, monkeypatch):
     assert sec.get("path", "").endswith("proposal.md")
 
 
+def test_read_doc_knowledge_includes_references(hub, monkeypatch):
+    # The hub fixture seeds all four knowledge files; the knowledge view must surface REFERENCES
+    # (the shared reading index) alongside the three triggered-operator files.
+    m = _mod(hub, monkeypatch)
+    titles = [s["title"] for s in m.read_doc("knowledge")["sections"]]
+    assert {"Findings", "Failures", "Open Questions", "References"} <= set(titles)
+
+
 # ── markdown section extraction (the gate-bundle parser) ──────────────────────
 
 def test_md_section_numbered_and_suffixed_headings(hub, monkeypatch):
