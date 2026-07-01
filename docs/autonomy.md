@@ -192,23 +192,45 @@ projects the other way — **multiple top-level sessions over shared files** —
 
 ```bash
 uv run --with pyyaml python tools/agent_runner.py launch --project <slug> \
-    --role orchestrator --prompt-file <brief>     # one headless session, in the project repo
+    --role orchestrator --prompt-file <brief>          # one headless session, in the project repo
+uv run --with pyyaml python tools/agent_runner.py launch-many --projects p1,p2,p3 \
+    --prompt-file <brief> [--campaign <f>]             # a fleet: one session per project, capped
 uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project <slug>
+uv run --with pyyaml python tools/agent_runner.py kill-campaign --campaign <manifest|id>
 ```
+
+`launch-many` is the `/autopilot` multi-project path: it runs one `launch` per project up to
+`min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` concurrently — the tool
+owns the concurrency (no shell backgrounding), isolates per-project failures, and writes a campaign
+manifest at `lab/.bus/campaign-agents/<id>.json`; `kill-campaign` stops the whole fleet.
 
 - **Backends, via config (default claude).** `agents.programmatic.backend: claude` runs `claude -p`
   (headless); `codex` runs `codex exec`; `opencode` runs `opencode run --format json`. Each launched
   agent is a **top-level** session in the project's cwd (not a nested subagent) and is **depth-capped**
-  (`max_depth: 1`) so it can't launch more. All three backends can in turn spawn their own
-  sub-work — **Claude Code** via native parallel Task subagents (deterministic, clean context each);
-  **Codex** via its GA Subagents (`[agents]` in `config.toml`, `~/.codex/agents/`, the
-  `spawn_agents_on_csv` batch tool running through `codex exec`); **opencode** via the Task tool /
-  `@mention` in headless `opencode run` (`--agent` only pins the primary agent). For heterogeneous lab
-  ensembles the cleanest, backend-agnostic parallelism is this same launcher's "one headless process
-  per unit of work" pattern — one `codex exec --json` / `opencode run --format json` per lens or
-  variant — which gives true fresh-context isolation on any backend; the in-process Codex/opencode
-  fan-out is newer and more model-orchestrated, so pin it to your CLI version. Outcome, gates, and
-  discipline are identical across backends. **codex and opencode are OPTIONAL installs** — only the selected backend's CLI need be present;
+  (`max_depth: 1`) so it can't launch more. What each can spawn **in turn** depends on its role-file
+  scaffolding: **Claude** and **Codex** ship generated role files (`tools/role_sync.py` renders
+  `.claude/agents/*.md` + `.codex/agents/*.toml` from `agent-roles/`), so Claude spawns native parallel
+  Task subagents and Codex uses its GA Subagents (`[agents]` in `config.toml` + `.codex/agents/`);
+  **opencode / Gemini / Cursor are compatibility-only** (no rendered role files yet). Regardless of
+  backend, the robust cross-backend path for heterogeneous fresh-context work is this launcher's "one
+  headless process per unit of work" (a `codex exec --json` / `opencode run --format json` per lens or
+  variant), coordinated by the file bus + slot ledger; the in-process Codex fan-out is newer /
+  model-orchestrated, so pin it to your CLI version. Outcome, gates, and discipline are identical
+  across backends.
+
+**Backend matrix** (what's wired today — pin behavior to your CLI version):
+
+| Backend | Role file | Native subagent | Headless launch | JSON/event stream | Safety boundary | Status |
+|---|---|---|---|---|---|---|
+| Claude Code | `.claude/agents/*.md` (generated) | yes (Task subagents) | `claude -p` | stream-json | `permission_mode` (`.claude/settings.json`) | **stable / default** |
+| Codex | `.codex/agents/*.toml` (generated) + `.codex/config.toml` | yes (GA Subagents) | `codex exec --json` | JSON | `sandbox_mode` (`workspace-write`), `approval` | beta (rough edges) |
+| opencode | — (none yet) | child sessions (Task/@mention) | `opencode run --format json` | NDJSON | `OPENCODE_PERMISSION` (in-repo allow) | compatibility-only |
+| Gemini CLI | — (none yet) | documented, unverified | — | — | — | compatibility-only (smoke required) |
+| Cursor | — (none yet) | documented, unverified | `cursor` headless | — | — | compatibility-only (smoke required) |
+
+"Compatibility-only" means: reads `AGENTS.md` and runs the procedures, but has **no lab-rendered role
+file** — use the sequential approximation or one headless process per unit of work until a CLI smoke
+proves its role-file schema (add a render target in `tools/role_sync.py` to promote it). **codex and opencode are OPTIONAL installs** — only the selected backend's CLI need be present;
   claude is the default and the only one assumed installed. A missing CLI fails the launch cleanly (the
   launcher prints the install command), launches nothing, and never blocks the lab. opencode parses to
   the same per-tool activity / session / last-message contract as codex (its NDJSON `--format json`

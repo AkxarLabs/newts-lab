@@ -136,10 +136,12 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
   `runs/registry.jsonl`, and hub files. Merge through the journal, not git merges.
 - Subagents never spawn further work, sweeps, or background jobs.
 
-**Claude Code** runs these as native parallel Task subagents. **Codex** (`[agents]` in `config.toml`
-+ `.codex/agents/`) and **opencode** (the Task tool / `@mention` in `opencode run`) have their own
-subagent mechanisms too — but for heterogeneous variants the robust, backend-agnostic path is one
-headless process per variant via the hub's `tools/agent_runner.py`. An agent that genuinely lacks (or
+**Claude Code** runs these as native parallel Task subagents. **Codex** has GA Subagents and this
+project ships the generated `.codex/agents/*.toml` role files + `.codex/config.toml`, so it can spawn
+them too. **opencode** has a subagent mechanism (Task tool / `@mention` in `opencode run`) but no
+rendered lab role file yet — it's **compatibility-only**; for heterogeneous variants the robust,
+backend-agnostic path on any backend is one headless process per variant via the hub's
+`tools/agent_runner.py`. An agent that genuinely lacks (or
 hasn't wired) a mechanism runs variants **sequentially** in this checkout — one at a time, same
 journal discipline (one config, one ledger entry, one commit per attempt); skip the worktree machinery
 rather than half-following it. Same outcome and discipline on every agent — only the parallelism differs.
