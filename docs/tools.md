@@ -83,6 +83,16 @@ uv run --with pyyaml python tools/guard.py <spawn|full-run|release-full-run|froz
 
 The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
 
+### `configure.py` — owner-aware config view/set/profile
+
+```bash
+uv run --with pyyaml python tools/configure.py view [--project <slug|path>] [--experiment <yaml>]
+uv run --with pyyaml python tools/configure.py set <key=value> [--project <slug|path>] [--pi-approved] [--signed-via <path>]
+uv run --with pyyaml python tools/configure.py profile <list|show|diff|apply|save> [<name>]
+```
+
+The mechanical half of `/configure`. `view` wraps `show_config.py` (effective 3-layer config + provenance). `set` stamps ONE value into the right layer — `lab/config.yaml` or a project's `control.yaml` (`--project`) — **preserving comments** (reuses `profiles.stamp`), and **refuses a PI-owned key without `--pi-approved`** (the ownership map mirrors the Owner column in [Configuration](configuration.md): `lab.*`/`compute.*`/`agents.*`/`critique.*`/`budgets.*`/`gate2_envelope.*`/`oversight.level`/`writing.page_limit`/`writing.venue`/`eval_frozen`/`loop.mode`/`loop.explore_*`/`ideation.in_project*`/`autopilot.max_concurrent_projects` — but *not* the agent-readable `loop.no_progress_backoff_cycles` etc.). Warns loudly on `eval_frozen=false`, records `--signed-via` for a `gate2_envelope.pi_signed=true`, and re-renders the role files after an `agents.*` change. `profile` delegates to `profiles.py` (rigor-floor enforced). The judgment — is this the PI, and should the key change — stays in the skill; the tool makes the owner gate unskippable.
+
 ### `spawn_project.py` — mechanical project scaffolder
 
 ```bash
