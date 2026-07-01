@@ -452,6 +452,7 @@ def cmd_launch(a) -> int:
 
     env = dict(os.environ)
     env[_DEPTH_ENV] = str(depth + 1)
+    env["AUTOSCIENTIST_NO_GATE3"] = "1"   # Gate 3 is never delegated — guard.py finalization hard-stops it
     if backend == "opencode":
         env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "1")   # no mid-run autoupdate in a headless launch
         operm = ((prog.get("backends") or {}).get("opencode") or {}).get("permission")

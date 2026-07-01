@@ -531,3 +531,64 @@ def test_plan_trace_blocked_no_plan(hub, monkeypatch):
     (proj / "PLAN.md").unlink(missing_ok=True)
     hub.add_registry_row("demo", state="active", project=str(proj))
     assert m.c_plan_trace(types.SimpleNamespace(slug="demo")) == 1
+
+
+# ── finalization (Gate 3, never delegated) ────────────────────────────────────
+
+def _fin_ns(slug, pi_approved=False):
+    return types.SimpleNamespace(slug=slug, pi_approved=pi_approved)
+
+
+def _meta_review(hub, slug, text):
+    d = hub.root / "studies" / slug / "paper" / "reviews" / "critique-2026-07-02"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta-review.md").write_text(text, encoding="utf-8")
+
+
+def test_finalization_blocked_by_no_gate3_env(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="internal-review", project="-")
+    _meta_review(hub, "demo", "## Decision\nAccept. **Gate 3 approved** by PI.\n")
+    monkeypatch.setenv("AUTOSCIENTIST_NO_GATE3", "1")   # a launched/headless agent
+    assert m.c_finalization(_fin_ns("demo")) == 1       # never delegated — blocked even with the marker
+
+
+def test_finalization_blocked_wrong_state(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="active", project="-")   # not target-driven -> needs internal-review
+    _meta_review(hub, "demo", "Gate 3 approved.\n")
+    assert m.c_finalization(_fin_ns("demo")) == 1
+
+
+def test_finalization_blocked_no_marker(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="internal-review", project="-")
+    _meta_review(hub, "demo", "## Decision\nAccept.\n")   # accepted, but no Gate-3 marker
+    assert m.c_finalization(_fin_ns("demo")) == 1
+
+
+def test_finalization_ok_marker_and_state(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="internal-review", project="-")
+    _meta_review(hub, "demo", "## Decision\nAccept. **Gate 3 approved** by PI on 2026-07-02.\n")
+    assert m.c_finalization(_fin_ns("demo")) == 0
+
+
+def test_finalization_ok_pi_approved_flag(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="internal-review", project="-")
+    assert m.c_finalization(_fin_ns("demo", pi_approved=True)) == 0   # PI authorizing in-session
+
+
+def test_finalization_target_driven_needs_final_run_id(hub, monkeypatch):
+    import yaml
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    ctl = yaml.safe_load((proj / "control.yaml").read_text(encoding="utf-8"))
+    ctl["target"] = {"active": True}
+    (proj / "control.yaml").write_text(yaml.safe_dump(ctl), encoding="utf-8")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_finalization(_fin_ns("demo")) == 1        # active + target but no final_run_id selected
+    ctl["target"]["final_run_id"] = "exp-004-full-s0-20260702"
+    (proj / "control.yaml").write_text(yaml.safe_dump(ctl), encoding="utf-8")
+    assert m.c_finalization(_fin_ns("demo")) == 0        # the PI selected the final output

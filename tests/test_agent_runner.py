@@ -561,3 +561,23 @@ def test_launch_many_blocked_when_disabled(hub, monkeypatch):
         projects="p1", prompt="go", prompt_file=None, role=None, backend=None, model=None,
         campaign=None, max_concurrent=None))
     assert rc == 1   # PI-owned opt-in gate applies to launch-many too
+
+
+# ── Gate 3 is never delegated: launched agents carry AUTOSCIENTIST_NO_GATE3 ────
+
+_ENV_EMITTER = textwrap.dedent(
+    """\
+    import json, os, sys
+    v = os.environ.get("AUTOSCIENTIST_NO_GATE3", "unset")
+    sys.stdout.write(json.dumps({"type": "item.completed",
+                                 "item": {"type": "agent_message", "text": f"NO_GATE3={v}"}}) + "\\n")
+    sys.stdout.flush()
+    """
+)
+
+
+def test_launched_agent_carries_no_gate3_env(hub, monkeypatch):
+    m, proj = _setup(hub, monkeypatch, emitter_src=_ENV_EMITTER)
+    assert m.cmd_launch(_launch_args()) == 0
+    man = json.loads(next((proj / ".bus" / "agents").glob("*.json")).read_text(encoding="utf-8"))
+    assert "NO_GATE3=1" in (man["last_message"] or "")   # the child inherits the never-delegate brake

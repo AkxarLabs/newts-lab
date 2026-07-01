@@ -10,6 +10,7 @@
     uv run --with pyyaml python tools/guard.py evolve <slug>
     uv run --with pyyaml python tools/guard.py decisions <slug> [--strict]
     uv run --with pyyaml python tools/guard.py plan-trace <slug>
+    uv run --with pyyaml python tools/guard.py finalization <slug> [--pi-approved]
 
 Each command validates a precondition/postcondition the protocol otherwise only states in
 prose, so unattended autonomy doesn't depend on perfect agent memory. Idempotent and read-only
@@ -26,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -555,6 +557,61 @@ def c_plan_trace(a) -> int:
     return _verdict(0, f"all {len(rows)} PLAN.md experiment row(s) trace to an authorized origin")
 
 
+# Gate-3 approval marker (mirrors the Gate-1 marker convention in proposal.md), recorded by the PI
+# in the meta-review after /review-paper accepts.
+_GATE3_RE = re.compile(r"gate ?3 approved|PI Gate 3|gate3_approved|Gate 3:\s*approved", re.I)
+
+
+def _gate3_marker(slug: str) -> bool:
+    """True if a PI Gate-3 approval marker is recorded for a paper project (in any review file, or a
+    gate3-approval.md note)."""
+    paper = HUB / "studies" / slug / "paper"
+    reviews = paper / "reviews"
+    if reviews.exists():
+        for f in reviews.rglob("*.md"):
+            try:
+                if _GATE3_RE.search(f.read_text(encoding="utf-8-sig")):
+                    return True
+            except OSError:
+                continue
+    note = paper / "gate3-approval.md"
+    return note.exists() and bool(_GATE3_RE.search(note.read_text(encoding="utf-8-sig")))
+
+
+def c_finalization(a) -> int:
+    """Gate 3 is NEVER delegated. Block finalization unless: (1) not in a headless/launched agent
+    (AUTOSCIENTIST_NO_GATE3 unset), (2) the registry state is right (`internal-review` for a paper,
+    or `active` + `target.active` for a target-driven project), and (3) a PI Gate-3 approval is
+    recorded (a marker in the meta-review / a target's `final_run_id`) or `--pi-approved` is passed in
+    a live PI session. A guard never grants the gate — it refuses when one isn't recorded."""
+    if os.environ.get("AUTOSCIENTIST_NO_GATE3"):
+        return _verdict(1, "AUTOSCIENTIST_NO_GATE3 is set — Gate 3 is never delegated. A launched/headless "
+                        "agent stops its pipeline at internal-review; finalization is done by the PI in a session.")
+    row = _row(a.slug)
+    if not row:
+        return _verdict(1, f"no registry row for {a.slug}")
+    state = (row.get("state") or "").lower()
+    pdir = _project_dir(a.slug, row)
+    target = (_load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
+    target_driven = bool(target.get("active"))
+    if target_driven:
+        if state != "active":
+            return _verdict(1, f"target-driven {a.slug} is '{state}', not 'active' — nothing to finalize")
+    elif state != "internal-review":
+        return _verdict(1, f"{a.slug} is '{state}', not 'internal-review' — /review-paper must accept first")
+    if getattr(a, "pi_approved", False):
+        return _verdict(0, f"Gate 3 authorized by --pi-approved for {a.slug} — clear to /finalize")
+    if target_driven:
+        if str(target.get("final_run_id") or "").strip():
+            return _verdict(0, f"target final output selected (target.final_run_id) for {a.slug} — clear to finalize")
+        return _verdict(1, f"no target.final_run_id selected for {a.slug} and no --pi-approved — the PI selects "
+                        "the final output (Gate 3)")
+    if _gate3_marker(a.slug):
+        return _verdict(0, f"Gate 3 approval recorded for {a.slug} — clear to /finalize")
+    return _verdict(1, f"no Gate 3 approval recorded (meta-review marker / gate3-approval.md) for {a.slug} and "
+                    "no --pi-approved — finalization needs explicit PI sign-off")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="mechanical lifecycle guards")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -581,6 +638,11 @@ def main() -> int:
     p.add_argument("slug")
     p.add_argument("--strict", action="store_true", help="treat a missing predicate as BLOCKED")
     p.set_defaults(fn=c_decisions)
+    p = sub.add_parser("finalization")
+    p.add_argument("slug")
+    p.add_argument("--pi-approved", action="store_true", dest="pi_approved",
+                   help="the PI authorizing Gate 3 directly in this session")
+    p.set_defaults(fn=c_finalization)
     p = sub.add_parser("append-only")
     p.add_argument("target", help="slug or project path")
     p.set_defaults(fn=c_append_only)

@@ -11,7 +11,12 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
 
 ## Procedure
 
-1. Verify Gate 3 approval is recorded (review file or PI message). If not, stop.
+1. **Verify Gate 3 mechanically:** `uv run --with pyyaml python tools/guard.py finalization <slug>`
+   (add `--pi-approved` when the PI is authorizing directly in this session). It hard-stops unless the
+   state is right (`internal-review` for a paper, `active`+`target.active` for target-driven), a Gate-3
+   marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`), **and**
+   `AUTOSCIENTIST_NO_GATE3` is unset — so a launched/headless agent can never finalize (it stops at
+   `internal-review`). A nonzero exit stops finalization before any file changes.
 2. **Reproducibility pass on the project repo** (so others can build on it):
    - `uv run pytest` green; smoke config runs clean from a fresh `uv sync`.
    - README's Reproduce section accurate; every paper-cited run id present in `runs/registry.jsonl`; figure scripts regenerate the paper's figures.
