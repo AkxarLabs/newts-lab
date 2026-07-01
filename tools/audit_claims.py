@@ -55,6 +55,12 @@ FLOAT_RE = re.compile(r"-?\d+\.?\d*(?:[eE][-+]?\d+)?")
 # A measurement-like token for the coverage scan: a decimal (3.14) or a percentage (42%).
 MEASUREMENT_RE = re.compile(r"-?\d+\.\d+|-?\d+\s*\\?%")
 CLAIM_ANNOT_RE = re.compile(r"%.*\bC\d+\b")
+# --scan-integers opt-in: a BARE integer (not part of a decimal) that sits near a result word — a
+# headline count typed into the paper without a claims entry. Years and structural refs are excluded.
+_INT_RE = re.compile(r"(?<![\d.eE])\d+(?![\d.])")
+_METRIC_WORDS = re.compile(
+    r"\b(samples?|tasks?|parameters?|params?|wins?|runs?|seeds?|points?|percentile|score|accuracy|"
+    r"acc|loss|F1|episodes?|steps?|examples?|tokens?|images?|trials?|queries?)\b", re.I)
 
 
 def projects_root() -> Path:
@@ -97,9 +103,10 @@ def resolve_project_dir(claim: dict) -> Path:
     return _registry_project_path(slug) or (projects_root() / slug)
 
 
-def coverage_scan(paper_dir: Path) -> list[str]:
+def coverage_scan(paper_dir: Path, scan_integers: bool = False) -> list[str]:
     """Flag measurement-like numerals in main.tex body prose with no `% CNNN` annotation.
-    Returns a list of 'Lnn: <line>' findings (empty = clean / no main.tex)."""
+    Returns a list of 'Lnn: <line>' findings (empty = clean / no main.tex). With scan_integers, also
+    flag a BARE integer sitting near a result word (excluding years 1900–2099 and structural refs)."""
     main_tex = paper_dir / "main.tex"
     if not main_tex.exists():
         return []
@@ -118,11 +125,17 @@ def coverage_scan(paper_dir: Path) -> list[str]:
         # don't count — but a prose measurement SHARING a line with \ref/\cite/\label IS still
         # checked (don't `continue` the whole line, or a measurement hides behind a citation).
         code = re.sub(
-            r"\\(?:includegraphics|include|input|usepackage|cite\w*|ref|label|url|href|subsubsection|subsection|section)"
+            r"\\(?:includegraphics|include|input|usepackage|cite\w*|ref|label|url|href|figure|table|"
+            r"equation|theorem|subsubsection|subsection|section)"
             r"(?![a-zA-Z])\s*(?:\[[^\]]*\])?\s*(?:\{[^}]*\})?",
             " ", code)
         if MEASUREMENT_RE.search(code) and not annotated:
             findings.append(f"L{i}: {raw.strip()[:90]}")
+            continue
+        if scan_integers and not annotated and _METRIC_WORDS.search(code):
+            ints = [int(t) for t in _INT_RE.findall(code)]
+            if any(not (1900 <= v <= 2099) for v in ints):   # a non-year integer near a result word
+                findings.append(f"L{i} [int]: {raw.strip()[:90]}")
     return findings
 
 
@@ -267,6 +280,8 @@ def main() -> int:
                         help="verify each artifact against the locked artifact_sha256 (post-/finalize)")
     parser.add_argument("--no-coverage", action="store_true",
                         help="skip the main.tex unannotated-numeral completeness scan")
+    parser.add_argument("--scan-integers", action="store_true", dest="scan_integers",
+                        help="also flag bare integers near result words (excludes years/refs)")
     args = parser.parse_args()
 
     paper_dir = (HUB / args.paper_dir) if not Path(args.paper_dir).is_absolute() else Path(args.paper_dir)
@@ -298,7 +313,7 @@ def main() -> int:
         loc = claim.get("location", "") if isinstance(claim, dict) else ""
         print(f"| {cid} | **{status}** | {detail} | {loc} |")
 
-    coverage = [] if args.no_coverage else coverage_scan(paper_dir)
+    coverage = [] if args.no_coverage else coverage_scan(paper_dir, scan_integers=args.scan_integers)
     if coverage:
         print(f"\n**Completeness FAIL — {len(coverage)} unannotated numeral(s) in main.tex "
               f"(no `% CNNN`):**")

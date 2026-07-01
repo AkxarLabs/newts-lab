@@ -19,7 +19,23 @@ For every claim in the paper's `claims.yaml`, each number must be found in the r
 | `MANUAL` | no match but a derivation is stated — a human must verify; never silently passed | 2 |
 | `FAIL` | artifact missing or no match (closest value reported) | 1 |
 
-`/review-paper` Part A runs this and **blocks** the qualitative review on any FAIL or unresolved MANUAL. This is the mechanical teeth behind "every number traces to an artifact."
+`/review-paper` Part A runs this and **blocks** the qualitative review on any FAIL or unresolved MANUAL. This is the mechanical teeth behind "every number traces to an artifact." `--scan-integers` additionally flags bare integers sitting near result words (samples/tasks/runs/seeds/…), excluding years (1900–2099) and structural refs — off by default (integers otherwise swamp the scan with counts and section numbers).
+
+### `audit_multiseed.py` · `audit_ablation_coverage.py` · `audit_eval_discipline.py` — paper integrity
+
+```bash
+uv run --with pyyaml python tools/audit_multiseed.py         studies/<slug>/paper
+uv run --with pyyaml python tools/audit_ablation_coverage.py studies/<slug>/paper
+uv run --with pyyaml python tools/audit_eval_discipline.py   studies/<slug>/paper
+```
+
+Three focused audits that mechanize the hard rules `audit_claims.py` doesn't cover — each exits **0 clean · 2 needs-human-review · 1 violation**:
+
+- **multi-seed** (hard rule 6): a claim marked `headline: true` in `claims.yaml` must be backed by ≥ `seeds.multi_seed_n` (project) / `experiment.multi_seed_n` (lab, default 3) distinct seeds — resolved by mapping each artifact's `runs/<run_id>/…` to its seed in `runs/registry.jsonl`. A `multi_seed_waiver:` (rationale) routes to MANUAL.
+- **ablation coverage**: every bullet under the proposal's `### Planned ablations` must leave a trace in the project's `PLAN.md`/`EXPERIMENT_LOG.md`, be marked waived/N-A/dropped, or route back — none silently dropped (heuristic; the reviewer reads the table).
+- **eval discipline** (hard rule 5): the frozen `§4` protocol must define both a validation and a held-out test set, and no `headline` claim may declare `split: validation` (reporting a selection-time metric). Theory/simulation types relax to MANUAL (the TYPE card defines the analogue).
+
+New optional `claims.yaml` fields these read: `headline: true` (marks a load-bearing claim), `split: test|validation` (which set it's reported on), `multi_seed_waiver: <rationale>`. Wired **WARN** in `/write-paper` (surface gaps while drafting) and **blocking** in `/review-paper` Part A + `/finalize`.
 
 ### `check_lab.py` — lab state lint
 

@@ -19,6 +19,15 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
      `% CNNN` annotation — a number with no claims entry.)
    - Any **MANUAL** → verify each by hand against the stated derivation now; an
      unresolvable MANUAL is a FAIL.
+   - **Paper-integrity audits (blocking)** — mechanize what used to be manual step-5 checks:
+     - `tools/audit_multiseed.py studies/<slug>/paper` — headline claims (`headline: true`) carry ≥
+       `seeds.multi_seed_n` distinct seeds (hard rule 6); a `multi_seed_waiver` routes to MANUAL.
+     - `tools/audit_ablation_coverage.py studies/<slug>/paper` — every planned ablation ran / was
+       waived / routed, none silently dropped.
+     - `tools/audit_eval_discipline.py studies/<slug>/paper` — the frozen protocol defines validation +
+       held-out test and no headline claim reports a validation-selected metric (hard rule 5).
+     Exit **1 = FAIL** (→ `/write-paper`, Part B does not run) · **2 = MANUAL** (resolve by hand;
+     unresolved = FAIL) · 0 = clean.
 3. Run `uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>` —
    **any nonzero exit blocks**: NOT-FOUND, RETRACTED, *and* MISMATCH (below-threshold title
    or wrong year — the near-miss-fabrication case).
@@ -30,8 +39,9 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
 5. Manual checks the scripts can't do:
    - Figure/table scripts exist in the project repo's `scripts/figures/`, are committed,
      and regenerate the paper's figures (spot-check ≥2).
-   - Multi-seed coverage (`experiment.multi_seed_n`) for all headline numbers, variance reported.
-   - Val/test discipline: nothing in the paper was selected on the test set.
+   - Multi-seed coverage + val/test discipline are now mechanized (the audits in step 2 above) —
+     here just spot-confirm variance is *reported* for headline numbers and the narrative doesn't
+     quietly lean on a test-set-selected choice.
    - **Phantom-experiment sweep**: AI-written papers hide fabricated experiments in
      ablation/analysis subsections (not main results), especially after revision
      rounds — walk those subsections claim by claim against the project's ledger. At

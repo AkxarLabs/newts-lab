@@ -86,7 +86,12 @@ Each round, in order — and stop early when a round changes nothing substantive
    every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check)
    — after EVERY round, not just at the end. Revision is when fabrication happens: phantom
    experiments hide in ablation/analysis subsections. Any number the audit can't trace gets
-   deleted, not defended.
+   deleted, not defended. Also run the three paper-integrity audits as a **WARN** here (they
+   hard-block later at `/review-paper` + `/finalize`, so surface the gaps while drafting):
+   `tools/audit_multiseed.py`, `tools/audit_ablation_coverage.py`, `tools/audit_eval_discipline.py`
+   (each on `studies/<slug>/paper`) — a headline result thin on seeds, a dropped ablation, or a
+   validation-selected number gets fixed now, not at the gate. Mark load-bearing claims
+   `headline: true` and add `split: test`/`multi_seed_waiver:` to `claims.yaml` as needed.
 3. **Read the PDF** (you can see it): figures render and are legible, tables aligned,
    no orphaned floats, section flow reads.
 
