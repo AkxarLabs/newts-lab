@@ -1,7 +1,8 @@
 """Mechanical lifecycle guards — the lock on the door behind the prose procedures.
 
     uv run --with pyyaml python tools/guard.py spawn <slug>
-    uv run --with pyyaml python tools/guard.py full-run <slug>
+    uv run --with pyyaml python tools/guard.py full-run <slug> [--config <yaml> --planned-runs N --planned-minutes M --reserve --reservation-label L]
+    uv run --with pyyaml python tools/guard.py release-full-run <slug> <reservation-id>
     uv run --with pyyaml python tools/guard.py frozen <slug>
     uv run --with pyyaml python tools/guard.py state <slug> <from> <to>
     uv run --with pyyaml python tools/guard.py append-only <slug | project-path>
@@ -116,11 +117,113 @@ def c_spawn(a) -> int:
     return _verdict(0, f"Gate 1 recorded — clear to /spawn-project {a.slug}")
 
 
+# A guard reservation (a sweep about to launch N FULL runs whose rows aren't in the registry yet)
+# is presumed abandoned after this window, so a crashed sweep can't wedge the envelope forever.
+_RESV_TTL_SECONDS = 24 * 3600
+_RESV_REL = ".guard/full-run-reservations.jsonl"
+
+
+def _full_run_rows(pdir: Path) -> tuple[int, float]:
+    """Consumed FULL capacity in the project's runs/registry.jsonl: (row count, wall-minutes summed).
+    Every FULL row is one launch that drew on the envelope; wall_seconds (when present) → minutes."""
+    reg = pdir / "runs" / "registry.jsonl"
+    count, wall = 0, 0.0
+    if reg.exists():
+        for line in reg.read_text(encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # a partial/corrupt line — skip, never crash the gate
+            if str(row.get("stage", "")).upper() == "FULL":
+                count += 1
+                ws = row.get("wall_seconds")
+                if isinstance(ws, (int, float)):
+                    wall += ws / 60.0
+    return count, wall
+
+
+def _active_reservations(pdir: Path) -> list[dict]:
+    """Reservations still holding capacity: status 'active' and younger than the TTL (a crashed
+    sweep's reservation ages out rather than wedging the envelope)."""
+    f = pdir / _RESV_REL
+    out: list[dict] = []
+    if not f.exists():
+        return out
+    now = time.time()
+    for line in f.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if str(r.get("status", "active")).lower() != "active":
+            continue
+        ts = r.get("ts")
+        if isinstance(ts, (int, float)) and (now - ts) > _RESV_TTL_SECONDS:
+            continue  # stale — presumed abandoned
+        out.append(r)
+    return out
+
+
+def _full_run_accounting(env: dict, pdir: Path, planned_runs, planned_minutes) -> tuple[bool, str]:
+    """Does a request of `planned_runs` FULL runs, each budgeted `planned_minutes`, still fit the
+    signed envelope given prior completed FULL rows + active reservations? Returns (ok, message).
+    A cap of 0/None means 'unbounded on that axis' (the non-empty-envelope check already ran)."""
+    done_count, done_minutes = _full_run_rows(pdir)
+    resv = _active_reservations(pdir)
+    resv_runs = sum(int(r.get("planned_runs") or 0) for r in resv)
+    resv_minutes = sum(int(r.get("planned_runs") or 0) * float(r.get("planned_minutes") or 0) for r in resv)
+    req_runs = int(planned_runs or 1)
+    req_per = float(planned_minutes or 0)
+    req_total = req_runs * req_per
+    full_cap = int(env.get("full_runs") or 0)
+    per_cap = float(env.get("per_run_max_minutes") or 0)
+    total_cap = float(env.get("total_max_minutes") or 0)
+    if per_cap and req_per > per_cap:
+        return False, f"per-run budget {req_per:g}m exceeds per_run_max_minutes={per_cap:g}"
+    if full_cap and (done_count + resv_runs + req_runs) > full_cap:
+        return False, (f"would use {done_count + resv_runs + req_runs} FULL run(s) "
+                       f"(done {done_count} + reserved {resv_runs} + requested {req_runs}) > full_runs={full_cap}")
+    if total_cap and (done_minutes + resv_minutes + req_total) > total_cap:
+        return False, (f"would book ~{done_minutes + resv_minutes + req_total:g}m "
+                       f"(done {done_minutes:g} + reserved {resv_minutes:g} + requested {req_total:g}) "
+                       f"> total_max_minutes={total_cap:g}")
+    return True, (f"fits envelope (runs {done_count}+{resv_runs}+{req_runs}/{full_cap or '∞'}, "
+                  f"~{done_minutes + resv_minutes + req_total:g}m/{total_cap or '∞'})")
+
+
+def _reserve_full_run(pdir: Path, label, planned_runs, planned_minutes) -> str:
+    """Append an active reservation so a *concurrent* sweep can't double-book capacity between now and
+    when this sweep's rows land in the registry. Released by `release-full-run` (or aged out by TTL)."""
+    d = pdir / ".guard"
+    d.mkdir(exist_ok=True)
+    rid = re.sub(r"[^A-Za-z0-9._-]", "_", f"{time.strftime('%Y%m%d-%H%M%S')}-{label or 'full'}")
+    rec = {"id": rid, "ts": time.time(), "label": label, "planned_runs": int(planned_runs or 1),
+           "planned_minutes": float(planned_minutes or 0), "expires_at": time.time() + _RESV_TTL_SECONDS,
+           "status": "active"}
+    with (pdir / _RESV_REL).open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    return rid
+
+
 def c_full_run(a) -> int:
-    """A FULL run needs a signed, unexpired, non-empty gate2_envelope — else fresh PI approval."""
+    """A FULL run needs a signed, unexpired, non-empty gate2_envelope — else fresh PI approval. When the
+    caller declares its intent (--planned-runs/--planned-minutes), also account prior FULL rows + active
+    reservations against the envelope caps (and optionally --reserve capacity for a sweep)."""
     pdir = _project_dir(a.slug)
     if not pdir:
         return _verdict(1, f"no project dir for {a.slug}")
+    # Convenience: a named config whose stage isn't FULL needs no Gate 2 at all.
+    cfg_path = getattr(a, "config", None)
+    if cfg_path:
+        stg = str((_load_yaml(Path(cfg_path)) or {}).get("stage") or "").upper()
+        if stg and stg != "FULL":
+            return _verdict(0, f"config stage is {stg} (not FULL) — no Gate-2 envelope needed")
     env = _load_yaml(pdir / "control.yaml").get("gate2_envelope") or {}
     if not env.get("pi_signed"):
         return _verdict(1, "no signed gate2_envelope — every FULL run needs fresh PI approval")
@@ -129,7 +232,47 @@ def c_full_run(a) -> int:
         return _verdict(1, f"gate2_envelope expired ({exp}) — needs re-signing before any FULL run")
     if not any(env.get(k) for k in ("full_runs", "per_run_max_minutes", "total_max_minutes")):
         return _verdict(1, "gate2_envelope authorizes nothing (all caps 0/null) — FULL needs PI approval")
-    return _verdict(0, f"signed gate2_envelope covers FULL (full_runs={env.get('full_runs')}, expires={exp or 'n/a'})")
+    planned_runs = getattr(a, "planned_runs", None)
+    planned_minutes = getattr(a, "planned_minutes", None)
+    if planned_runs is None and planned_minutes is None:
+        return _verdict(0, f"signed gate2_envelope covers FULL (full_runs={env.get('full_runs')}, expires={exp or 'n/a'})")
+    ok, msg = _full_run_accounting(env, pdir, planned_runs, planned_minutes)
+    if not ok:
+        return _verdict(1, f"gate2_envelope exceeded — {msg}")
+    if getattr(a, "reserve", False):
+        rid = _reserve_full_run(pdir, getattr(a, "reservation_label", None), planned_runs, planned_minutes)
+        print(f"[guard] reserved FULL capacity: {rid}")
+    return _verdict(0, f"signed gate2_envelope covers this FULL request — {msg}")
+
+
+def c_release_full_run(a) -> int:
+    """Mark a FULL-run reservation released (its rows have landed in the registry, so the reservation
+    would otherwise double-count). Idempotent; a missing/unknown id is not an error."""
+    pdir = _project_dir(a.slug)
+    if not pdir:
+        return _verdict(1, f"no project dir for {a.slug}")
+    f = pdir / _RESV_REL
+    if not f.exists():
+        return _verdict(0, "no reservations file — nothing to release")
+    out, released = [], False
+    for line in f.read_text(encoding="utf-8-sig").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            r = json.loads(s)
+        except json.JSONDecodeError:
+            out.append(s)
+            continue
+        if r.get("id") == a.reservation_id and str(r.get("status", "active")).lower() == "active":
+            r["status"] = "released"
+            released = True
+        out.append(json.dumps(r))
+    tmp = f.parent / (f.name + ".tmp")
+    tmp.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
+    tmp.replace(f)
+    return _verdict(0, f"released reservation {a.reservation_id}" if released
+                   else f"reservation {a.reservation_id} not active/found (already released?)")
 
 
 def c_frozen(a) -> int:
@@ -415,11 +558,25 @@ def c_plan_trace(a) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="mechanical lifecycle guards")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name, fn in [("spawn", c_spawn), ("full-run", c_full_run), ("frozen", c_frozen),
+    for name, fn in [("spawn", c_spawn), ("frozen", c_frozen),
                      ("writeback", c_writeback), ("evolve", c_evolve), ("plan-trace", c_plan_trace)]:
         p = sub.add_parser(name)
         p.add_argument("slug")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("full-run")
+    p.add_argument("slug")
+    p.add_argument("--config", default=None, help="experiment yaml (skips the gate if its stage isn't FULL)")
+    p.add_argument("--planned-runs", type=int, default=None, dest="planned_runs",
+                   help="how many FULL runs this request launches (enables envelope accounting)")
+    p.add_argument("--planned-minutes", type=float, default=None, dest="planned_minutes",
+                   help="per-run budget in minutes (checked vs per_run_max_minutes; ×runs vs total)")
+    p.add_argument("--reserve", action="store_true", help="reserve the accounted capacity (for a sweep)")
+    p.add_argument("--reservation-label", default=None, dest="reservation_label")
+    p.set_defaults(fn=c_full_run)
+    p = sub.add_parser("release-full-run")
+    p.add_argument("slug")
+    p.add_argument("reservation_id")
+    p.set_defaults(fn=c_release_full_run)
     p = sub.add_parser("decisions")
     p.add_argument("slug")
     p.add_argument("--strict", action="store_true", help="treat a missing predicate as BLOCKED")

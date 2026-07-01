@@ -59,6 +59,8 @@ def _resolve_pkg() -> str:
 
 import importlib  # noqa: E402
 
+import _runner_guards as guards  # Gate-2 + compute-slot enforcement for the whole sweep (stdlib-only)
+
 load_config = importlib.import_module(f"{_resolve_pkg()}.config").load_config
 _locked_append = importlib.import_module(f"{_resolve_pkg()}.tracking")._locked_append
 
@@ -66,6 +68,18 @@ try:
     import lab_bus  # dashboard event bus (optional, best-effort)
 except Exception:  # noqa: BLE001
     lab_bus = None
+
+
+def _control() -> dict:
+    """This project's control.yaml (hub_path, project slug). Best-effort; {} if unreadable."""
+    ctl = REPO / "control.yaml"
+    if ctl.exists():
+        try:
+            import yaml
+            return yaml.safe_load(ctl.read_text(encoding="utf-8-sig")) or {}
+        except Exception:  # noqa: BLE001
+            return {}
+    return {}
 
 RUN_ID_RE = re.compile(r"^\[run\] (\S+) ->", re.MULTILINE)
 _NEW_GROUP = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
@@ -121,7 +135,7 @@ def parse_grid(items: list[str]) -> list[list[tuple[str, str]]]:
     return [list(combo) for combo in itertools.product(*axes)] if axes else [[]]
 
 
-def run_job(config: str, seed: int, combo: list[tuple[str, str]], timeout: float) -> dict:
+def run_job(config: str, seed: int, combo: list[tuple[str, str]], timeout: float, env: dict | None = None) -> dict:
     cmd = [sys.executable, str(REPO / "scripts" / "run.py"), "--config", config, "--seed", str(seed)]
     for key, value in combo:
         cmd += ["-o", f"{key}={value}"]
@@ -130,7 +144,7 @@ def run_job(config: str, seed: int, combo: list[tuple[str, str]], timeout: float
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace", cwd=REPO,
-                                **_NEW_GROUP)
+                                env=env, **_NEW_GROUP)
         try:
             out, _ = proc.communicate(timeout=timeout)
             status = {0: "completed", 2: "timeout"}.get(proc.returncode, "failed")
@@ -183,8 +197,38 @@ def main() -> int:
         lab_bus.emit("sweep_started", detail=cfg.get("experiment_name"),
                      data={"jobs": len(jobs), "combos": len(combos), "seeds": len(seeds)})
 
-    with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
-        results = list(pool.map(lambda j: run_job(*j), jobs))
+    # Runner-boundary enforcement for the WHOLE campaign (once, before any job launches):
+    #   Gate 2 (hard rule 2): a FULL sweep must fit the signed envelope; reserve its capacity so a
+    #     concurrent sweep can't double-book. Children inherit the clearance via AUTOSCIENTIST_GATE2_OK.
+    #   Compute slot (hard rule 13): ONE campaign slot for PILOT/FULL; children inherit it via
+    #     AUTOSCIENTIST_SLOT_HELD (so they don't each re-acquire). The campaign slot survives a child's
+    #     watchdog os._exit(2), which a per-child slot would leak.
+    stage = guards.stage_of(cfg)
+    control = _control()
+    label = cfg.get("experiment_name") or Path(args.config).stem
+    reservation_id = guards.reserve_full_sweep(control, args.config, len(jobs), max_minutes, label) \
+        if stage == "FULL" else None
+    slot_id = None
+    child_env = None
+    try:
+        if stage in ("PILOT", "FULL"):
+            slot_id = guards.acquire_slot(control, label)
+    except SystemExit:
+        guards.release_reservation(control, reservation_id)  # don't leak the reservation on a slot denial
+        raise
+    if slot_id or stage == "FULL":
+        child_env = dict(os.environ)
+        if slot_id:
+            child_env["AUTOSCIENTIST_SLOT_HELD"] = "1"
+        if stage == "FULL":
+            child_env["AUTOSCIENTIST_GATE2_OK"] = "1"
+
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+            results = list(pool.map(lambda j: run_job(*j, env=child_env), jobs))
+    finally:
+        guards.release_slot(control, slot_id)
+        guards.release_reservation(control, reservation_id)
 
     # Aggregate completed runs per combo: mean +/- std for every numeric final metric.
     print(f"\n## Sweep summary — {cfg.get('experiment_name')} ({len(seeds)} seeds)\n")

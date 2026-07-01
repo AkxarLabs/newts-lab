@@ -19,6 +19,21 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ — for the sibling _runner_guards
+
+import _runner_guards as guards  # noqa: E402 — Gate-2 + compute-slot enforcement (stdlib-only)
+
+
+def _control() -> dict:
+    """This project's control.yaml (hub_path, project slug, budgets). Best-effort; {} if unreadable."""
+    ctl = Path(__file__).resolve().parents[1] / "control.yaml"
+    if ctl.exists():
+        try:
+            import yaml
+            return yaml.safe_load(ctl.read_text(encoding="utf-8-sig")) or {}
+        except Exception:  # noqa: BLE001 — a broken control.yaml shouldn't crash before the gate message
+            return {}
+    return {}
 
 
 def _resolve_pkg() -> str:
@@ -137,6 +152,17 @@ def main() -> int:
     runner = str(cfg.get("runner") or "python-import").strip().lower()
     if runner not in _RUNNERS:
         raise SystemExit(f"[run] unknown runner {runner!r} — use python-import | shell-command")
+
+    # Runner-boundary enforcement — BEFORE any run dir is created, so a blocked run leaves no trace:
+    #   Gate 2 (hard rule 2): a FULL run must fit the signed gate2_envelope.
+    #   Compute slot (hard rule 13): a direct PILOT/FULL run must hold a cross-project slot.
+    # SMOKE is exempt from both; a child of sweep.py inherits the campaign's gate/slot via env markers.
+    control = _control()
+    guards.gate2_preflight(control, args.config, cfg)
+    slot_id = None
+    if guards.stage_of(cfg) in ("PILOT", "FULL") and not os.environ.get("AUTOSCIENTIST_SLOT_HELD"):
+        slot_id = guards.acquire_slot(control, cfg.get("experiment_name") or Path(args.config).stem)
+
     set_seed(int(cfg.get("seed", 0)))
     ctx = RunContext(cfg)
     print(f"[run] {ctx.run_id} -> {ctx.run_dir}", flush=True)
@@ -167,25 +193,31 @@ def main() -> int:
 
         threading.Thread(target=_watchdog, daemon=True).start()
 
+    # release the compute slot on every normal exit (success, failure, exception). The watchdog's
+    # os._exit(2) bypasses this finally — a direct FULL run that times out leaks its slot until the
+    # stale-slot reclaim (that's why sweep.py holds ONE campaign slot for its children instead).
     try:
-        if runner in ("shell-command", "shell", "command"):
-            final_metrics = _run_command(cfg, ctx)
-        else:
-            run_experiment = importlib.import_module(f"{_PKG}.experiment").run
-            final_metrics = run_experiment(cfg, ctx)
-    except Exception:
-        done.set()
-        child = _CHILD["proc"]   # shell-command: reap a still-live tool tree on the failure path too
-        if child is not None and child.poll() is None:
-            _kill_tree(child)
-        ctx.fail(traceback.format_exc())
-        print(f"[run] FAILED — see {ctx.run_dir / 'error.txt'}")
-        return 1
+        try:
+            if runner in ("shell-command", "shell", "command"):
+                final_metrics = _run_command(cfg, ctx)
+            else:
+                run_experiment = importlib.import_module(f"{_PKG}.experiment").run
+                final_metrics = run_experiment(cfg, ctx)
+        except Exception:
+            done.set()
+            child = _CHILD["proc"]   # shell-command: reap a still-live tool tree on the failure path too
+            if child is not None and child.poll() is None:
+                _kill_tree(child)
+            ctx.fail(traceback.format_exc())
+            print(f"[run] FAILED — see {ctx.run_dir / 'error.txt'}")
+            return 1
 
-    done.set()
-    ctx.finish(final_metrics)
-    print(f"[run] completed: {final_metrics}")
-    return 0
+        done.set()
+        ctx.finish(final_metrics)
+        print(f"[run] completed: {final_metrics}")
+        return 0
+    finally:
+        guards.release_slot(control, slot_id)
 
 
 if __name__ == "__main__":

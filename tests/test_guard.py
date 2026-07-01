@@ -89,6 +89,93 @@ def test_full_run_blocked_all_zero_caps(hub, monkeypatch):
     assert m.c_full_run(types.SimpleNamespace(slug="demo")) == 1
 
 
+# ── full-run envelope accounting (planned runs/minutes vs caps + reservations) ─
+
+def _full_ns(slug, *, planned_runs=None, planned_minutes=None, reserve=False,
+             reservation_label=None, config=None):
+    return types.SimpleNamespace(slug=slug, planned_runs=planned_runs, planned_minutes=planned_minutes,
+                                 reserve=reserve, reservation_label=reservation_label, config=config)
+
+
+def _write_runs(proj, rows):
+    import json
+    reg = proj / "runs" / "registry.jsonl"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    reg.write_text("\n".join(json.dumps(r) for r in rows) + ("\n" if rows else ""), encoding="utf-8")
+
+
+def _signed(full_runs=4, per=60, total=240):
+    return {"pi_signed": True, "expires": _future(), "full_runs": full_runs,
+            "per_run_max_minutes": per, "total_max_minutes": total}
+
+
+def test_full_run_blocks_when_requested_budget_exceeds_per_run(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=3, per=30, total=120))
+    (proj / "runs").mkdir(exist_ok=True)
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=31)) == 1
+
+
+def test_full_run_blocks_when_prior_rows_exceed_full_runs(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=2, per=60, total=600))
+    _write_runs(proj, [{"stage": "FULL", "status": "completed", "wall_seconds": 60},
+                       {"stage": "FULL", "status": "completed", "wall_seconds": 60}])
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=10)) == 1
+
+
+def test_full_run_blocks_when_total_minutes_exceed(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=10, per=100, total=100))
+    _write_runs(proj, [{"stage": "FULL", "status": "completed", "wall_seconds": 3600}])  # 60m booked
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=50)) == 1  # 60 + 50 > 100
+
+
+def test_full_run_ok_valid_accounted_request(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=4, per=60, total=240))
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_full_run(_full_ns("demo", planned_runs=2, planned_minutes=30)) == 0
+
+
+def test_full_run_only_full_rows_count(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=1, per=60, total=600))
+    _write_runs(proj, [{"stage": "PILOT", "status": "completed", "wall_seconds": 999},
+                       {"stage": "SMOKE", "status": "completed", "wall_seconds": 999}])
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=10)) == 0  # no FULL rows yet
+
+
+def test_full_run_reservation_counts_then_release_frees(hub, monkeypatch):
+    import json
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2=_signed(full_runs=2, per=60, total=600))
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    # reserve 2 FULL runs -> exhausts full_runs=2
+    assert m.c_full_run(_full_ns("demo", planned_runs=2, planned_minutes=10,
+                                 reserve=True, reservation_label="exp-004")) == 0
+    # a further request for 1 more now exceeds the cap (2 reserved + 1 > 2)
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=10)) == 1
+    rid = json.loads((proj / ".guard" / "full-run-reservations.jsonl")
+                     .read_text(encoding="utf-8").splitlines()[0])["id"]
+    assert m.c_release_full_run(types.SimpleNamespace(slug="demo", reservation_id=rid)) == 0
+    # after release the request fits again
+    assert m.c_full_run(_full_ns("demo", planned_runs=1, planned_minutes=10)) == 0
+
+
+def test_full_run_config_non_full_stage_skips_gate(hub, monkeypatch, tmp_path):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2={"pi_signed": False})  # unsigned — would block a FULL
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    cfg = tmp_path / "exp.yaml"
+    cfg.write_text("stage: PILOT\n", encoding="utf-8")
+    assert m.c_full_run(_full_ns("demo", config=str(cfg))) == 0  # PILOT config needs no Gate 2
+
+
 # ── frozen ────────────────────────────────────────────────────────────────────
 
 def test_frozen_ok(hub, monkeypatch):

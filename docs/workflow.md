@@ -47,7 +47,7 @@ Two things adoption never waives: the PI gates, and hard rule 1 — pre-existing
 
 **Gate 1 — proposal approval.** The cheapest, highest-leverage human moment (Agent Laboratory measured +0.6 review points from checkpoints like this). You approve: hypothesis, the strongest-fair baseline, frozen eval protocol, the staged experiment table with promotion criteria written in advance, budgets, and kill criteria. Optionally you pre-authorize a **Gate 2 envelope** here.
 
-**Gate 2 — full-scale launch.** SMOKE and PILOT runs are autonomous; FULL runs need approval — either per-run, or covered by a recorded envelope (`control.yaml → gate2_envelope`, `pi_signed: true`). Runs outside an envelope's scope always need fresh approval. The envelope is what lets overnight loops do full-scale work without you.
+**Gate 2 — full-scale launch.** SMOKE and PILOT runs are autonomous; FULL runs need approval — either per-run, or covered by a recorded envelope (`control.yaml → gate2_envelope`, `pi_signed: true`). Runs outside an envelope's scope always need fresh approval. The envelope is what lets overnight loops do full-scale work without you. This is **enforced at the runner boundary**: `scripts/run.py`/`sweep.py` ask the hub guard before any FULL run and refuse one that doesn't fit the signed envelope — accounting the request (per-run minutes, total minutes, run count) against prior FULL rows + reservations — so Gate 2 can't be bypassed by invoking the runner directly.
 
 **Gate 3 — finalization.** Nothing leaves the lab without you reading it. By this point the paper has survived the mechanical claims audit and the fresh-context critique ensemble.
 
