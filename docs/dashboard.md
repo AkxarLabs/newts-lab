@@ -56,8 +56,11 @@ Activity card, or the `read` link in the approve dialog):
 
 - **Gate 1** — the lit-review's **novelty verdict** + the proposal's **budget · kill criteria ·
   success criteria** lifted to the top, then the full proposal.
-- **Gate 2** — the **FULL-run envelope** + the **completed PILOT runs** that justify scaling to full
-  (the evidence Gate 2 exists for), then `control.yaml`.
+- **Gate 2** — an **envelope-capacity** readout (signed/expiry/`signed_via`; the `full_runs`/per-run/
+  total caps; completed + reserved FULL runs and minutes already booked; **remaining** runs/minutes —
+  the same accounting `guard.py full-run` enforces, so the PI sees before signing whether a request
+  even fits), then the raw `gate2_envelope`, the **completed PILOT runs** that justify scaling, then
+  `control.yaml`.
 - **Gate 3** — `claims.yaml` + the **meta-review verdict** (decision + Overall score) + every review
   and author-response, found recursively under `paper/reviews/`. The compiled PDF opens in the paper
   viewer; the claims map (below) opens beside it. (Gate 3 stays read-only — `/finalize` in a session.)

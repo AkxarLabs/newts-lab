@@ -369,16 +369,66 @@ def _pilot_evidence(pdir: Path | None) -> dict:
     return sec
 
 
+def _gate2_accounting(pdir: Path | None, env: dict | None) -> dict:
+    """Envelope capacity vs what's already booked — mirrors tools/guard.py's c_full_run accounting so
+    the PI sees, before signing, whether a FULL request would even fit (completed + reserved vs caps)."""
+    env = env or {}
+    signed = bool(env.get("pi_signed"))
+    exp = str(env.get("expires") or "").strip()
+    expired = bool(exp and exp.lower() not in ("null", "none") and exp < time.strftime("%Y-%m-%d"))
+    full_cap = int(env.get("full_runs") or 0)
+    per_cap = float(env.get("per_run_max_minutes") or 0)
+    total_cap = float(env.get("total_max_minutes") or 0)
+    done_count, done_min = 0, 0.0
+    if pdir:
+        reg = pdir / "runs" / "registry.jsonl"
+        for r in (sources._read_jsonl(reg) if reg.exists() else []):
+            if str(r.get("stage", "")).upper() == "FULL":
+                done_count += 1
+                ws = r.get("wall_seconds")
+                if isinstance(ws, (int, float)):
+                    done_min += ws / 60.0
+    resv_runs, resv_min = 0, 0.0
+    if pdir:
+        rf = pdir / ".guard" / "full-run-reservations.jsonl"
+        now = time.time()
+        for r in (sources._read_jsonl(rf) if rf.exists() else []):
+            if str(r.get("status", "active")).lower() != "active":
+                continue
+            ts = r.get("ts")
+            if isinstance(ts, (int, float)) and (now - ts) > 24 * 3600:
+                continue
+            pr, pm = int(r.get("planned_runs") or 0), float(r.get("planned_minutes") or 0)
+            resv_runs += pr
+            resv_min += pr * pm
+    rem_runs = (full_cap - done_count - resv_runs) if full_cap else None
+    rem_min = (total_cap - done_min - resv_min) if total_cap else None
+    status = "no signed envelope" if not signed else ("EXPIRED" if expired else "active")
+    lines = [
+        f"signed:            {'yes' if signed else 'NO — every FULL run needs fresh PI approval'}",
+        f"expires:           {exp or 'n/a'}{'   (EXPIRED)' if expired else ''}",
+        f"signed_via:        {env.get('signed_via') or 'PI direct'}",
+        "",
+        f"full_runs cap:     {full_cap or 'unset'}      per-run ≤ {per_cap or 'unset'} min      total ≤ {total_cap or 'unset'} min",
+        f"completed FULL:    {done_count} run(s)   (~{done_min:.0f} min booked)",
+        f"reserved FULL:     {resv_runs} run(s)   (~{resv_min:.0f} min, in-flight sweeps)",
+        f"remaining FULL:    {rem_runs if rem_runs is not None else '∞'} run(s)",
+        f"remaining minutes: {f'{rem_min:.0f}' if rem_min is not None else '∞'}",
+    ]
+    return {"title": f"Envelope capacity — {status}", "text": "\n".join(lines)}
+
+
 def _gate2_bundle(slug: str) -> dict:
     pdir = sources._project_path({"id": slug, "project": ""})
     ctrl = (pdir / "control.yaml") if pdir else None
     env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
-    secs = [{"title": "gate2_envelope (control.yaml)",
+    secs = [_gate2_accounting(pdir, env),
+            {"title": "gate2_envelope (control.yaml)",
              "text": json.dumps(env, indent=2, default=str) if env else "no gate2_envelope found — spawn the project first"}]
     secs.append(_pilot_evidence(pdir))
     if ctrl and ctrl.exists():
         secs.append(_filesec("control.yaml", ctrl))
-    return {"ok": True, "title": f"Gate 2 · {slug} · envelope + pilot evidence", "sections": secs}
+    return {"ok": True, "title": f"Gate 2 · {slug} · envelope + accounting + pilot evidence", "sections": secs}
 
 
 def _find_review_files(paper: Path, pattern: str) -> list:

@@ -220,6 +220,41 @@ def test_gate2_bundle_surfaces_completed_pilot_runs(hub, monkeypatch):
     assert "1 completed PILOT" in pilot["title"]
 
 
+def test_gate2_accounting_computes_remaining_capacity(hub, monkeypatch):
+    import json
+    import time
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    reg = proj / "runs" / "registry.jsonl"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    reg.write_text("\n".join(json.dumps(r) for r in [
+        {"run_id": "f1", "stage": "FULL", "status": "completed", "wall_seconds": 1800},   # 30 min
+        {"run_id": "f2", "stage": "FULL", "status": "completed", "wall_seconds": 1800},   # 30 min
+        {"run_id": "p1", "stage": "PILOT", "status": "completed", "wall_seconds": 9999},   # not FULL
+    ]) + "\n", encoding="utf-8")
+    resv = proj / ".guard" / "full-run-reservations.jsonl"
+    resv.parent.mkdir(parents=True, exist_ok=True)
+    resv.write_text(json.dumps({"id": "r1", "ts": time.time(), "planned_runs": 1,
+                                "planned_minutes": 60, "status": "active"}) + "\n", encoding="utf-8")
+    env = {"pi_signed": True, "expires": "2099-01-01", "full_runs": 4,
+           "per_run_max_minutes": 60, "total_max_minutes": 300}
+    acc = m._gate2_accounting(proj, env)
+    assert "active" in acc["title"]
+    lines = {ln.split(":", 1)[0].strip(): ln for ln in acc["text"].splitlines() if ":" in ln}
+    assert "2 run(s)" in lines["completed FULL"]                 # only FULL rows count
+    assert "1 run(s)" in lines["reserved FULL"]
+    assert "1 run(s)" in lines["remaining FULL"]                 # 4 - 2 done - 1 reserved
+    assert lines["remaining minutes"].endswith("180")           # 300 - 60 - 60
+
+
+def test_gate2_bundle_includes_accounting_section(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2={"pi_signed": True, "expires": None, "full_runs": 2})
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    titles = [s["title"] for s in m.read_doc("gate", "demo", 2)["sections"]]
+    assert any("Envelope capacity" in t for t in titles)
+
+
 # ── Gate 3 bundle: reviews found RECURSIVELY (the old glob missed them) + meta verdict ──
 
 def test_gate3_bundle_finds_reviews_recursively_and_lifts_verdict(hub, monkeypatch):
