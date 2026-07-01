@@ -83,6 +83,15 @@ uv run --with pyyaml python tools/guard.py <spawn|full-run|release-full-run|froz
 
 The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
 
+### `spawn_project.py` — mechanical project scaffolder
+
+```bash
+uv run --with pyyaml python tools/spawn_project.py --slug <slug> --title "<title>" \
+  --project-type ml [--domain econ] [--overlay compete] [--run-smoke] [--skip-guard]
+```
+
+The deterministic half of `/spawn-project`: copies `templates/project/` → `<projects_root>/<slug>` with the four placeholders substituted as **UTF-8, no BOM** (`hub_path` forward-slashed so `control.yaml` stays valid YAML on Windows — a real failure mode a hand-copy hits), drops the hub-side runtime cruft (`.pytest_cache`/`.bus`/`__pycache__`/stale `runs/` dirs), applies the project-TYPE card + `control.yaml` `project_type` + optional domain profile (`--domain` → `DOMAIN.md`) + optional target-driven overlay (`--overlay compete`), and copies `lab/SYSTEM.md` if present. Runs `guard.py spawn` first (Gate 1), and **refuses** to overwrite a slug with commits or a non-empty `runs/`. With `--run-smoke` it also `uv sync`s, runs the smoke + tests (project-local basetemp) + `check_project.py`, and commits **only if all green** (never a red scaffold). The judgment steps — fill `PLAN.md` from the proposal, set budgets/the Gate-2 envelope, update the registry — stay in the skill.
+
 ### `role_sync.py` — render backend-native subagent role files
 
 ```bash

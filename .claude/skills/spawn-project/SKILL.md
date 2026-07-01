@@ -15,24 +15,27 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    relative to the hub). If the container directory doesn't exist, create it with a
    one-paragraph README ("Projects spawned by the Newts' Lab at <hub path>; each
    is an independent git repo — index in the hub's lab/REGISTRY.md").
-3. **If `<projects_root>/<slug>` already exists, STOP before copying.** If it has any
-   commits or a non-empty `runs/`, never overwrite — report the collision to the PI (a
-   reused slug; pick a distinct one). If it is an incomplete prior spawn (no commits,
-   `check_project.py` failing), either resume filling it in place or delete it with a
-   note, then continue. Otherwise copy `templates/project/` → `<projects_root>/<slug>`. Substitute `{{slug}}`,
-   `{{title}}`, `{{date}}`, `{{hub_path}}` in README.md, pyproject.toml, PLAN.md,
-   EXPERIMENT_LOG.md, **NOTES.md**, **control.yaml**, **CLAUDE.md**, **AGENTS.md** — the
-   last two make a session started inside the project directory fully operable; `NOTES.md`
-   is its distilled-memory file (ships empty — `(none yet)` — and accretes lessons as the
-   project runs). The copied `.claude/skills/` (the vendored
-   `grilling`/`domain-modeling`/`grill-with-docs` engineering skills) need **no**
-   substitution — domain-agnostic plain Markdown; they ship in every project so grilling
-   works standalone for any agent (Claude or Codex, which finds them via `AGENTS.md`).
-   Keep the `project_pkg` package name unless the project will be published standalone
-   (renaming is optional polish).
-   If `lab/SYSTEM.md` exists in the hub, copy it to the project root as `SYSTEM.md`
-   (the PI may tailor it per-project); otherwise mention one can be created from
-   `templates/SYSTEM.md` any time.
+3. **Scaffold via the tool** (mechanical copy/substitute — Windows-BOM-safe). After deciding the
+   type/domain in 3b (below), run:
+
+   ```bash
+   uv run --with pyyaml python tools/spawn_project.py --slug <slug> --title "<title>" \
+     --project-type <type> [--domain <d>] [--overlay compete]
+   ```
+
+   It copies `templates/project/` → `<projects_root>/<slug>` with `{{slug}}`/`{{title}}`/`{{date}}`/
+   `{{hub_path}}` substituted as **UTF-8 with no BOM** (`hub_path` forward-slashed so `control.yaml`
+   stays valid YAML on Windows), drops runtime cruft (`.pytest_cache`/`.bus`/`__pycache__`/stale
+   `runs/` dirs), applies the project-TYPE card + `control.yaml` `project_type` (`--project-type`) +
+   optional domain profile (`--domain` → `DOMAIN.md`) + optional target-driven overlay
+   (`--overlay compete`), and copies `lab/SYSTEM.md` → `SYSTEM.md` if present. The vendored
+   `.claude/skills/` (grilling/domain-modeling/grill-with-docs) and `.codex/` role files ship in every
+   project (no substitution) so any agent (Claude or Codex) has them standalone. It **refuses** to
+   overwrite a `<slug>` that already has commits or a non-empty `runs/` (a reused slug overwrites a
+   recorded kill/result — pick a distinct one, link the old in the successor's triage notes). It does
+   **not** fill `PLAN.md`/`control.yaml` or touch the registry — those judgment steps are below (keep
+   the `project_pkg` package name unless publishing standalone). `NOTES.md` ships empty (`(none yet)`)
+   and accretes lessons as the project runs.
 3b. **Select & apply the project TYPE** (the methodology axis — bound here, at spawn). Read the
    approved proposal (`studies/<slug>/proposal.md`, `decisions.md`, the frozen eval protocol) and
    the cards in `{{hub_path}}/templates/project-types/*/TYPE.md`. Pick the best-fit type —
@@ -41,14 +44,14 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    fits, propose a NEW type (a `TYPE.md` card) — a PI-owned act. **Present the chosen {type, domain}
    to the PI and get confirmation** before proceeding (it shapes the whole project — Gate-1-adjacent;
    under a signed `/autopilot` campaign, decide within its delegation bounds). Then apply it:
-   - Set `control.yaml` `project_type:` and `runner:` — `python-import` for `ml`/`target-driven`/
-     Python work; `shell-command` + `runner_command:` for an R/Stata/Julia/proof-checker tool (that
-     path writes the metrics dict to `$RUN_DIR/result.json` — same artifact contract, so hard rule 1
-     holds across languages).
-   - Copy the chosen `TYPE.md` (and the domain profile as `DOMAIN.md`, if any) into the project root
-     so an in-project session knows its own rules.
-   - `target-driven`: also apply the `templates/compete/` overlay (what `/compete` does) — or just
-     run `/compete` for that type instead of `/spawn-project`.
+   This decision is PI-confirmed and feeds `spawn_project.py` in step 3 (which mechanically copies the
+   `TYPE.md` card, sets `control.yaml` `project_type:`, and adds `DOMAIN.md` / the `compete` overlay).
+   You still set by hand:
+   - `control.yaml` `runner:` — `python-import` for `ml`/`target-driven`/Python work; `shell-command`
+     + `runner_command:` for an R/Stata/Julia/proof-checker tool (that path writes the metrics dict to
+     `$RUN_DIR/result.json` — same artifact contract, so hard rule 1 holds across languages).
+   - `target-driven`: pass `--overlay compete` (what `/compete` does) — or just run `/compete` for that
+     type instead of `/spawn-project`.
    - Non-`ml` type: write the **smoke** in the type's shape (a tiny regression / one sim draw / a
      proof-checker no-op) so step 7's smoke + `check_project.py` pass. `ml` keeps the base toy.
 4. **Configure `control.yaml`** (the project's end-to-end run config): fill
