@@ -1,0 +1,7 @@
+name: overseer
+description: "Fresh-context verification agent — checks one claim, critique, or conclusion against its evidence before it propagates to the next pipeline step. The lab's confabulation circuit-breaker."
+model_key: overseer_model          # lab/config.yaml agents.overseer_model sets the Claude model
+tools_claude: "Read, Glob, Grep, WebFetch, WebSearch"
+codex:
+  sandbox_mode: read-only          # verifies evidence; never writes
+  model_reasoning_effort: high

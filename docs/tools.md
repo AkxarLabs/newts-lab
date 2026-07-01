@@ -83,6 +83,15 @@ uv run --with pyyaml python tools/guard.py <spawn|full-run|release-full-run|froz
 
 The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
 
+### `role_sync.py` — render backend-native subagent role files
+
+```bash
+uv run --with pyyaml python tools/role_sync.py render   # write/update generated role files
+uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exit 1 if any is stale
+```
+
+One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates stay inline at the session model (subagent rule 7). **Only Claude and Codex are rendered** (known schemas); opencode / Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or `agent_runner.py` (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
+
 ### `agent_runner.py` — launch + capture headless top-level agents
 
 ```bash

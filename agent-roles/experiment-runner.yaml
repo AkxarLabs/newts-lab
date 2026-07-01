@@ -1,0 +1,7 @@
+name: experiment-runner
+description: "Runs one experiment variant inside an assigned git worktree of a project repo. Spawned by /improve and /research-loop for parallel iteration."
+model_key: runner_model            # lab/config.yaml agents.runner_model sets the Claude model
+tools_claude: "Read, Write, Edit, Glob, Grep, Bash"
+codex:
+  sandbox_mode: workspace-write    # edits configs/code + commits inside its worktree
+  model_reasoning_effort: high

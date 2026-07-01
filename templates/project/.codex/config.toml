@@ -1,0 +1,12 @@
+# Codex configuration for a Newts' Lab project (loads only when the project is trusted).
+# Conservative by design — the safety-critical flags are NOT loosened here, and a blocked op
+# fails (escalate to the bus) rather than prompting. Role files live in .codex/agents/ (generated
+# from the hub's agent-roles/ by tools/role_sync.py). See the hub's docs/autonomy.md.
+
+[agents]
+max_threads = 3                    # concurrent subagents — mirrors parallelism.max_parallel_subagents
+max_depth = 1                      # a subagent cannot spawn further subagents (subagent rule 6)
+job_max_runtime_seconds = 1800
+
+approval_policy = "never"          # non-interactive: a blocked op fails, it never prompts
+sandbox_mode = "workspace-write"   # writes confined to the repo; network / out-of-repo denied

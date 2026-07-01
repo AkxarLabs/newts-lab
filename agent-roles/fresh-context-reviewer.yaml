@@ -1,0 +1,7 @@
+name: fresh-context-reviewer
+description: "Reviews a paper it has never seen written — adversarial, single-lens, fresh context. Spawned by /critique-paper; one instance per lens."
+model_key: reviewer_model          # lab/config.yaml agents.reviewer_model sets the Claude model
+tools_claude: "Read, Glob, Grep, WebFetch, WebSearch, Write"
+codex:
+  sandbox_mode: workspace-write    # writes its completed review to the assigned output path
+  model_reasoning_effort: high
