@@ -449,3 +449,115 @@ def test_cmd_kill_terminates_running_agent(hub, monkeypatch):
         if child.poll() is None:
             child.kill()
             child.wait()
+
+
+# ── multi-project campaign launcher (launch-many) ─────────────────────────────
+
+def _multi_setup(hub, monkeypatch, projects, *, enabled=True, max_concurrent=2, ap_cap=3):
+    (hub.lab / "config.yaml").write_text(
+        'lab:\n  projects_root: "../projects"\n'
+        f"autopilot:\n  max_concurrent_projects: {ap_cap}\n"
+        "agents:\n  programmatic:\n"
+        f"    enabled: {str(bool(enabled)).lower()}\n"
+        f"    backend: _dummy\n    max_concurrent: {max_concurrent}\n    max_depth: 1\n",
+        encoding="utf-8")
+    for slug in projects:
+        p = hub.make_project(slug)
+        hub.add_registry_row(slug, state="active", project=str(p))
+    m = load("agent_runner")
+    monkeypatch.setattr(m, "HUB", hub.root)
+    monkeypatch.setattr(m, "LAB", hub.lab)
+    return m
+
+
+def _fake_launch(results_by_slug=None, sink=None):
+    def fake(pdir, prompt_file, *, backend=None, model=None, role="orchestrator", label=None):
+        if sink is not None:
+            sink.append(pdir.name)
+        status = (results_by_slug or {}).get(pdir.name, "completed")
+        if status == "raise":
+            raise RuntimeError("boom")
+        return {"agent_id": f"{pdir.name}-agent", "exit_code": 0 if status == "completed" else 1,
+                "status": status}
+    return fake
+
+
+def test_launch_many_runs_all_projects(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1", "p2", "p3"])
+    man = m.run_campaign(["p1", "p2", "p3"], "do {{slug}}", campaign="camp", launch_fn=_fake_launch())
+    assert set(man["results"]) == {"p1", "p2", "p3"}
+    assert all(r["status"] == "completed" and r["agent_id"] for r in man["results"].values())
+    assert (hub.lab / ".bus" / "campaign-agents" / f"{man['campaign_id']}.json").exists()
+    assert man["finished"]
+
+
+def test_launch_many_isolates_failures(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1", "p2", "p3"])
+    man = m.run_campaign(["p1", "p2", "p3"], "go",
+                         launch_fn=_fake_launch({"p2": "raise", "p3": "failed"}))
+    assert man["results"]["p1"]["status"] == "completed"
+    assert man["results"]["p2"]["status"] == "launch-error"   # exception isolated, others proceed
+    assert man["results"]["p3"]["status"] == "failed"
+
+
+def test_launch_many_unknown_project(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1"])
+    man = m.run_campaign(["p1", "ghost"], "go", launch_fn=_fake_launch())
+    assert man["results"]["p1"]["status"] == "completed"
+    assert man["results"]["ghost"]["status"] == "no-project"
+
+
+def test_launch_many_prompt_substitution(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1"])
+    seen = {}
+
+    def fake(pdir, prompt_file, **kw):
+        seen[pdir.name] = Path(prompt_file).read_text(encoding="utf-8")
+        return {"agent_id": "a", "exit_code": 0, "status": "completed"}
+
+    m.run_campaign(["p1"], "work on {{slug}} for {{campaign}}", campaign="brief", launch_fn=fake)
+    assert seen["p1"].startswith("work on p1 for brief-")
+
+
+def test_campaign_cap_is_min_of_two(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1"], max_concurrent=2, ap_cap=5)
+    assert m._campaign_cap(m._prog_cfg(), None) == 2   # min(ap=5, prog=2)
+    assert m._campaign_cap(m._prog_cfg(), 1) == 1       # explicit override wins
+
+
+def test_launch_many_respects_concurrency_cap(hub, monkeypatch):
+    import threading
+    m = _multi_setup(hub, monkeypatch, ["p1", "p2", "p3", "p4"], max_concurrent=2, ap_cap=2)
+    state, lock = {"cur": 0, "max": 0}, threading.Lock()
+
+    def fake(pdir, prompt_file, **kw):
+        with lock:
+            state["cur"] += 1
+            state["max"] = max(state["max"], state["cur"])
+        time.sleep(0.05)
+        with lock:
+            state["cur"] -= 1
+        return {"agent_id": "a", "exit_code": 0, "status": "completed"}
+
+    m.run_campaign(["p1", "p2", "p3", "p4"], "go", launch_fn=fake)
+    assert state["max"] <= 2   # never more than the cap in flight at once
+
+
+def test_kill_campaign_kills_each_project(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1", "p2"])
+    killed = []
+    monkeypatch.setattr(m, "_kill_project", lambda pdir, **kw: (killed.append(pdir.name), 1)[1])
+    cdir = hub.lab / ".bus" / "campaign-agents"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "camp-1.json").write_text(
+        json.dumps({"campaign_id": "camp-1", "projects": ["p1", "p2"]}), encoding="utf-8")
+    rc = m.cmd_kill_campaign(types.SimpleNamespace(campaign=str(cdir / "camp-1.json")))
+    assert rc == 0 and set(killed) == {"p1", "p2"}
+
+
+def test_launch_many_blocked_when_disabled(hub, monkeypatch):
+    m = _multi_setup(hub, monkeypatch, ["p1"], enabled=False)
+    rc = m.cmd_launch_many(types.SimpleNamespace(
+        projects="p1", prompt="go", prompt_file=None, role=None, backend=None, model=None,
+        campaign=None, max_concurrent=None))
+    assert rc == 1   # PI-owned opt-in gate applies to launch-many too

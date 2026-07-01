@@ -1,15 +1,21 @@
 """Launch a headless TOP-LEVEL agent into a project repo and capture everything it does.
 
-    uv run --with pyyaml python tools/agent_runner.py launch --project <slug|path> \
+    uv run --with pyyaml python tools/agent_runner.py launch      --project <slug|path> \
         --prompt-file <f> [--role R] [--label L] [--backend claude|codex|opencode] [--model M]
-    uv run --with pyyaml python tools/agent_runner.py list      --project <slug|path>
-    uv run --with pyyaml python tools/agent_runner.py reconcile --project <slug|path>
-    uv run --with pyyaml python tools/agent_runner.py kill      --project <slug|path> [--agent ID | --all]
+    uv run --with pyyaml python tools/agent_runner.py launch-many --projects p1,p2,p3 \
+        --prompt-file <f> [--campaign <brief>] [--role R] [--backend B] [--max-concurrent N]
+    uv run --with pyyaml python tools/agent_runner.py list          --project <slug|path>
+    uv run --with pyyaml python tools/agent_runner.py reconcile     --project <slug|path>
+    uv run --with pyyaml python tools/agent_runner.py kill          --project <slug|path> [--agent ID | --all]
+    uv run --with pyyaml python tools/agent_runner.py kill-campaign --campaign <manifest|id>
 
 The hub orchestrator (e.g. an `/autopilot` coordinator) calls `launch` to spin up ONE headless
 session **per project** — a **top-level session** (`claude -p` / `codex exec` / `opencode run`), NOT a
 nested subagent — so it sidesteps the no-nested-subagents rule and can itself spawn its own
-experiment-runner subagents. It runs in the project's cwd, so the project's `.claude/settings.json`
+experiment-runner subagents. `launch-many` runs one such `launch` per project up to a concurrency cap
+(`min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)`), with per-project
+failure isolation and a campaign manifest under `lab/.bus/campaign-agents/<id>.json` — so `/autopilot`
+gets platform-agnostic concurrency without shell backgrounding; `kill-campaign` stops the whole fleet. It runs in the project's cwd, so the project's `.claude/settings.json`
 hooks + `run.py` already emit run/worker signals into `<project>/.bus/` (the dashboard catches them
 live). On top of that, this tool persists, so **nothing is lost** even on a crash:
   - `<project>/.bus/agents/<id>.stream.jsonl` — the full captured stdout JSONL transcript
@@ -35,11 +41,13 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
@@ -190,7 +198,14 @@ def _agents_dir(pdir: Path) -> Path:
 def _write_manifest(path: Path, manifest: dict) -> None:
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(5):   # Windows can transiently WinError 5 on rename (AV/indexer lock) — retry
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.02)
 
 
 def _list_manifests(pdir: Path) -> list[dict]:
@@ -553,11 +568,8 @@ def cmd_list(a) -> int:
     return 0
 
 
-def cmd_reconcile(a) -> int:
-    pdir = _resolve_project(a.project)
-    if not pdir:
-        print(f"[agent_runner] no project for {a.project!r}")
-        return 1
+def _reconcile_project(pdir: Path) -> int:
+    """Mark every 'running' manifest whose process is gone as failed. Returns the count."""
     adir = pdir / ".bus" / "agents"
     n = 0
     for f in (sorted(adir.glob("*.json")) if adir.exists() else []):
@@ -572,6 +584,29 @@ def cmd_reconcile(a) -> int:
         _write_manifest(f, m)
         _emit(pdir, "agent_finished", detail=m.get("agent_id"), status="failed", data={"reconciled": True})
         n += 1
+    return n
+
+
+def _kill_project(pdir: Path, *, kill_all: bool = False, agent: str | None = None) -> int:
+    """Kill running agents on one project (all, or one by id) and reconcile them. Returns count killed."""
+    targets = [m for m in _list_manifests(pdir)
+               if m.get("status") == "running" and (kill_all or m.get("agent_id") == agent)]
+    killed = 0
+    for m in targets:
+        if m.get("pid"):
+            _kill_tree(m["pid"])
+            killed += 1
+            print(f"[agent_runner] killed {m.get('agent_id')} (pid {m.get('pid')})")
+    _reconcile_project(pdir)
+    return killed
+
+
+def cmd_reconcile(a) -> int:
+    pdir = _resolve_project(a.project)
+    if not pdir:
+        print(f"[agent_runner] no project for {a.project!r}")
+        return 1
+    n = _reconcile_project(pdir)
     print(f"[agent_runner] reconciled {n} orphaned agent(s) in {pdir.name}")
     return 0
 
@@ -581,16 +616,180 @@ def cmd_kill(a) -> int:
     if not pdir:
         print(f"[agent_runner] no project for {a.project!r}")
         return 1
-    targets = [m for m in _list_manifests(pdir)
-               if m.get("status") == "running" and (a.all or m.get("agent_id") == a.agent)]
-    if not targets:
+    if not a.all and not a.agent:
+        print("[agent_runner] need --agent ID or --all")
+        return 1
+    killed = _kill_project(pdir, kill_all=a.all, agent=a.agent)
+    if killed == 0:
         print("[agent_runner] no running agents matched")
         return 1
-    for m in targets:
-        if m.get("pid"):
-            _kill_tree(m["pid"])
-            print(f"[agent_runner] killed {m.get('agent_id')} (pid {m.get('pid')})")
-    return cmd_reconcile(a)
+    return 0
+
+
+# ── multi-project campaign launcher ─────────────────────────────────────────────
+
+def _campaign_cap(prog: dict, override) -> int:
+    """How many project-agents may run concurrently: min(autopilot.max_concurrent_projects,
+    agents.programmatic.max_concurrent), unless the caller overrides."""
+    if override:
+        return _pos_int(override, 1, 1)
+    ap_cap = _pos_int((_load_yaml(LAB / "config.yaml").get("autopilot") or {}).get("max_concurrent_projects", 2), 2, 1)
+    prog_cap = _pos_int(prog.get("max_concurrent", 3), 3, 1)
+    return min(ap_cap, prog_cap)
+
+
+def _campaign_id(campaign) -> str:
+    stem = re.sub(r"[^A-Za-z0-9._-]", "_", Path(campaign).stem if campaign else "campaign")
+    return f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}"
+
+
+def _render_prompt(text: str, slug: str, campaign_id: str) -> str:
+    return (text.replace("{{slug}}", slug).replace("{{project}}", slug)
+                .replace("{{campaign}}", campaign_id))
+
+
+def _count_escalations(pdir: Path) -> int:
+    f = pdir / ".bus" / "events.jsonl"
+    if not f.exists():
+        return 0
+    n = 0
+    for line in f.read_text(encoding="utf-8-sig").splitlines():
+        try:
+            if json.loads(line).get("kind") == "escalation":
+                n += 1
+        except json.JSONDecodeError:
+            continue
+    return n
+
+
+def _default_launch(pdir: Path, prompt_file: Path, *, backend=None, model=None,
+                    role="orchestrator", label=None) -> dict:
+    """Spawn `agent_runner.py launch` as a subprocess for ONE project (reuses cmd_launch verbatim,
+    including all its safety gates). Blocks until that project's agent finishes."""
+    cmd = [sys.executable, str(Path(__file__).resolve()), "launch",
+           "--project", str(pdir), "--prompt-file", str(prompt_file), "--role", role]
+    if label:
+        cmd += ["--label", label]
+    if backend:
+        cmd += ["--backend", backend]
+    if model:
+        cmd += ["--model", model]
+    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    m = re.search(r"launching \S+ agent '([^']+)'", res.stdout or "")
+    status = {0: "completed", 2: "agent-nonclean"}.get(res.returncode, "failed")
+    return {"agent_id": m.group(1) if m else None, "exit_code": res.returncode,
+            "status": status, "stdout_tail": (res.stdout or "")[-400:]}
+
+
+def run_campaign(projects: list[str], prompt_text: str, *, campaign=None, backend=None, model=None,
+                 role="orchestrator", max_concurrent=None, prog=None, launch_fn=None) -> dict:
+    """Launch ONE headless agent per project, up to `cap` concurrently, with per-project failure
+    isolation. Writes an append-updated campaign manifest and returns it. `launch_fn` is injectable
+    for tests (default spawns `agent_runner.py launch` per project)."""
+    prog = _prog_cfg() if prog is None else prog
+    launch_fn = launch_fn or _default_launch
+    cap = _campaign_cap(prog, max_concurrent)
+    campaign_id = _campaign_id(campaign)
+    cdir = LAB / ".bus" / "campaign-agents"
+    (cdir / campaign_id / "prompts").mkdir(parents=True, exist_ok=True)
+    entries = [(p, _resolve_project(p)) for p in projects]
+    manifest = {
+        "campaign_id": campaign_id, "campaign": str(campaign) if campaign else None,
+        "backend": backend or prog.get("backend") or "claude", "role": role, "cap": cap,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "finished": None,
+        "projects": [p for p, _ in entries], "results": {}, "escalations": 0,
+    }
+    mpath = cdir / f"{campaign_id}.json"
+    _write_manifest(mpath, manifest)
+    lock = threading.Lock()
+
+    def _one(entry):
+        slug, pdir = entry
+        if not pdir:
+            r = {"project": slug, "status": "no-project", "agent_id": None, "exit_code": None}
+        else:
+            pf = cdir / campaign_id / "prompts" / f"{re.sub(r'[^A-Za-z0-9._-]', '_', slug)}.md"
+            pf.write_text(_render_prompt(prompt_text, slug, campaign_id), encoding="utf-8")
+            try:
+                r = {"project": slug, **launch_fn(pdir, pf, backend=backend, model=model,
+                                                  role=role, label=campaign_id)}
+            except Exception as e:  # noqa: BLE001 — isolation: one project's failure never stops the rest
+                r = {"project": slug, "status": "launch-error", "agent_id": None,
+                     "exit_code": None, "error": str(e)}
+            r["escalations"] = _count_escalations(pdir)
+        with lock:
+            manifest["results"][slug] = r
+            _write_manifest(mpath, manifest)
+        return r
+
+    with ThreadPoolExecutor(max_workers=cap) as pool:
+        list(pool.map(_one, entries))
+
+    manifest["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    manifest["escalations"] = sum(int(r.get("escalations") or 0) for r in manifest["results"].values())
+    _write_manifest(mpath, manifest)
+    return manifest
+
+
+def cmd_launch_many(a) -> int:
+    prog = _prog_cfg()
+    if not prog.get("enabled"):
+        print("[agent_runner] BLOCKED: agents.programmatic.enabled is false — programmatic launching is "
+              "a PI-owned opt-in. Enable via /configure (or a PI-signed /autopilot campaign brief) first.")
+        return 1
+    depth = _pos_int(os.environ.get(_DEPTH_ENV, "0") or 0, 0, 0)
+    max_depth = _pos_int(prog.get("max_depth", 1), 1, 0)
+    if depth >= max_depth:
+        print(f"[agent_runner] BLOCKED: depth {depth} >= max_depth {max_depth} — a launched agent may "
+              "not run a campaign of further agents. Only the top-level orchestrator launches.")
+        return 1
+    projects = [p.strip() for p in (a.projects or "").split(",") if p.strip()]
+    if not projects:
+        print("[agent_runner] BLOCKED: --projects is empty")
+        return 1
+    prompt = a.prompt
+    if prompt is None and a.prompt_file:
+        try:
+            prompt = Path(a.prompt_file).read_text(encoding="utf-8")
+        except OSError as e:
+            print(f"[agent_runner] BLOCKED: cannot read --prompt-file {a.prompt_file}: {e}")
+            return 1
+    if not prompt:
+        print("[agent_runner] BLOCKED: need --prompt or --prompt-file (the per-project worker instruction; "
+              "{{slug}}/{{project}}/{{campaign}} are substituted per project)")
+        return 1
+    man = run_campaign(projects, prompt, campaign=a.campaign, backend=a.backend, model=a.model,
+                       role=a.role or "orchestrator", max_concurrent=a.max_concurrent)
+    results = man["results"]
+    ok = sum(1 for r in results.values() if r.get("status") == "completed")
+    print(f"[agent_runner] campaign {man['campaign_id']}: {ok}/{len(results)} completed, "
+          f"{man['escalations']} escalation(s) · manifest lab/.bus/campaign-agents/{man['campaign_id']}.json",
+          flush=True)
+    for slug, r in results.items():
+        print(f"  - {slug}: {r.get('status')} (agent={r.get('agent_id')}, exit={r.get('exit_code')})")
+    return 0 if (ok == len(results) and ok > 0) else 2
+
+
+def cmd_kill_campaign(a) -> int:
+    path = Path(a.campaign)
+    if not path.exists():
+        name = a.campaign if a.campaign.endswith(".json") else f"{a.campaign}.json"
+        path = LAB / ".bus" / "campaign-agents" / name
+    if not path.exists():
+        print(f"[agent_runner] no campaign manifest at {a.campaign}")
+        return 1
+    try:
+        man = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[agent_runner] unreadable campaign manifest: {e}")
+        return 1
+    total = 0
+    for slug in man.get("projects", []):
+        pdir = _resolve_project(slug)
+        if pdir:
+            total += _kill_project(pdir, kill_all=True)
+    print(f"[agent_runner] killed {total} running agent(s) across campaign {man.get('campaign_id')}")
+    return 0
 
 
 def main() -> int:
@@ -618,6 +817,23 @@ def main() -> int:
     k.add_argument("--agent", default=None, help="agent id to kill")
     k.add_argument("--all", action="store_true", help="kill all running agents on the project")
     k.set_defaults(fn=cmd_kill)
+
+    lm = sub.add_parser("launch-many")
+    lm.add_argument("--projects", required=True, help="comma-separated slugs/paths")
+    lm.add_argument("--prompt", default=None, help="per-project instruction (or --prompt-file)")
+    lm.add_argument("--prompt-file", default=None,
+                    help="file with the per-project instruction ({{slug}}/{{project}}/{{campaign}} substituted)")
+    lm.add_argument("--role", default=None)
+    lm.add_argument("--backend", default=None, choices=("claude", "codex", "opencode"))
+    lm.add_argument("--model", default=None)
+    lm.add_argument("--campaign", default=None, help="campaign brief path (provenance + manifest id)")
+    lm.add_argument("--max-concurrent", type=int, default=None, dest="max_concurrent",
+                    help="override min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)")
+    lm.set_defaults(fn=cmd_launch_many)
+
+    kc = sub.add_parser("kill-campaign")
+    kc.add_argument("--campaign", required=True, help="campaign manifest path or id")
+    kc.set_defaults(fn=cmd_kill_campaign)
 
     a = ap.parse_args()
     return a.fn(a)

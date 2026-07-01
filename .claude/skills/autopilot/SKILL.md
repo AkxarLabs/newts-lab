@@ -37,17 +37,27 @@ interleave *its own* CPU-light stages around *its* in-flight training (zero-toke
 rules).
 
 **Concurrent multi-project** (`autopilot.max_concurrent_projects > 1` **and**
-`agents.programmatic.enabled: true`): do **not** cram many projects into this one context. Instead
-this session becomes a **coordinator/dispatcher**: for each project, launch **one independent
-headless top-level session** via `uv run --with pyyaml python tools/agent_runner.py launch --project
-<slug> --role orchestrator --prompt-file <brief>` (default backend `claude`; one session per project,
-each fully operable because spawned projects ship their own `CLAUDE.md`/`AGENTS.md`). Launch up to
-`min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)`, run each `agent_runner`
-call in the **background** so they proceed in parallel, and coordinate purely through the **existing
-compute-slot ledger** (`tools/run_slots.py` — training stays capped at `compute.max_concurrent_runs`;
-CPU-light stages run in parallel across sessions). The coordinator's job is narrow: launch, then
-monitor each project's Campaign Log / `lab/REGISTRY.md` / `.bus` (and `agent_runner.py
-list/reconcile`) for completion or escalation, and write the unified morning report. Each launched
+`agents.programmatic.enabled: true`): do **not** cram many projects into this one context, and do
+**not** hand-background per-project shell commands. Instead this session becomes a
+**coordinator/dispatcher** and hands the whole fleet to ONE launcher call:
+
+```bash
+uv run --with pyyaml python tools/agent_runner.py launch-many \
+  --projects <slug1,slug2,slug3> --role orchestrator \
+  --prompt-file <brief> --campaign lab/campaigns/<campaign>.md
+```
+
+`launch-many` runs one independent headless top-level session per project (default backend `claude`;
+each fully operable because spawned projects ship their own `CLAUDE.md`/`AGENTS.md`), caps concurrency
+at `min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` **itself** (no shell
+backgrounding, platform-agnostic), isolates per-project failures, and writes a campaign manifest at
+`lab/.bus/campaign-agents/<id>.json` (per-project status, agent ids, escalation counts). The
+prompt-file's `{{slug}}`/`{{project}}`/`{{campaign}}` are substituted per project. Coordination is
+still purely through the **existing compute-slot ledger** (`tools/run_slots.py` — training stays
+capped at `compute.max_concurrent_runs`; CPU-light stages run in parallel across sessions). The
+coordinator's job is narrow: `launch-many`, then monitor each project's Campaign Log /
+`lab/REGISTRY.md` / `.bus` (and the campaign manifest / `agent_runner.py list/reconcile`) for
+completion or escalation, `kill-campaign` to stop the fleet, and write the unified morning report. Each launched
 session is **top-level** (it writes its OWN project ledgers — the parent-only-ledger rule is about
 *worktree subagents*, untouched), runs exactly the per-idea pipeline below, and **inherits every
 gate** — Gate 3 still never delegated, FULL runs still bound by the project's `gate2_envelope`, the

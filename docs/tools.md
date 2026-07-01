@@ -96,9 +96,11 @@ One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata
 
 ```bash
 uv run --with pyyaml python tools/agent_runner.py <launch|list|kill|reconcile> --project <slug> [--prompt-file <f>]
+uv run --with pyyaml python tools/agent_runner.py launch-many --projects p1,p2,p3 --prompt-file <f> [--campaign <brief>]
+uv run --with pyyaml python tools/agent_runner.py kill-campaign --campaign <manifest|id>
 ```
 
-The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p`, or the optional `codex exec` / `opencode run`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. See [Autonomy & modes](autonomy.md).
+The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p`, or the optional `codex exec` / `opencode run`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. **`launch-many`** is the `/autopilot` multi-project path: one such session per project up to `min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` concurrently — the tool owns the concurrency (no shell backgrounding), isolates per-project failures, and writes a campaign manifest at `lab/.bus/campaign-agents/<id>.json` (per-project status, agent ids, escalations); `kill-campaign` stops the whole fleet. See [Autonomy & modes](autonomy.md).
 
 > The remaining helpers are contextual and documented where they're used: `lab_bus.py` (the event bus) and `trace_hook.py` in [Dashboard](dashboard.md); `hub_writeback.py` / `process_writebacks.py` (project→hub write-back) and `lock_artifacts.py` / `sync_figures.py` (finalization) in [Projects](projects.md).
 
