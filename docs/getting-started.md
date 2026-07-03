@@ -25,6 +25,24 @@ Newts' Lab is a **template repository** — each lab is a living instance of it:
 !!! note "Upgrading an instance later"
     Add the template as a second remote (`git remote add template <url>`) and cherry-pick improvements to skills/templates/tools. Your lab state never conflicts — it lives in files the template doesn't touch.
 
+## The git model — what's yours, what's shared, what's ignored
+
+Your lab is a single git repo that mixes three kinds of files. The rule of thumb: **commit your config and your research to your own lab — that's how a lab persists and compounds ("git is memory"). Only lab-*machinery* improvements ever flow back to the template. Runtime scratch is already ignored.**
+
+| Kind | Examples | Commit to your lab? | Send upstream to the template? |
+|---|---|---|---|
+| **Machinery** | `.claude/skills/`, `tools/`, `templates/`, `dashboard/`, `docs/`, `AGENTS.md`, `CLAUDE.md` | rarely — you mostly don't edit these | **yes** — as PRs (that's contributing) |
+| **Config & identity** | `lab/config.yaml`, `.claude/agents/*.md` (rendered), `SYSTEM.md` | **yes** — your settings, versioned | no — personal (your budgets, models, machine) |
+| **Research memory** | `lab/REGISTRY.md`, `lab/notebook/`, `lab/knowledge/`, `studies/`, `lab/ideation/` | **yes** — this *is* the lab's memory | no |
+| **Runtime scratch** | `lab/.bus/`, `lab/.slots/`, project `runs/`, `site/`, `research/` | already **`.gitignore`d** — stays local | — |
+
+So committing config edits and generated ideas to *your own* lab repo is the intended model, not clutter. What must never happen is your lab state going **upstream** to the shared template you cloned from — which is exactly why the lab ships as a *template*, not something you fork.
+
+Two things that surprise people at first:
+
+- **Editing config re-renders subagent files.** `/setup-lab` and `/configure` regenerate `.claude/agents/*.md` from your `agents.*` settings (via `tools/role_sync.py`), so one config change shows up as a two-file diff. They're committed pre-rendered **on purpose** — a fresh clone (or a teammate) has working subagents immediately, with no build step.
+- **Ideas and the notebook are committed, not ignored.** They are durable memory, not logs. The ephemeral *signal* — the event bus and compute-slot ledger under `lab/.bus/` and `lab/.slots/` — is what's gitignored; the *output* of ideation (`studies/`, `lab/ideation/`, the notebook) is versioned so it can compound across sessions.
+
 ## Your first session
 
 ```text

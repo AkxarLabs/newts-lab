@@ -13,6 +13,17 @@ Two kinds of change live in this repo:
 | **Lab machinery** — a `.claude/skill`, a `tool`, a `template`, the `dashboard`, `docs` | open a PR (this guide) |
 | **Your research** — ideas, proposals, experiments, papers | stays in your lab/project state; nothing to PR |
 
+!!! warning "Test-drive in a throwaway clone — keep *this* repo's `lab/` pristine"
+    This repo **is** the shared template, so its lab state must ship clean: an empty
+    `lab/REGISTRY.md`, default `lab/config.yaml`, no test `studies/`. To exercise a skill
+    end-to-end, instantiate a separate lab (Use this template, or clone to a scratch dir)
+    and run it there. If you *do* run `/setup-lab` or `/configure` in this repo, it will
+    dirty `lab/config.yaml` and re-render `.claude/agents/*.md` — `git restore lab/config.yaml
+    .claude/agents/` (and delete any generated `studies/`, notebook entries, `lab/.bus/`)
+    before committing, so a test-drive never ships into everyone's template. The
+    user-facing "git model" (what a *real* lab commits) is in
+    [docs/getting-started.md](docs/getting-started.md).
+
 ## Dev environment
 
 No install step — everything runs through [`uv`](https://docs.astral.sh/uv/), which
