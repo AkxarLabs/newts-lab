@@ -183,3 +183,181 @@ def test_snapshot_item_carries_claims_count(hub, monkeypatch):
     paper.mkdir(parents=True, exist_ok=True)
     (paper / "claims.yaml").write_text("claims:\n  - id: C001\n", encoding="utf-8")
     assert m.snapshot()["items"][0]["claims"] == 1
+
+
+# ── H2: dirty (non-UTF-8) bytes must never crash the snapshot ──────────────────
+
+def test_read_text_tolerates_non_utf8_bytes(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    f = hub.lab / "dirty.txt"
+    f.write_bytes(b"ok \xff\xfe not utf8\n")   # invalid UTF-8 — read_text(utf-8-sig) would raise
+    assert "not utf8" in m._read_text(f)         # errors='replace' → no UnicodeDecodeError
+
+
+def test_snapshot_survives_non_utf8_event_line(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    bus = proj / ".bus"
+    bus.mkdir(parents=True, exist_ok=True)
+    (bus / "events.jsonl").write_bytes(b'{"ts":"2026-06-19T10:00:00","kind":"note","detail":"\xff\xfe"}\n')
+    snap = m.snapshot()                          # a cp1252 byte in a tailed file used to 500 the whole snapshot
+    assert snap["cold"] is False
+
+
+# ── M1: gate detection is word-bounded (no phantom gates from "investigate"/"delegate") ──
+
+def test_gate_of_word_bounded(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    assert m._gate_of("awaiting PI Gate 1") == 1
+    assert m._gate_of("sign the Gate-2 envelope") == 2
+    assert m._gate_of("investigate 3 baselines") is None    # not a gate
+    assert m._gate_of("delegate 2 sweeps to runners") is None
+    assert m._gate_of("mitigate the risk") is None
+
+
+def test_gates_waiting_matches_parsed_gate_items(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("a", state="active", project="-", next="investigate 3 leads")   # NOT a gate
+    hub.add_registry_row("b", state="proposal", project="-", next="awaiting PI Gate 1")   # a gate
+    snap = m.snapshot()
+    assert snap["gates_waiting"] == 1                        # badge == "Needs you" panel (items with a gate)
+    assert sum(1 for it in snap["items"] if it["gate"]) == 1
+
+
+# ── L3: stale compute slots are flagged (read-only, never reclaimed here) ──────
+
+def test_slots_flag_stale_by_mtime(hub, monkeypatch):
+    import json
+    import os
+    import time
+    m = _mod(hub, monkeypatch)
+    sdir = hub.lab / ".slots"
+    sdir.mkdir(parents=True, exist_ok=True)
+    fresh = sdir / "s-fresh.json"
+    fresh.write_text(json.dumps({"project": "demo", "label": "full", "acquired": time.time()}), encoding="utf-8")
+    old = sdir / "s-old.json"
+    old.write_text(json.dumps({"project": "demo", "label": "sweep", "acquired": time.time()}), encoding="utf-8")
+    # config stale_slot_minutes is 360 (6h); backdate the old slot's mtime past it
+    past = time.time() - 400 * 60
+    os.utime(old, (past, past))
+    got = {s["slot_id"]: s for s in m.slots()}
+    assert got["s-fresh"]["stale"] is False
+    assert got["s-old"]["stale"] is True and got["s-old"]["age_min"] >= 360
+
+
+# ── envelope accounting (shared source of truth) + M4 authorizes-nothing ───────
+
+def test_envelope_accounting_authorizes_nothing_when_all_caps_zero(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    a = m.envelope_accounting(proj, {"pi_signed": True, "expires": None,
+                                     "full_runs": 0, "per_run_max_minutes": 0, "total_max_minutes": 0})
+    assert a["signed"] is True and a["authorizes"] is False
+    assert a["status"] == "authorizes nothing"              # NOT "active ∞" — guard.py refuses these
+
+
+def test_envelope_accounting_tolerates_non_numeric_caps(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    a = m.envelope_accounting(proj, {"pi_signed": True, "full_runs": "six", "total_max_minutes": "45 min"})
+    assert a["full_cap"] == 0 and a["total_cap"] == 0.0     # bad values coerce, never raise
+
+
+def test_snapshot_item_carries_envelope(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2={"pi_signed": True, "expires": "2099-01-01",
+                                           "full_runs": 4, "per_run_max_minutes": 30, "total_max_minutes": 120})
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    it = m.snapshot()["items"][0]
+    assert it["envelope"] and it["envelope"]["status"] == "active" and it["envelope"]["full_cap"] == 4
+
+
+# ── L4: directive terminal acks are sticky (parity with lab_bus.unresolved_directives) ──
+
+def test_directive_threads_terminal_ack_is_sticky(hub, monkeypatch):
+    import json
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    bus.mkdir(parents=True, exist_ok=True)
+    (bus / "directives.jsonl").write_text(json.dumps({"id": "d-001", "text": "do x"}) + "\n", encoding="utf-8")
+    # done THEN a later out-of-order 'seen' must not reopen the directive
+    (bus / "events.jsonl").write_text(
+        json.dumps({"ts": "2026-06-19T10:00:00", "kind": "directive_done", "data": {"ref": "d-001"}}) + "\n"
+        + json.dumps({"ts": "2026-06-19T10:05:00", "kind": "directive_seen", "data": {"ref": "d-001"}}) + "\n",
+        encoding="utf-8")
+    th = next(t for t in m._directive_threads(bus) if t["id"] == "d-001")
+    assert th["state"] == "done"
+
+
+def test_directive_threads_carry_record_target(hub, monkeypatch):
+    import json
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    bus.mkdir(parents=True, exist_ok=True)
+    # a directive aimed at 'spark-1' that landed on the hub bus (pre-spawn) keeps its target
+    (bus / "directives.jsonl").write_text(json.dumps({"id": "d-001", "text": "park", "target": "spark-1"}) + "\n", encoding="utf-8")
+    th = m._directive_threads(bus)[0]
+    assert th["target"] == "spark-1"
+
+
+# ── escalation lifecycle: an escalation_resolved event clears it ───────────────
+
+def test_escalations_unresolved_and_resolved(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    evs = [
+        {"ts": "2026-06-19T10:00:00", "source": "p1", "kind": "escalation", "detail": "need env bump", "data": {"id": "e-aaa"}},
+        {"ts": "2026-06-19T10:01:00", "source": "p2", "kind": "escalation", "detail": "blocked", "data": {"id": "e-bbb"}},
+        {"ts": "2026-06-19T10:02:00", "source": "p1", "kind": "escalation_resolved", "data": {"ref": "e-aaa"}},
+    ]
+    out = m._escalations(evs)
+    ids = {e["id"] for e in out}
+    assert ids == {"e-bbb"}                               # e-aaa resolved → dropped
+
+
+def test_snapshot_includes_escalations_and_notebook(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    snap = m.snapshot()
+    assert "escalations" in snap and isinstance(snap["escalations"], list)
+    assert "notebook" in snap
+
+
+# ── hardening from the adversarial verification pass ──────────────────────────
+
+def test_load_yaml_non_mapping_returns_empty_dict(hub, monkeypatch):
+    # a valid-YAML but non-mapping file must not make _load_yaml(...).get(...) raise AttributeError
+    m = _mod(hub, monkeypatch)
+    for content in ("42\n", "- a\n- b\n", "just a bare string\n"):
+        f = hub.lab / "x.yaml"
+        f.write_text(content, encoding="utf-8")
+        assert m._load_yaml(f) == {}
+
+
+def test_snapshot_survives_non_mapping_control_yaml(hub, monkeypatch):
+    # a project whose control.yaml is valid YAML but a scalar/list must not blank the whole snapshot
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", control=False)
+    (proj / "control.yaml").write_text("42\n", encoding="utf-8")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    snap = m.snapshot()
+    assert snap["cold"] is False and snap["items"][0]["envelope"] is None
+
+
+def test_notebook_age_from_dated_filename_not_mtime(hub, monkeypatch):
+    # age comes from the ISO-dated filename (git-stable), not st_mtime which git ops reset
+    import os
+    import time
+    m = _mod(hub, monkeypatch)
+    old = hub.lab / "notebook" / "2020-01-01-ancient.md"
+    old.write_text("# old\n", encoding="utf-8")
+    os.utime(old, None)   # mtime = now, but the filename says 2020 → should read as very old
+    nb = m._notebook_status()
+    assert nb["latest"] == "2020-01-01-ancient.md"
+    assert nb["age_hours"] > 24 * 365 * 3   # >3 years by the dated name, regardless of fresh mtime
+
+
+def test_notebook_status_picks_latest_dated_and_ignores_readme(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    for name in ("2026-06-01-a.md", "2026-07-02-b.md", "README.md"):
+        (hub.lab / "notebook" / name).write_text("x\n", encoding="utf-8")
+    assert m._notebook_status()["latest"] == "2026-07-02-b.md"

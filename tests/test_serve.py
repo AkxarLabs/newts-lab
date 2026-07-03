@@ -98,6 +98,64 @@ def test_gate1_signs_proposal_and_leaves_command(hub, monkeypatch):
     assert "Gate 1 approved" in prop.read_text(encoding="utf-8")
 
 
+def test_gate1_is_idempotent(hub, monkeypatch):
+    # a second click must NOT append a duplicate marker or queue a second gate1_approved command
+    m = _mod(hub, monkeypatch)
+    prop = hub.root / "studies" / "demo" / "proposal.md"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    prop.write_text("# Proposal\n", encoding="utf-8")
+    assert m.approve_gate("demo", 1).get("ok") is True
+    again = m.approve_gate("demo", 1)
+    assert "error" in again and "already approved" in again["error"]
+    assert prop.read_text(encoding="utf-8").count("PI Gate 1 approved via Vivarium dashboard") == 1
+
+
+def test_gate1_records_idea_target_in_command(hub, monkeypatch):
+    # M2: the follow-through command must carry the idea slug (pre-spawn there is no project dir, so it
+    # lands on the hub bus — without the slug two waiting proposals are ambiguous to the agent).
+    import json
+    m = _mod(hub, monkeypatch)
+    prop = hub.root / "studies" / "demo" / "proposal.md"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    prop.write_text("# Proposal\n", encoding="utf-8")
+    m.approve_gate("demo", 1)
+    lines = (hub.lab / ".bus" / "directives.jsonl").read_text(encoding="utf-8").splitlines()
+    rec = json.loads(lines[-1])
+    assert rec["action"] == "gate1_approved"
+    assert rec.get("target") == "demo" and (rec.get("args") or {}).get("idea") == "demo"
+
+
+def test_gate1_warns_when_state_not_proposal(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    prop = hub.root / "studies" / "demo" / "proposal.md"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    prop.write_text("# Proposal\n", encoding="utf-8")
+    hub.add_registry_row("demo", state="active", project="-")   # not 'proposal'
+    res = m.approve_gate("demo", 1)
+    assert res.get("ok") is True and res.get("warnings")
+
+
+def test_gate2_write_preserves_lf_line_endings(hub, monkeypatch):
+    # L1: signing must not rewrite an LF control.yaml as CRLF (a whole-file diff on a PI-owned file)
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", gate2={
+        "pi_signed": False, "signed_via": None, "expires": None,
+        "full_runs": 4, "per_run_max_minutes": 30, "total_max_minutes": 120})
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    ctrl = proj / "control.yaml"
+    ctrl.write_text(ctrl.read_text(encoding="utf-8").replace("\r\n", "\n"), encoding="utf-8", newline="")
+    assert m.approve_gate("demo", 2).get("ok") is True
+    assert b"\r\n" not in ctrl.read_bytes()      # stayed LF
+
+
+def test_seed_escape_neutralizes_script_break():
+    # H1: the inline-seed escape turns "</script>" into "<\/script>" so a snapshot string can't break
+    # out of the <script> element. (Mirrors serve._serve_index's one-line defense.)
+    import json
+    seed = json.dumps({"detail": "</script><script>alert(1)</script>"}).replace("</", "<\\/")
+    assert "</script>" not in seed and "<\\/script>" in seed
+
+
 # ── paper artifacts (compiled PDF + figures) — read-only binary views ──────────
 
 def _make_paper(hub, slug="demo", figures=None):

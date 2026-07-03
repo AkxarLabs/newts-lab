@@ -136,6 +136,8 @@ body{
 .motes i{width:8px; height:8px; border-radius:50%; background:rgba(150,180,165,.20); display:inline-block; transition:.3s}
 .motes i.lit{background:radial-gradient(circle at 40% 35%,#fff,var(--gold) 60%,transparent 75%);
   box-shadow:0 0 9px 2px rgba(216,195,137,.5); animation:motePulse 2.8s ease-in-out infinite}
+.motes i.lit.stale{background:radial-gradient(circle at 40% 35%,#fff,var(--warn) 60%,transparent 75%);
+  box-shadow:0 0 9px 2px rgba(214,120,90,.5)}
 .clock{font-family:var(--mono); font-size:.85rem; color:var(--ink-soft); cursor:pointer; border-radius:6px; padding:2px 4px; transition:.14s}
 .clock:hover{color:var(--ink); background:rgba(143,179,138,.1)}
 .clock.stopped{color:var(--warn); animation:none}
@@ -231,6 +233,20 @@ body[data-density="compact"]:not([data-mode="terrarium"]) .stage{padding-bottom:
 .chip.stalled,.chip.fail{border-color:var(--warn); color:var(--warn)}
 .chip.note{border-color:var(--amber); color:var(--amber)}
 .chip.work{border-color:var(--gold); color:var(--gold)}
+.chip.env{border-color:var(--hair); color:var(--ink-soft)}
+.chip.env.ok{border-color:var(--teal); color:var(--teal)}
+.chip.env.warn{border-color:var(--amber); color:var(--amber)}
+.chip.env.bad{border-color:var(--warn); color:var(--warn)}
+.chip.agent{border-color:var(--cyan); color:var(--cyan)}
+/* since-last-visit banner + hub health strip (Activity view) */
+.since-visit{background:rgba(121,179,166,.08); border:1px solid var(--card-edge); border-left:3px solid var(--cyan);
+  border-radius:10px; padding:10px 14px; margin:0 0 14px; color:var(--ink); line-height:1.6}
+.since-visit b{color:var(--cyan)}
+.since-visit .sv-dismiss{float:right; cursor:pointer; color:var(--ink-soft); background:none; border:0; font-size:1rem}
+.health-strip{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:0 0 14px; color:var(--ink-soft); font-size:.8rem}
+.health-strip .hs-stale{color:var(--warn)}
+.slot-holder{font-family:var(--mono); font-size:.74rem; color:var(--ink-soft); padding:3px 0}
+.slot-holder.stale{color:var(--warn)}
 .spark{display:block; margin-top:6px}
 .empty-note{color:var(--ink-soft); padding:34px 0; text-align:center; line-height:1.7}
 .empty-note .en-ico{display:block; font-size:1.7rem; margin-bottom:8px; font-style:normal; opacity:.85}

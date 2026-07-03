@@ -43,9 +43,9 @@ every view; the data views float over it as soft, paper-toned panels.
 | View | What it is |
 |---|---|
 | **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment sub-newts live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's sub-newts up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as sub-newts in their own room. |
-| **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A project whose paper has compiled shows **view paper**; **open in editor** (in the detail drawer) jumps to the project in your editor. |
+| **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, a **headless** chip when a launched agent is running, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless agents** section (backend · role · status · runtime) for any `agent_runner.py`-launched agent. |
 | **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
-| **Activity** | the live state that **needs you or is running** — two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
+| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
 
 ### Gate review bundles — decide a gate without leaving the dashboard
@@ -99,7 +99,11 @@ local-only posture:
 
 A **"now happening" pulse strip** runs along the top-centre of the World — an at-a-glance summary
 of what is live right now: running loops, waiting gates, in-flight runs, and how many agents are
-working. It is the one line you can read without panning anywhere.
+working. It is the one line you can read without panning anywhere. The masthead's **compute-slot
+fireflies** (one lit mote per busy slot) name each slot's holder on hover (project · label · age)
+and turn a **stale** slot amber — one whose heartbeat lapsed past `compute.stale_slot_minutes`, so it
+reads as presumed-crashed rather than silently "in use" (reclaim is `run_slots.py`'s job, never the
+dashboard's).
 
 **Lamplight** is a simple **Light / Dark** toggle (the `🌙` button or Settings; default Dark — the
 scene is dark-first), shifting the world's ambient between a brighter daytime and a dim, lantern-lit
@@ -190,8 +194,10 @@ all of it: the dashboard is a local Python server — it can’t *run* an agent 
 Claude session). So it works in three tiers:
 
 1. **Structured commands** → the bus. Buttons like *Start loop ▸ execute/explore*, *Stop loop*,
-   *Run smoke*, *Request a run*, *Analyze*, *Prioritize*, *Park*, *Kill* (and *Ideate* for the
-   hub) append a `kind:"command"` directive to the target’s `directives.jsonl`. The running
+   *Set mode ▸ explore/execute* (switch a live loop without restarting it), *Run smoke*,
+   *Request a run*, *Analyze*, *Prioritize*, *Park*, *Kill* (and *Ideate* for the
+   hub) append a `kind:"command"` directive to the target’s `directives.jsonl` (the record carries
+   its `target`, so a command aimed at a not-yet-spawned idea is never misattributed). The running
    agent picks it up at its **next checkpoint** (a loop cycle / session start — the console says
    so) and executes it **in-protocol**, then acks `seen → done`(+evidence) / `blocked`. A
    command is never gate approval and can’t change a frozen/PI-owned setting.
@@ -239,7 +245,10 @@ Event kinds: `session_start/end`, `state_change`, `gate_waiting`, `gate_resolved
 decision), `replan` (a pivot landed), `approach_ideate` (in-project method-ideation proposed
 candidate approaches), `escalation` (a project loop asking the hub/PI for attention mid-run —
 a headline reopen, a block on a frozen setting, or FULL work outside the envelope; requests
-attention, never grants a gate), `score_read` (a target-driven `/compete` project read an
+attention, never grants a gate — it carries a stable id), `escalation_resolved` (an agent handled
+an escalation; `lab_bus.py emit escalation_resolved --data ref=<id>` — the dashboard then stops
+counting it as "needs you", so a handled escalation clears instead of nagging forever),
+`score_read` (a target-driven `/compete` project read an
 external score under its PI-signed envelope — `scripts/report_score.py`), `agent_launched` /
 `agent_finished` (a headless top-level agent was spawned into / finished in a project by
 `tools/agent_runner.py` — its full transcript is in `<project>/.bus/agents/<id>.stream.jsonl`),
@@ -284,9 +293,15 @@ artifact map), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3 re
 read-only binary views — `GET /api/paper?idea=<slug>` (the compiled PDF), `GET /api/figs?idea=<slug>`
 (its figure filenames), `GET /api/figure?idea=<slug>&name=<file>` (one figure; the name is reduced to
 a basename and re-confirmed under the figures dir — no traversal).
-The first HTML response is seeded with the snapshot inline for an instant cold load.
-`dashboard/sources.py` holds the tolerant tailers (a bad line is skipped, a moved project is
-reported unreachable, never a crash) and aggregates the per-worker logs into `workers[]`.
+The first HTML response is seeded with the snapshot inline for an instant cold load (the seed is
+`</`-escaped so no lab string — an event detail, a title, a directive — can break out of the inline
+`<script>`). Because the dashboard can sign Gate 1/2, **every state-changing POST *and* every
+data-bearing GET** (`/api/*` and the seeded index) is refused unless it carries a localhost
+`Host`/`Origin` — a same-origin check that turns away a DNS-rebound page the PI happens to visit
+(static assets stay open). Snapshots are cached for ~1 s behind a lock, so N concurrent SSE clients
+share one file read instead of N. `dashboard/sources.py` holds the tolerant tailers (a bad line is
+skipped, a non-UTF-8 byte is replaced not raised, a moved project is reported unreachable — never a
+crash) and aggregates the per-worker logs into `workers[]`.
 
 The frontend (`static/index.html`, `terrarium.css`, `app.js`) is **vanilla JavaScript — no build,
 no dependencies, fully offline**. The world renders entirely on a single **Canvas-2D** surface;

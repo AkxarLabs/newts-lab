@@ -25,6 +25,32 @@ function plantFor(state) {
 
 let STATE = null, MODE = 'terrarium', TARGET = 'hub';
 
+// Unresolved escalations. Prefer the server-computed list (sources._escalations, which pairs each
+// escalation with its escalation_resolved event); fall back to deriving it for demo/history-replay
+// snapshots that predate the field, so a handled escalation always stops nagging.
+function escList(s) {
+  if (Array.isArray(s.escalations)) return s.escalations;
+  const evs = s.events || [];
+  const resolved = new Set(evs.filter(e => e.kind === 'escalation_resolved').map(e => (e.data && e.data.ref) || ''));
+  return evs.filter(e => e.kind === 'escalation' && !resolved.has((e.data && e.data.id) || ''));
+}
+
+// Gate-2 envelope burn-down as a compact chip: booked (completed + reserved) FULL runs & minutes vs
+// the PI-signed caps, + expiry. The one number a twice-a-day PI most wants, already computed server-side
+// (sources.envelope_accounting). Colour tracks the envelope status so an EXPIRED / authorizes-nothing
+// one reads at a glance. '' when the project has no envelope block.
+function envelopeChip(it) {
+  const e = it && it.envelope; if (!e) return '';
+  const bits = [];
+  if (e.full_cap) bits.push(`FULL ${(e.full_done || 0) + (e.full_resv || 0)}/${e.full_cap}`);
+  if (e.total_cap) bits.push(`${(e.min_done || 0) + (e.min_resv || 0)}/${e.total_cap}m`);
+  if (e.expires) bits.push(`exp ${esc(String(e.expires).slice(5) || e.expires)}`);
+  const cls = e.status === 'active' ? 'ok' : (e.status === 'EXPIRED' ? 'bad'
+    : (e.status === 'authorizes nothing' ? 'warn' : ''));
+  const label = e.signed ? (bits.join(' · ') || 'signed') : 'envelope unsigned';
+  return `<span class="chip env ${cls}" title="Gate-2 envelope · ${esc(e.status)}">⛽ ${esc(label)}</span>`;
+}
+
 /* ── PI preferences (persisted locally) — toggled in the ⚙ Settings panel ─────── */
 const PREF_DEFAULTS = { narrate: false, ambient: true, density: 'comfortable', legend: true, status: true, keyOpen: false };
 let PREFS = (() => { try { return { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem('viv-prefs') || '{}') }; } catch (e) { return { ...PREF_DEFAULTS }; } })();
@@ -61,7 +87,7 @@ const POSES = ['gate', 'failure', 'success', 'regen', 'running', 'writing', 'let
 function newtPoseFor(s) {
   if (!s || s.cold) return 'sleep';
   if (s.gates_waiting > 0) return 'gate';
-  if ((s.events || []).slice(-6).some(e => e.kind === 'escalation')) return 'gate';
+  if (escList(s).length) return 'gate';   // only UNRESOLVED escalations (see sources._escalations)
   const recent = (s.events || []).slice(-6).reverse();
   for (const e of recent) {
     const k = e.kind || '';
@@ -91,7 +117,7 @@ function narrate(s) {
   if (!last || last.ts === narrate._ts) return; narrate._ts = last.ts;
   if (s.gates_waiting > 0) return speak(`<b>${s.gates_waiting} gate(s)</b> waiting — tap the beacon.`);
   const d = last.detail ? esc(last.detail) : '';
-  const m = last.data && last.data.metrics ? Object.entries(last.data.metrics).slice(0, 2).map(([k, v]) => `<span class="mono">${k}=${num(v)}</span>`).join(' ') : '';
+  const m = last.data && last.data.metrics ? Object.entries(last.data.metrics).slice(0, 2).map(([k, v]) => `<span class="mono">${esc(k)}=${num(v)}</span>`).join(' ') : '';
   let t;
   switch (last.kind) {
     case 'run_finished': t = `<span class="mono">${esc(last.run_id || '')}</span> ${esc(last.status || '')} ${m}`; break;
@@ -102,7 +128,7 @@ function narrate(s) {
     case 'frontier_expand': t = `branching new lines · ${d}`; break;
     case 'replan': t = `re-planning · ${d}`; break;
     case 'kill': t = `released: ${d}`; break;
-    default: t = d || last.kind;
+    default: t = d || esc(last.kind);
   }
   speak(t);
 }
@@ -116,8 +142,14 @@ function renderMeters(s) {
   if (s.gates_waiting > 0 && MODE === 'terrarium' && !OVERLAY_OPEN) { lan.hidden = false; $('#lanternN').textContent = s.gates_waiting; }
   else lan.hidden = true;
   const sl = s.slots || { in_use: 0, cap: 0 };   // a snapshot/replay without slots must not abort render()
-  const ff = $('#fireflies'); ff.innerHTML = ''; ff.title = `${sl.in_use}/${sl.cap} compute slots in use`;
-  for (let i = 0; i < sl.cap; i++) ff.appendChild(el('i', i < sl.in_use ? 'lit' : ''));
+  const held = sl.held || [];
+  const staleN = held.filter(x => x.stale).length;
+  // tooltip names who holds each slot (project · label · age), flagging a stale one (mtime past
+  // stale_slot_minutes → presumed crashed, reclaimed on the next tool run) instead of it just reading "in use".
+  const holderLines = held.map(x => `• ${x.project || '?'} · ${x.label || '?'}${x.age_min != null ? ` · ${x.age_min}m` : ''}${x.stale ? ' · STALE' : ''}`);
+  const ff = $('#fireflies'); ff.innerHTML = '';
+  ff.title = `${sl.in_use}/${sl.cap} compute slots in use${staleN ? ` · ${staleN} stale` : ''}` + (holderLines.length ? '\n' + holderLines.join('\n') : '');
+  for (let i = 0; i < sl.cap; i++) { const lit = i < sl.in_use; ff.appendChild(el('i', lit ? (held[i] && held[i].stale ? 'lit stale' : 'lit') : '')); }
   const c = $('#clock'); c.textContent = hhmm(s.now); c.classList.remove('stopped');
 }
 
@@ -144,8 +176,8 @@ function campaignBudget(c) {
   const b = c.budget; if (!b || typeof b !== 'object') return '';
   const cap = b.total_max_minutes || b.per_run_max_minutes || b.full_runs;
   const bits = [];
-  if (b.full_runs != null) bits.push(`${b.full_runs} FULL runs`);
-  if (b.total_max_minutes != null) bits.push(`${b.total_max_minutes}m total`);
+  if (b.full_runs != null) bits.push(`${esc(String(b.full_runs))} FULL runs`);
+  if (b.total_max_minutes != null) bits.push(`${esc(String(b.total_max_minutes))}m total`);
   if (b.expires) bits.push(`expires ${esc(String(b.expires))}`);
   if (b.pi_signed != null) bits.push(b.pi_signed ? 'PI-signed' : 'unsigned');
   return bits.length ? `<div class="camp-budget">${bits.join(' · ')}</div>` : '';
@@ -188,7 +220,9 @@ function renderShelf(s) {
     const c = el('div', 'pcard');
     let chips = `<span class="chip state">${esc(it.state)}</span>` + (it.loop_active ? '<span class="chip live">loop</span>' : '');
     if (it.n_workers) chips += `<span class="chip work">${it.n_workers} working</span>`;
+    if ((it.agents || []).some(a => a.status === 'running')) chips += `<span class="chip agent">${(it.agents || []).filter(a => a.status === 'running').length} headless</span>`;
     fly.forEach(r => chips += `<span class="chip ${r.state === 'stalled' ? 'stalled' : 'live'}">${esc(r.run_id)} ${r.state}</span>`);
+    chips += envelopeChip(it);
     c.innerHTML = `<h3>${plantFor(it.state)} ${esc(it.title || it.id)}</h3><div class="row">${chips}</div>
       <div class="mono" style="font-size:.78rem;color:var(--ink-soft)">${esc(it.next || '')}</div>
       ${sparkline(it.best && it.best.series)}`;
@@ -209,12 +243,59 @@ function renderShelf(s) {
 }
 function btn(label, cls, fn) { const b = el('button', 'btn ' + (cls || ''), label); b.onclick = fn; return b; }
 
+// ── "Since your last visit" — a delta of what changed while the PI was away (pure frontend). The
+// baseline is the last event ts stored at the END of the previous visit; this session compares against
+// it (stable within the session) and writes it forward on each ingest for next time.
+let VISIT_BASELINE = (() => { try { return localStorage.getItem('viv-seen-through') || ''; } catch (e) { return ''; } })();
+let VISIT_DISMISSED = false;
+function markVisit(s) { const ev = s.events || [], last = ev.length ? (ev[ev.length - 1].ts || '') : ''; if (last) { try { localStorage.setItem('viv-seen-through', last); } catch (e) {} } }
+function sinceVisitEl(s) {
+  if (VISIT_DISMISSED || !VISIT_BASELINE) return null;          // first-ever visit has no baseline → nothing
+  const fresh = (s.events || []).filter(e => (e.ts || '') > VISIT_BASELINE);
+  if (!fresh.length) return null;
+  const cnt = k => fresh.filter(e => e.kind === k).length;
+  // escalations count UNRESOLVED-while-away only (consistent with escList / the bell / the pulse) —
+  // an escalation raised AND handled while you were away shouldn't show as still needing you.
+  const freshResolved = new Set(fresh.filter(e => e.kind === 'escalation_resolved').map(e => (e.data && e.data.ref) || ''));
+  const escs = fresh.filter(e => e.kind === 'escalation' && !freshResolved.has((e.data && e.data.id) || '')).length;
+  const runs = cnt('run_finished'), gates = cnt('gate_waiting'), kills = cnt('kill'), wb = cnt('writeback');
+  const plural = (n, w) => `<b>${n}</b> ${w}${n > 1 ? 's' : ''}`;
+  const bits = [];
+  if (runs) bits.push(plural(runs, 'run') + ' finished');
+  if (gates) bits.push(plural(gates, 'gate') + ' opened');
+  if (escs) bits.push(plural(escs, 'escalation'));
+  if (kills) bits.push(plural(kills, 'idea') + ' killed');
+  if (wb) bits.push(plural(wb, 'write-back'));
+  if (!bits.length) bits.push(plural(fresh.length, 'new event'));
+  const box = el('div', 'since-visit', `<button class="sv-dismiss" title="dismiss">✕</button>Since your last visit: ${bits.join(' · ')}.`);
+  box.querySelector('.sv-dismiss').onclick = () => { VISIT_DISMISSED = true; box.remove(); };
+  return box;
+}
+// hub health strip — notebook write-back cadence (hard rule 11, made visible) + one-click read-only checks.
+function healthStripEl(s) {
+  const strip = el('div', 'health-strip');
+  const nb = s.notebook || {};
+  if (nb.latest && nb.age_hours != null) {
+    const days = nb.age_hours / 24;
+    const ageTxt = days < 1 ? `${Math.round(nb.age_hours)}h` : `${Math.round(days)}d`;
+    const stale = days > 3;
+    strip.appendChild(el('span', stale ? 'hs-stale' : '', `📓 last write-back ${esc(ageTxt)} ago${stale ? ' — overdue' : ''}`));
+  } else if (nb.latest) {
+    strip.appendChild(el('span', '', `📓 latest: ${esc(nb.latest)}`));
+  } else strip.appendChild(el('span', 'hs-stale', '📓 no notebook entries yet'));
+  strip.appendChild(btn('check lab', 'tool', () => runTool('check_lab')));
+  strip.appendChild(btn('show config', 'tool', () => runTool('show_config')));
+  return strip;
+}
+
 // Activity = the two live-state views the PI checks together: "Needs you" (the gates) + "In flight"
 // (running runs). Merged from the old Gates + In flight tabs. The route key stays `gates` so the
 // gate badge, #gates deep-links, and the beacon's click target are all preserved.
 function renderGates(s) {
   const stage = $('#stage'); stage.innerHTML = '';
   const p = el('section', 'panel', '<h2>Activity</h2><p class="lede">what needs you, and what’s running right now. Gate 1 & 2 you can approve here; Gate 3 is always done in a session.</p>');
+  const sv = sinceVisitEl(s); if (sv) p.appendChild(sv);
+  p.appendChild(healthStripEl(s));
   const cols = el('div', 'activity-cols');
 
   // ── Needs you (left): the gates ──
@@ -324,7 +405,7 @@ function renderLedger(s) {
   if (hiddenCount) { const sh = el('button', 'btn' + (LEDGER_SHOWHIDDEN ? ' go' : ''), (LEDGER_SHOWHIDDEN ? 'hiding ' : 'show ') + hiddenCount + ' hidden'); sh.onclick = () => { LEDGER_SHOWHIDDEN = !LEDGER_SHOWHIDDEN; renderLedger(STATE); }; bar.appendChild(sh); bar.appendChild(btn('restore all', 'warn', restoreLedgerView)); }
   p.appendChild(bar);
 
-  let dir = [...(s.directives || []).map(d => ({ ...d, target: 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: it.id })))];
+  let dir = [...(s.directives || []).map(d => ({ ...d, target: d.target || 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: d.target || it.id })))];
   if (LEDGER_HIDE) dir = dir.filter(d => d.state === 'pending' || d.state === 'seen');
   dir = dir.filter(d => match(d.id, d.target, d.text, d.action, d.state));
   let h = '<h3 style="font-family:var(--display)">Commands & notes</h3><table><thead><tr><th>id</th><th>target</th><th>what</th><th>state</th><th>evidence</th><th></th></tr></thead><tbody>';
@@ -474,9 +555,9 @@ function closeSettings() { $('#settingsScrim').hidden = true; $('#settings').hid
 function attentionItems(s) {
   const out = [];
   (s.items || []).filter(it => it.gate).forEach(it => out.push({ sev: it.gate === 3 ? 'g3' : 'gate', icon: '⛓', title: `Gate ${it.gate} · ${it.title || it.id}`, sub: it.next || '', act: it.gate !== 3 ? { label: 'approve', fn: () => openGate(it.id, it.gate) } : null, go: () => openDetail(it.id) }));
-  (s.events || []).filter(e => e.kind === 'escalation').slice(-8).reverse().forEach(e => out.push({ sev: 'warn', icon: '⚠', title: `${e.source || 'a project'} needs you`, sub: e.detail || '' }));
-  const dirs = [...(s.directives || []).map(d => ({ ...d, target: 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: it.id })))];
-  dirs.filter(d => d.state === 'pending' || d.state === 'seen').forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${d.target}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id); setTimeout(renderAttention, 300); } } }));
+  escList(s).slice(-8).reverse().forEach(e => out.push({ sev: 'warn', icon: '⚠', title: `${e.source || 'a project'} needs you`, sub: e.detail || '' }));
+  const dirs = [...(s.directives || []).map(d => ({ ...d, target: d.target || 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: d.target || it.id })))];
+  dirs.filter(d => d.state === 'pending' || d.state === 'seen').forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${esc(d.target)}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id); setTimeout(renderAttention, 300); } } }));
   (s.items || []).forEach(it => (it.inflight || []).filter(r => r.state === 'stalled').forEach(r => out.push({ sev: 'warn', icon: '◴', title: `stalled run · ${it.id}`, sub: r.run_id, go: () => openDetail(it.id) })));
   return out;
 }
@@ -501,11 +582,24 @@ function toggleAttention() { const a = $('#attention'); const opening = a.hidden
 function openDetail(id) {
   const it = (STATE.items || []).find(x => x.id === id); if (!it) return;
   $('#detailTitle').textContent = it.title || it.id;
-  let chips = `<span class="chip state">${esc(it.state)}</span>` + (it.loop_active ? '<span class="chip live">loop</span>' : '') + (it.gate ? `<span class="chip note">Gate ${it.gate}</span>` : '') + (it.n_workers ? `<span class="chip work">${it.n_workers} working</span>` : '');
+  let chips = `<span class="chip state">${esc(it.state)}</span>` + (it.loop_active ? '<span class="chip live">loop</span>' : '') + (it.gate ? `<span class="chip note">Gate ${it.gate}</span>` : '') + (it.n_workers ? `<span class="chip work">${it.n_workers} working</span>` : '') + envelopeChip(it);
   let h = `<div class="row">${chips}</div><div class="mono" style="font-size:.8rem;color:var(--ink-soft);margin:6px 0">next: ${esc(it.next || '—')}</div>`;
   if (it.best && it.best.series) h += sparkline(it.best.series);
   const fly = it.inflight || [];
   if (fly.length) { h += '<div class="d-sec">In flight</div>'; fly.forEach(r => { const pct = r.budget_min ? Math.min(100, r.elapsed_s / (r.budget_min * 60) * 100) : 0; h += `<div class="nrow ${r.state === 'stalled' ? 'stalled' : ''}"><span class="rid">${esc(r.run_id)}</span><span class="barwrap"><i style="width:${pct.toFixed(0)}%"></i></span><span class="met">${Math.round(r.elapsed_s / 60)}m/${r.budget_min || '∞'}m · ${esc(r.state)}</span><button class="x-row peek" data-peek="${esc(it.id)}|${esc(r.run_id)}" title="peek at this run's metrics">⤢</button></div>`; }); }
+  // headless top-level agents launched into this project (agent_runner.py). The data was always in the
+  // snapshot (item.agents) but never rendered — a running `codex exec`/`claude -p` was invisible.
+  const agents = it.agents || [];
+  if (agents.length) {
+    h += '<div class="d-sec">Headless agents</div>';
+    agents.slice(-6).reverse().forEach(a => {
+      const running = a.status === 'running';
+      const dur = a.wall_seconds != null ? `${Math.round(a.wall_seconds / 60)}m` : (a.started ? `since ${hhmm(a.started)}` : '');
+      const tail = running ? '' : ` · exit ${a.exit_code != null ? esc(String(a.exit_code)) : '?'}`;
+      h += `<div class="iact"><span class="ik ${running ? 'run' : ''}">${running ? '● ' : ''}${esc(a.backend || 'agent')}</span><span class="ix">${esc(a.role || a.agent_id || '')}${a.prompt_summary ? ' · ' + esc(a.prompt_summary) : ''}</span><span class="it">${esc(a.status || '')} ${esc(dur)}${tail}</span></div>`;
+    });
+    if (agents.some(a => a.status === 'running')) h += `<div class="sub" style="margin-top:4px">stop one in a session: <span class="mono">agent_runner.py kill &lt;agent_id&gt;</span></div>`;
+  }
   const dirs = (it.directives || []).filter(d => d.state === 'pending' || d.state === 'seen');
   if (dirs.length) { h += '<div class="d-sec">Pending directives</div>'; dirs.forEach(d => h += `<div class="iact"><span class="ix">${esc(d.text || d.action)}</span><span class="ik">${esc(d.state)}</span></div>`); }
   const evs = (it.events || []).slice(-8).reverse();
@@ -591,7 +685,7 @@ function renderPulse(s) {
   const loops = (s.items || []).filter(it => it.loop_active).length;
   const fly = (s.items || []).reduce((n, it) => n + (it.inflight || []).length, 0);
   const wk = (s.workers || []).filter(w => w.status !== 'done').length;
-  const escN = (s.events || []).slice(-50).filter(e => e.kind === 'escalation').length;
+  const escN = escList(s).length;   // unresolved only — a handled escalation clears the pulse
   const bits = [];
   if (loops) bits.push(`<b>${loops}</b> loop${loops > 1 ? 's' : ''}`);
   if (s.gates_waiting) bits.push(`<b>${s.gates_waiting}</b> gate${s.gates_waiting > 1 ? 's' : ''} waiting`);
@@ -630,6 +724,8 @@ const ACTIONS = {
     ['start_loop', 'Start loop ▸ execute', 'run the approved plan unattended', '', { mode: 'execute' }],
     ['start_loop', 'Start loop ▸ explore', 'autonomous in-project re-planning', '', { mode: 'explore' }],
     ['stop_loop', 'Stop loop', 'wind down after the current run', ''],
+    ['set_mode', 'Set mode ▸ explore', 'switch a live loop to explore (no restart)', '', { mode: 'explore' }],
+    ['set_mode', 'Set mode ▸ execute', 'switch a live loop back to execute', '', { mode: 'execute' }],
     ['run_smoke', 'Run smoke', 'quick end-to-end pipeline check', ''],
     ['request_run', 'Request a run', 'queue the next planned experiment', ''],
     ['ideate', 'Ideate approaches', 'divergent new approaches, in-project', ''],
@@ -1612,7 +1708,7 @@ function recordHistory(s) {
 }
 function ingest(s) {
   const prev = LIVE_STATE; LIVE_STATE = s; recordHistory(s);
-  if (SCRUB == null) { STATE = s; render(); notifyChanges(prev, s); }
+  if (SCRUB == null) { STATE = s; render(); notifyChanges(prev, s); markVisit(s); }
   else renderScrubber();   // keep the timeline length live while viewing the past
 }
 function showHistory(i) { if (!HISTORY.length) return; SCRUB = clamp(i, 0, HISTORY.length - 1); STATE = HISTORY[SCRUB].snap; render(); }

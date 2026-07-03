@@ -29,10 +29,27 @@ _REGISTRY_COLS = ["id", "title", "state", "idea", "project", "paper", "updated",
 
 
 def _read_text(path: Path) -> str:
+    # errors="replace" so ONE non-UTF-8 byte written by a training script into any tailed file
+    # (metrics.jsonl, events.jsonl, a worker log) can't raise UnicodeDecodeError and 500 the whole
+    # snapshot — the module's "never a crash" contract must hold for exactly that dirty input.
     try:
-        return path.read_text(encoding="utf-8-sig")
+        return path.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
         return ""
+
+
+def _to_int(v, default: int = 0) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def _read_jsonl(path: Path, limit: int | None = None) -> list[dict]:
@@ -49,10 +66,14 @@ def _read_jsonl(path: Path, limit: int | None = None) -> list[dict]:
 
 
 def _load_yaml(path: Path) -> dict:
+    # Always return a dict: a valid-YAML but non-mapping file (a bare scalar `42`, a top-level list)
+    # would otherwise make every `_load_yaml(...).get(...)` call site raise AttributeError and blank
+    # the whole snapshot — the same "never a crash on dirty input" contract _read_text upholds.
     try:
-        return yaml.safe_load(_read_text(path)) or {}
+        data = yaml.safe_load(_read_text(path))
     except yaml.YAMLError:
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 # ── registry ──────────────────────────────────────────────────────────────────
@@ -158,10 +179,16 @@ def _best_metric(rows: list[dict]) -> dict | None:
 
 # ── slots & campaigns ─────────────────────────────────────────────────────────
 
+def _stale_slot_minutes() -> float:
+    return _to_float((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("stale_slot_minutes"), 360.0)
+
+
 def slots() -> list[dict]:
     sdir = LAB / ".slots"
     if not sdir.exists():
         return []
+    now = time.time()
+    stale_min = _stale_slot_minutes()
     out = []
     for f in sorted(sdir.glob("*.json")):
         try:
@@ -169,12 +196,102 @@ def slots() -> list[dict]:
         except json.JSONDecodeError:
             continue
         data["slot_id"] = f.stem
+        # mtime is the heartbeat (run_slots.py touches it); a slot past stale_slot_minutes is presumed
+        # crashed and would be reclaimed on the next tool invocation. Surface it read-only so the PI
+        # sees a held-but-dead slot instead of it silently reading as "occupied forever" (no reclaim
+        # happens until an agent runs a tool). We never delete here — reclaim is run_slots.py's job.
+        try:
+            age = now - f.stat().st_mtime
+            data["age_min"] = round(age / 60)
+            data["stale"] = age > stale_min * 60
+        except OSError:
+            data["age_min"], data["stale"] = None, False
         out.append(data)
     return out
 
 
 def slot_cap() -> int:
-    return int((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs", 1))
+    return _to_int((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs"), 1)
+
+
+# ── Gate-2 envelope accounting (ONE source of truth, mirrors tools/guard.py c_full_run) ───────────
+#
+# The capacity math lives here, in the read-only world model, so BOTH the serve.py gate-2 review
+# bundle AND the project-card burn-down chips report the same numbers (and the same numbers guard.py
+# enforces). Returns structured fields; serve.py formats them into text, the frontend into a chip.
+
+def envelope_accounting(pdir: "Path | None", env: dict | None) -> dict:
+    env = env or {}
+    signed = bool(env.get("pi_signed"))
+    exp = str(env.get("expires") or "").strip()
+    expired = bool(exp and exp.lower() not in ("null", "none") and exp < time.strftime("%Y-%m-%d"))
+    full_cap = _to_int(env.get("full_runs"))
+    per_cap = _to_float(env.get("per_run_max_minutes"))
+    total_cap = _to_float(env.get("total_max_minutes"))
+    done_count, done_min = 0, 0.0
+    if pdir:
+        reg = pdir / "runs" / "registry.jsonl"
+        for r in (_read_jsonl(reg) if reg.exists() else []):
+            if str(r.get("stage", "")).upper() == "FULL":
+                done_count += 1
+                ws = r.get("wall_seconds")
+                if isinstance(ws, (int, float)):
+                    done_min += ws / 60.0
+    resv_runs, resv_min = 0, 0.0
+    if pdir:
+        rf = pdir / ".guard" / "full-run-reservations.jsonl"
+        now = time.time()
+        for r in (_read_jsonl(rf) if rf.exists() else []):
+            if str(r.get("status", "active")).lower() != "active":
+                continue
+            ts = r.get("ts")
+            if isinstance(ts, (int, float)) and (now - ts) > 24 * 3600:
+                continue
+            pr, pm = _to_int(r.get("planned_runs")), _to_float(r.get("planned_minutes"))
+            resv_runs += pr
+            resv_min += pr * pm
+    # a zero/unset cap is "unbounded" for THAT dimension (guard.py:202); but an envelope whose caps are
+    # ALL zero authorizes nothing (guard.py refuses every FULL run) — surface that, never "active ∞".
+    authorizes = any((full_cap, per_cap, total_cap))
+    status = ("no signed envelope" if not signed
+              else "EXPIRED" if expired
+              else "authorizes nothing" if not authorizes
+              else "active")
+    return {
+        "signed": signed, "expires": exp, "expired": expired, "authorizes": authorizes, "status": status,
+        "signed_via": env.get("signed_via"),
+        "full_cap": full_cap, "per_cap": per_cap, "total_cap": total_cap,
+        "full_done": done_count, "min_done": round(done_min),
+        "full_resv": resv_runs, "min_resv": round(resv_min),
+        "full_rem": (full_cap - done_count - resv_runs) if full_cap else None,
+        "min_rem": round(total_cap - done_min - resv_min) if total_cap else None,
+    }
+
+
+_NB_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _notebook_status() -> dict:
+    """Latest lab/notebook entry + its age — makes hard-rule-11 write-back cadence visible ('last
+    write-back 2 d ago') so a PI can see a lab that's stopped recording. Best-effort; {} if absent.
+    Age is derived from the entry's DATED FILENAME, not st_mtime: a `git clone`/`checkout`/`pull`
+    resets mtimes, which would make a lab that stopped recording weeks ago read as fresh. Selecting by
+    the filename string also means no stat() in the hot path (no glob→stat TOCTOU race)."""
+    nb = LAB / "notebook"
+    if not nb.exists():
+        return {}
+    dated = [f for f in nb.glob("*.md") if f.name.lower() != "readme.md"]
+    if not dated:
+        return {}
+    latest = max(dated, key=lambda f: f.name)   # ISO-dated names sort chronologically as strings
+    m = _NB_DATE.match(latest.name)
+    if not m:
+        return {"latest": latest.name}          # undated name → surface it, but no age we can trust
+    try:
+        entry_epoch = time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)), 0, 0, 0, 0, 0, -1))
+    except (ValueError, OverflowError):
+        return {"latest": latest.name}
+    return {"latest": latest.name, "age_hours": round(max(0.0, (time.time() - entry_epoch) / 3600.0), 1)}
 
 
 def editor_scheme() -> str:
@@ -218,7 +335,14 @@ def _claims_count(slug: str) -> int:
 
 # ── directives (threads with pending/seen/acted state) ────────────────────────
 
-def _directive_threads(bus_dir: Path) -> list[dict]:
+def _synth_id(d: dict) -> str:
+    """Stable synthesized id for a hand-written/legacy directive with no id — the same scheme
+    tools/lab_bus.py uses, so the dashboard and the agent `inbox` name the same directive."""
+    import hashlib
+    return "d?" + hashlib.sha1(f"{d.get('ts', '')}|{d.get('text', '')}".encode()).hexdigest()[:8]
+
+
+def _directive_threads(bus_dir: Path, default_target: str = "hub") -> list[dict]:
     directives = _read_jsonl(bus_dir / "directives.jsonl")
     events = _read_jsonl(bus_dir / "events.jsonl")
     withdrawn = {d.get("ref") for d in directives if d.get("kind") == "withdraw"}
@@ -226,29 +350,65 @@ def _directive_threads(bus_dir: Path) -> list[dict]:
     for e in events:
         if str(e.get("kind", "")).startswith("directive_"):
             ref = (e.get("data") or {}).get("ref")
-            if ref:
-                acks[ref] = {"state": e["kind"].split("_", 1)[1], "ts": e.get("ts"),
-                             "note": (e.get("data") or {}).get("note"),
-                             "evidence": (e.get("data") or {}).get("evidence")}
+            if not ref:
+                continue
+            state = e["kind"].split("_", 1)[1]           # seen | done | blocked
+            prev = acks.get(ref)
+            # terminal acks are STICKY (matches lab_bus.unresolved_directives): once done/blocked, a
+            # later 'seen' can't reopen the directive — else an out-of-order ack reopens it in the
+            # dashboard while the agent considers it closed.
+            if prev and prev["state"] in ("done", "blocked") and state == "seen":
+                continue
+            acks[ref] = {"state": state, "ts": e.get("ts"),
+                         "note": (e.get("data") or {}).get("note"),
+                         "evidence": (e.get("data") or {}).get("evidence")}
     threads = []
     for d in directives:
-        if d.get("kind") == "withdraw" or not d.get("id"):
+        if d.get("kind") == "withdraw":
             continue
-        ack = acks.get(d["id"])
-        state = "withdrawn" if d["id"] in withdrawn else (ack["state"] if ack else "pending")
-        threads.append({"id": d["id"], "ts": d.get("ts"), "text": d.get("text", ""),
+        did = d.get("id") or _synth_id(d)               # surface id-less directives, like the inbox does
+        ack = acks.get(did)
+        state = "withdrawn" if did in withdrawn else (ack["state"] if ack else "pending")
+        threads.append({"id": did, "ts": d.get("ts"), "text": d.get("text", ""),
                         "state": state, "ack": ack,
+                        "target": d.get("target") or default_target,   # the record's own target wins (M2)
                         "kind": d.get("kind", "note"), "action": d.get("action"),
                         "args": d.get("args")})
     return threads
 
 
-_GATE_RE = re.compile(r"gate ?([123])", re.I)
+# \bgate\s*-?\s*(N)\b — word-bounded so "investigate 3" / "delegate 2" in a next-action can't be read
+# as a waiting Gate 3 / Gate 2 (which would raise a phantom one-click Approve button). Matches
+# "Gate 1", "gate-2", "PI Gate 3", "gate1".
+_GATE_RE = re.compile(r"\bgate\s*-?\s*([123])\b", re.I)
 
 
 def _gate_of(next_action: str) -> int | None:
     m = _GATE_RE.search(next_action or "")
     return int(m.group(1)) if m else None
+
+
+def _escalations(events: list[dict]) -> list[dict]:
+    """Unresolved escalations, paired with their escalation_resolved events by ref. An escalation
+    with no matching resolver stays 'needs you'; once an agent emits escalation_resolved (data.ref =
+    the escalation id) it drops off — so a handled escalation stops nagging the bell forever (its
+    id defaults to a synthesized hash when the emitter didn't set one)."""
+    def _eid(e: dict) -> str:
+        return str((e.get("data") or {}).get("id") or "").strip() or _synth_id(
+            {"ts": e.get("ts"), "text": e.get("detail", "")})
+    resolved = {str((e.get("data") or {}).get("ref") or "").strip()
+                for e in events if e.get("kind") == "escalation_resolved"}
+    out = []
+    for e in events:
+        if e.get("kind") != "escalation":
+            continue
+        eid = _eid(e)
+        if eid in resolved:
+            continue
+        out.append({"id": eid, "ts": e.get("ts"), "source": e.get("source"),
+                    "detail": e.get("detail", ""),
+                    "severity": (e.get("data") or {}).get("severity")})
+    return out
 
 
 # ── workers (per-agent activity from .bus/workers/*.jsonl — the traceability feed) ──
@@ -418,6 +578,7 @@ def snapshot() -> dict:
         item["directives"] = []
         item["agents"] = []
         item["n_workers"] = 0
+        item["envelope"] = None
         if pdir is not None:
             registry = _read_jsonl(pdir / "runs" / "registry.jsonl")
             item["n_runs"] = sum(1 for r in registry if r.get("run_id"))
@@ -425,7 +586,11 @@ def snapshot() -> dict:
             item["inflight"] = _inflight_runs(pdir)
             item["loop_active"] = (pdir / ".bus" / ".loop-active").exists()
             item["agents"] = _launched_agents(pdir)
-            item["directives"] = _directive_threads(pdir / ".bus")
+            item["directives"] = _directive_threads(pdir / ".bus", default_target=row["id"])
+            ctrl = pdir / "control.yaml"
+            env = (_load_yaml(ctrl).get("gate2_envelope") if ctrl.exists() else None)
+            if env:   # only projects with an envelope block carry the burn-down chip
+                item["envelope"] = envelope_accounting(pdir, env)
             pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)
@@ -435,18 +600,20 @@ def snapshot() -> dict:
         items.append(item)
 
     all_events.sort(key=lambda e: e.get("ts", ""))
-    gates = [it for it in items if "gate" in (it["next"] or "").lower()
-             or any("gate_waiting" in str(e.get("kind")) for e in it["events"])]
-
+    # gates_waiting == the SAME set the "Needs you" panel renders (items with a parsed gate) so the
+    # topbar badge / beacon can never light up with an empty panel, and vice versa.
+    held = slots()   # compute once (was called twice)
     return {
         "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "editor": editor_scheme(),
         "items": items,
         "events": all_events[-200:],
-        "slots": {"in_use": len(slots()), "cap": slot_cap(), "held": slots()},
+        "escalations": _escalations(all_events),
+        "notebook": _notebook_status(),
+        "slots": {"in_use": len(held), "cap": slot_cap(), "held": held},
         "directives": _directive_threads(hub_bus),
         "workers": workers[-200:],
         "campaigns": campaigns(rows),
-        "gates_waiting": len(gates),
+        "gates_waiting": sum(1 for it in items if it["gate"]),
         "cold": len(rows) == 0,
     }

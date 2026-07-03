@@ -89,6 +89,10 @@ def _append(target: str, rec: dict) -> dict:
         rec.setdefault("id", _next_id(path))
         rec.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S"))
         rec.setdefault("from", "PI via dashboard")
+        # record the intended target IN the line: a directive/command aimed at a pre-spawn idea (no
+        # project dir yet) falls back to the hub bus, and without this the agent inbox can't tell what
+        # it was aimed at (e.g. which of two proposals a gate1_approved refers to).
+        rec.setdefault("target", target or "hub")
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
     return rec
@@ -166,16 +170,27 @@ def approve_gate(idea: str, gate: int) -> dict:
     if gate == 3:
         return {"error": "Gate 3 (finalization) is never approved from the dashboard — do it in a session."}
     ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+    _MARK = "PI Gate 1 approved via Vivarium dashboard"
     if gate == 1:
         proposal = HUB / "studies" / idea / "proposal.md"
         if not proposal.exists():
             return {"error": f"no proposal at studies/{idea}/proposal.md"}
+        if _MARK in proposal.read_text(encoding="utf-8-sig", errors="replace"):
+            # idempotent: a second click would append a duplicate marker AND queue a second
+            # gate1_approved command (the Approve card lingers until the agent next runs).
+            return {"error": "Gate 1 is already approved on this proposal — nothing to do "
+                             "(the agent applies it at its next checkpoint)."}
+        row = next((r for r in sources.parse_registry() if r["id"] == idea), None)
+        warnings = ([] if (row and (row.get("state") or "").strip() == "proposal")
+                    else ["idea is not in state 'proposal' — approving anyway, but confirm this is the "
+                          "right idea before the agent spawns it"])
         with proposal.open("a", encoding="utf-8") as f:
-            f.write(f"\n\n<!-- PI Gate 1 approved via Vivarium dashboard {ts} -->\n")
-        append_command(idea, "gate1_approved", {}, "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
+            f.write(f"\n\n<!-- {_MARK} {ts} -->\n")
+        append_command(idea, "gate1_approved", {"idea": idea},
+                       "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
         _emit_hub("gate_resolved", idea=idea, detail="Gate 1 approved (PI via dashboard)")
         _pi_log({"action": "approve_gate", "gate": 1, "idea": idea})
-        return {"ok": True, "gate": 1, "idea": idea,
+        return {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
                 "note": "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint."}
     # gate 2 — sign the project's control.yaml gate2_envelope (the canonical machine-readable
     # signature). READ via YAML to VALIDATE the envelope; WRITE via a targeted regex so the
@@ -184,7 +199,10 @@ def approve_gate(idea: str, gate: int) -> dict:
     control = (pdir / "control.yaml") if pdir else None
     if not control or not control.exists():
         return {"error": f"no control.yaml for {idea} (spawn the project first)"}
-    text = control.read_text(encoding="utf-8-sig")
+    with control.open("r", encoding="utf-8-sig", newline="") as f:
+        raw = f.read()                                  # newline="" preserves the file's own EOLs
+    eol = "\r\n" if "\r\n" in raw else "\n"             # so we can write them back unchanged (no CRLF churn)
+    text = raw.replace("\r\n", "\n")
     if "pi_signed:" not in text:
         return {"error": "control.yaml has no gate2_envelope.pi_signed field"}
     env = sources._load_yaml(control).get("gate2_envelope") or {}
@@ -199,7 +217,8 @@ def approve_gate(idea: str, gate: int) -> dict:
     new_text, pi_changed = _sign_gate2_block(text, ts)
     if not pi_changed:
         return {"error": "could not set gate2_envelope.pi_signed (unexpected format) — sign via /configure"}
-    control.write_text(new_text, encoding="utf-8")
+    with control.open("w", encoding="utf-8", newline="") as f:
+        f.write(new_text.replace("\n", eol))            # restore the original EOL — a clean one-line diff
     env_after = sources._load_yaml(control).get("gate2_envelope") or {}
     if not env_after.get("pi_signed"):   # verify the write actually parsed to signed — never report a phantom ok
         return {"error": "gate2_envelope.pi_signed did not take effect after write — check control.yaml format"}
@@ -370,52 +389,22 @@ def _pilot_evidence(pdir: Path | None) -> dict:
 
 
 def _gate2_accounting(pdir: Path | None, env: dict | None) -> dict:
-    """Envelope capacity vs what's already booked — mirrors tools/guard.py's c_full_run accounting so
-    the PI sees, before signing, whether a FULL request would even fit (completed + reserved vs caps)."""
-    env = env or {}
-    signed = bool(env.get("pi_signed"))
-    exp = str(env.get("expires") or "").strip()
-    expired = bool(exp and exp.lower() not in ("null", "none") and exp < time.strftime("%Y-%m-%d"))
-    full_cap = int(env.get("full_runs") or 0)
-    per_cap = float(env.get("per_run_max_minutes") or 0)
-    total_cap = float(env.get("total_max_minutes") or 0)
-    done_count, done_min = 0, 0.0
-    if pdir:
-        reg = pdir / "runs" / "registry.jsonl"
-        for r in (sources._read_jsonl(reg) if reg.exists() else []):
-            if str(r.get("stage", "")).upper() == "FULL":
-                done_count += 1
-                ws = r.get("wall_seconds")
-                if isinstance(ws, (int, float)):
-                    done_min += ws / 60.0
-    resv_runs, resv_min = 0, 0.0
-    if pdir:
-        rf = pdir / ".guard" / "full-run-reservations.jsonl"
-        now = time.time()
-        for r in (sources._read_jsonl(rf) if rf.exists() else []):
-            if str(r.get("status", "active")).lower() != "active":
-                continue
-            ts = r.get("ts")
-            if isinstance(ts, (int, float)) and (now - ts) > 24 * 3600:
-                continue
-            pr, pm = int(r.get("planned_runs") or 0), float(r.get("planned_minutes") or 0)
-            resv_runs += pr
-            resv_min += pr * pm
-    rem_runs = (full_cap - done_count - resv_runs) if full_cap else None
-    rem_min = (total_cap - done_min - resv_min) if total_cap else None
-    status = "no signed envelope" if not signed else ("EXPIRED" if expired else "active")
+    """Envelope capacity vs what's already booked — formats sources.envelope_accounting (the ONE
+    source of truth, which mirrors tools/guard.py's c_full_run) into the review-bundle text so the PI
+    sees, before signing, whether a FULL request would even fit (completed + reserved vs caps)."""
+    a = sources.envelope_accounting(pdir, env)
     lines = [
-        f"signed:            {'yes' if signed else 'NO — every FULL run needs fresh PI approval'}",
-        f"expires:           {exp or 'n/a'}{'   (EXPIRED)' if expired else ''}",
-        f"signed_via:        {env.get('signed_via') or 'PI direct'}",
+        f"signed:            {'yes' if a['signed'] else 'NO — every FULL run needs fresh PI approval'}",
+        f"expires:           {a['expires'] or 'n/a'}{'   (EXPIRED)' if a['expired'] else ''}",
+        f"signed_via:        {a['signed_via'] or 'PI direct'}",
         "",
-        f"full_runs cap:     {full_cap or 'unset'}      per-run ≤ {per_cap or 'unset'} min      total ≤ {total_cap or 'unset'} min",
-        f"completed FULL:    {done_count} run(s)   (~{done_min:.0f} min booked)",
-        f"reserved FULL:     {resv_runs} run(s)   (~{resv_min:.0f} min, in-flight sweeps)",
-        f"remaining FULL:    {rem_runs if rem_runs is not None else '∞'} run(s)",
-        f"remaining minutes: {f'{rem_min:.0f}' if rem_min is not None else '∞'}",
+        f"full_runs cap:     {a['full_cap'] or 'unset'}      per-run ≤ {a['per_cap'] or 'unset'} min      total ≤ {a['total_cap'] or 'unset'} min",
+        f"completed FULL:    {a['full_done']} run(s)   (~{a['min_done']:.0f} min booked)",
+        f"reserved FULL:     {a['full_resv']} run(s)   (~{a['min_resv']:.0f} min, in-flight sweeps)",
+        f"remaining FULL:    {a['full_rem'] if a['full_rem'] is not None else '∞'} run(s)",
+        f"remaining minutes: {a['min_rem'] if a['min_rem'] is not None else '∞'}",
     ]
-    return {"title": f"Envelope capacity — {status}", "text": "\n".join(lines)}
+    return {"title": f"Envelope capacity — {a['status']}", "text": "\n".join(lines)}
 
 
 def _gate2_bundle(slug: str) -> dict:
@@ -659,6 +648,25 @@ def figure_file(idea: str, name: str) -> Path | None:
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
+# A short shared snapshot cache. ThreadingHTTPServer serves each SSE client on its own thread and each
+# re-reads the whole lab; with the TTL under the 1.5 s SSE tick a single client always recomputes fresh
+# (never staler than one tick), while N concurrent clients + the index seed share one read instead of N.
+_SNAP_LOCK = threading.Lock()
+_SNAP_TTL = 1.0
+_snap_cache = {"ts": 0.0, "value": None}
+
+
+def _snapshot_cached() -> dict:
+    now = time.time()
+    with _SNAP_LOCK:
+        if _snap_cache["value"] is not None and (now - _snap_cache["ts"]) < _SNAP_TTL:
+            return _snap_cache["value"]
+    snap = sources.snapshot()   # compute OUTSIDE the lock — never serialize the file reads
+    with _SNAP_LOCK:
+        _snap_cache["ts"], _snap_cache["value"] = now, snap
+    return snap
+
+
 class Handler(BaseHTTPRequestHandler):
     # Demo mode is a debugging/showcase world, NOT a user-facing dashboard feature. It is OFF unless
     # the server is started with `--demo` (or VIVARIUM_DEMO=1); only then is window.__VIV_DEMO__ injected
@@ -714,11 +722,19 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        # The index seed and every /api/* GET carry the full lab snapshot (titles, metrics, directives,
+        # the paper). Guard them with the same localhost/same-origin check as the POSTs so a DNS-rebound
+        # page the PI visits can't READ the lab (it still carries the attacker's Host header). Static
+        # assets (js/css/art) are not sensitive and stay open.
+        sensitive = (self.path in ("/",) or self.path.startswith("/index.html")
+                     or self.path.startswith("/?") or self.path.startswith("/api/"))
+        if sensitive and not self._local_only():
+            return self._send(403, b"refused: cross-origin/non-localhost request", "text/plain")
         if self.path == "/" or self.path.startswith("/index.html") or self.path.startswith("/?"):
             return self._serve_index()
         if self.path.startswith("/api/state"):
             try:
-                return self._json(sources.snapshot())
+                return self._json(_snapshot_cached())
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
         if self.path.startswith("/api/events"):
@@ -765,7 +781,11 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             return self._send(500, b"dashboard assets missing (dashboard/static/index.html)", "text/plain")
         try:
-            seed = json.dumps(sources.snapshot())
+            # `</` -> `<\/` so a snapshot string containing "</script>" (an event detail, a registry
+            # title, a directive, a worker-trace summary — any of which can carry text an agent copied
+            # from an untrusted source) can't break out of this inline <script> and inject live HTML.
+            # json.dumps does NOT escape `<` or `/`, so this one replace is the whole XSS defense here.
+            seed = json.dumps(_snapshot_cached()).replace("</", "<\\/")
         except Exception:  # noqa: BLE001
             seed = "null"
         demo = "true" if self.demo else "false"
@@ -792,7 +812,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             while True:
                 try:
-                    payload = json.dumps(sources.snapshot())
+                    payload = json.dumps(_snapshot_cached())
                 except Exception:  # noqa: BLE001
                     payload = json.dumps({"error": "snapshot failed"})
                 if payload != last:
@@ -809,6 +829,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._local_only():
             return self._json({"error": "refused: cross-origin/non-localhost POST"}, 403)
+        try:
+            return self._dispatch_post()
+        except Exception as e:  # noqa: BLE001 — a handler bug / dirty input must never kill the thread
+            return self._json({"error": f"internal error: {e}"}, 500)
+
+    def _dispatch_post(self):
         body = self._body()
         p = self.path
         if p.startswith("/api/directive"):
