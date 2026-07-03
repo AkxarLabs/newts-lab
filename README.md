@@ -8,7 +8,7 @@ The repo is domain-agnostic by design: nothing here assumes a particular researc
 
 **Prerequisites** — install these once:
 
-- [Claude Code](https://claude.com/claude-code) — the first-class agent driver, and an [Anthropic API key](https://console.anthropic.com/) (`export ANTHROPIC_API_KEY=…`). Any agent that reads `AGENTS.md` also works (Codex, Cursor, …) — see the note below.
+- [Claude Code](https://claude.com/claude-code) — the first-class agent driver. Authenticate it **either** by signing in with a Claude Pro/Max subscription **or** with an [Anthropic API key](https://console.anthropic.com/). Any agent that reads `AGENTS.md` also works (Codex, Cursor, …) — see the note below.
 - [uv](https://docs.astral.sh/uv/) — runs the lab's Python tools and docs with zero project setup (no separate `pip install` step).
 - git.
 
