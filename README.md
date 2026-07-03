@@ -4,25 +4,32 @@ A self-contained **research lab for an AI agent**. This repo holds the procedure
 
 The repo is domain-agnostic by design: nothing here assumes a particular research area. Domain focus (e.g., small language models) lives in the ideas and projects you create with it.
 
-## Documentation
+## Quick start
 
-Full docs live in [docs/](docs/) and serve as a styled site (search, nav, warm theme) with zero installation:
+**Prerequisites** — install these once:
+
+- [Claude Code](https://claude.com/claude-code) — the first-class agent driver, and an [Anthropic API key](https://console.anthropic.com/) (`export ANTHROPIC_API_KEY=…`). Any agent that reads `AGENTS.md` also works (Codex, Cursor, …) — see the note below.
+- [uv](https://docs.astral.sh/uv/) — runs the lab's Python tools and docs with zero project setup (no separate `pip install` step).
+- git.
+
+**1. Create your lab from the template.** On GitHub click **Use this template**, or `npx degit <this-repo> my-lab`, or plain `git clone`. Each lab is a *living instance* — its state grows in files the template never touches.
+
+**2. Glance at `lab/config.yaml`.** The one key worth checking on day one is `lab.projects_root` (default `../newts-lab-projects` — a sibling folder where project repos are created). Everything else ships with sane defaults.
+
+**3. Start your first session:**
 
 ```bash
-uv run --with properdocs --with mkdocs-material properdocs serve     # → http://127.0.0.1:8000
+cd my-lab
+claude                         # start the agent
+> /setup-lab                   # first time only: ~5-min interview, writes lab/config.yaml
+> /ideate <your direction>     # e.g. efficient small-LM post-training
 ```
 
-Start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md).
+`/setup-lab` configures the lab interactively; then the agent walks the lifecycle, pausing at the PI gates for your sign-off. **New here? Read [Getting started](docs/getting-started.md)** for the full walkthrough, on-ramps for every starting point, and a "typical week."
 
-## Use as a template
+> **Other agents (Codex, Cursor, …):** the lab is drivable by anything that reads `AGENTS.md` (the root file carries the full protocol and how to follow the `.claude/skills/` procedures manually). Claude Code gets them as native slash-command skills.
 
-Newts' Lab is a **template repository** — each lab is a living instance:
-
-1. **Use this template** on GitHub (or `npx degit`/clone) → your own lab repo.
-2. Check `lab/config.yaml` (`lab.projects_root` is the one key worth a look on day one).
-3. `claude` → `/lab-status` → `/ideate <your direction>`. Lab state starts empty and compounds from there.
-
-To pull template improvements into a running lab later: `git remote add template <url>` and cherry-pick — your lab state lives in files the template never touches.
+To pull template improvements into a running lab later: `git remote add template <url>` and cherry-pick — your lab state never conflicts.
 
 ## The model
 
@@ -106,18 +113,9 @@ newts-lab/
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
-## Quickstart
+## Autonomy levels
 
-```bash
-cd newts-lab
-claude        # start the agent
-> /setup-lab                  # first time: 5-minute configuration interview
-> /ideate efficient small-LM post-training   # or any direction
-```
-
-The agent takes it from there, pausing at the PI gates (proposal approval, full-scale launch, finalization) for your sign-off.
-
-**Pick your level of autonomy** — same procedures, same gates, different pace ([full guide](docs/autonomy.md)):
+Same procedures, same gates, different pace — pick per session ([full guide](docs/autonomy.md)):
 
 - **Manual** — invoke each procedure yourself (`/ideate` → `/lit-review` → …).
 - **Stage-gated** — `/advance`: one lifecycle stage per command, verified by you between stages.
@@ -127,6 +125,17 @@ The agent takes it from there, pausing at the PI gates (proposal approval, full-
 Already have an idea, a design, or a codebase? `/adopt` enters the lifecycle mid-stream.
 Have a fixed target (a benchmark, a leaderboard, a KPI)? `/compete` spins off a
 target-driven project that chases the metric directly — no paper pipeline.
+
+## Docs & dashboard
+
+Both run with zero installation via `uv`:
+
+```bash
+uv run --with properdocs --with mkdocs-material properdocs serve   # styled docs site → http://127.0.0.1:8000
+uv run --with pyyaml python dashboard/serve.py                     # optional live dashboard → http://127.0.0.1:8787
+```
+
+Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight — it's optional; delete `dashboard/` and nothing else changes.
 
 ## Contributing
 
