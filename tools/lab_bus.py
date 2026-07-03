@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -52,7 +53,7 @@ KINDS = {
     "slot_acquired", "slot_released", "slot_denied", "slot_reclaimed",
     "cycle", "review_verdict", "paper_compiled", "kill", "writeback",
     "frontier_expand", "decision_revisit", "replan", "approach_ideate",
-    "escalation", "score_read", "agent_launched", "agent_finished",
+    "escalation", "escalation_resolved", "score_read", "agent_launched", "agent_finished",
     "directive_seen", "directive_done", "directive_blocked", "note",
 }
 
@@ -144,7 +145,11 @@ def cmd_inbox(args) -> int:
         if d.get("kind") == "command":
             cargs = d.get("args") or {}   # not `args`: would shadow the function's argparse namespace
             label = f"[command: {d.get('action')}]" + (f" {cargs}" if cargs else "") + (f" — {label}" if label else "")
-        print(f"- [{d['_status']}] `{d['id']}` ({d.get('ts', '?')}) — {label}")
+        # a directive aimed at a specific idea/project (recorded in `target`) may sit on the hub bus
+        # when that idea has no project dir yet — name it so the agent knows what it applies to.
+        tgt = (d.get("target") or "").strip()
+        aim = f" →{tgt}" if tgt and tgt not in ("hub", SOURCE) else ""
+        print(f"- [{d['_status']}] `{d['id']}`{aim} ({d.get('ts', '?')}) — {label}")
     print("\nAct within the protocol, then ack: `lab_bus.py ack <id> done --evidence <path>`.")
     print("A `command` directive is a structured PI instruction (start_loop, set_mode, park, …);")
     print("a command that would touch a frozen/PI-owned setting is acked `blocked` — never a gate.")
@@ -156,10 +161,16 @@ def cmd_escalate(args) -> int:
     (a fired headline-reopen trigger, a blocked-on-frozen need, a FULL run outside the
     envelope) — it is NEVER gate approval. It lands on this repo's bus; the hub merges
     per-project events, so `/lab-status` and the dashboard surface it without a reverse
-    channel."""
-    emit("escalation", idea=args.idea, detail=args.detail,
-         data={"severity": args.severity} if args.severity else None)
-    print(f"escalation raised on {SOURCE} bus: {args.detail or ''}")
+    channel. It carries a stable id so it can later be RESOLVED (once handled) and stop
+    lighting the dashboard's 'needs you' — resolve with the printed command."""
+    eid = "e-" + os.urandom(6).hex()   # random, not clock-derived: two escalations in the same
+    #                                    (coarse-resolution) tick must never collide onto one id
+    data = {"id": eid}
+    if args.severity:
+        data["severity"] = args.severity
+    emit("escalation", idea=args.idea, detail=args.detail, data=data)
+    print(f"escalation raised (id={eid}) on {SOURCE} bus: {args.detail or ''}")
+    print(f"when handled, resolve it: lab_bus.py emit escalation_resolved --data ref={eid}")
     return 0
 
 

@@ -65,6 +65,38 @@ def test_cmd_escalate_emits_escalation_kind(hub, monkeypatch):
     assert rows[-1]["data"]["severity"] == "high"
 
 
+def test_cmd_escalate_stamps_resolvable_id(hub, monkeypatch):
+    # the escalation carries a stable id so it can later be RESOLVED (escalation_resolved --data ref=<id>)
+    m, bus = _mod(hub, monkeypatch)
+    args = types.SimpleNamespace(idea="demo", detail="blocked on frozen", severity=None)
+    m.cmd_escalate(args)
+    assert str(_lines(bus)[-1]["data"]["id"]).startswith("e-")
+
+
+def test_cmd_escalate_ids_are_unique_within_a_second(hub, monkeypatch):
+    # two identical escalations emitted in the same (coarse-resolution) tick must NOT collide onto one
+    # id — else resolving one would resolve both. Random ids, not clock-derived.
+    m, bus = _mod(hub, monkeypatch)
+    args = types.SimpleNamespace(idea="demo", detail="same detail", severity=None)
+    m.cmd_escalate(args)
+    m.cmd_escalate(args)
+    ids = [r["data"]["id"] for r in _lines(bus) if r["kind"] == "escalation"]
+    assert len(ids) == 2 and ids[0] != ids[1]
+
+
+def test_escalation_resolved_is_a_known_kind(hub, monkeypatch):
+    m, _ = _mod(hub, monkeypatch)
+    assert "escalation_resolved" in m.KINDS   # so `emit escalation_resolved --data ref=<id>` is accepted
+
+
+def test_inbox_shows_directive_target(hub, monkeypatch, capsys):
+    # M2: a directive aimed at a specific idea that landed on this bus names its target in the inbox
+    m, bus = _mod(hub, monkeypatch)
+    _write_directives(bus, [{"id": "d-001", "ts": "t", "text": "park it", "target": "spark-1"}])
+    m.cmd_inbox(types.SimpleNamespace())
+    assert "spark-1" in capsys.readouterr().out
+
+
 # ── directive resolution ──────────────────────────────────────────────────────
 
 def _write_directives(bus, records):
