@@ -80,6 +80,18 @@ def test_backend_and_engineering_skills_ship(tmp_path):
     assert (dest / ".codex" / "agents" / "experiment-runner.toml").exists()
 
 
+def test_scaffold_resolves_role_files_from_hub_tiers(tmp_path, monkeypatch):
+    """The round-2 fix: a spawned project's role files are RESOLVED from the hub tier ladder at spawn
+    (mechanically, no agent tokens) — so a headless agent in the project runs its subagents at the
+    resolved tier, not the template's neutral `inherit`."""
+    monkeypatch.setattr(S.role_sync, "_cfg_agents",
+                        lambda: {"tiers": {"standard": "sonnet"}, "runner_model": "standard"})
+    dest, res = _scaffold(tmp_path)
+    assert "resolved_roles" in res
+    md = (dest / ".claude" / "agents" / "experiment-runner.md").read_text(encoding="utf-8")
+    assert "model: sonnet\n" in md   # runner_model=standard -> tiers.standard=sonnet, baked at spawn
+
+
 # ── overwrite refusal ─────────────────────────────────────────────────────────
 
 def test_runs_nonempty_helper(tmp_path):

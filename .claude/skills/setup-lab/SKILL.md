@@ -34,13 +34,26 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
 - Oversight level (`oversight.level`): `standard` (recommended) or `strict` (more
   overseer checks, more tokens)?
 
+**Paper venue**
+- Target venue for papers — `writing.venue` (`neurips` default · `icml` · `iclr` · `aclarr` ·
+  `aaai` · `generic`) + the matching `writing.page_limit` (neurips/iclr 9 · icml/aclarr 8 · aaai
+  7). Both PI-owned; a wrong default silently shapes every paper.
+
 **Models & keys**
-- Different models for subagent roles (`agents.*`), or `inherit` everywhere (default)?
-  → if non-default, also set the `model:` frontmatter of the mapped `.claude/agents/<role>.md`
-  (reviewer_model→fresh-context-reviewer, runner_model→experiment-runner,
-  overseer_model→overseer); `critic_model` maps to no file (inline subagents — can't apply).
+- The **model ladder** — three tiers the roles draw from: `strong` (strongest, judgment-heavy),
+  `standard` (workhorse), `fast` (cheap, high-volume). Ask the PI for each (e.g. `opus` / `sonnet`
+  / `haiku`, or a full pinned id; `inherit` everywhere is the safe default and ships unchanged) →
+  write `agents.tiers.{strong,standard,fast}`. The per-role keys (`reviewer_model`, `runner_model`,
+  `overseer_model`, `critic_model`) default to sensible tier names and render into the mapped
+  `.claude/agents/<role>.md` `model:` frontmatter + the Codex `.codex/agents/*.toml` via
+  `tools/role_sync.py` (a role key may also name a model directly). `critic_model` (ideation
+  critics / scoping advocates) **is** applied on Claude Code — `/ideate` and `/scope` pass the
+  tier-resolved model as each critic/advocate's per-spawn Task `model` (unless it resolves to
+  `inherit`); other backends run them at the session model.
 - **Headless launch backend** (matters once you run programmatic / multi-project autonomy —
-  `agents.programmatic`): which backend — `claude` (default), `codex`, or `opencode` (the last two
+  `agents.programmatic`): the master switch `agents.programmatic.enabled` ships **false** and stays
+  false unless the PI explicitly opts in here — everything below only matters once it's on. Which
+  backend — `claude` (default), `codex`, or `opencode` (the last two
   are **optional installs**, needed only if selected) — and the per-backend **default model +
   reasoning effort**? Ship-defaults are claude `claude-opus-4-8` at `--effort high` and codex
   `gpt-5.5` at `medium`; opencode ships blank (set a `provider/model` slug like
@@ -64,6 +77,14 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   → if yes, create `lab/SYSTEM.md` from `templates/SYSTEM.md` with their answers
   (PI-owned; copied into every spawned project, where it binds the agent like
   control.yaml). If no, skip — absence means "no constraints beyond the protocol".
+
+**Dashboard (optional)**
+- The lab ships a localhost dashboard — `uv run python dashboard/serve.py` (binds `dashboard.port`,
+  default `8787`) — for watching runs, the bus, and gates live. It can deep-link into your editor
+  via the `dashboard.editor` scheme, and because it drives localhost the PI can sign **Gate 1 /
+  Gate 2** from it directly; **Gate 3 is never signable from the dashboard** — finalization is
+  always done in a session. Both keys are agent-readable local cosmetics; mention it and move on if
+  unused.
 
 ## 2. Apply & verify
 

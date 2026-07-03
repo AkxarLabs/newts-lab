@@ -38,7 +38,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `scoping.advocate_subagents` | false | true | true |
 | `critique.ensemble_own_draft` | 3 | 5 | 7 |
 | `experiment.num_drafts` / `max_parallel_subagents` | 2 / 1 | 3 / 3 | 5 / 6 |
-| `agents.{reviewer,runner,overseer}_model` | sonnet / haiku / sonnet | inherit | opus |
+| `agents.tiers` (strong / standard / fast) | sonnet / haiku / haiku | inherit | opus / opus / sonnet |
 | `agents.programmatic.max_concurrent` | 1 | 3 | 6 |
 | **`experiment.multi_seed_n` (floor)** | **3** | **3** | **5** |
 | **`oversight.level` (floor)** | **standard** | **standard** | **strict** |
@@ -56,7 +56,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor `/critique-paper` substitutes into every reviewer prompt |
 | `critique.accept_bar` | 7 | PI | median Overall at/above this (+ zero unrefuted fatal flaws) = accept |
 | `critique.max_review_cycles` | 3 | PI | revision cycles before escalating to the PI |
-| `critique.claim_rel_tol` | 0.001 | agent-readable | relative tolerance `tools/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) |
+| `critique.claim_rel_tol` | 0.001 | PI | relative tolerance `tools/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) — a rigor knob, mechanically PI-owned via the `critique.` prefix |
 | `experiment.max_debug_depth` | 3 | agent-readable | consecutive debug attempts before record-and-move-on |
 | `experiment.num_drafts` | 3 | agent-readable | distinct solution lines `/improve` maintains |
 | `experiment.max_parallel_subagents` | 3 | agent-readable | concurrent worktree subagents (project may override) |
@@ -68,12 +68,15 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
-| `dashboard.port` | 8787 | PI | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) |
-| `dashboard.editor` | `vscode` | PI | editor for the dashboard's "open in editor" deep-links: `vscode` \| `cursor` \| `vscodium` \| `windsurf` \| `none` (local-only `<scheme>://file/<abs>`) |
-| `agents.reviewer_model` | inherit | PI | model for `fresh-context-reviewer` (applied via the `model:` frontmatter of `.claude/agents/fresh-context-reviewer.md`; `inherit` \| `sonnet` \| `opus` \| `haiku`) |
-| `agents.runner_model` | inherit | PI | model for `experiment-runner` (→ its agent-file frontmatter) |
-| `agents.critic_model` | inherit | PI | ideation critics / scoping advocates — **inline subagents with no agent file, so this value cannot be applied** (they run at the session model) |
-| `agents.overseer_model` | inherit | PI | model for `overseer` (→ its agent-file frontmatter) |
+| `dashboard.port` | 8787 | agent-readable | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) — a cosmetic local-only knob (no `dashboard.` prefix in `configure.py`) |
+| `dashboard.editor` | `vscode` | agent-readable | editor for the dashboard's "open in editor" deep-links: `vscode` \| `cursor` \| `vscodium` \| `windsurf` \| `none` (local-only `<scheme>://file/<abs>`) |
+| `agents.tiers.{strong,standard,fast}` | inherit | PI | the model **ladder** — each tier names a model: an alias (`sonnet` \| `opus` \| `haiku` \| `fable`), a full pinned id (e.g. `claude-haiku-4-5-20251001`), or `inherit` (the session model). The per-role keys below resolve through this at render time; all three ship `inherit` → **zero behavior change until you set a ladder** |
+| `agents.reviewer_model` | strong | PI | model for `fresh-context-reviewer` (→ its `.claude/agents/*.md` `model:` frontmatter). Value: tier name (`strong` \| `standard` \| `fast`) \| alias (`sonnet` \| `opus` \| `haiku` \| `fable`) \| full pinned id \| `inherit` |
+| `agents.runner_model` | standard | PI | model for `experiment-runner` (→ its agent-file frontmatter). Same value set as `reviewer_model` |
+| `agents.critic_model` | standard | PI | ideation critics / scoping advocates — inline subagents. On **Claude Code**, `/ideate` and `/scope` resolve it mechanically with `role_sync.py resolve critic` and pass it (tier-resolved) as each critic/advocate's per-spawn Task `model`, unless it resolves to `inherit`; backends without a per-spawn model override run them at the session model. Same value set as `reviewer_model` |
+| `agents.overseer_model` | standard | PI | model for `overseer` (→ its agent-file frontmatter). Same value set as `reviewer_model` |
+| `agents.{reviewer,runner,overseer}_effort` | `""` | PI | per-role reasoning effort for the three NAMED roles: `""` = the model's default (nothing is rendered), else `low` \| `medium` \| `high` \| `xhigh` \| `max` — rendered by `role_sync` into **both** the Claude `effort:` frontmatter and the Codex `model_reasoning_effort` |
+| `agents.critic_effort` | `""` | PI | reasoning effort for the inline critics/advocates. `""` = inherit the session; else a level as above, which `/ideate` and `/scope` read via `role_sync.py resolve critic` and pass as each critic's per-spawn Task `effort` |
 | `oversight.level` | standard | PI | `off` · `standard` (author-response + analysis checks, autopilot Gate-1 self-approval, phantom-experiment sweep, accept-unlocking refutations) · `strict` (+ grading meta-review fatal flaws, loop progress claims) |
 | `ideation.candidates` | 8 | agent-readable | initial candidates `/ideate` generates |
 | `ideation.reflection_rounds` | 2 | agent-readable | reflect→evolve cycles per surviving idea |
@@ -84,6 +87,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `ideation.in_project_rounds` | 1 | agent-readable | max in-project ideation rounds before stopping |
 | `ideation.in_project_approval` | `pi` | PI | **campaign-only** knob — only modulates approval *under a signed `/autopilot` campaign*; **manual `--in-project` runs are always PI-gated**. `pi` = surviving approaches queue at `/propose` for Gate 1; `campaign_auto` = under a campaign, auto-approve within delegation bounds + overseer `support` |
 | `discuss.max_research_minutes` | 15 | agent-readable | cap on live web/arXiv/S2 research *during* a `/discuss` session (discussion fuel, not the lit review); `0` = Q&A only |
+| `litreview.max_minutes` | 45 | agent-readable | cap on `/lit-review`'s live literature-search phase (`0` = unbounded); a capped sweep logs what it did NOT cover. The `/discuss` analogue is `discuss.max_research_minutes` |
 | `scoping.options_per_decision` | 3 | agent-readable | alternatives generated per design-decision branch in `/scope` |
 | `scoping.advocate_subagents` | true | agent-readable | one parallel advocate per option argues its case |
 | `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
@@ -92,6 +96,32 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
 | `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
 | `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
+
+### Which tier for which task
+
+The rule of thumb is **volume × judgment**: high-volume, retrieval-shaped work goes `fast`; well-specified execution goes `standard`; low-volume, judgment-heavy verification goes `strong`.
+
+| LLM work | Knob | Suggested tier |
+|---|---|---|
+| paper reviewers + meta-review (`/critique-paper`, `/review-paper`) | `agents.reviewer_model` | `strong` |
+| experiment variants (`/improve`, `/experiment`, `/research-loop`) | `agents.runner_model` | `standard` |
+| overseer verification checks | `agents.overseer_model` | `standard` (`strong` under `oversight.level: strict`) |
+| ideation critics / scoping advocates (`/ideate`, `/scope`) | `agents.critic_model` | `standard` |
+| headless project agents (`tools/agent_runner.py`) | `agents.programmatic.backends.*` | task-dependent; pin full ids |
+| the orchestrating session itself (generation, analysis, drafting, `/discuss`) | — none; it runs at YOUR session model | your seat IS the expensive tier |
+
+Example (Anthropic ladder): `tiers: {strong: opus, standard: sonnet, fast: haiku}` with the session on fable/opus. Aliases drift to newer models over time; pin a full id (e.g. `claude-haiku-4-5-20251001`) when reproducibility across months matters — same rule as `agents.programmatic.backends.claude.model`.
+
+The tier ladder is **Claude-native**: it drives the `model:` frontmatter of Claude Task subagents (and, for critics/advocates, the per-spawn Task model). **Codex** subagent *models* are not driven by `agents.tiers` — pin a per-role Codex model in `agent-roles/<role>.yaml` `codex.model` if you need one (absent → the Codex CLI/`config.toml` default). Only per-role reasoning **effort** is shared across both backends (the `*_effort` keys render into both the Claude `effort:` frontmatter and the Codex `model_reasoning_effort`).
+
+### Per-project agent models (the spawn-time snapshot)
+
+A spawned project ships **real** role files — `<project>/.claude/agents/<role>.md`. The mechanics (all done in code, no agent tokens):
+
+- The shipped **project template** (`templates/project/.claude/agents/`) is always rendered **tier-neutral** (`model: inherit`, no effort line) — so a PI's local `agents.tiers` choice can never leak into the committed, public template.
+- At **spawn**, `tools/spawn_project.py` calls `role_sync.render_project(<dest>)`, which resolves each role key through the hub's *current* `agents.tiers` and writes the concrete `model:` / `effort:` into the new project's role files — a **spawn-time snapshot**. So a project (and any headless agent working inside it, which spawns its own `experiment-runner` / `overseer` subagents) runs them at the resolved tier, not the neutral `inherit`.
+- The **project-layer override is editing that frontmatter directly** in the project's own role file — deliberately *not* a `control.yaml agents:` block (a second config path would add a resolution layer for a rare need).
+- Re-running the hub's `/configure` does **not** retro-edit already-spawned projects (re-run `role_sync.py render-project <dir>` to refresh one); a project's role models are whatever its role files say.
 
 ### Headless launch backends — `agents.programmatic.*` (optional, PI-owned, OFF by default)
 
@@ -146,6 +176,8 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | `target.scoring.external` | **PI** | `true` if obtaining a score **sends data outside the lab** (then `score_envelope` authorizes it) |
 | `target.scoring.score_command` | agent | the task's own score command for `read_back: command` — **any tool** (CLI/HTTP/grader); placeholders `{file}{run_id}{note}{name}`. No host assumed |
 | `target.score_envelope.*` | **PI only** | the outward-action envelope for external reads (`per_day_max`, `total_max`, `pi_signed`, `signed_via`) — a Gate-2 analogue enforced by `scripts/report_score.py` |
+| `target.spec` | PI | path of the PI-owned brief (default `TARGET.md`) — the agent reads it, never edits it |
+| `target.final_run_id` | **PI only** | the PI-selected winning run id — **Gate 3 for a target-driven project**: `tools/guard.py finalization` requires it before the project can reach `final` (the PI selecting the final output is never automated) |
 
 !!! warning "PI-owned keys"
     `/configure` refuses to change PI-owned keys unless the request comes explicitly from you in-session. `gate2_envelope.pi_signed: true` and `eval_frozen: false` carry PI authority by hard rule, not convention — set directly when you ask in-session, or (for `pi_signed`) transitively under a PI-signed `/autopilot` campaign brief, which records its path in `signed_via`. The agent never sets them on its own initiative.

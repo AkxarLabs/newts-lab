@@ -22,15 +22,38 @@ compute:                        # ── CROSS-project run coordination · PI-ow
   stale_slot_minutes: 360       # slots older than this are presumed crashed and reclaimed
 
 agents:                         # ── subagent settings · PI-owned ──
-                                # Applied via the `model:` frontmatter of .claude/agents/<role>.md
-                                # (inherit = session model; or sonnet | opus | haiku). /configure and
-                                # /setup-lab keep that frontmatter in sync when these change.
-  reviewer_model: inherit       # → .claude/agents/fresh-context-reviewer.md
-  runner_model: inherit         # → .claude/agents/experiment-runner.md
-  overseer_model: inherit       # → .claude/agents/overseer.md
-  critic_model: inherit         # ideation critics / scoping advocates — these are INLINE
-                                # (general-purpose) subagents with no agent file, so this value
-                                # cannot be applied; they always run at the session model.
+                                # Two layers: `tiers` is the PI's model ladder; the per-role keys
+                                # name a tier (or a model directly). Both resolve through
+                                # tools/role_sync.py into the `model:`/`effort:` frontmatter of
+                                # .claude/agents/<role>.md (and the .codex/agents/*.toml). /configure
+                                # and /setup-lab keep them in sync; changing a tier re-renders every
+                                # role that names it.
+  tiers:                        # ── the model ladder · PI-owned ──
+                                # Each tier = a model: an alias (sonnet | opus | haiku | fable), a
+                                # FULL pinned id (e.g. claude-haiku-4-5-20251001 — pin when alias
+                                # drift matters, same rule as the headless backends below), or
+                                # `inherit` (the session model). Ships `inherit` for all three, so
+                                # behavior is unchanged until you set your ladder (see
+                                # docs/configuration.md → "Which tier for which task").
+    strong: inherit             # judgment-heavy, low-volume — paper reviewers, meta-review
+    standard: inherit           # well-specified execution — runner, overseer, critics, advocates
+    fast: inherit               # high-volume / retrieval-shaped work
+  reviewer_model: strong        # → fresh-context-reviewer. Each per-role key is a tier name
+  runner_model: standard        # → experiment-runner.       (strong|standard|fast), a model
+  overseer_model: standard      # → overseer.                alias/id, or `inherit` — resolved via
+                                #                            agents.tiers at render time.
+  critic_model: standard        # ideation critics / scoping advocates. INLINE subagents (no agent
+                                # file): on Claude Code the spawning skill (/ideate, /scope) passes
+                                # this — tier-resolved — as each critic's per-spawn Task `model`;
+                                # backends without a per-spawn model override run them at the session
+                                # model. (Historically a no-op; now applied on Claude Code.)
+  reviewer_effort: ""           # per-role reasoning effort (low|medium|high|xhigh|max). "" = the
+  runner_effort: ""             # model's default. For the three NAMED roles, role_sync renders it into
+  overseer_effort: ""           # BOTH the Claude `effort:` frontmatter and the Codex
+                                # `model_reasoning_effort` (overriding the role-yaml default).
+  critic_effort: ""             # ideation critics / scoping advocates (INLINE, no role file): /ideate
+                                # and /scope read it via `role_sync.py resolve critic` and pass it as
+                                # each critic's per-spawn Task effort. "" = inherit the session.
 
   programmatic:                 # ── headless TOP-LEVEL agents launched by tools/agent_runner.py ──
                                 # The hub orchestrator can spawn an independent headless session
@@ -137,7 +160,7 @@ autopilot:                      # ── /autopilot campaign defaults · PI-owne
                                 # flag, autopilot stays single-session and works one project at a time.
                                 # TRAINING is still capped by compute.max_concurrent_runs either way.
 
-oversight:                      # ── confabulation circuit-breakers (overseer agent) ──
+oversight:                      # ── confabulation circuit-breakers (overseer agent) · PI-owned ──
   level: standard               # off | standard | strict
   # standard: verifies author-response verdicts (/review-paper), headline interpretations
   #           (/analyze), /autopilot Gate-1 self-approvals, the /review-paper phantom-
@@ -150,7 +173,7 @@ ideation:                       # ── /ideate pipeline depth ──
   reflection_rounds: 2          # reflect -> evolve cycles per surviving idea
   critics_per_idea: 2           # parallel fresh-context critic subagents in each reflect pass
   enable_combination: true      # propose crossovers of complementary survivors
-  in_project: true              # allow `/ideate --in-project <slug>`: divergent METHOD-approach
+  in_project: true              # PI-owned kill-switch. allow `/ideate --in-project <slug>`: divergent METHOD-approach
                                 # ideation WITHIN a project's frozen problem/eval/test/seeds/budgets
                                 # (output = candidate approaches, NOT experiments; never a new
                                 # lifecycle state — active -> active). false = capability off.
@@ -178,13 +201,18 @@ discuss:                        # ── /discuss collaborative human↔agent se
                                 # session (it's discussion fuel, not the lit review). 0 = no live
                                 # research (Q&A only). The session itself is human-paced and unbounded.
 
+litreview:                      # ── /lit-review depth ──
+  max_minutes: 45               # cap on the live literature-search phase (0 = unbounded). The
+                                # analogue for /discuss is discuss.max_research_minutes. A capped
+                                # sweep logs what it did NOT cover rather than running forever.
+
 scoping:                        # ── /scope deliberation depth ──
   options_per_decision: 3       # alternatives generated per design-decision branch
   advocate_subagents: true      # one parallel advocate per option argues its strongest case
   max_open_questions: 3         # decisions allowed to stay open (resolved by pilots) before /propose
 
 writing:                        # ── /write-paper · /make-figures ──
-  venue: neurips                # target paper format · project control.yaml may override per-project.
+  venue: neurips                # PI-owned. target paper format · project control.yaml may override per-project.
                                 # /write-paper copies the whole templates/paper/venues/<venue>/ dir —
                                 # the official .sty/.bst are VENDORED there, so it compiles offline (no
                                 # fetch). See that dir's README.md for versions/limits/anonymity + how to
@@ -195,7 +223,7 @@ writing:                        # ── /write-paper · /make-figures ──
                                 #   aclarr   · 2-col, acl_natbib, ~8pp (ACL Rolling Review)
                                 #   aaai     · 2-col, aaai2026.bst, ~7pp (anon submission, strict format)
                                 #   generic  · venue-agnostic article (templates/paper/main.tex)
-  page_limit: 9                 # target main-text pages; over-length trimmed gradually. Set this to the
+  page_limit: 9                 # PI-owned. target main-text pages; over-length trimmed gradually. Set this to the
                                 # chosen venue's limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) — it is
                                 # the authoritative knob; `venue` selects the template, not the count.
   max_reflection_rounds: 3      # verifier-gated revision rounds (gains plateau ~3, regress after)
@@ -223,7 +251,7 @@ experiment:                     # ── experiment loop defaults · project-ove
 loop:                           # ── /research-loop defaults · project-overridable via control.yaml ──
   no_progress_backoff_cycles: 3 # consecutive no-progress cycles before the loop stops
   monitor_poll_seconds: 300     # cadence for zero-token status.py polling
-  mode: execute                 # execute | explore — the DEFAULT loop mode (the LOOP_BRIEF's
+  mode: execute                 # PI-owned (with loop.explore_*). execute | explore — the DEFAULT loop mode (the LOOP_BRIEF's
                                 # `Mode:` field overrides per-loop). execute = run the approved
                                 # plan then stop; explore = autonomous in-project iteration —
                                 # frontier expansion + reopening non-headline design decisions,

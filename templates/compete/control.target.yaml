@@ -47,3 +47,9 @@ target:
     total_max: 0                # max external score reads before the deadline (0 = none authorized)
     pi_signed: false            # PI authority only — set by the PI (/compete interview or /configure)
     signed_via: null            # provenance: null = the PI signed directly; else the campaign-brief path
+
+  # Gate 3 (finalization) for a target-driven project — the PI SELECTS the winning run whose
+  # output goes to the hidden/final split. Never automated.
+  final_run_id: null            # PI only. the selected winning run id; set by the PI at /finalize.
+                                # tools/guard.py finalization requires it before a target-driven
+                                # project can reach `final`.

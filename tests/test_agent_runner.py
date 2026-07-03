@@ -525,6 +525,12 @@ def test_campaign_cap_is_min_of_two(hub, monkeypatch):
     assert m._campaign_cap(m._prog_cfg(), 1) == 1       # explicit override wins
 
 
+def test_campaign_cap_defaults_to_one_without_autopilot(hub, monkeypatch):
+    """No autopilot: section -> ap_cap falls back to 1 (fail-safe sequential), so the cap is 1, not 2."""
+    m, _ = _setup(hub, monkeypatch)   # _CONFIG has no autopilot: block; prog.max_concurrent=2
+    assert m._campaign_cap(m._prog_cfg(), None) == 1   # min(ap default 1, prog 2)
+
+
 def test_launch_many_respects_concurrency_cap(hub, monkeypatch):
     import threading
     m = _multi_setup(hub, monkeypatch, ["p1", "p2", "p3", "p4"], max_concurrent=2, ap_cap=2)

@@ -26,6 +26,13 @@ def _proposal(hub, slug, text):
     return p
 
 
+def _idea(hub, slug, text):
+    p = hub.root / "studies" / slug / "IDEA.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
 # ── spawn (Gate 1) ────────────────────────────────────────────────────────────
 
 def test_spawn_blocked_without_proposal(hub, monkeypatch):
@@ -45,6 +52,30 @@ def test_spawn_ok_with_gate1_marker(hub, monkeypatch):
     _proposal(hub, "demo", "# Proposal\n\nPI Gate 1 approved.\n")
     hub.add_registry_row("demo", state="proposal", project="-")
     assert m.c_spawn(types.SimpleNamespace(slug="demo")) == 0
+
+
+def test_spawn_target_driven_idea_both_markers_ok(hub, monkeypatch):
+    # /compete path: no proposal.md, but IDEA.md carries N/A (target-driven) + the Gate-1 marker.
+    m = _mod(hub, monkeypatch)
+    _idea(hub, "kaggle", "# Idea\n\n- Novelty: N/A (target-driven)\n"
+                         "Gate 1 (compute authorization): approved — 2026-07-03, per /compete interview\n")
+    assert m.c_spawn(types.SimpleNamespace(slug="kaggle")) == 0
+
+
+def test_spawn_target_driven_idea_missing_gate_blocked(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _idea(hub, "kaggle", "# Idea\n\n- Novelty: N/A (target-driven)\n")  # no Gate-1 marker line
+    assert m.c_spawn(types.SimpleNamespace(slug="kaggle")) == 1
+
+
+def test_spawn_paper_path_ignores_target_driven_idea_fallback(hub, monkeypatch):
+    # proposal.md present but unsigned -> blocked, even if IDEA.md has the target-driven markers:
+    # the fallback only fires when there is NO proposal at all.
+    m = _mod(hub, monkeypatch)
+    _proposal(hub, "demo", "# Proposal\nNo approval here.\n")
+    _idea(hub, "demo", "N/A (target-driven)\nGate 1: approved\n")
+    hub.add_registry_row("demo", state="proposal", project="-")
+    assert m.c_spawn(types.SimpleNamespace(slug="demo")) == 1
 
 
 # ── full-run (Gate 2 envelope) ────────────────────────────────────────────────
@@ -206,6 +237,20 @@ def test_frozen_blocked_when_block_missing(hub, monkeypatch):
 
 def _ns(slug, frm, to):
     return types.SimpleNamespace(slug=slug, frm=frm, to=to)
+
+
+def test_legal_transition_pure_oracle():
+    # legal_transition is pure (no I/O) — the shared oracle hub_writeback/process_writebacks reuse.
+    m = load("guard")
+    assert m.legal_transition("proposal", "active") is True     # single forward step
+    assert m.legal_transition("writing", "active") is True      # documented back-edge
+    assert m.legal_transition("active", "killed") is True       # kill from anywhere
+    assert m.legal_transition("seed", "parked") is True         # park from anywhere
+    assert m.legal_transition("active", "active") is True       # idempotent same-state re-assert (no-op)
+    assert m.legal_transition("seed", "final") is False         # skips stages
+    assert m.legal_transition("active", "proposal") is False    # backward, not a documented edge
+    assert m.legal_transition("bogus", "active") is False       # unknown from-state
+    assert m.legal_transition("parked", "active") is False      # un-park is a deliberate PI-manual move
 
 
 def test_state_legal_forward(hub, monkeypatch):
@@ -453,6 +498,19 @@ def test_decisions_open_exempt(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _write_decisions(hub, "demo", [("D-001", "OPEN", "no", None)])
     assert m.c_decisions(_dec_ns("demo")) == 0
+
+
+def test_decisions_target_driven_exempt(hub, monkeypatch):
+    import yaml
+    # A target-driven project never runs /scope: no decisions.md is expected, so the guard PASSES (0)
+    # rather than emitting the "run /scope first" WARN (2).
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("kaggle")
+    ctl = yaml.safe_load((proj / "control.yaml").read_text(encoding="utf-8"))
+    ctl["target"] = {"active": True}
+    (proj / "control.yaml").write_text(yaml.safe_dump(ctl), encoding="utf-8")
+    hub.add_registry_row("kaggle", state="active", project=str(proj))
+    assert m.c_decisions(_dec_ns("kaggle")) == 0
 
 
 # ── plan-trace (PLAN.md row provenance) ───────────────────────────────────────

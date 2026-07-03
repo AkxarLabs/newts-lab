@@ -8,14 +8,20 @@ description: Deep project scoping — enumerate every key design decision, delib
 Input: idea in state `lit-review` with a novel/incremental verdict. Output:
 `studies/<slug>/decisions.md` (from `templates/idea/decisions.md`) with every key design
 decision deliberated and settled — the raw material `/propose` builds on. Depth knobs:
-`scoping.*`; advocate model: `agents.critic_model`.
+`scoping.*`. **Advocate model + effort** (Claude Code): resolve them once, mechanically —
+`uv run --with pyyaml python tools/role_sync.py resolve critic` prints `model=<m>` / `effort=<e>`
+(from `agents.critic_model`/`critic_effort`, tier-resolved) — pass `model` as each advocate Task
+spawn's `model` (skip if `inherit`) and `effort` as its `effort` (skip if empty). Don't re-derive
+from config by hand. Backends without a per-spawn override run advocates at the session model.
 
 Set state → `scoping` (frontmatter + registry).
 
 ## 1. Enumerate the decision branches
 
-Read `IDEA.md` (with the reflection summary) and `lit-review.md` (especially
-positioning). List every decision that shapes the project — typically:
+Read `IDEA.md` (with the reflection summary) and `lit-review.md` (especially positioning) — and,
+if present, the `/discuss scope` session doc(s) in `studies/<slug>/sessions/`, the PI-settled
+starter decision list; seed the branch enumeration from it rather than re-deriving decisions the
+PI already framed. List every decision that shapes the project — typically:
 
 - **Problem framing** — exact question, scope boundaries, what's explicitly out
 - **Dataset / benchmark** — which, what split policy, licensing/availability
@@ -35,10 +41,10 @@ For each decision:
 
 1. Generate `scoping.options_per_decision` genuinely distinct options (an option you'd
    never pick is filler — replace it).
-2. **If `scoping.advocate_subagents`**: spawn one advocate subagent per option in
-   parallel (fresh context: the hypothesis, the lit positioning, the option — not your
-   leaning). Charge: "argue the strongest case for this option AND name its two most
-   likely failure modes." Otherwise argue each side yourself, in writing, before choosing.
+2. **If `scoping.advocate_subagents`**: spawn one advocate subagent per option in parallel (model+effort
+   from `role_sync.py resolve critic` — see the header note; fresh context: the hypothesis, the lit
+   positioning, the option — not your leaning). Charge: "argue the strongest case for this option AND
+   name its two most likely failure modes." Otherwise argue each side yourself, in writing, before choosing.
 3. Decide with a written rationale, an explicit **rejected-because** line per
    alternative, and a **revisit-if** condition (what evidence reopens this — written so a
    later session can check it mechanically against run artifacts).

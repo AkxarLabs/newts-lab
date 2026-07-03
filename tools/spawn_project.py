@@ -27,6 +27,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse the role_sync resolver
+import role_sync  # noqa: E402 — render_project resolves the hub tiers into the new project's role files
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -125,8 +128,14 @@ def scaffold(dest: Path, *, hub: Path, slug: str, title: str, date: str,
         odir = hub / "templates" / overlay
         if odir.exists():
             _copy_tree(odir, dest, subs)
+    # Resolve the hub's model TIERS into this project's role files (mechanically — no agent tokens):
+    # the template ships them NEUTRAL (`model: inherit`); this bakes in a spawn-time snapshot so the
+    # project (and any headless agent working in it) runs its named-role subagents at the resolved
+    # tier, not the neutral default. A later hub /configure does NOT retro-edit already-spawned projects.
+    resolved_roles = role_sync.render_project(dest)
     return {"files": files, "dest": str(dest), "project_type": project_type,
-            "has_type_card": card.exists(), "domain": domain, "overlay": overlay}
+            "has_type_card": card.exists(), "domain": domain, "overlay": overlay,
+            "resolved_roles": resolved_roles}
 
 
 def _runs_nonempty(dest: Path) -> bool:

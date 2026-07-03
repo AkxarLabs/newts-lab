@@ -22,7 +22,7 @@ parallelism, and how strong the models are:
 |---|---|---|---|
 | ideas / critics / reviewers | few, 1 critic | the defaults | many, 3 critics, 7 reviewers |
 | parallel subagents | 1 (serial) | 3 | 6 |
-| per-role models | sonnet / haiku | session default | opus |
+| model tiers (strong / standard / fast) | sonnet / haiku / haiku | session default | opus / opus / sonnet |
 | **multi_seed_n (floor)** | **3** | **3** | **5** |
 | **oversight (floor)** | **standard** | **standard** | **strict** |
 

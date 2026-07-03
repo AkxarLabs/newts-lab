@@ -25,8 +25,9 @@ discuss:
 oversight:
   level: standard
 agents:
-  reviewer_model: inherit  # session model (the default)
-  runner_model: inherit
-  overseer_model: inherit
+  tiers: {strong: inherit, standard: inherit, fast: inherit}  # reset the ladder to the session model
+  reviewer_model: strong   # lab defaults, in tier form (all tiers = inherit -> the session model)
+  runner_model: standard
+  overseer_model: standard
   programmatic:
     max_concurrent: 3

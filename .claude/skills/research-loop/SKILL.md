@@ -55,10 +55,14 @@ clear a stale `.bus/.loop-active`); act on what it reports, then confirm:
    tried-and-abandoned), `runs/registry.jsonl`, `git log -20`, the Loop Log (+ `SYSTEM.md`
    once at loop start, if present — machine constraints bind every cycle), and the directive
    inbox (`scripts/lab_bus.py inbox` — a PI directive is acted on within the protocol, then
-   acked). Never repeat a tried variant.
+   acked). Never repeat a tried variant. **Once at loop start**, also run
+   `uv run --with pyyaml python tools/guard.py frozen <slug>` — confirm the frozen set
+   (eval/test/seeds/budgets + PI-owned blocks) is intact before the loop spends budget.
    **In `explore` mode, also read `studies/<slug>/decisions.md`** and check each settled
    decision's `Revisit if:` trigger (machine form: its `Revisit predicate:`) against the
-   artifacts — a fired trigger queues a `revisit` action (step 2f).
+   artifacts — a fired trigger queues a `revisit` action (step 2f). (Target-driven projects
+   have no `decisions.md` — skip the revisit scan entirely; frontier expansion is the explore
+   mechanism there.)
 2. **Pick the next action** by fixed priority:
    a. unfinished planned experiments in `PLAN.md` (in order),
    b. ablation-plan rows,
@@ -146,7 +150,8 @@ FULL) + the runs about to launch ≤ `full_runs` (a sweep counts as N runs); boo
    result — one line + evidence pointer).
 3. Hub write-back (hard rule 11): notebook entry, registry update (state AND a fresh
    "next action" — never leave the loop's stale one), promote durable insights to
-   `lab/knowledge/`.
+   `lab/knowledge/`. Then run `uv run --with pyyaml python tools/guard.py writeback <slug>`
+   (WARN-only — confirms the rule-11 write-back landed).
 4. Leave a "PI morning report" at the top of the notebook entry: best result, decisions
    queued for the PI (unauthorized FULL runs, budget flags), and the recommended next
    command.

@@ -181,3 +181,59 @@ def test_verify_hashes_fail_on_tamper(hub, monkeypatch):
     status, detail = m.audit_claim(claim, paper, 1e-3, False, True)
     assert status == "FAIL"
     assert "hash mismatch" in detail
+
+
+# ── novelty scan (--scan-novelty: the discovery-vs-rediscovery gate) ───────────
+
+def _tex(pdir, body: str):
+    (pdir / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n" + body + "\\end{document}\n",
+        encoding="utf-8")
+
+
+def test_novelty_scan_flags_only_unbacked_priority_claims(hub, monkeypatch):
+    """A priority/superiority claim with no \\cite or % Cnnn/Nnnn backing is flagged; the same
+    claim backed by a cite or an annotation is not; a non-priority 'first row' is left alone."""
+    m = _mod(hub, monkeypatch)
+    pdir = _paper(hub, "demo", [])
+    _tex(pdir,
+         "We achieve state-of-the-art accuracy here.\n"             # L3 unbacked -> flag
+         "Our method outperforms all prior work \\cite{a2024}.\n"   # L4 \cite -> ok
+         "This is the first method to do X. % N001 lit-review\n"    # L5 %N -> ok
+         "An unprecedented gain over baselines. % C1\n"             # L6 %C -> ok
+         "The first row of the table shows the layout.\n")          # L7 not a priority phrase
+    findings = m.novelty_scan(pdir)
+    assert len(findings) == 1
+    assert findings[0].startswith("L3") and "state-of-the-art" in findings[0]
+
+
+def test_novelty_scan_clean_when_backed_or_softened(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    pdir = _paper(hub, "demo2", [])
+    _tex(pdir, "We report strong accuracy \\cite{b2024} and a clear improvement.\n")
+    assert m.novelty_scan(pdir) == []
+
+
+def test_novelty_scan_empty_without_main_tex(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    pdir = _paper(hub, "demo3", [])
+    assert m.novelty_scan(pdir) == []
+
+
+def test_scan_novelty_flag_sets_exit_2_via_main(hub, monkeypatch, capsys):
+    """End-to-end: a passing claim + one unbacked novelty claim -> main() returns 2 (WARN),
+    and without --scan-novelty the same paper is clean (0)."""
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo", control=False)
+    hub.write_metrics(proj, "runs/r0/metrics.json", {"val_acc": 0.913})
+    hub.add_registry_row("demo", project=str(proj))
+    claim = {"id": "C001", "project": "demo", "numbers": ["0.913"],
+             "metric": "val_acc", "artifacts": ["runs/r0/metrics.json"]}
+    pdir = _paper(hub, "demo", [claim])
+    _tex(pdir, "We report state-of-the-art results. % C001\n"       # measurement/coverage clean
+               "We are the first to achieve this.\n")               # unbacked priority -> WARN
+    rel = "studies/demo/paper"
+    monkeypatch.setattr("sys.argv", ["audit_claims.py", rel, "--no-coverage", "--scan-novelty"])
+    assert m.main() == 2
+    monkeypatch.setattr("sys.argv", ["audit_claims.py", rel, "--no-coverage"])
+    assert m.main() == 0  # novelty not scanned unless opted in

@@ -21,6 +21,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse guard's transition oracle
+import guard  # noqa: E402 — legal_transition() is the single source of truth for legal state moves
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -84,6 +87,10 @@ def _set_state(slug: str, state: str) -> str:
                 continue
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if len(cells) >= len(_COLS) and cells[0] == slug:
+                if not guard.legal_transition(cells[2], state):
+                    # refuse an illegal lifecycle move WITHOUT writing; the return is inside the try so
+                    # the `finally` below still unlinks the lock (an illegal request can't wedge it).
+                    return f"illegal transition {cells[2]} -> {state} (guard.py state)"
                 cells[2] = state
                 if len(cells) > 6:
                     cells[6] = _today()
@@ -126,16 +133,23 @@ def main() -> int:
     if args.question:
         _promote("OPEN-QUESTIONS.md", args.slug, args.question, args.evidence or "")
         did.append("question")
+    state_failed = False
     if args.state:
         r = _set_state(args.slug, args.state)
-        did.append(f"state→{args.state}" if r == "ok" else f"state FAILED ({r})")
+        if r == "ok":
+            did.append(f"state→{args.state}")
+        else:
+            did.append(f"state FAILED ({r})")
+            state_failed = True                        # a refused/failed state write must be visible
 
     if not did:
         print("[hub_writeback] nothing to write — give "
               "--notebook/--finding/--failure/--question/--state")
         return 1
     print("hub write-back done: " + ", ".join(did))
-    return 0
+    # Non-zero when the requested state change was refused (illegal transition) or failed, so an
+    # exit-code-driven caller never mistakes an unchanged registry for an advanced one.
+    return 1 if state_failed else 0
 
 
 if __name__ == "__main__":

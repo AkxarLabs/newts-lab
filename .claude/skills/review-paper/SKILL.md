@@ -13,12 +13,18 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
 1. **Figures in sync:** `uv run --with pyyaml python tools/sync_figures.py <slug> --check` —
    a stale (project regenerated, not re-synced) or hand-edited hub figure is a blocking FAIL;
    re-run `tools/sync_figures.py <slug>` then re-check before continuing.
-2. Run `uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper --check-commits --rel-tol <critique.claim_rel_tol>`.
+2. Run `uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper --check-commits --scan-novelty --rel-tol <critique.claim_rel_tol>`.
    - Any **FAIL** → return to `/write-paper` with the failure table. Part B does not run.
      (FAIL now includes the completeness scan: any numeral in main.tex body prose with no
      `% CNNN` annotation — a number with no claims entry.)
    - Any **MANUAL** → verify each by hand against the stated derivation now; an
      unresolvable MANUAL is a FAIL.
+   - Any **Novelty WARN** (`--scan-novelty` — a priority/superiority claim: SOTA / "first to" /
+     "outperforms all" / unprecedented, with no `\cite` or `% Cnnn/Nnnn` backing) → resolve each
+     now: cite the closest prior work it's positioned against, add a `% Nnnn` lit-review pointer,
+     or soften the wording. An unresolved one is a FAIL — this is the discovery-vs-rediscovery
+     gate (the field's most public failures were rediscovery shipped as discovery). It must trace
+     to the `/lit-review` novelty verdict, exactly as a number must trace to an artifact.
    - **Paper-integrity audits (blocking)** — mechanize what used to be manual step-5 checks:
      - `tools/audit_multiseed.py studies/<slug>/paper` — headline claims (`headline: true`) carry ≥
        `seeds.multi_seed_n` distinct seeds (hard rule 6); a `multi_seed_waiver` routes to MANUAL.
@@ -85,7 +91,15 @@ written; that's exactly the bias the ensemble exists to remove.
    - Only ACCEPT items remain → state → `writing` with that worklist.
    - Meta-review **accept** AND zero unrefuted fatal flaws → **PI Gate 3**: present the
      PDF + meta-review for final sign-off (state stays `internal-review` until then;
-     `/finalize` sets `final`); on approval, next action "/finalize".
+     `/finalize` sets `final`); on approval, next action "/finalize". On the PI's approval,
+     record it durably: append a line `Gate 3: approved — <date>` (with any PI note) to
+     `studies/<slug>/paper/reviews/review-N.md` **or** write
+     `studies/<slug>/paper/gate3-approval.md` — this is the recorded marker
+     `guard.py finalization` accepts, so a **later PI session's** mechanical `/finalize`
+     proceeds on the recorded approval without re-prompting for `--pi-approved`. This does
+     **not** let a headless/launched agent finalize: Gate 3 is never delegated
+     (`AUTOSCIENTIST_NO_GATE3` hard-stops those agents at `internal-review` regardless of any
+     marker) — the marker only records a PI approval that already happened in a session.
    - After `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
 5. Update registry + notebook with scores, the triage tally, and the route. Emit a bus
    event: `tools/lab_bus.py emit review_verdict --idea <slug> --detail "median <X>, <route>"`

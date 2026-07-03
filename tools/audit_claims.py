@@ -1,4 +1,4 @@
-"""Mechanically audit a paper's claims.yaml against run artifacts.
+r"""Mechanically audit a paper's claims.yaml against run artifacts.
 
     uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3]
         [--check-commits] [--verify-hashes]
@@ -31,7 +31,14 @@ never see. Each is a FAIL. NOTE: bare integers are deliberately NOT scanned (yea
 section/figure numbers would swamp it with false positives); annotate integer headline
 results with `% CNNN` yourself — the scan won't force it.
 
-Exit codes: 0 all PASS/PASS-derived · 2 MANUAL items remain · 1 any FAIL.
+Novelty scan (--scan-novelty, opt-in): flag priority/superiority claims (state-of-the-art,
+"first to", "outperforms all", unprecedented, best-known) in main.tex body prose that carry
+NO backing on their line — no `\cite` positioning them against the prior work they claim to
+beat, and no `% Cnnn/Nnnn` annotation (a traced number, or a `% Nnnn` lit-review novelty
+pointer). Each is a WARN (exit 2): the discovery-vs-rediscovery gate. Cite the closest prior
+work, add the lit-review pointer, or soften the wording — never ship an unbacked "we're first".
+
+Exit codes: 0 all PASS/PASS-derived · 2 MANUAL items remain or unbacked novelty claims · 1 any FAIL.
 """
 
 from __future__ import annotations
@@ -61,6 +68,24 @@ _INT_RE = re.compile(r"(?<![\d.eE])\d+(?![\d.])")
 _METRIC_WORDS = re.compile(
     r"\b(samples?|tasks?|parameters?|params?|wins?|runs?|seeds?|points?|percentile|score|accuracy|"
     r"acc|loss|F1|episodes?|steps?|examples?|tokens?|images?|trials?|queries?)\b", re.I)
+# Structural macros whose bracketed/braced args must not be scanned as prose (shared by all scans).
+_STRUCT_MACRO_RE = re.compile(
+    r"\\(?:includegraphics|include|input|usepackage|cite\w*|ref|label|url|href|figure|table|"
+    r"equation|theorem|subsubsection|subsection|section)"
+    r"(?![a-zA-Z])\s*(?:\[[^\]]*\])?\s*(?:\{[^}]*\})?")
+# --scan-novelty opt-in: a PRIORITY/SUPERIORITY claim (SOTA / first-to / outperforms-all /
+# unprecedented). These are the "we discovered something new" assertions that ship OUTSIDE the lab;
+# each must be BACKED on its line by a \cite (positioning it against the prior work it claims to beat)
+# or a % Cnnn/Nnnn annotation (a traced number, or a lit-review novelty pointer). An unbacked one is
+# the field's most public failure mode: rediscovery mislabeled as discovery.
+_PRIORITY_RE = re.compile(
+    r"\b(?:state[- ]of[- ]the[- ]art|SOTA|"
+    r"(?:the\s+)?first\s+(?:to\b|method|work|approach|system|model|paper|study|algorithm|framework)|"
+    r"for\s+the\s+first\s+time|"
+    r"outperforms?\s+all|surpass(?:es)?\s+all|beats?\s+all|"
+    r"best[- ](?:known|performing)|"
+    r"unprecedented)", re.I)
+_NOVELTY_BACKING_RE = re.compile(r"\\cite|%.*\b[CN]\d+\b")
 
 
 def projects_root() -> Path:
@@ -103,6 +128,24 @@ def resolve_project_dir(claim: dict) -> Path:
     return _registry_project_path(slug) or (projects_root() / slug)
 
 
+def _body_lines(main_tex: Path):
+    """Yield (lineno, raw, code) for each main.tex line after \\begin{document}: `raw` is the
+    verbatim line (annotations live in its comment); `code` has the comment split off and
+    structural macros (\\cite/\\ref/\\includegraphics/…) with their [..]/{..} args stripped so
+    their internals aren't scanned as prose — yet a measurement/claim SHARING a line with a
+    \\cite is still seen. Shared by every main.tex prose scan (DRY)."""
+    in_body = False
+    for i, raw in enumerate(main_tex.read_text(encoding="utf-8-sig").splitlines(), 1):
+        if "\\begin{document}" in raw:
+            in_body = True
+            continue
+        if not in_body:
+            continue
+        m = re.search(r"(?<!\\)%", raw)
+        code = raw[:m.start()] if m else raw
+        yield i, raw, _STRUCT_MACRO_RE.sub(" ", code)
+
+
 def coverage_scan(paper_dir: Path, scan_integers: bool = False) -> list[str]:
     """Flag measurement-like numerals in main.tex body prose with no `% CNNN` annotation.
     Returns a list of 'Lnn: <line>' findings (empty = clean / no main.tex). With scan_integers, also
@@ -110,25 +153,9 @@ def coverage_scan(paper_dir: Path, scan_integers: bool = False) -> list[str]:
     main_tex = paper_dir / "main.tex"
     if not main_tex.exists():
         return []
-    findings, in_body = [], False
-    for i, raw in enumerate(main_tex.read_text(encoding="utf-8-sig").splitlines(), 1):
-        if "\\begin{document}" in raw:
-            in_body = True
-            continue
-        if not in_body:
-            continue
-        # Split code from comment (first unescaped %); the annotation, if any, is in the comment.
-        m = re.search(r"(?<!\\)%", raw)
-        code = raw[:m.start()] if m else raw
+    findings = []
+    for i, raw, code in _body_lines(main_tex):
         annotated = bool(CLAIM_ANNOT_RE.search(raw))
-        # Strip structural macros + their (optional [..] and {..}) args so their internal numbers
-        # don't count — but a prose measurement SHARING a line with \ref/\cite/\label IS still
-        # checked (don't `continue` the whole line, or a measurement hides behind a citation).
-        code = re.sub(
-            r"\\(?:includegraphics|include|input|usepackage|cite\w*|ref|label|url|href|figure|table|"
-            r"equation|theorem|subsubsection|subsection|section)"
-            r"(?![a-zA-Z])\s*(?:\[[^\]]*\])?\s*(?:\{[^}]*\})?",
-            " ", code)
         if MEASUREMENT_RE.search(code) and not annotated:
             findings.append(f"L{i}: {raw.strip()[:90]}")
             continue
@@ -136,6 +163,24 @@ def coverage_scan(paper_dir: Path, scan_integers: bool = False) -> list[str]:
             ints = [int(t) for t in _INT_RE.findall(code)]
             if any(not (1900 <= v <= 2099) for v in ints):   # a non-year integer near a result word
                 findings.append(f"L{i} [int]: {raw.strip()[:90]}")
+    return findings
+
+
+def novelty_scan(paper_dir: Path) -> list[str]:
+    """--scan-novelty: flag priority/superiority claims (SOTA / first-to / outperforms-all /
+    unprecedented / best-known) in main.tex body prose that carry NO backing on their line —
+    no \\cite positioning them against the prior work they claim to beat, and no `% Cnnn/Nnnn`
+    annotation (a traced number or a lit-review novelty pointer). Each is a claim of discovery
+    that may be rediscovery — the author must cite the closest prior work, add a `% Nnnn`
+    lit-review pointer, or soften the wording. Returns 'Lnn [novelty ...]' findings."""
+    main_tex = paper_dir / "main.tex"
+    if not main_tex.exists():
+        return []
+    findings = []
+    for i, raw, code in _body_lines(main_tex):
+        m = _PRIORITY_RE.search(code)
+        if m and not _NOVELTY_BACKING_RE.search(raw):
+            findings.append(f"L{i} [novelty '{m.group(0).strip()}']: {raw.strip()[:80]}")
     return findings
 
 
@@ -282,6 +327,9 @@ def main() -> int:
                         help="skip the main.tex unannotated-numeral completeness scan")
     parser.add_argument("--scan-integers", action="store_true", dest="scan_integers",
                         help="also flag bare integers near result words (excludes years/refs)")
+    parser.add_argument("--scan-novelty", action="store_true", dest="scan_novelty",
+                        help="flag priority/superiority claims (SOTA/first-to/outperforms-all) in "
+                             "main.tex with no \\cite or % Cnnn/Nnnn backing (WARN, exit 2)")
     args = parser.parse_args()
 
     paper_dir = (HUB / args.paper_dir) if not Path(args.paper_dir).is_absolute() else Path(args.paper_dir)
@@ -320,11 +368,20 @@ def main() -> int:
         for f in coverage:
             print(f"- {f}")
 
+    novelty = novelty_scan(paper_dir) if args.scan_novelty else []
+    if novelty:
+        print(f"\n**Novelty WARN — {len(novelty)} priority/superiority claim(s) in main.tex with no "
+              f"`\\cite` or `% Cnnn/Nnnn` backing (cite the closest prior work, add a `% Nnnn` "
+              f"lit-review pointer, or soften):**")
+        for f in novelty:
+            print(f"- {f}")
+
     print(f"\n{counts['PASS']} pass · {counts['PASS-derived']} derived · "
-          f"{counts['MANUAL']} manual · {counts['FAIL']} fail · {len(coverage)} uncovered")
+          f"{counts['MANUAL']} manual · {counts['FAIL']} fail · {len(coverage)} uncovered"
+          + (f" · {len(novelty)} novelty" if args.scan_novelty else ""))
     if counts["FAIL"] or coverage:
         return 1
-    if counts["MANUAL"]:
+    if counts["MANUAL"] or novelty:
         return 2
     return 0
 

@@ -156,6 +156,37 @@ def test_hub_writeback_nothing_to_do_returns_1(hub, monkeypatch):
     assert _run_main(m, monkeypatch, "--slug", "demo") == 1
 
 
+def test_hub_writeback_illegal_state_transition_refused(hub, monkeypatch, capsys):
+    # A --state move that guard.legal_transition rejects must NOT rewrite the registry, and must
+    # surface as a NONZERO exit (never a silent success an exit-code-driven caller mistakes for done).
+    m = _wb_mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    before = (hub.lab / "REGISTRY.md").read_text(encoding="utf-8")
+    rc = _run_main(m, monkeypatch, "--slug", "demo", "--state", "seed")  # active->seed is illegal
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "illegal transition active -> seed" in out
+    assert (hub.lab / "REGISTRY.md").read_text(encoding="utf-8") == before  # unchanged
+
+
+def test_hub_writeback_same_state_reassert_is_idempotent_ok(hub, monkeypatch):
+    # Re-asserting the current state (an active->active timestamp bump) is a legal no-op, not a refusal.
+    m = _wb_mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    assert _run_main(m, monkeypatch, "--slug", "demo", "--state", "active") == 0
+
+
+def test_hub_writeback_legal_state_transition_applies(hub, monkeypatch):
+    m = _wb_mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="proposal", project=str(proj))
+    assert _run_main(m, monkeypatch, "--slug", "demo", "--state", "active") == 0  # proposal->active legal
+    reg = (hub.lab / "REGISTRY.md").read_text(encoding="utf-8")
+    assert "| demo |" in reg and "| active |" in reg
+
+
 # ── process_writebacks ────────────────────────────────────────────────────────
 
 def _pw_mod(hub, monkeypatch):

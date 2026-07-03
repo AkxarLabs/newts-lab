@@ -90,8 +90,14 @@ Campaign rules (in addition to every standing hard rule):
 - **All ordinary machinery applies unchanged** — slots, watchdogs, ledgers, oversight checks,
   author-response triage, claims audits. A campaign is normal operation minus the wait for the PI,
   never a relaxed mode.
+- **Preflight every state transition** in the per-idea pipeline: before writing a registry state
+  change, run `uv run --with pyyaml python tools/guard.py state <slug> <from> <to>` (exit 1 =
+  illegal — stop, don't force it; the guard confirms, never grants).
 - Kill criteria fire exactly as in interactive mode; a night that kills 3 ideas cheaply and ships
-  1 strong draft beats 4 weak drafts.
+  1 strong draft beats 4 weak drafts. On each idea's kill or completion, run
+  `uv run --with pyyaml python tools/guard.py evolve <slug>` — a BLOCK means the kill left no
+  CORRECTION (or a results-stage exit no RECIPE); write the FAILURES/FINDINGS + NOTES entry before
+  taking the next idea.
 - NEEDS-EXPERIMENT review items are followed within remaining budget; otherwise queued.
 - **Explore-mode pivots** (if the campaign authorized `explore`): a project loop may reopen
   `Headline: no` decisions and expand the frontier autonomously within its envelope. A

@@ -82,8 +82,11 @@ Each round, in order — and stop early when a round changes nothing substantive
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
 2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
    match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
-   `tools/audit_claims.py studies/<slug>/paper --rel-tol <critique.claim_rel_tol>` (completeness scan —
-   every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check)
+   `tools/audit_claims.py studies/<slug>/paper --scan-novelty --rel-tol <critique.claim_rel_tol>` (completeness scan —
+   every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check,
+   plus a **novelty WARN**: any priority/superiority claim — SOTA / "first to" / "outperforms all" / unprecedented —
+   with no `\cite` or `% Cnnn/Nnnn` backing gets cited against the closest prior work, a `% Nnnn` lit-review
+   pointer, or softened *now* — it hard-blocks at `/review-paper` + `/finalize`)
    — after EVERY round, not just at the end. Revision is when fabrication happens: phantom
    experiments hide in ablation/analysis subsections. Any number the audit can't trace gets
    deleted, not defended. Also run the three paper-integrity audits as a **WARN** here (they
@@ -115,5 +118,7 @@ because revision is when fabrication happens.
 ## 6. Hand off
 
 Update registry (state → `internal-review`, next action "/review-paper") + notebook.
+Emit `uv run python tools/lab_bus.py emit paper_compiled --idea <slug> --detail "<pages>pp, <claims> claims"`
+(drives the dashboard's writing-phase rendering).
 Report: PDF path, page count, claim count, citation-verification summary, and anything
 you could not support with artifacts (which is therefore not in the text).

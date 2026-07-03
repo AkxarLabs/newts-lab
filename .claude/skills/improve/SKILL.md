@@ -73,6 +73,8 @@ identically, and a `Headline: yes` reopen escalates the same way (below).
 6. **revisit** (reopen a design decision — "discard a pre-conceived idea") — when artifacts
    satisfy the **`Revisit if:`** trigger (machine form: its **`Revisit predicate:`**, shape-checked
    by `guard.py decisions <slug>`) of a settled decision in the idea's `decisions.md`.
+   (Target-driven projects have no `decisions.md` — skip the revisit scan entirely; frontier
+   expansion is the explore mechanism there.)
    - **Boundary check first (mechanical):** if that decision is `Headline: yes`, this is the
      escalation boundary — do NOT execute the reopen as an in-place re-plan. This is the entry
      point to **divergent method-ideation, not a dead end**: route to `/ideate --in-project <slug>`

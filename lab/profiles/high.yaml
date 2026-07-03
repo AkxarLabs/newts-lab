@@ -27,8 +27,9 @@ discuss:
 oversight:
   level: strict            # RAISED — grade every fatal flaw, audit loop progress
 agents:
-  reviewer_model: opus     # strongest model on generation AND verification
-  runner_model: opus
-  overseer_model: opus
+  tiers: {strong: opus, standard: opus, fast: sonnet}  # strongest everywhere; even fast stays capable (sonnet)
+  reviewer_model: strong   # strongest model (opus) on generation AND verification
+  runner_model: standard   # standard tier is opus here too — no cheap tier at high budget
+  overseer_model: standard
   programmatic:
     max_concurrent: 6

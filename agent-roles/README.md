@@ -33,7 +33,8 @@ render target in `role_sync.py`, not editing the generated files.
 ## Roles
 
 The three roles rendered here — `fresh-context-reviewer`, `experiment-runner`, `overseer` — are the
-lab's named, isolated subagents. Ideation critics and scoping advocates run **inline at the session
-model** (subagent rule 7: `agents.critic_model` cannot bind a separate role file), so they have no
-role file; materializing them as delegated subagents would be a future PI choice, adding two specs
-here.
+lab's named, isolated subagents. Ideation critics and scoping advocates have **no role file** (they
+are inline general-purpose subagents), so `agents.critic_model` cannot bind them a `.claude/agents/`
+file; instead `/ideate` and `/scope` apply it on Claude Code as each critic/advocate's **per-spawn
+Task `model`** (tier-resolved via `agents.tiers`), and other backends run them at the session model
+(subagent rule 7). Materializing them as named role files here would be a future PI choice.

@@ -48,6 +48,19 @@ BACK_EDGES = {("analysis", "active"), ("writing", "active"), ("internal-review",
               ("writing", "analysis"), ("internal-review", "writing"), ("analysis", "writing")}
 
 
+def legal_transition(frm: str, to: str) -> bool:
+    """The one transition oracle: is a registry state move frm→to legal? park/kill are reachable from
+    ANY state; a same-state re-assert (frm==to, e.g. an active→active timestamp bump) is an idempotent
+    no-op, never an illegal move; otherwise it must be a single forward step in LIFECYCLE or a
+    documented BACK_EDGE. Pure (no I/O), so the write-back tools import and reuse it instead of
+    re-encoding the table. (Un-parking a `parked`/`killed` row is a deliberate PI-manual action — the
+    oracle refuses it here so it can't happen silently in an automated write-back.)"""
+    if to in ("parked", "killed") or frm == to:
+        return True
+    return (frm in LIFECYCLE and to in LIFECYCLE
+            and (LIFECYCLE.index(to) == LIFECYCLE.index(frm) + 1 or (frm, to) in BACK_EDGES))
+
+
 def _today() -> str:
     return time.strftime("%Y-%m-%d")
 
@@ -104,9 +117,20 @@ def _verdict(code: int, msg: str) -> int:
 # ── commands ──────────────────────────────────────────────────────────────────
 
 def c_spawn(a) -> int:
-    """Gate 1 must be recorded before /spawn-project spends compute."""
+    """Gate 1 must be recorded before /spawn-project spends compute. The paper path records it in
+    proposal.md; a target-driven (/compete) project has no proposal — its Gate-1 compute authorization
+    is the /compete interview, marked in IDEA.md — so accept that as the equivalent Gate-1 record."""
     prop = HUB / "studies" / a.slug / "proposal.md"
     if not prop.exists():
+        # Target-driven fallback: no proposal, but IDEA.md carries BOTH the `N/A (target-driven)` record
+        # AND the /compete Gate-1 (compute authorization) marker → the same mechanical stop, satisfied.
+        idea = HUB / "studies" / a.slug / "IDEA.md"
+        if idea.exists():
+            itext = idea.read_text(encoding="utf-8-sig")
+            if re.search(r"N/A \(target-driven\)", itext) \
+                    and re.search(r"gate\s*1.*(approved|authorized)", itext, re.I):
+                return _verdict(0, f"target-driven Gate-1 (compute authorization) marker found — "
+                                   f"clear to /spawn-project {a.slug}")
         return _verdict(1, f"no proposal at studies/{a.slug}/proposal.md — run /propose first")
     if not re.search(r"gate ?1 approved|PI Gate 1|gate1_approved", prop.read_text(encoding="utf-8-sig"), re.I):
         return _verdict(1, f"Gate 1 not recorded in studies/{a.slug}/proposal.md — needs PI sign-off before spawn")
@@ -305,9 +329,7 @@ def c_state(a) -> int:
         return _verdict(1, f"registry state is '{row['state']}', not '{a.frm}' — refusing the {a.frm}→{a.to} transition")
     if a.to in ("parked", "killed"):
         return _verdict(0, f"{a.frm}→{a.to} (park/kill is allowed from any state)")
-    legal = (a.frm in LIFECYCLE and a.to in LIFECYCLE
-             and (LIFECYCLE.index(a.to) == LIFECYCLE.index(a.frm) + 1 or (a.frm, a.to) in BACK_EDGES))
-    if not legal:
+    if not legal_transition(a.frm, a.to):
         return _verdict(1, f"{a.frm}→{a.to} is not a legal lifecycle transition")
     return _verdict(0, f"{a.frm}→{a.to} is legal — now update REGISTRY.md to match")
 
@@ -461,7 +483,14 @@ def c_decisions(a) -> int:
     """Every SETTLED, non-headline decision must carry a machine-checkable **Revisit predicate:**
     so an explore loop's revisit trigger is parseable, not free prose. (The overseer still
     adjudicates whether it actually fired; this only shape-checks the trigger.) Headline:yes
-    decisions are exempt; OPEN decisions are resolved by a pilot, not revisited."""
+    decisions are exempt; OPEN decisions are resolved by a pilot, not revisited. Target-driven
+    (/compete) projects have no headline-hypothesis boundary and never run /scope — no decisions.md
+    is expected, so they're exempt entirely."""
+    row = _row(a.slug)
+    pdir = _project_dir(a.slug, row)
+    target = (_load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
+    if bool(target.get("active")):
+        return _verdict(0, f"target-driven — no decisions.md expected for {a.slug}")
     dfile = HUB / "studies" / a.slug / "decisions.md"
     if not dfile.exists():
         return _verdict(2, f"no decisions.md at studies/{a.slug}/ — run /scope first")

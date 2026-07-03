@@ -28,8 +28,9 @@ discuss:
 oversight:
   level: standard          # FLOOR — never below standard
 agents:
-  reviewer_model: sonnet   # weaker models on a low budget — but verification stays mid-tier
-  runner_model: haiku      # cheapest model for running variants (where errors are cheap)
-  overseer_model: sonnet
+  tiers: {strong: sonnet, standard: haiku, fast: haiku}  # cheap ladder; the strong tier stays mid (sonnet)
+  reviewer_model: strong   # verification stays mid-tier (sonnet) on a low budget
+  runner_model: standard   # cheapest tier (haiku) for running variants, where errors are cheap
+  overseer_model: strong   # overseer verifies too -> keep it mid-tier
   programmatic:
     max_concurrent: 1

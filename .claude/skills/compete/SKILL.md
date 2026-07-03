@@ -38,12 +38,20 @@ write its outcome into `IDEA.md` (no separate proposal). Establish:
 - **Budgets** — per-stage caps + the **Gate-2 FULL-run envelope** (none = every FULL run waits
   for the PI), and (if external) the **score envelope** (per-day / total external reads).
 
+This interview **is** Gate 1 (compute authorization). Record it in `IDEA.md` (written in §2 step 1)
+as a line `Gate 1 (compute authorization): approved — <date>, per /compete interview`, then run
+`uv run --with pyyaml python tools/guard.py spawn <slug>` before creating the project — the same
+mechanical stop the paper path gets (the guard's target-driven fallback accepts this `IDEA.md`
+marker in place of a `proposal.md`).
+
 ## 2. Scaffold the project
 
 If the PI already has a code repo, branch to §5 *now* (wrap it, don't copy a fresh tree over it).
-Otherwise spawn fresh below. `/compete` does **not** call `tools/guard.py spawn` (that guard
-requires a `studies/<slug>/proposal.md` Gate-1 marker; a target chase has no proposal — Gate 1 is
-recorded in `IDEA.md` per step 1).
+Otherwise spawn fresh below. Create `IDEA.md` (step 1) **first** so its Gate-1 marker exists, then
+run `uv run --with pyyaml python tools/guard.py spawn <slug>` before the rest of the scaffold (per
+§1) — the guard's target-driven fallback accepts the `IDEA.md` Gate-1 marker in place of a
+`studies/<slug>/proposal.md` (a target chase has no proposal; Gate 1 is recorded in `IDEA.md` per
+step 1).
 
 1. `studies/<slug>/IDEA.md` from `templates/idea/`, carrying the PI's target verbatim. Set
    frontmatter `state: active` (leaving it `seed` makes `tools/check_lab.py` flag a mismatch). In

@@ -11,8 +11,9 @@ A profile is a PARTIAL config (only the keys it sets), at lab/profiles/<name>.ya
 (low/medium/high) scale EXPLORATION — agent/subagent counts, parallelism, model strength; engine
 presets (claude-*/codex/opencode/mixed) set the headless backend. `apply` STAMPS each leaf value
 into lab/config.yaml IN PLACE (comments preserved — no YAML round-trip that would strip the
-documented reference file), syncs the .claude/agents/*.md `model:` frontmatter for per-role model
-keys, and REFUSES any profile that lowers an integrity floor:
+documented reference file), re-renders the backend role files via tools/role_sync.py when any
+agents.* key changed (the canonical model:/effort: sync — same path /configure uses), and REFUSES
+any profile that lowers an integrity floor:
     experiment.multi_seed_n >= 3 · oversight.level != off · eval_frozen / gate2_envelope untouched.
 """
 
@@ -25,16 +26,14 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — import the sibling renderer
+import role_sync  # noqa: E402 — canonical model:/effort: sync (replaces the old private regex path)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
-
-# per-role model key -> the .claude/agents/<file>.md it drives (kept in sync on apply, like /configure)
-AGENT_FILE = {"reviewer_model": "fresh-context-reviewer",
-              "runner_model": "experiment-runner",
-              "overseer_model": "overseer"}
 
 # the dotted keys `save --from-current` snapshots (the budget/model/engine-choice surface)
 PROFILE_KEYS = [
@@ -45,7 +44,9 @@ PROFILE_KEYS = [
     "experiment.num_drafts", "experiment.max_parallel_subagents", "experiment.multi_seed_n",
     "loop.explore_max_expansion_rounds", "loop.explore_max_new_lines_per_round",
     "discuss.max_research_minutes", "oversight.level",
+    "agents.tiers.strong", "agents.tiers.standard", "agents.tiers.fast",
     "agents.reviewer_model", "agents.runner_model", "agents.overseer_model",
+    "agents.reviewer_effort", "agents.runner_effort", "agents.overseer_effort",
     "agents.programmatic.backend", "agents.programmatic.max_concurrent",
 ]
 
@@ -160,20 +161,6 @@ def rigor_violations(flat: dict) -> list:
     return out
 
 
-# ── agent frontmatter sync ────────────────────────────────────────────────────
-
-def _sync_agent_model(role_key: str, value) -> bool:
-    f = HUB / ".claude" / "agents" / (AGENT_FILE[role_key] + ".md")
-    if not f.exists():
-        return False
-    text = f.read_text(encoding="utf-8")
-    new = re.sub(r"(?m)^model:[^\n]*$", f"model: {_fmt(value)}", text, count=1)
-    if new != text:
-        f.write_text(new, encoding="utf-8", newline="")   # keep LF on every platform
-        return True
-    return False
-
-
 # ── profiles dir ──────────────────────────────────────────────────────────────
 
 def _profiles_dir() -> Path:
@@ -259,13 +246,12 @@ def cmd_apply(args) -> int:
         else:
             missing.append(".".join(dotted))
     cfg.write_text(text, encoding="utf-8", newline="")   # keep LF on every platform
-    synced = [f"{AGENT_FILE[d[1]]} -> {v}" for d, v in flat.items()
-              if len(d) == 2 and d[0] == "agents" and d[1] in AGENT_FILE and _sync_agent_model(d[1], v)]
     print(f"Applied profile '{args.name}' to lab/config.yaml — {len(changed)} key(s) set.")
     for c in changed:
         print("  " + c)
-    if synced:
-        print("Agent model frontmatter synced: " + "; ".join(synced))
+    if any(d[0] == "agents" for d in flat):   # a tier/role/effort change -> re-render every role file
+        print("Re-rendering backend role files (agents.* changed) via tools/role_sync.py:")
+        role_sync.render()
     if missing:
         print("WARN — keys not present in lab/config.yaml (skipped): " + ", ".join(missing))
     return 0

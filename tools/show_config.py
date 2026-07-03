@@ -71,6 +71,8 @@ SKILL_KEYS = [
     ("loop.mode", "loop.mode", "loop.mode"),
     ("loop.explore_max_expansion_rounds", "loop.explore_max_expansion_rounds", "loop.explore_max_expansion_rounds"),
     ("loop.explore_max_new_lines_per_round", "loop.explore_max_new_lines_per_round", "loop.explore_max_new_lines_per_round"),
+    ("writing.venue", "writing.venue", "writing.venue"),          # PI-owned; per-project override allowed
+    ("writing.page_limit", "writing.page_limit", "writing.page_limit"),
 ]
 
 

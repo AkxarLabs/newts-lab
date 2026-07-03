@@ -41,6 +41,9 @@ The **Next-action column** disambiguates sub-states that share one registry stat
 | `final` / `killed` / `parked` | nothing — report the state | — |
 
 Stage-boundary rules:
+- **Preflight the transition.** Before executing a stage that moves the registry state, run
+  `uv run --with pyyaml python tools/guard.py state <slug> <from> <to>` (exit 1 = illegal —
+  stop and re-read the lifecycle; the guard confirms, never grants).
 - **Target-driven projects** (`/compete`, `control.yaml` `target.active: true`) have **no paper
   lifecycle**: they stay at `active` and the `active` rows above mean "run the next experiment /
   improve / in-project ideate toward the metric" — they do **not** route to `/analyze → writing`.

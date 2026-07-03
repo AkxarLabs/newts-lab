@@ -634,7 +634,7 @@ def _campaign_cap(prog: dict, override) -> int:
     agents.programmatic.max_concurrent), unless the caller overrides."""
     if override:
         return _pos_int(override, 1, 1)
-    ap_cap = _pos_int((_load_yaml(LAB / "config.yaml").get("autopilot") or {}).get("max_concurrent_projects", 2), 2, 1)
+    ap_cap = _pos_int((_load_yaml(LAB / "config.yaml").get("autopilot") or {}).get("max_concurrent_projects", 1), 1, 1)
     prog_cap = _pos_int(prog.get("max_concurrent", 3), 3, 1)
     return min(ap_cap, prog_cap)
 
