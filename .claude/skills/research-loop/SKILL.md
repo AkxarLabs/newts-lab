@@ -86,7 +86,7 @@ clear a stale `.bus/.loop-active`); act on what it reports, then confirm:
    remaining wall-clock (in `explore`: nothing planned AND expansion rounds spent), that IS a
    stop condition (budget exhausted): exit, don't idle.
 3. **Launch** via `scripts/run.py` (or `sweep.py`) as a background process. The runner itself
-   acquires the compute slot (hard rule 13) and enforces Gate 2 for FULL (hard rule 2) before
+   acquires the compute slot (hard rule 13) and enforces PI Gate 2 for FULL before
    starting — a DENIED slot or an out-of-envelope FULL is refused *at launch*, not idleness:
    log it, do CPU-light work (analysis, planning, ledger hygiene), and retry next cycle.
 4. **Monitor at zero tokens:** while the run is alive, the ONLY check is

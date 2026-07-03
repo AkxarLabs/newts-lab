@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: Authorize and run an unattended end-to-end campaign — multiple ideas carried from ideation through experiments to reviewed paper drafts while the PI is away. One setup conversation, then the lab runs itself within a signed brief.
+description: Authorize and run an unattended end-to-end campaign — multiple ideas carried from ideation through experiments to reviewed paper drafts while the PI is away. One setup conversation, then the lab runs itself within a signed brief; re-enter a running campaign with `continue <campaign-file>`.
 ---
 
 # Autopilot Campaign
@@ -100,18 +100,14 @@ Campaign rules (in addition to every standing hard rule):
   taking the next idea.
 - NEEDS-EXPERIMENT review items are followed within remaining budget; otherwise queued.
 - **Explore-mode pivots** (if the campaign authorized `explore`): a project loop may reopen
-  `Headline: no` decisions and expand the frontier autonomously within its envelope. A
-  `Headline: yes` reopen (abandoning the central hypothesis) is **not a dead end** — it routes to
-  **`/ideate --in-project <slug>`** (divergent method-ideation scoped to the frozen set) when
-  `ideation.in_project: true`; **if `false`, that route is OFF — fall back to a successor hub
-  `/ideate`**. Under the campaign the approval default is `ideation.in_project_approval:
-  campaign_auto`: a surviving approach is checked against the campaign's Gate-1 delegation bounds +
-  an overseer `support` pass — **exactly like a Gate-1 self-approval**; within bounds → record the
-  auto-approval and route the approach through `/propose` → `/spawn-project`/re-plan; outside
-  bounds (or `in_project_approval: pi`) → queue for the PI and move on. A surviving approach that
-  changes the headline hypothesis **always** re-enters `/propose` (a mini-proposal) or spawns a
-  successor idea — never experiments on a bare PI note. Emit `approach_ideate` for the round and
-  `replan` when an approach re-plans the project (mid-campaign, not only at exit). Frozen-set
+  `Headline: no` decisions and expand the frontier autonomously within its envelope — the routing
+  rule is `/improve`'s `revisit`/`expand`, don't re-derive it here. A `Headline: yes` reopen routes
+  to **`/ideate --in-project <slug>`** (or, if `ideation.in_project: false`, a successor hub
+  `/ideate`). **Campaign delta:** under `ideation.in_project_approval: campaign_auto` a surviving
+  approach is checked against the campaign's Gate-1 delegation bounds + an overseer `support` pass —
+  **exactly like a Gate-1 self-approval** — then routes through `/propose` → re-plan; outside bounds
+  (or `in_project_approval: pi`) it queues for the PI. Emit `approach_ideate` (per round) and
+  `replan` (when an approach re-plans the project, mid-campaign — not only at exit). Frozen-set
   changes, envelope overruns, and **Gate 3 are never delegated**.
 - Every lifecycle step appends a Campaign Log row **and** emits a bus event
   (`tools/lab_bus.py emit cycle --idea <slug> --detail "<step> → <outcome>"`); at the start of each

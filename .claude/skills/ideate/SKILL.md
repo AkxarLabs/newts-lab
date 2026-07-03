@@ -99,7 +99,7 @@ The one first-class way to ideate **divergent new approaches** *inside* an activ
 incremental, within-hypothesis generator is `/improve`'s `expand`). Same engine as above —
 generate → fresh-context critic ensemble → tournament → triage — but **scoped to method
 approaches**; output is **candidate approaches, NOT experiments**, and it is `active → active`
-(only a `/propose` re-entry crosses Gate 1). Full policy in CLAUDE.md ("In-project
+(only a `/propose` re-entry crosses Gate 1). Full policy in AGENTS.md ("In-project
 method-ideation"); this skill is its **single enforcement point for the ENABLE flag**
 `ideation.in_project`: if `false`, the capability is OFF — do not run it; tell the caller the
 headline-reopen route must fall back to a **successor hub `/ideate`**.
@@ -141,14 +141,13 @@ framing below. Skip silently in autonomous / `/autopilot` runs.
   notes). It **NEVER** enters experiments on a bare PI note; only the `/propose` re-entry crosses
   Gate 1. This preserves the `Headline: yes` autonomy boundary.
 
-**Approval** (`ideation.in_project_approval`, PI-owned — full rule in CLAUDE.md):
+**Approval** (`ideation.in_project_approval`, PI-owned — full rule in AGENTS.md):
 - **Manual / PI-driven run:** always **PI-gated** — queue surviving headline-changing approaches
   at `/propose` for human Gate 1; report and stop, never self-approve.
-- **Under a signed `/autopilot` campaign** with `campaign_auto`: a survivor may auto-approve
-  **within the campaign's Gate-1 delegation bounds + an overseer `support` check** — exactly like
-  an `/autopilot` Gate-1 self-approval — then proceeds to `/propose` → re-plan. Outside the bounds
-  (or `in_project_approval: pi`) it queues for the PI **and emits `uv run python
-  tools/lab_bus.py escalate --detail "in-project approach needs PI"`** (escalation requests
+- **Under a signed `/autopilot` campaign** with `campaign_auto`: apply `/autopilot`'s Gate-1
+  self-approval check (delegation bounds + an overseer `support` pass); within bounds → `/propose`
+  → re-plan; outside bounds (or `in_project_approval: pi`) it queues for the PI **and emits `uv run
+  python tools/lab_bus.py escalate --detail "in-project approach needs PI"`** (escalation requests
   attention, never grants a gate). `campaign_auto` never relaxes manual runs, never touches the
   frozen set, and **never delegates Gate 3**.
 

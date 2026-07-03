@@ -12,6 +12,7 @@ gates; this skill only adds the "do the next thing, then wait" discipline.
 
 ## 1. Select the idea
 
+- **Check the inbox first** (AGENTS.md's `/advance`-selection checkpoint): `uv run --with pyyaml python tools/lab_bus.py inbox` — a PI directive may steer which idea to advance, or park/kill one; act on it within the protocol and ack, then select.
 - With `<slug>`: use its registry row.
 - Without: pick the non-terminal idea **closest to a paper** (furthest along the
   lifecycle) not waiting on a PI gate or a PI-queued decision. If everything is

@@ -1,6 +1,6 @@
 ---
 name: compete
-description: Spin off a target-driven project for a task with a fixed, straightforward target (a benchmark to beat, a metric to hit, a leaderboard to climb, an internal KPI) and iterate toward it — fanning out ideas in-project and running experiments, no paper/novelty pipeline. Argument; an optional slug or task name. The "I have a target, go chase it" on-ramp.
+description: Spin off a target-driven project for a task with a fixed target (benchmark, metric, leaderboard, or KPI) and iterate toward it — experiments + in-project ideas, no paper/novelty pipeline. Argument; an optional slug or task name.
 ---
 
 # Compete — pursue a fixed target
@@ -39,19 +39,16 @@ write its outcome into `IDEA.md` (no separate proposal). Establish:
   for the PI), and (if external) the **score envelope** (per-day / total external reads).
 
 This interview **is** Gate 1 (compute authorization). Record it in `IDEA.md` (written in §2 step 1)
-as a line `Gate 1 (compute authorization): approved — <date>, per /compete interview`, then run
-`uv run --with pyyaml python tools/guard.py spawn <slug>` before creating the project — the same
-mechanical stop the paper path gets (the guard's target-driven fallback accepts this `IDEA.md`
-marker in place of a `proposal.md`).
+as a line `Gate 1 (compute authorization): approved — <date>, per /compete interview`; §2 then does
+the mechanical spawn guard before scaffolding.
 
 ## 2. Scaffold the project
 
 If the PI already has a code repo, branch to §5 *now* (wrap it, don't copy a fresh tree over it).
 Otherwise spawn fresh below. Create `IDEA.md` (step 1) **first** so its Gate-1 marker exists, then
-run `uv run --with pyyaml python tools/guard.py spawn <slug>` before the rest of the scaffold (per
-§1) — the guard's target-driven fallback accepts the `IDEA.md` Gate-1 marker in place of a
-`studies/<slug>/proposal.md` (a target chase has no proposal; Gate 1 is recorded in `IDEA.md` per
-step 1).
+run `uv run --with pyyaml python tools/guard.py spawn <slug>` before the rest of the scaffold — the
+same mechanical stop the paper path gets, whose target-driven fallback accepts the `IDEA.md` Gate-1
+marker in place of a `studies/<slug>/proposal.md` (a target chase has no proposal).
 
 1. `studies/<slug>/IDEA.md` from `templates/idea/`, carrying the PI's target verbatim. Set
    frontmatter `state: active` (leaving it `seed` makes `tools/check_lab.py` flag a mismatch). In

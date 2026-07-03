@@ -44,26 +44,18 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   `standard` (workhorse), `fast` (cheap, high-volume). Ask the PI for each (e.g. `opus` / `sonnet`
   / `haiku`, or a full pinned id; `inherit` everywhere is the safe default and ships unchanged) →
   write `agents.tiers.{strong,standard,fast}`. The per-role keys (`reviewer_model`, `runner_model`,
-  `overseer_model`, `critic_model`) default to sensible tier names and render into the mapped
-  `.claude/agents/<role>.md` `model:` frontmatter + the Codex `.codex/agents/*.toml` via
-  `tools/role_sync.py` (a role key may also name a model directly). `critic_model` (ideation
-  critics / scoping advocates) **is** applied on Claude Code — `/ideate` and `/scope` pass the
-  tier-resolved model as each critic/advocate's per-spawn Task `model` (unless it resolves to
-  `inherit`); other backends run them at the session model.
-- **Headless launch backend** (matters once you run programmatic / multi-project autonomy —
-  `agents.programmatic`): the master switch `agents.programmatic.enabled` ships **false** and stays
-  false unless the PI explicitly opts in here — everything below only matters once it's on. Which
-  backend — `claude` (default), `codex`, or `opencode` (the last two
-  are **optional installs**, needed only if selected) — and the per-backend **default model +
-  reasoning effort**? Ship-defaults are claude `claude-opus-4-8` at `--effort high` and codex
-  `gpt-5.5` at `medium`; opencode ships blank (set a `provider/model` slug like
-  `anthropic/claude-sonnet-4-5` + optional `--variant` effort once its provider is authed). Confirm
-  or change per the PI's account/quota (codex/opencode model availability is auth-dependent; verify
-  the slug on the host, and run `opencode auth login` if chosen). Also the **permission posture** —
-  claude `permission_mode: auto` + the project allowlist, codex `sandbox: workspace-write` +
-  `approval: never`, opencode's defaults (in-repo allow + out-of-repo auto-deny) — keep the
-  human-in-loop defaults unless the PI wants stricter or wider. → write `agents.programmatic.backend`
-  and `agents.programmatic.backends.{claude,codex,opencode}.{model,effort/reasoning_effort/variant,…}`.
+  `overseer_model`, `critic_model`) default to sensible tier names and `tools/role_sync.py` renders
+  them into the `.claude/agents/*.md` + `.codex/agents/*.toml` role files (a role key may also name
+  a model directly). `critic_model` (ideation critics / scoping advocates) is applied on Claude Code
+  via `/ideate` & `/scope`'s per-spawn Task `model`; other backends run them at the session model.
+- **Headless launch backend** (only matters once you run programmatic / multi-project autonomy):
+  the master switch `agents.programmatic.enabled` ships **false** and stays false unless the PI opts
+  in here. If they do: ask the backend (`claude` default · `codex` / `opencode` optional installs),
+  the per-backend default model + reasoning effort, and the permission posture — the ship-defaults
+  and full option list are documented in `lab/config.yaml`'s `agents.programmatic` comments (which
+  you're editing anyway); confirm each with the PI (codex/opencode model availability is
+  auth-dependent — verify the slug on the host, `opencode auth login` if chosen) → write
+  `agents.programmatic.*`.
 - Semantic Scholar API key? (Free with an institutional email — strongly recommended;
   keyless access is saturated.) → tell them to set `S2_API_KEY`; same for
   `OPENALEX_API_KEY`.

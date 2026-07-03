@@ -30,15 +30,12 @@ hub `lab/config.yaml`**. Full key reference: `docs/configuration.md`.
    `gate2_envelope.pi_signed=true`, and **re-renders the backend role files** after an `agents.*`
    change. Re-run the view to confirm; note the change in the lab notebook (config changes are
    decisions — hard rule 11).
-4. **`agents.*` keys**: the tool re-renders the mapped role files for you (`reviewer_model →
-   fresh-context-reviewer`, `runner_model → experiment-runner`, `overseer_model → overseer` — Claude
-   `.claude/agents/*.md` `model:` + the Codex `.codex/agents/*.toml`, via `tools/role_sync.py`).
-   A role key may name a **tier** (`strong`/`standard`/`fast`) or a model directly — a tier name is
-   resolved through `agents.tiers` at render time, so changing a tier re-renders every role that
-   names it. `critic_model` (ideation critics / scoping advocates) **is** applied on Claude Code:
-   `/ideate` and `/scope` pass the tier-resolved model as each critic/advocate's per-spawn Task
-   `model` (skipped when it resolves to `inherit`); backends without a per-spawn model override run
-   them at the session model.
+4. **`agents.*` keys**: step 3's `set` already re-rendered the mapped role files for you (via
+   `tools/role_sync.py`) — no manual edit of `.claude/agents/*.md` / `.codex/agents/*.toml`. A role
+   key may name a **tier** (`strong`/`standard`/`fast`, resolved through `agents.tiers` at render
+   time — so changing a tier re-renders every role that names it) or a model directly. `critic_model`
+   (the inline ideation critics / scoping advocates) has no role file; it's resolved on demand by
+   `/ideate` & `/scope` (see those skills). Just confirm with `show_config` after the change.
 
 ## Profiles & budget tiers — `profile <verb> <name>`
 

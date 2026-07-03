@@ -43,10 +43,9 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    field, an optional **domain profile** from `templates/domain-profiles/` (or draft one). If none
    fits, propose a NEW type (a `TYPE.md` card) — a PI-owned act. **Present the chosen {type, domain}
    to the PI and get confirmation** before proceeding (it shapes the whole project — Gate-1-adjacent;
-   under a signed `/autopilot` campaign, decide within its delegation bounds). Then apply it:
-   This decision is PI-confirmed and feeds `spawn_project.py` in step 3 (which mechanically copies the
-   `TYPE.md` card, sets `control.yaml` `project_type:`, and adds `DOMAIN.md` / the `compete` overlay).
-   You still set by hand:
+   under a signed `/autopilot` campaign, decide within its delegation bounds). This decision is
+   PI-confirmed and passed to step 3's `spawn_project.py` via `--project-type` / `--domain` /
+   `--overlay` (step 3 does the copying). You still set by hand:
    - `control.yaml` `runner:` — `python-import` for `ml`/`target-driven`/Python work; `shell-command`
      + `runner_command:` for an R/Stata/Julia/proof-checker tool (that path writes the metrics dict to
      `$RUN_DIR/result.json` — same artifact contract, so hard rule 1 holds across languages).
@@ -78,6 +77,8 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    red scaffold.
 8. Update hub state: IDEA.md → `active`, registry row's Project column = the relative
    path (e.g. `../newts-lab-projects/<slug>`), next action = "/experiment exp-002".
+   Emit the transition (as `/compete` does on its spawn, so the dashboard sees the paper-path
+   move): `uv run python tools/lab_bus.py emit state_change --idea <slug> --detail "proposal → active (spawned)"`.
    Append a lab notebook entry.
 9. Report to the user: project path, smoke/test status, control.yaml summary, first
    planned experiment.

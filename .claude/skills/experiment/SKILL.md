@@ -9,7 +9,7 @@ Operates inside the project repo at `<projects_root>/<slug>` (path in the regist
 
 ## Before each experiment: read memory
 
-`PLAN.md` (what's next + its criterion), `NOTES.md` **in full** (distilled gotchas + approaches tried-and-abandoned — avoids re-running a known dead end), `SYSTEM.md` if present (PI machine constraints — binding like control.yaml, never edited), the tail of `EXPERIMENT_LOG.md`, `runs/registry.jsonl`, and `git log --oneline -20`. Never re-run something already tried without saying why.
+**Check the inbox** (AGENTS.md's per-attempt checkpoint): `uv run --with pyyaml python scripts/lab_bus.py inbox` — a PI directive may request/steer/stop the next run; act within the protocol and ack (a directive that would touch a frozen/PI-owned setting is acked `blocked`). Then read `PLAN.md` (what's next + its criterion), `NOTES.md` **in full** (distilled gotchas + approaches tried-and-abandoned — avoids re-running a known dead end), `SYSTEM.md` if present (PI machine constraints — binding like control.yaml, never edited), the tail of `EXPERIMENT_LOG.md`, `runs/registry.jsonl`, and `git log --oneline -20`. Never re-run something already tried without saying why.
 
 ## Per experiment attempt
 

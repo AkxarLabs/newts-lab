@@ -115,7 +115,7 @@ identically, and a `Headline: yes` reopen escalates the same way (below).
      Never spawn a PILOT-running runner without holding its slot. Subagents never
      manage slots, commit in their branch, return a result packet, and never touch shared
      ledgers.
-  3. **Merge through the journal, not git merges** (CLAUDE.md subagent rule 3) — for each
+  3. **Merge through the journal, not git merges** (AGENTS.md subagent rule 3) — for each
      packet, in this order:
      - Append its `ledger_draft` to `EXPERIMENT_LOG.md` (keep AND revert both get entries).
      - **Copy `runs/<id>/` dirs + the variant's new `runs/registry.jsonl` lines into the
