@@ -17,6 +17,11 @@ control surface — but it stays honest about what it can and can't do:
   READS (safe, read-only file views, on demand):
     POST /api/read        a small whitelisted text view (lab knowledge; a gate's proposal/
                           claims/envelope) from fixed roots + a sanitized slug. Never writes.
+    GET  /api/library     the Library tree — every research document (lab layer + per-study
+                          + the project repo's ledgers), organized for the reader tab
+    POST /api/libdoc      one document's text (fixed root per scope + containment + an
+                          extension whitelist — never a free path)
+    GET  /api/libfile     an image a document references (same containment) → inline figures
 
 It cannot run an agent skill (that's the Claude session) and it never signs Gate 3 or
 fakes a result. Binds 127.0.0.1 only. Delete the dashboard/ folder and the lab is unchanged.
@@ -602,6 +607,203 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
     return {"error": f"unknown document '{what}'"}
 
 
+# ── the Library — every research document, organized and readable in-dashboard ────────────────────
+#
+# One tree for everything the lab writes: the LAB layer (pre-project ideation, knowledge, notebook,
+# campaigns) above one group per STUDY (idea → lit-review → decisions → proposal → sessions →
+# critiques → paper) with the spawned PROJECT repo's ledgers (PLAN / EXPERIMENT_LOG / NOTES / …)
+# resolved across the hub↔project boundary via the registry path. Read-only; the frontend renders
+# the markdown (vendored marked + KaTeX). A doc is addressed as (scope, slug, rel) and re-validated
+# on every read: fixed root per scope + containment + an extension whitelist — never a free path.
+
+_LIB_EXTS = {".md", ".markdown", ".txt", ".yaml", ".yml", ".tex", ".bib", ".json", ".jsonl", ".csv"}
+_LIB_CLIP = 400_000        # a full proposal/log fits; never stream a truly huge file
+_LIB_SECTION_CAP = 120     # per-section doc cap — keeps the tree (and the scan) bounded
+
+
+def _lib_root(scope: str, slug: str | None) -> Path | None:
+    if scope == "lab":
+        return LAB
+    s = _slug(slug or "")
+    if not s:
+        return None
+    if scope == "study":
+        d = HUB / "studies" / s
+        return d if d.is_dir() else None
+    if scope == "project":
+        return sources._project_path({"id": s, "project": ""})
+    return None
+
+
+def _lib_entry(scope: str, slug: str | None, base: Path, f: Path, title: str | None = None) -> dict | None:
+    try:
+        rel = f.relative_to(base).as_posix()
+    except ValueError:
+        return None
+    try:
+        mtime = int(f.stat().st_mtime)
+    except OSError:
+        mtime = 0
+    return {"scope": scope, "slug": slug, "rel": rel, "title": title or f.name, "mtime": mtime}
+
+
+def _lib_docs(scope: str, slug: str | None, base: Path, files) -> list[dict]:
+    out = []
+    for f in files:
+        if len(out) >= _LIB_SECTION_CAP:
+            break
+        try:
+            if not (f.is_file() and f.suffix.lower() in _LIB_EXTS):
+                continue
+        except OSError:
+            continue
+        e = _lib_entry(scope, slug, base, f)
+        if e:
+            out.append(e)
+    return out
+
+
+def _lib_glob(d: Path, pattern: str, recursive: bool = False) -> list[Path]:
+    if not d.is_dir():
+        return []
+    try:
+        files = sorted(d.rglob(pattern) if recursive else d.glob(pattern))
+    except OSError:
+        return []
+    return files[: _LIB_SECTION_CAP * 2]
+
+
+def _dated_first(files: list[Path]) -> list[Path]:
+    """Newest first for dated names (ISO names sort reverse-chronologically); READMEs sink to the end."""
+    dated = [f for f in sorted(files, key=lambda f: f.name, reverse=True) if f.name.lower() != "readme.md"]
+    return dated + [f for f in files if f.name.lower() == "readme.md"]
+
+
+def _lab_group() -> dict:
+    secs = []
+    idea_docs = _lib_docs("lab", None, LAB, _dated_first(_lib_glob(LAB / "ideation", "*.md")))
+    secs.append({"title": "Ideation (pre-project)", "icon": "💡", "docs": idea_docs})
+    know = [LAB / "knowledge" / f"{n}.md" for n in ("FINDINGS", "FAILURES", "OPEN-QUESTIONS", "REFERENCES")]
+    know += [f for f in _lib_glob(LAB / "knowledge", "*.md") if f not in know and f.name.lower() != "readme.md"]
+    secs.append({"title": "Knowledge", "icon": "🧠",
+                 "docs": _lib_docs("lab", None, LAB, [f for f in know if f.exists()])})
+    nb = _dated_first(_lib_glob(LAB / "notebook", "*.md"))[:60]
+    secs.append({"title": "Notebook", "icon": "📓", "docs": _lib_docs("lab", None, LAB, nb)})
+    camp = _dated_first(_lib_glob(LAB / "campaigns", "*.md"))
+    if camp:
+        secs.append({"title": "Campaigns", "icon": "🚩", "docs": _lib_docs("lab", None, LAB, camp)})
+    return {"kind": "lab", "key": "lab", "title": "The Lab", "sections": secs}
+
+
+_STUDY_CORE_ORDER = ["IDEA.md", "lit-review.md", "decisions.md", "proposal.md"]
+_PROJECT_DOC_ORDER = ["PLAN.md", "EXPERIMENT_LOG.md", "NOTES.md", "TARGET.md", "LOOP_BRIEF.md", "TYPE.md", "README.md"]
+
+
+def _study_group(slug: str, row: dict | None) -> dict | None:
+    sdir = HUB / "studies" / slug
+    pdir = sources._project_path(row or {"id": slug, "project": ""})
+    if not sdir.is_dir() and not pdir:
+        return None
+    secs = []
+    if sdir.is_dir():
+        core = [sdir / n for n in _STUDY_CORE_ORDER if (sdir / n).exists()]
+        core += [f for f in _lib_glob(sdir, "*.md") if f.name not in _STUDY_CORE_ORDER]
+        secs.append({"title": "Study", "icon": "📋", "docs": _lib_docs("study", slug, sdir, core)})
+        sess = _dated_first(_lib_glob(sdir / "sessions", "*.md"))
+        if sess:
+            secs.append({"title": "Sessions", "icon": "🗣", "docs": _lib_docs("study", slug, sdir, sess)})
+        crit = _lib_glob(sdir / "critiques", "*.md", recursive=True)
+        if crit:
+            secs.append({"title": "Critiques", "icon": "🔍", "docs": _lib_docs("study", slug, sdir, crit)})
+        paper_dir = sdir / "paper"
+        if paper_dir.is_dir():
+            pap = [paper_dir / "main.tex", paper_dir / "claims.yaml"]
+            pap = [f for f in pap if f.exists()] + _lib_glob(paper_dir, "*.md")
+            rev = _lib_glob(paper_dir / "reviews", "*.md", recursive=True)
+            if pap:
+                secs.append({"title": "Paper", "icon": "📜", "docs": _lib_docs("study", slug, sdir, pap)})
+            if rev:
+                secs.append({"title": "Reviews", "icon": "🧾", "docs": _lib_docs("study", slug, sdir, rev)})
+    if pdir and pdir.is_dir():
+        pdocs = [pdir / n for n in _PROJECT_DOC_ORDER if (pdir / n).exists()]
+        pdocs += _lib_glob(pdir / "analysis", "*.md", recursive=True)
+        pdocs += [f for f in _lib_glob(pdir, "*.md") if f.name not in _PROJECT_DOC_ORDER]
+        secs.append({"title": "Project repo", "icon": "🛠", "docs": _lib_docs("project", slug, pdir, pdocs)})
+    if not any(s["docs"] for s in secs):
+        return None
+    return {"kind": "study", "key": f"study:{slug}", "slug": slug,
+            "title": (row or {}).get("title") or slug, "state": (row or {}).get("state") or "",
+            "sections": [s for s in secs if s["docs"]]}
+
+
+def lib_tree() -> dict:
+    rows = {r["id"]: r for r in sources.parse_registry()}
+    slugs = list(rows)
+    sdirs = HUB / "studies"
+    if sdirs.is_dir():
+        for d in sorted(sdirs.iterdir()):
+            if d.is_dir() and d.name not in slugs:
+                slugs.append(d.name)
+    groups = [_lab_group()]
+    for slug in slugs:
+        g = _study_group(slug, rows.get(slug))
+        if g:
+            groups.append(g)
+    return {"ok": True, "groups": groups}
+
+
+def lib_doc(scope: str, slug: str | None, rel: str) -> dict:
+    root = _lib_root(str(scope or ""), slug)
+    if not root or not root.is_dir():
+        return {"error": f"unknown scope/slug ({scope}/{slug})"}
+    rel = str(rel or "").replace("\\", "/").strip().lstrip("/")
+    if not rel:
+        return {"error": "no document given"}
+    target = (root / rel)
+    try:
+        resolved = target.resolve()
+        resolved.relative_to(root.resolve())     # containment — no ../ escape, no absolute override
+    except (ValueError, OSError):
+        return {"error": "document is outside its root"}
+    if resolved.suffix.lower() not in _LIB_EXTS:
+        return {"error": f"'{resolved.suffix}' files aren't readable here"}
+    if not resolved.is_file():
+        return {"error": f"no document at {rel}"}
+    try:
+        text = resolved.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as e:
+        return {"error": f"unreadable: {e}"}
+    clipped = len(text) > _LIB_CLIP
+    if clipped:
+        text = text[:_LIB_CLIP]
+    fmt = "markdown" if resolved.suffix.lower() in (".md", ".markdown") else "text"
+    try:
+        mtime = int(resolved.stat().st_mtime)
+    except OSError:
+        mtime = 0
+    return {"ok": True, "scope": scope, "slug": slug, "rel": rel, "title": rel.rsplit("/", 1)[-1],
+            "path": str(resolved), "mtime": mtime, "format": fmt, "clipped": clipped, "text": text}
+
+
+def lib_file(scope: str, slug: str | None, rel: str) -> tuple[Path, str] | None:
+    """Resolve an IMAGE (or PDF) referenced by a doc — same roots + containment as lib_doc, so a
+    proposal's relative `figures/x.png` renders inline. None if it isn't a safe, contained image."""
+    root = _lib_root(str(scope or ""), slug)
+    if not root or not root.is_dir():
+        return None
+    rel = str(rel or "").replace("\\", "/").strip().lstrip("/")
+    target = (root / rel)
+    try:
+        resolved = target.resolve()
+        resolved.relative_to(root.resolve())
+    except (ValueError, OSError):
+        return None
+    ctype = _FIG_CTYPE.get(resolved.suffix.lower())
+    if not ctype or not resolved.is_file():
+        return None
+    return resolved, ctype
+
+
 # ── paper artifacts (compiled PDF + figures) — read-only binary views ─────────
 #
 # A back-half session compiles studies/<slug>/paper/main.pdf (the /write-paper latexmk gate) and
@@ -745,6 +947,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_figs()
         if self.path.startswith("/api/figure"):
             return self._serve_figure()
+        if self.path.startswith("/api/library"):
+            try:
+                return self._json(lib_tree())
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+        if self.path.startswith("/api/libfile"):
+            q = self._query()
+            hit = lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", ""))
+            if not hit:
+                return self._send(404, b"no such file", "text/plain")
+            return self._serve_bytes(hit[0], hit[1])
         if self.path.startswith("/static/") or self.path.count("/") == 1:
             return self._serve_static(self.path.lstrip("/"))
         self._send(404, b"not found", "text/plain")
@@ -799,8 +1012,10 @@ class Handler(BaseHTTPRequestHandler):
         if (STATIC not in target.parents and target != STATIC) or not target.exists():
             return self._send(404, b"not found", "text/plain")
         ctype = {".html": "text/html", ".css": "text/css", ".js": "application/javascript",
-                 ".svg": "image/svg+xml"}.get(target.suffix, "application/octet-stream")
-        self._send(200, target.read_bytes(), f"{ctype}; charset=utf-8")
+                 ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff",
+                 ".ttf": "font/ttf", ".png": "image/png"}.get(target.suffix, "application/octet-stream")
+        charset = "; charset=utf-8" if ctype.startswith(("text/", "application/j", "image/svg")) else ""
+        self._send(200, target.read_bytes(), f"{ctype}{charset}")
 
     def _serve_sse(self) -> None:
         self.send_response(200)
@@ -863,6 +1078,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(run_tool(body.get("name", ""), body.get("idea")))
         if p.startswith("/api/read"):
             return self._json(read_doc(body.get("what", ""), body.get("idea"), body.get("gate"), body.get("run")))
+        if p.startswith("/api/libdoc"):
+            return self._json(lib_doc(body.get("scope", ""), body.get("slug"), body.get("rel", "")))
         if p.startswith("/api/claims"):
             return self._json(claims_map(body.get("idea")))
         if p.startswith("/api/withdraw"):

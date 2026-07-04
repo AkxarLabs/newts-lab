@@ -416,3 +416,109 @@ def test_claims_map_blocks_artifact_traversal(hub, monkeypatch):
         "claims:\n  - id: C001\n    project: demo\n    artifacts:\n      - ../secret.json\n", encoding="utf-8")
     a = m.claims_map("demo")["claims"][0]["artifacts"][0]
     assert a["exists"] is False and "abs" not in a     # escapes the project → never surfaced
+
+
+# ── the Library (tree + document reader) ──────────────────────────────────────
+
+def _lib_hub(hub):
+    """Populate the fake hub with the doc set the Library organizes."""
+    (hub.lab / "ideation").mkdir(parents=True, exist_ok=True)
+    (hub.lab / "ideation" / "2026-07-01-101010-slm.md").write_text("# worksheet\n", encoding="utf-8")
+    hub.notebook_entry("2026-07-01-session.md", "# nb\n")
+    sdir = hub.root / "studies" / "demo"
+    (sdir / "sessions").mkdir(parents=True, exist_ok=True)
+    (sdir / "critiques").mkdir(parents=True, exist_ok=True)
+    (sdir / "paper" / "reviews").mkdir(parents=True, exist_ok=True)
+    (sdir / "IDEA.md").write_text("# idea\n", encoding="utf-8")
+    (sdir / "proposal.md").write_text("# proposal\n\n$E=mc^2$\n", encoding="utf-8")
+    (sdir / "sessions" / "2026-07-02-scope.md").write_text("# scope session\n", encoding="utf-8")
+    (sdir / "critiques" / "novelty.md").write_text("# critique\n", encoding="utf-8")
+    (sdir / "paper" / "claims.yaml").write_text("claims: []\n", encoding="utf-8")
+    (sdir / "paper" / "reviews" / "review-1.md").write_text("# review\n", encoding="utf-8")
+    return sdir
+
+
+def test_lib_tree_lab_layer_above_studies(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _lib_hub(hub)
+    proj = hub.make_project("demo")
+    (proj / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+    (proj / "EXPERIMENT_LOG.md").write_text("# log\n", encoding="utf-8")
+    hub.add_registry_row("demo", title="Demo study", state="active", project=str(proj))
+    tree = m.lib_tree()
+    assert tree["ok"] is True
+    keys = [g["key"] for g in tree["groups"]]
+    assert keys[0] == "lab"                              # ideation/knowledge/notebook sit ABOVE projects
+    assert "study:demo" in keys
+    lab = tree["groups"][0]
+    sec_titles = [s["title"] for s in lab["sections"]]
+    assert "Ideation (pre-project)" in sec_titles and "Knowledge" in sec_titles and "Notebook" in sec_titles
+    ideation = next(s for s in lab["sections"] if s["title"].startswith("Ideation"))
+    assert any(d["rel"] == "ideation/2026-07-01-101010-slm.md" for d in ideation["docs"])
+    study = next(g for g in tree["groups"] if g["key"] == "study:demo")
+    assert study["title"] == "Demo study" and study["state"] == "active"
+    stitles = [s["title"] for s in study["sections"]]
+    assert stitles[:1] == ["Study"]                      # study docs before the project ledgers
+    assert "Sessions" in stitles and "Critiques" in stitles and "Reviews" in stitles
+    assert "Project repo" in stitles
+    core = next(s for s in study["sections"] if s["title"] == "Study")
+    assert [d["rel"] for d in core["docs"]][:2] == ["IDEA.md", "proposal.md"]   # lifecycle order
+    prepo = next(s for s in study["sections"] if s["title"] == "Project repo")
+    rels = [d["rel"] for d in prepo["docs"]]
+    assert rels[:2] == ["PLAN.md", "EXPERIMENT_LOG.md"]  # ledger order, scope=project
+    assert all(d["scope"] == "project" for d in prepo["docs"])
+
+
+def test_lib_tree_includes_unregistered_study_dirs(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _lib_hub(hub)                                        # demo study exists but has NO registry row
+    tree = m.lib_tree()
+    assert any(g["key"] == "study:demo" for g in tree["groups"])
+
+
+def test_lib_doc_reads_markdown_with_meta(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    _lib_hub(hub)
+    d = m.lib_doc("study", "demo", "proposal.md")
+    assert d["ok"] is True and d["format"] == "markdown"
+    assert "E=mc^2" in d["text"] and d["title"] == "proposal.md"
+    assert d["path"].endswith("proposal.md") and d["mtime"] > 0
+
+
+def test_lib_doc_blocks_traversal_and_absolute(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    sdir = _lib_hub(hub)
+    (hub.root / "secret.md").write_text("no\n", encoding="utf-8")
+    assert "outside" in m.lib_doc("study", "demo", "../../secret.md")["error"]
+    assert "outside" in m.lib_doc("lab", None, "../secret.md")["error"]
+    # an absolute rel is treated as relative-or-refused, never a free read
+    res = m.lib_doc("study", "demo", str(hub.root / "secret.md"))
+    assert "error" in res
+    assert m.lib_doc("study", "demo", "IDEA.md")["ok"] is True   # sanity: legit reads still work
+
+
+def test_lib_doc_extension_whitelist(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    sdir = _lib_hub(hub)
+    (sdir / "tool.exe").write_bytes(b"MZ")
+    res = m.lib_doc("study", "demo", "tool.exe")
+    assert "error" in res and ".exe" in res["error"]
+
+
+def test_lib_doc_unknown_scope_or_slug(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    assert "error" in m.lib_doc("nope", None, "x.md")
+    assert "error" in m.lib_doc("study", "no-such", "IDEA.md")
+    assert "error" in m.lib_doc("study", "../demo", "IDEA.md")   # slug is sanitized, not a path
+
+
+def test_lib_file_serves_contained_images_only(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    sdir = _lib_hub(hub)
+    fig = sdir / "paper" / "figures" / "f1.png"
+    fig.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_bytes(b"\x89PNG\r\n")
+    hit = m.lib_file("study", "demo", "paper/figures/f1.png")
+    assert hit and hit[0].name == "f1.png" and hit[1] == "image/png"
+    assert m.lib_file("study", "demo", "../../secret.png") is None      # traversal
+    assert m.lib_file("study", "demo", "proposal.md") is None           # not an image

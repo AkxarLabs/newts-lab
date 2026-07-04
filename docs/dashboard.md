@@ -44,6 +44,7 @@ every view; the data views float over it as soft, paper-toned panels.
 |---|---|
 | **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment sub-newts live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's sub-newts up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as sub-newts in their own room. |
 | **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, a **headless** chip when a launched agent is running, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless agents** section (backend · role · status · runtime) for any `agent_runner.py`-launched agent. |
+| **Library** | **every research document the lab writes, organized and beautifully rendered.** A left shelf: **The Lab** layer (pre-project **ideation** worksheets · **knowledge** · **notebook** · campaigns) above **one group per study** (IDEA → lit-review → decisions → proposal → sessions → critiques → paper + reviews) with the spawned **project repo's ledgers** (PLAN · EXPERIMENT_LOG · NOTES · TARGET · LOOP_BRIEF · analysis) resolved across the hub↔project boundary. The right pane renders Markdown with real typography, GFM tables, code blocks, **KaTeX math** (`$…$`/`$$…$$`), YAML front-matter as a chip strip, and doc-relative images inline — all offline (vendored `marked` + `DOMPurify` + KaTeX, `static/vendor/`). Filter box on top; every doc keeps its **open in editor ▸** link. **Every "read a document" action in the dashboard lands here** (gate bundles included); only raw run artifacts and tool output keep the bottom drawer. |
 | **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
 | **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
@@ -51,8 +52,8 @@ every view; the data views float over it as soft, paper-toned panels.
 ### Gate review bundles — decide a gate without leaving the dashboard
 
 A PI gate is the one place the lab *needs* you, so each gate's preview is a **composed bundle** that
-gathers everything the decision rests on into one read-only view (the `review … ▸` button on the
-Activity card, or the `read` link in the approve dialog):
+gathers everything the decision rests on into one read-only view, rendered in the **Library** reader
+(the `review … ▸` button on the Activity card, or the `read` link in the approve dialog):
 
 - **Gate 1** — the lit-review's **novelty verdict** + the proposal's **budget · kill criteria ·
   success criteria** lifted to the top, then the full proposal.
@@ -289,8 +290,11 @@ files are the database), `GET /api/events` (Server-Sent Events, ~1.5 s poll — 
 native watcher), `POST /api/directive` and `POST /api/command` (append to the bus), `POST /api/tool`
 (run a whitelisted read-only tool — including `audit_claims`, the mechanical claims audit),
 `POST /api/read` (a gate review bundle / doc view) and `POST /api/claims` (the structured claims ↔
-artifact map), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3 refused), and three
-read-only binary views — `GET /api/paper?idea=<slug>` (the compiled PDF), `GET /api/figs?idea=<slug>`
+artifact map), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3 refused), the
+**Library** trio — `GET /api/library` (the document tree), `POST /api/libdoc` (one document's text;
+fixed root per scope + containment + an extension whitelist — never a free path), `GET /api/libfile`
+(an image a document references, same containment) — and three read-only binary views —
+`GET /api/paper?idea=<slug>` (the compiled PDF), `GET /api/figs?idea=<slug>`
 (its figure filenames), `GET /api/figure?idea=<slug>&name=<file>` (one figure; the name is reduced to
 a basename and re-confirmed under the figures dir — no traversal).
 The first HTML response is seeded with the snapshot inline for an instant cold load (the seed is
@@ -304,8 +308,11 @@ skipped, a non-UTF-8 byte is replaced not raised, a moved project is reported un
 crash) and aggregates the per-worker logs into `workers[]`.
 
 The frontend (`static/index.html`, `terrarium.css`, `app.js`) is **vanilla JavaScript — no build,
-no dependencies, fully offline**. The world renders entirely on a single **Canvas-2D** surface;
-there is no WebGL and nothing vendored. It honors `prefers-reduced-motion` and `?static` by drawing
+fully offline**. The world renders entirely on a single **Canvas-2D** surface; there is no WebGL.
+The only third-party code is the Library reader's **pinned, vendored** renderers (`static/vendor/`:
+marked, DOMPurify, KaTeX + woff2 fonts — provenance and licenses in `static/vendor/README.md`);
+everything still works with zero network. It honors `prefers-reduced-motion` and `?static` by drawing
 a single **still frame** of the same scene instead of animating, so the dashboard always works
-offline with zero assets to fetch. A handy deep link: `?open=<idea|hub>` opens the command console
-straight to that target.
+offline with zero assets to fetch. Two handy deep links: `?open=<idea|hub>` opens the command
+console straight to that target, and `?read=<scope>:<slug>:<rel>` opens a document in the Library
+reader (e.g. `?read=lab::knowledge/FINDINGS.md`, `?read=study:my-idea:proposal.md`).

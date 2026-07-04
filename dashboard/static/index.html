@@ -6,6 +6,7 @@
 <title>Vivarium — the living lab</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="terrarium.css">
+<link rel="stylesheet" href="static/vendor/katex.min.css">
 </head>
 <body data-mode="terrarium">
 
@@ -23,6 +24,7 @@
   <nav class="tabs">
     <button class="tab is-active" data-go="terrarium">World</button>
     <button class="tab" data-go="shelf">Projects</button>
+    <button class="tab" data-go="library">Library</button>
     <button class="tab" data-go="agents">Agents</button>
     <button class="tab" data-go="gates">Activity <span class="badge" id="gateBadge" hidden>0</span></button>
     <button class="tab" data-go="ledger">Ledger</button>
@@ -216,6 +218,10 @@
 <div class="toast" id="toast" hidden></div>
 <div class="stale-veil" id="staleVeil" hidden>⟳ reconnecting to the lab — showing the last snapshot…</div>
 
+<!-- vendored, offline renderers for the Library reader (see static/vendor/README.md) -->
+<script src="static/vendor/marked.min.js"></script>
+<script src="static/vendor/purify.min.js"></script>
+<script src="static/vendor/katex.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

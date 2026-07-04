@@ -135,7 +135,7 @@ uv run --with properdocs --with mkdocs-material properdocs serve   # styled docs
 uv run --with pyyaml python dashboard/serve.py                     # optional live dashboard → http://127.0.0.1:8787
 ```
 
-Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight — it's optional; delete `dashboard/` and nothing else changes.
+Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight, with a **Library** tab that renders every document the lab writes (ideation, proposals, critiques, experiment ledgers — Markdown + LaTeX, offline) — it's optional; delete `dashboard/` and nothing else changes.
 
 ## Contributing
 

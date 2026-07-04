@@ -228,6 +228,7 @@ function renderShelf(s) {
       ${sparkline(it.best && it.best.series)}`;
     const br = el('div', 'btnrow');
     br.appendChild(btn('details', '', () => openDetail(it.id)));
+    br.appendChild(btn('docs ▸', '', () => openLibraryGroup(it.id)));
     br.appendChild(btn('command ▸', 'go', () => openSheet(it.id)));
     if (it.has_project) {
       br.appendChild(btn('enter lab', '', () => { enterTerrarium(); Scene.focusProject(it.id); }));
@@ -312,7 +313,7 @@ function renderGates(s) {
       card.innerHTML = `<div class="seal">${g}</div><h3>${esc(it.title || it.id)} — Gate ${g}</h3><div class="sub">${esc(it.next || what)}</div>`;
       const row = el('div', 'btnrow');
       const previewLabel = g === 1 ? 'review proposal + novelty ▸' : g === 3 ? 'review claims + meta-review ▸' : 'review envelope + pilots ▸';
-      row.appendChild(btn(previewLabel, 'tool', () => openDoc('gate', it.id, g, `Gate ${g} · ${it.title || it.id}`)));   // the composed gate bundle, in-dashboard
+      row.appendChild(btn(previewLabel, 'tool', () => openLibraryBundle('gate', it.id, g, `Gate ${g} · ${it.title || it.id}`)));   // the composed gate bundle, rendered in the Library
       if (g === 3 && it.paper && it.paper.pdf) row.appendChild(btn('view paper ▸', 'go', () => openPaper(it.id, it.title || it.id)));
       if (g === 3 && it.claims) row.appendChild(btn(`claims (${it.claims}) ▸`, 'tool', () => openClaimsMap(it.id, it.title || it.id)));
       if (g !== 3) row.appendChild(btn(`✓ Approve Gate ${g} (PI)`, 'go', () => openGate(it.id, g)));
@@ -465,20 +466,21 @@ function renderRoster(s) {
 /* ── command palette (press / or the ⌕ button): jump to tabs · rooms · projects · actions ── */
 function paletteActions() {
   const out = [];
-  [['terrarium', 'World'], ['shelf', 'Projects'], ['agents', 'Agents'], ['gates', 'Activity'], ['ledger', 'Ledger']]
+  [['terrarium', 'World'], ['shelf', 'Projects'], ['library', 'Library'], ['agents', 'Agents'], ['gates', 'Activity'], ['ledger', 'Ledger']]
     .forEach(([m, l]) => out.push({ label: 'Go to ' + l, hint: 'tab', run: () => { MODE = m; location.hash = m; render(); Scene.setView(m); } }));
   ROOM_KEYS.forEach(k => out.push({ label: 'Zoom to ' + ROOM_LABEL[k], hint: 'room', run: () => { enterTerrarium(); Scene.goRoom(k); } }));
   (STATE && STATE.items || []).forEach(it => {
     const nm = it.title || it.id;
     if (it.has_project) out.push({ label: 'Enter lab · ' + nm, hint: 'project', run: () => { enterTerrarium(); Scene.focusProject(it.id); } });
     out.push({ label: 'Details · ' + nm, hint: 'info', run: () => openDetail(it.id) });
+    out.push({ label: 'Docs · ' + nm, hint: 'library', run: () => openLibraryGroup(it.id) });
     out.push({ label: 'Command · ' + nm, hint: 'steer', run: () => openSheet(it.id) });
     if (it.paper && it.paper.pdf) out.push({ label: 'Open paper · ' + nm, hint: 'paper', run: () => openPaper(it.id, nm) });
     if (it.claims) out.push({ label: 'Claims ↔ artifacts · ' + nm, hint: 'claims', run: () => openClaimsMap(it.id, nm) });
     if (it.gate && it.gate !== 3) out.push({ label: `Approve Gate ${it.gate} · ${nm}`, hint: 'gate', run: () => openGate(it.id, it.gate) });
   });
   out.push({ label: 'Command the lab (Newt)', hint: 'hub', run: () => openSheet('hub') });
-  out.push({ label: 'Open · Lab knowledge (findings / failures / open questions)', hint: 'read', run: () => openDoc('knowledge', null, null, 'Lab knowledge') });
+  out.push({ label: 'Open · Lab knowledge (findings / failures / open questions)', hint: 'read', run: () => openLibraryDoc('lab', null, 'knowledge/FINDINGS.md', 'Lab knowledge') });
   out.push({ label: 'Open · Settings', hint: 'prefs', run: openSettings });
   out.push({ label: 'Open · History timeline (replay this session)', hint: 'time', run: () => { if ($('#scrubber').hidden) toggleScrubber(); } });
   out.push({ label: 'Toggle light / dark', hint: 'theme', run: cycleLamp });
@@ -544,7 +546,7 @@ function renderSettings() {
   body.appendChild(toggleRow('Ambient motion', PREFS.ambient, v => setPref('ambient', v), 'drifting motes & footstep dust'));
   body.appendChild(el('div', 'd-sec', 'More'));
   const more = el('div', 'set-more');
-  more.appendChild(btn('Lab knowledge', '', () => { closeSettings(); openDoc('knowledge', null, null, 'Lab knowledge'); }));
+  more.appendChild(btn('Lab knowledge', '', () => { closeSettings(); openLibraryDoc('lab', null, 'knowledge/FINDINGS.md', 'Lab knowledge'); }));
   more.appendChild(btn('Show the guide', '', () => { closeSettings(); openHelp(); }));
   body.appendChild(more);
 }
@@ -608,6 +610,7 @@ function openDetail(id) {
   body.querySelectorAll('[data-peek]').forEach(b => b.onclick = () => { const [pid, rid] = b.dataset.peek.split('|'); openDoc('run', pid, null, `${pid} · ${rid}`, rid); });
   const br = el('div', 'btnrow');
   br.appendChild(btn('command ▸', 'go', () => { closeDetail(); openSheet(it.id); }));
+  br.appendChild(btn('docs ▸', '', () => { closeDetail(); openLibraryGroup(it.id); }));
   if (it.has_project) { br.appendChild(btn('enter lab', '', () => { closeDetail(); enterTerrarium(); Scene.focusProject(it.id); })); br.appendChild(btn('status', 'tool', () => runTool('status', it.id))); br.appendChild(btn('compare', 'tool', () => runTool('compare', it.id))); }
   if (it.paper && it.paper.pdf) br.appendChild(btn('view paper', 'go', () => { closeDetail(); openPaper(it.id, it.title || it.id); }));
   if (it.claims) br.appendChild(btn(`claims (${it.claims})`, 'tool', () => { closeDetail(); openClaimsMap(it.id, it.title || it.id); }));
@@ -696,7 +699,7 @@ function renderPulse(s) {
   p.hidden = false; p.innerHTML = bits.join('<span class="dot">·</span>');
 }
 
-const VIEWS = { terrarium: renderScene, shelf: renderShelf, agents: renderRoster, gates: renderGates, ledger: renderLedger };
+const VIEWS = { terrarium: renderScene, shelf: renderShelf, library: renderLibrary, agents: renderRoster, gates: renderGates, ledger: renderLedger };
 function render() {
   if (!STATE) return;
   document.body.dataset.mode = MODE;
@@ -807,7 +810,7 @@ function openGate(idea, gate) {
     : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`;
   const read = $('#modalRead'); read.hidden = false;
   read.textContent = gate === 1 ? 'review proposal + novelty ▸' : 'review envelope + pilots ▸';
-  read.onclick = () => openDoc('gate', idea, gate, `Gate ${gate} · ${idea}`);
+  read.onclick = () => { closeModal(); openLibraryBundle('gate', idea, gate, `Gate ${gate} · ${idea}`); };   // read first; approve again from Activity / the bell
   $('#modalScrim').hidden = false; m.hidden = false; syncOverlay();
 }
 function closeModal() { $('#modalScrim').hidden = true; $('#modal').hidden = true; $('#modal').classList.remove('g3'); pendingGate = null; syncOverlay(); }
@@ -972,6 +975,256 @@ function renderClaimsMap(r) {
   });
 }
 function closeClaims() { $('#claims').hidden = true; CLAIMS_SLUG = null; syncOverlay(); }
+
+/* ── the Library: every research document, organized and beautifully rendered ─────────────────────
+   One tree: the LAB layer (ideation · knowledge · notebook · campaigns) above one group per STUDY
+   (idea → lit-review → decisions → proposal → sessions → critiques → paper) with the spawned
+   project repo's ledgers resolved across the boundary. The reader renders Markdown (vendored
+   marked, DOMPurify-sanitized) with KaTeX math and doc-relative images served via /api/libfile.
+   Every "read a document" action in the dashboard lands here; only raw run artifacts and tool
+   output keep the bottom drawer. */
+const LIB = { tree: null, ts: 0, sel: null, doc: null, filter: '', open: null, loading: false };
+const LIB_TREE_TTL = 20000;   // re-scan the lab at most every 20 s while the tab is open
+
+function libGroupKey(g) { return g.key || (g.kind === 'lab' ? 'lab' : 'study:' + g.slug); }
+function libDocKey(d) { return `${d.scope}|${d.slug || ''}|${d.rel}`; }
+
+async function loadLibTree(force) {
+  if (LIB.loading) return;
+  if (!force && LIB.tree && (Date.now() - LIB.ts) < LIB_TREE_TTL) return;
+  LIB.loading = true;
+  try {
+    const r = await fetch('/api/library').then(r => r.json());
+    if (r && r.groups) {
+      const changed = JSON.stringify(r) !== JSON.stringify(LIB.tree);
+      LIB.tree = r; LIB.ts = Date.now();
+      if (!LIB.open) { LIB.open = {}; r.groups.forEach(g => LIB.open[libGroupKey(g)] = true); }
+      if (changed) renderLibTree();
+    }
+  } catch (e) { /* unreachable server → the tree shows a note */ }
+  LIB.loading = false;
+  if (!LIB.tree) renderLibTree();
+}
+
+function renderLibrary(s) {
+  const stage = $('#stage');
+  if ($('#libPanel')) { loadLibTree(false); return; }   // NEVER rebuild under the reader on an SSE tick
+  stage.innerHTML = '';
+  const p = el('section', 'panel lib-panel',
+    '<h2>Library</h2><p class="lede">everything the lab writes — ideation, studies, proposals, critiques, ledgers — organized and readable.</p>');
+  p.id = 'libPanel';
+  const grid = el('div', 'lib-grid');
+  const tree = el('aside', 'lib-tree');
+  const search = el('input', 'lib-q'); search.type = 'search'; search.placeholder = 'filter documents…'; search.value = LIB.filter;
+  search.oninput = () => { LIB.filter = search.value; renderLibTree(); };
+  const list = el('div', 'lib-tree-list'); list.id = 'libTreeList';
+  tree.appendChild(search); tree.appendChild(list);
+  const reader = el('div', 'lib-reader'); reader.id = 'libReader';
+  grid.appendChild(tree); grid.appendChild(reader);
+  p.appendChild(grid); stage.appendChild(p);
+  renderLibTree(); renderLibReader();
+  loadLibTree(false);
+}
+
+function renderLibTree() {
+  const host = $('#libTreeList'); if (!host) return;
+  host.innerHTML = '';
+  if (!LIB.tree) { host.appendChild(el('div', 'empty-note sm', LIB.loading ? 'reading the lab…' : 'could not reach the vivarium server')); return; }
+  const q = (LIB.filter || '').trim().toLowerCase();
+  const selKey = (LIB.sel && LIB.sel.rel != null) ? libDocKey(LIB.sel) : null;
+  LIB.tree.groups.forEach(g => {
+    const key = libGroupKey(g);
+    const secs = (g.sections || []).map(sec => ({
+      ...sec,
+      docs: (sec.docs || []).filter(d => !q || `${d.title} ${d.rel} ${g.title || ''} ${sec.title}`.toLowerCase().includes(q)),
+    }));
+    const total = secs.reduce((n, s2) => n + s2.docs.length, 0);
+    if (q && !total) return;               // filtering: hide groups with no matches
+    const open = q ? true : (LIB.open ? LIB.open[key] !== false : true);
+    const ico = g.kind === 'lab' ? '🏛️' : plantFor(g.state);
+    const head = el('button', 'lib-group' + (open ? ' open' : ''),
+      `<span class="lg-chev">${open ? '▾' : '▸'}</span><span class="lg-ico">${ico}</span><span class="lg-t">${esc(g.title || g.slug || '')}</span>` +
+      (g.state ? `<span class="chip state sm">${esc(g.state)}</span>` : '') + `<span class="lg-n">${total}</span>`);
+    head.onclick = () => { if (!LIB.open) LIB.open = {}; LIB.open[key] = !open; renderLibTree(); };
+    host.appendChild(head);
+    if (!open) return;
+    secs.forEach(sec => {
+      if (q && !sec.docs.length) return;
+      host.appendChild(el('div', 'lib-sec', `${sec.icon ? sec.icon + ' ' : ''}${esc(sec.title)}`));
+      if (!sec.docs.length) { host.appendChild(el('div', 'lib-none', '— none yet —')); return; }
+      sec.docs.forEach(d => {
+        const sub = d.rel.includes('/') ? `<span class="ld-rel">${esc(d.rel)}</span>` : '';
+        const row = el('button', 'lib-doc' + (selKey === libDocKey(d) ? ' on' : ''),
+          `<span class="ld-t">${esc(d.title)}</span>${sub}`);
+        row.onclick = () => openLibraryDoc(d.scope, d.slug, d.rel, d.title);
+        host.appendChild(row);
+      });
+    });
+    // a study with a compiled paper gets its PDF one click away, in the tree itself
+    if (g.kind === 'study') {
+      const it = (STATE && STATE.items || []).find(x => x.id === g.slug);
+      if (it && it.paper && it.paper.pdf) {
+        const b = el('button', 'lib-doc lib-pdf', '<span class="ld-t">▤ compiled paper (PDF) ▸</span>');
+        b.onclick = () => openPaper(g.slug, g.title || g.slug);
+        host.appendChild(b);
+      }
+    }
+  });
+}
+
+// open the Library focused on one group (a study's shelf) without selecting a document
+function openLibraryGroup(slug) {
+  goTab('library');
+  if (!LIB.open) LIB.open = {};
+  LIB.open[slug ? 'study:' + slug : 'lab'] = true;
+  renderLibTree();
+  loadLibTree(false);
+}
+
+// open ONE document in the Library reader (the deep-link every "read" action routes through)
+async function openLibraryDoc(scope, slug, rel, label) {
+  goTab('library');
+  LIB.sel = { scope, slug: slug || null, rel };
+  LIB.doc = { loading: true, title: label || rel };
+  if (!LIB.open) LIB.open = {};
+  LIB.open[scope === 'lab' ? 'lab' : 'study:' + slug] = true;
+  renderLibTree(); renderLibReader();
+  try {
+    const r = await fetch('/api/libdoc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope, slug, rel }) }).then(r => r.json());
+    LIB.doc = r;
+  } catch (e) { LIB.doc = { error: 'could not reach the vivarium server' }; }
+  renderLibReader();
+  loadLibTree(false);
+}
+
+// open a COMPOSED server-side view (a gate's review bundle) in the same reader, sections rendered
+async function openLibraryBundle(what, idea, gate, label) {
+  goTab('library');
+  LIB.sel = { bundle: what, idea: idea || null, gate: gate || null, label };
+  LIB.doc = { loading: true, title: label || what };
+  if (!LIB.open) LIB.open = {};
+  if (idea) LIB.open['study:' + idea] = true;
+  renderLibTree(); renderLibReader();
+  try {
+    const r = await fetch('/api/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ what, idea, gate }) }).then(r => r.json());
+    LIB.doc = r.error ? r : { ok: true, bundle: true, title: r.title || label, sections: r.sections || [], note: r.note };
+  } catch (e) { LIB.doc = { error: 'could not reach the vivarium server' }; }
+  renderLibReader();
+}
+
+function renderLibReader() {
+  const host = $('#libReader'); if (!host) return;
+  host.innerHTML = '';
+  const d = LIB.doc;
+  if (!d) {
+    host.appendChild(el('div', 'lib-empty',
+      '<div class="le-ico">📖</div><p>pick a document from the shelf — ideation worksheets, proposals, critiques, experiment ledgers — and read it here, beautifully rendered (tables, code, LaTeX math).</p>'));
+    return;
+  }
+  if (d.loading) { host.appendChild(el('div', 'empty-note sm', 'reading…')); return; }
+  if (d.error) { host.appendChild(el('div', 'empty-note sm', esc(d.error))); return; }
+  const head = el('div', 'lib-doc-head');
+  const where = LIB.sel && LIB.sel.rel != null
+    ? `${LIB.sel.scope === 'lab' ? 'The Lab' : esc(LIB.sel.slug || '')}${LIB.sel.scope === 'project' ? ' · project repo' : ''} › <span class="mono">${esc(LIB.sel.rel)}</span>`
+    : esc(d.title || '');
+  head.appendChild(el('div', 'lib-crumbs', where));
+  const tools = el('div', 'lib-tools');
+  if (d.mtime) tools.appendChild(el('span', 'lib-mtime', 'updated ' + esc(new Date(d.mtime * 1000).toLocaleString())));
+  if (d.path && editorUri(d.path)) tools.appendChild(btn('open in editor ▸', '', () => openInEditor(d.path)));
+  head.appendChild(tools);
+  host.appendChild(head);
+  const body = el('article', 'md-body');
+  if (d.bundle) {
+    (d.sections || []).forEach(s2 => {
+      const sh = el('div', 'lib-sec-head', esc(s2.title) + (s2.path && editorUri(s2.path) ? ` <a class="ed-link" href="${esc(editorUri(s2.path))}">open in editor ▸</a>` : ''));
+      body.appendChild(sh);
+      const sb = el('div', '');
+      renderMarkdownInto(sb, s2.text || '(empty)', null);
+      body.appendChild(sb);
+    });
+    if (d.note) body.appendChild(el('p', 'lib-note', esc(d.note)));
+  } else if (d.format === 'markdown') {
+    renderMarkdownInto(body, d.text || '(empty)', LIB.sel);
+  } else {
+    const pre = el('pre', 'lib-plain'); pre.textContent = d.text || '(empty)'; body.appendChild(pre);
+  }
+  if (d.clipped) body.appendChild(el('p', 'lib-note', '… clipped — open in your editor for the rest.'));
+  host.appendChild(body);
+  host.scrollTop = 0;
+}
+
+/* markdown → sanitized HTML with KaTeX math. Math is stashed BEFORE marked runs (so $a_i$ can't be
+   eaten as emphasis), skipped inside fenced code, then rendered with katex.renderToString on
+   restore — pandoc-style delimiters ("$5 and $10" stays currency: no space inside the fences, and
+   a closing $ can't be followed by a digit). Falls back to plain text if a vendor lib is absent. */
+function renderMathHtml(src) {
+  if (!window.katex) return esc(src);
+  let body = src, display = false;
+  if (/^\$\$/.test(src)) { body = src.slice(2, -2); display = true; }
+  else if (/^\\\[/.test(src)) { body = src.slice(2, -2); display = true; }
+  else if (/^\\\(/.test(src)) { body = src.slice(2, -2); }
+  else if (/^\$/.test(src)) { body = src.slice(1, -1); }
+  try { return katex.renderToString(body, { displayMode: display, throwOnError: false }); }
+  catch (e) { return esc(src); }
+}
+function libAssetUrl(sel, src) {
+  // a doc-relative image resolves through /api/libfile (the server re-checks containment)
+  if (!sel || sel.rel == null || /^(https?:|data:|\/)/i.test(src)) return null;
+  const dir = sel.rel.split('/').slice(0, -1);
+  for (const seg of src.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') dir.pop(); else dir.push(seg);
+  }
+  return `/api/libfile?scope=${encodeURIComponent(sel.scope)}&slug=${encodeURIComponent(sel.slug || '')}&rel=${encodeURIComponent(dir.join('/'))}`;
+}
+function renderMarkdownInto(host, mdText, sel) {
+  if (!(window.marked && window.DOMPurify)) {
+    const pre = el('pre', 'lib-plain'); pre.textContent = mdText; host.appendChild(pre); return;
+  }
+  let text = String(mdText).replace(/^\uFEFF/, '');
+  // YAML front-matter → a neat chip strip instead of garbled markdown
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  let fmEl = null;
+  if (fm) {
+    text = text.slice(fm[0].length);
+    fmEl = el('div', 'md-frontmatter');
+    fm[1].split(/\r?\n/).forEach(ln => {
+      const m = /^([A-Za-z_][\w .-]*):\s*(.*)$/.exec(ln.trim());
+      if (m) fmEl.appendChild(el('span', 'fm-chip', `<b>${esc(m[1])}</b>${m[2] ? ' ' + esc(m[2]) : ''}`));
+    });
+    if (!fmEl.children.length) fmEl = null;
+  }
+  // stash math outside fenced code blocks
+  const stash = [];
+  const put = m => { stash.push(m); return `\uE000${stash.length - 1}\uE001`; };
+  text = text.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/).map((seg, i) => {
+    if (i % 2) return seg;   // inside a fence — leave untouched
+    return seg
+      .replace(/\$\$[\s\S]+?\$\$/g, put)
+      .replace(/\\\[[\s\S]+?\\\]/g, put)
+      .replace(/\\\([\s\S]+?\\\)/g, put)
+      .replace(/\$(?!\s)((?:\\.|[^$\\\n])+?)(?<![\s\\])\$(?!\d)/g, put);
+  }).join('');
+  let html;
+  try { html = marked.parse(text, { gfm: true, breaks: false, async: false }); }
+  catch (e) { const pre = el('pre', 'lib-plain'); pre.textContent = mdText; host.appendChild(pre); return; }
+  html = DOMPurify.sanitize(html);
+  html = html.replace(/\uE000(\d+)\uE001/g, (m, i) => renderMathHtml(stash[+i]));   // KaTeX output is our own, trusted
+  if (fmEl) host.appendChild(fmEl);
+  const wrap = el('div', '');
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('img').forEach(img => {
+    const u = libAssetUrl(sel, img.getAttribute('src') || '');
+    if (u) img.src = u;
+    img.loading = 'lazy';
+  });
+  wrap.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href') || '';
+    if (/^https?:/i.test(href)) { a.target = '_blank'; a.rel = 'noopener'; }
+    else if (!href.startsWith('#')) a.addEventListener('click', ev => { ev.preventDefault(); toast('a relative link — open that file from the shelf on the left'); });
+  });
+  host.appendChild(wrap);
+}
 
 /* ── worker inspector: a worker's own activity — what it's doing now + its full action timeline ── */
 function workerById(id) { return (STATE && STATE.workers || []).find(w => w.worker_id === id); }
@@ -1856,5 +2109,9 @@ else fetch('/api/state').then(r => r.json()).then(ingest).catch(() => $('#staleV
 // deep-link: ?open=<idea|hub> opens the command console straight away
 const openTo = new URLSearchParams(location.search).get('open');
 if (openTo) setTimeout(() => openSheet(openTo), 60);
+// deep-link: ?read=<scope>:<slug>:<rel> opens a document in the Library reader (e.g.
+// ?read=lab::knowledge/FINDINGS.md or ?read=study:demo:proposal.md)
+const readTo = new URLSearchParams(location.search).get('read');
+if (readTo) { const [rs, rslug, ...rrel] = readTo.split(':'); if (rs && rrel.length) setTimeout(() => openLibraryDoc(rs, rslug || null, rrel.join(':'), null), 60); }
 if (!STATIC && !DEMO) connect();   // (theme is a manual light/dark toggle now — no time-based re-check)
 maybeAutoHelp();   // first-time visitors get the guide once

@@ -24,18 +24,23 @@ uv run --with pyyaml python dashboard/serve.py --demo   # then open http://127.0
 A bare `?demo` on a normally-served dashboard is inert. It's pure client-side and touches no lab files.
 
 - `serve.py`   — stdlib HTTP server. Reads: `/api/state` (snapshot), `/api/events` (SSE),
-                 `POST /api/read` (a whitelisted read-only text view — lab knowledge / a gate's
-                 proposal/claims/envelope). Writes: `POST /api/directive` & `POST /api/command`
-                 (append to the bus), `POST /api/gate` (PI-confirmed Gate 1/2 approval; Gate 3
-                 refused), `POST /api/tool` (run a whitelisted read-only tool).
+                 `POST /api/read` (a whitelisted read-only text view — a gate's composed review
+                 bundle), the **Library** trio `GET /api/library` / `POST /api/libdoc` /
+                 `GET /api/libfile` (the document tree + one doc's text + a doc-relative image;
+                 fixed roots, containment-checked, extension-whitelisted). Writes:
+                 `POST /api/directive` & `POST /api/command` (append to the bus), `POST /api/gate`
+                 (PI-confirmed Gate 1/2 approval; Gate 3 refused), `POST /api/tool` (run a
+                 whitelisted read-only tool).
 - `sources.py` — read-only, tolerant tailers over the registry, the event bus, run records,
                  slots, in-flight liveness, and the per-worker traceability logs
                  (`.bus/workers/*.jsonl`) folded into `snapshot().workers[]`.
 - `static/`    — the single-page frontend: `index.html`, `terrarium.css`, `app.js`. The whole
                  world (rooms + critters + Newt + the sub-newts) is drawn on a single
-                 **hand-drawn Canvas-2D** surface — vanilla JS, no deps, no build, fully offline.
-                 No WebGL, nothing vendored; `prefers-reduced-motion` / `?static` renders the same
-                 scene as a still frame.
+                 **hand-drawn Canvas-2D** surface — vanilla JS, no build, fully offline.
+                 No WebGL; `prefers-reduced-motion` / `?static` renders the same scene as a still frame.
+- `static/vendor/` — the **Library** reader's pinned, offline renderers (marked · DOMPurify ·
+                 KaTeX + woff2 fonts). The one place third-party code lives; provenance, versions,
+                 and licenses in `static/vendor/README.md`. Everything else stays dependency-free.
 - `static/assets/` — the only **runtime** art, served at `/static/assets/`: `buddy/` (the layered
                  axolotl — `body`, `body_closed`, `gills`, `tail`, plus the 8-frame `walk` sheet) and
                  `dark/` + `light/` room close-ups (one per room). This is the complete set the page
