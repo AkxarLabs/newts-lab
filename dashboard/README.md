@@ -21,7 +21,9 @@ server with `--demo` (or `VIVARIUM_DEMO=1`), then visit `/?demo`:
 uv run --with pyyaml python dashboard/serve.py --demo   # then open http://127.0.0.1:8787/?demo
 ```
 
-A bare `?demo` on a normally-served dashboard is inert. It's pure client-side and touches no lab files.
+A bare `?demo` on a normally-served dashboard is inert. Demo is pure client-side and touches no
+lab files — **including its controls**: the Approve buttons, commands, and notes in demo are
+simulated no-ops (blocked client-side) and record nothing.
 
 - `serve.py`   — stdlib HTTP server. Reads: `/api/state` (snapshot), `/api/events` (SSE),
                  `POST /api/read` (a whitelisted read-only text view — a gate's composed review

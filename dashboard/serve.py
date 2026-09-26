@@ -67,6 +67,18 @@ SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots",
 # later acks/withdraws onto the wrong directive).
 _BUS_LOCK = threading.Lock()
 
+# Every WRITE path builds a filesystem path from a client-supplied idea/target, so the id must be
+# a bare registry-style slug — no separators, no leading dot, no '..' (the read-side _slug() strips
+# bad chars but keeps dots, which lets '..' through; writes get the stricter gate).
+_ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+
+
+def _safe_id(s) -> str | None:
+    if not isinstance(s, str):   # a non-string JSON value (number/list) must fail validation, not
+        return None              # AttributeError on .strip() (which would surface as a 500, not a 400)
+    s = s.strip()
+    return s if _ID_OK.match(s) and ".." not in s else None
+
 
 def _next_id(directives_path: Path) -> str:
     # max(existing d-NNN) + 1 — NOT a line count: a withdrawn/edited/missing row must never
@@ -86,8 +98,18 @@ def _bus_dir(target: str) -> Path:
     return (pdir / ".bus") if pdir else (LAB / ".bus")
 
 
-def _append(target: str, rec: dict) -> dict:
-    bus = _bus_dir(target)
+def _append(target: str, rec: dict, bus: Path | None = None) -> dict:
+    if bus is None:
+        # deriving the destination FROM the target: it must be a clean slug (it becomes a path).
+        if target in ("hub", "", None):
+            target, bus = "hub", LAB / ".bus"
+        elif _safe_id(target) is None:
+            raise ValueError(f"invalid target '{target}' — a bare idea/project slug or 'hub'")
+        else:
+            bus = _bus_dir(target)
+    # else: the caller already resolved the bus (e.g. a withdraw routed to the file holding the
+    # ref) — the target is only a label in the record here, so a legacy non-slug target is fine.
+    target = target if (isinstance(target, str) and target) else "hub"
     bus.mkdir(parents=True, exist_ok=True)
     path = bus / "directives.jsonl"
     with _BUS_LOCK:
@@ -97,7 +119,7 @@ def _append(target: str, rec: dict) -> dict:
         # record the intended target IN the line: a directive/command aimed at a pre-spawn idea (no
         # project dir yet) falls back to the hub bus, and without this the agent inbox can't tell what
         # it was aimed at (e.g. which of two proposals a gate1_approved refers to).
-        rec.setdefault("target", target or "hub")
+        rec.setdefault("target", target)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
     return rec
@@ -112,8 +134,43 @@ def append_command(target: str, action: str, args: dict, text: str) -> dict:
                             "text": text or action.replace("_", " ")})
 
 
-def append_withdraw(target: str, ref: str) -> None:
-    _append(target, {"kind": "withdraw", "ref": ref})
+def _find_ref_bus(target: str, ref: str, ts: str | None = None) -> Path | None:
+    """The bus dir whose directives.jsonl actually CONTAINS the directive being withdrawn.
+    A directive aimed at a pre-spawn idea was recorded on the hub bus (the _append fallback);
+    once the project exists, the same target resolves to the project bus, so routing the
+    withdraw by target alone would strand the marker in a file the record isn't in — leaving
+    the directive pending forever in both the agent inbox and the ledger.
+
+    Matches on id AND ts: d-NNN ids are per-file counters (_next_id), so the hub and a project
+    bus can independently mint the same d-003 — matching id alone could withdraw the wrong one.
+    The frontend sends the displayed record's ts; when present it disambiguates exactly."""
+    seen: list[Path] = []
+    for bus in (_bus_dir(target), LAB / ".bus"):
+        if bus in seen:
+            continue
+        seen.append(bus)
+        path = bus / "directives.jsonl"
+        if not path.exists():
+            continue
+        try:
+            for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("id") == ref and (not ts or rec.get("ts") == ts):
+                    return bus
+        except OSError:
+            continue
+    return None   # not found (e.g. a synthesized d?xxxx id) — caller falls back to target routing
+
+
+def append_withdraw(target: str, ref: str, ts: str | None = None) -> None:
+    ref = str(ref or "").strip()[:120]
+    bus = _find_ref_bus(target, ref, ts)
+    if bus is None and _safe_id(target) is None and target not in ("hub", "", None):
+        bus = LAB / ".bus"   # unknown ref + a non-slug legacy target -> safe hub fallback, never a raise
+    _append(target, {"kind": "withdraw", "ref": ref}, bus=bus)
 
 
 def _pi_log(rec: dict) -> None:
@@ -174,8 +231,11 @@ def approve_gate(idea: str, gate: int) -> dict:
     never handled here — finalization/sending outside the lab is always done in a session."""
     if gate == 3:
         return {"error": "Gate 3 (finalization) is never approved from the dashboard — do it in a session."}
+    idea = _safe_id(idea) or ""
+    if not idea:
+        return {"error": "invalid idea slug"}   # the raw id becomes a path under studies/ — never trust it
     ts = time.strftime("%Y-%m-%dT%H:%M:%S")
-    _MARK = "PI Gate 1 approved via Vivarium dashboard"
+    _MARK = sources.GATE1_MARK
     if gate == 1:
         proposal = HUB / "studies" / idea / "proposal.md"
         if not proposal.exists():
@@ -1056,12 +1116,18 @@ class Handler(BaseHTTPRequestHandler):
             text = (body.get("text") or "").strip()
             if not text:
                 return self._json({"error": "empty directive"}, 400)
-            return self._json({"ok": True, "directive": append_directive(body.get("target", "hub"), text)})
+            try:
+                return self._json({"ok": True, "directive": append_directive(body.get("target", "hub"), text)})
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
         if p.startswith("/api/command"):
             action = body.get("action")
             if action not in COMMAND_ACTIONS:
                 return self._json({"error": f"unknown action (allowed: {sorted(COMMAND_ACTIONS)})"}, 400)
-            rec = append_command(body.get("target", "hub"), action, body.get("args") or {}, body.get("text") or "")
+            try:
+                rec = append_command(body.get("target", "hub"), action, body.get("args") or {}, body.get("text") or "")
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
             return self._json({"ok": True, "command": rec})
         if p.startswith("/api/gate"):
             if not body.get("confirm"):
@@ -1083,7 +1149,10 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/claims"):
             return self._json(claims_map(body.get("idea")))
         if p.startswith("/api/withdraw"):
-            append_withdraw(body.get("target", "hub"), body.get("id", ""))
+            try:
+                append_withdraw(body.get("target", "hub"), body.get("id", ""), body.get("ts"))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
             return self._json({"ok": True})
         self._send(404, b"not found", "text/plain")
 

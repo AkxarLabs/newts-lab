@@ -522,3 +522,99 @@ def test_lib_file_serves_contained_images_only(hub, monkeypatch):
     assert hit and hit[0].name == "f1.png" and hit[1] == "image/png"
     assert m.lib_file("study", "demo", "../../secret.png") is None      # traversal
     assert m.lib_file("study", "demo", "proposal.md") is None           # not an image
+
+
+# ── write-path hardening: client-supplied ids must never become path traversal ─
+
+def test_gate_approve_rejects_traversal_idea(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    for bad in ("../evil", "..", "a/b", r"a\b", ".hidden", "", "  "):   # r"a\b" = real backslash (win path sep)
+        res = m.approve_gate(bad, 1)
+        assert res.get("error") == "invalid idea slug", f"{bad!r} was not rejected"
+    # nothing was written anywhere near the fake hub
+    assert not (hub.root / "evil").exists() and not (hub.root.parent / "evil").exists()
+
+
+def test_gate_approve_rejects_non_string_idea(hub, monkeypatch):
+    # a non-string JSON value must fail validation cleanly, not AttributeError -> 500
+    m = _mod(hub, monkeypatch)
+    for bad in (123, ["x"], {"a": 1}, None):
+        assert m.approve_gate(bad, 1).get("error") == "invalid idea slug"
+
+
+def test_bus_append_rejects_traversal_target(hub, monkeypatch):
+    import pytest
+    m = _mod(hub, monkeypatch)
+    for bad in ("../evil", "a/b", ".hidden"):
+        with pytest.raises(ValueError):
+            m.append_directive(bad, "hello")
+    # a non-string target must also raise ValueError (not AttributeError)
+    with pytest.raises(ValueError):
+        m.append_directive(123, "hello")
+    # the happy paths still work: hub and a bare slug (pre-spawn -> hub-bus fallback)
+    assert m.append_directive("hub", "hi")["target"] == "hub"
+    assert m.append_directive("demo", "hi")["target"] == "demo"
+    assert (hub.lab / ".bus" / "directives.jsonl").exists()
+
+
+def _read_jsonl(path):
+    import json
+    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_withdraw_routes_to_the_bus_holding_the_ref(hub, monkeypatch):
+    # A directive aimed at a pre-spawn idea lands on the HUB bus (fallback). If the project is
+    # spawned before the PI withdraws it, the withdraw must land NEXT TO the record on the hub
+    # bus — not on the project bus the target now resolves to (where the ref would never match
+    # and the directive would stay pending forever).
+    m = _mod(hub, monkeypatch)
+    rec = m.append_directive("demo", "do the thing")     # no project dir yet -> hub bus
+    hub.make_project("demo")                             # now the project exists
+    m.append_withdraw("demo", rec["id"], rec["ts"])
+    hub_lines = _read_jsonl(hub.lab / ".bus" / "directives.jsonl")
+    assert any(r.get("kind") == "withdraw" and r.get("ref") == rec["id"] for r in hub_lines)
+    proj_bus = hub.projects_root / "demo" / ".bus" / "directives.jsonl"
+    assert not proj_bus.exists()   # nothing strayed onto the project bus
+
+
+def test_withdraw_disambiguates_colliding_ids_by_ts(hub, monkeypatch):
+    # d-NNN ids are per-bus counters, so the hub and project bus both hold a d-001. A pre-spawn
+    # hub record and a post-spawn project record are separated in time (the spawn happens between),
+    # so their ts differ — withdrawing the hub record by its ts must mark the HUB d-001, never the
+    # unrelated project d-001. Records written directly so the ts are controlled/distinct.
+    m = _mod(hub, monkeypatch)
+    hub_bus = hub.lab / ".bus"; hub_bus.mkdir(parents=True, exist_ok=True)
+    (hub_bus / "directives.jsonl").write_text(
+        '{"text": "pre-spawn", "id": "d-001", "ts": "2026-06-01T09:00:00", "target": "demo"}\n',
+        encoding="utf-8")
+    pbus = hub.make_project("demo") / ".bus"; pbus.mkdir(parents=True, exist_ok=True)
+    (pbus / "directives.jsonl").write_text(
+        '{"text": "post-spawn", "id": "d-001", "ts": "2026-06-20T14:00:00", "target": "demo"}\n',
+        encoding="utf-8")
+    m.append_withdraw("demo", "d-001", "2026-06-01T09:00:00")   # the HUB record's ts
+    hub_lines = _read_jsonl(hub_bus / "directives.jsonl")
+    proj_lines = _read_jsonl(pbus / "directives.jsonl")
+    assert any(r.get("kind") == "withdraw" for r in hub_lines)          # landed on the hub bus
+    assert not any(r.get("kind") == "withdraw" for r in proj_lines)     # NOT the project's d-001
+
+
+def test_withdraw_falls_back_to_target_bus_for_unknown_ref(hub, monkeypatch):
+    # an unknown ref (e.g. a synthesized d?xxxx id) keeps the original target routing
+    m = _mod(hub, monkeypatch)
+    hub.make_project("demo")
+    m.append_withdraw("demo", "d?deadbeef")
+    proj_lines = _read_jsonl(hub.projects_root / "demo" / ".bus" / "directives.jsonl")
+    assert any(r.get("kind") == "withdraw" and r.get("ref") == "d?deadbeef" for r in proj_lines)
+
+
+def test_withdraw_of_legacy_nonslug_target_does_not_raise(hub, monkeypatch):
+    # a hand-written directive with a non-slug target (spaces) must still be withdrawable — the
+    # ref is located on the hub bus, so the withdraw routes there without a slug-validation raise.
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"; bus.mkdir(parents=True, exist_ok=True)
+    (bus / "directives.jsonl").write_text(
+        '{"text": "legacy", "id": "d-009", "ts": "2026-01-01T00:00:00", "target": "the econ project"}\n',
+        encoding="utf-8")
+    m.append_withdraw("the econ project", "d-009", "2026-01-01T00:00:00")   # must NOT raise
+    hub_lines = _read_jsonl(bus / "directives.jsonl")
+    assert any(r.get("kind") == "withdraw" and r.get("ref") == "d-009" for r in hub_lines)

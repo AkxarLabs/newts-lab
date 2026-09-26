@@ -361,3 +361,61 @@ def test_notebook_status_picks_latest_dated_and_ignores_readme(hub, monkeypatch)
     for name in ("2026-06-01-a.md", "2026-07-02-b.md", "README.md"):
         (hub.lab / "notebook" / name).write_text("x\n", encoding="utf-8")
     assert m._notebook_status()["latest"] == "2026-07-02-b.md"
+
+
+# ── gate detection: registry-text is the signal; on-disk signature is the 'signed, waiting' state ─
+
+def test_registry_text_gate_detected(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="proposal", next="awaiting PI Gate 1")
+    it = m.snapshot()["items"][0]
+    assert it["gate"] == 1 and it["gate_signed"] is False
+
+
+def test_no_phantom_gate_from_plain_next_action(hub, monkeypatch):
+    # a plain slash-command / next-action with no gate word yields no gate (no phantom Approve card)
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="active", next="run pilot exp-003")
+    hub.add_registry_row("two", state="active", next="/spawn-project")
+    items = {it["id"]: it for it in m.snapshot()["items"]}
+    assert items["demo"]["gate"] is None and items["two"]["gate"] is None
+
+
+def test_gate1_signed_state_and_badge_exclusion(hub, monkeypatch):
+    # once the dashboard marker is on the proposal, the card flips to 'signed — waiting for the
+    # agent' and the badge stops counting it (the PI already acted; the wait is the agent's).
+    # Detection still rides on the registry text, which stays 'Gate 1' until the agent transitions.
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="proposal", next="awaiting PI Gate 1")
+    prop = hub.root / "studies" / "demo" / "proposal.md"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    prop.write_text("# P\n", encoding="utf-8")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate_signed"] is False and snap["gates_waiting"] == 1
+    prop.write_text(f"# P\n\n<!-- {m.GATE1_MARK} 2026-07-04 -->\n", encoding="utf-8")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate_signed"] is True and snap["gates_waiting"] == 0
+
+
+def test_gate2_signed_state_from_control_yaml(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.make_project("demo", gate2={"pi_signed": True, "signed_via": "dashboard:x",
+                                    "expires": None, "full_runs": 2,
+                                    "per_run_max_minutes": 30, "total_max_minutes": 60})
+    hub.add_registry_row("demo", state="active", project="../projects/demo", next="awaiting Gate 2 envelope")
+    it = m.snapshot()["items"][0]
+    assert it["gate"] == 2 and it["gate_signed"] is True
+
+
+def test_gate2_expired_signed_envelope_is_not_signed_state(hub, monkeypatch):
+    # an EXPIRED but pi_signed envelope must NOT read as 'signed — waiting for the agent' — the
+    # PI has to re-authorize (guard.py full-run + approve_gate both refuse it), so it stays an
+    # actionable gate the badge counts.
+    m = _mod(hub, monkeypatch)
+    hub.make_project("demo", gate2={"pi_signed": True, "signed_via": "dashboard:x",
+                                    "expires": "2026-01-01", "full_runs": 2,
+                                    "per_run_max_minutes": 30, "total_max_minutes": 60})
+    hub.add_registry_row("demo", state="active", project="../projects/demo", next="awaiting Gate 2 envelope")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate"] == 2 and snap["items"][0]["gate_signed"] is False
+    assert snap["gates_waiting"] == 1

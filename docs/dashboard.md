@@ -26,14 +26,23 @@ uv run --with pyyaml python dashboard/serve.py --port 9000
 ```
 
 Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface but stays
-honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)).
+honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)) — it **observes
+and signs; the agent executes**. Every command or approval is recorded to the file bus and takes
+effect when a Claude session next reaches an inbox checkpoint; with no session running, nothing
+moves until you start one.
+
+!!! note "Fresh lab?"
+    Against a brand-new lab (empty `lab/REGISTRY.md`, no bus yet) the world is intentionally
+    empty: no critters, nothing in Activity, no gates to approve. Gates appear once a session
+    produces a proposal. Commands you issue are queued but have no consumer until a session runs.
 
 !!! tip "Try it with no lab — demo mode (debugging)"
     Demo is a synthetic, living lab (agents come and go, runs progress, gates wait) — entirely
     client-side, touching no files. It's a debugging/showcase mode, so it's **off by default and not
     exposed in the UI**: start the server with `--demo` (or `VIVARIUM_DEMO=1`), then open
     `http://127.0.0.1:8787/?demo` (add `&lamp=day` for the light theme). Every screenshot on this
-    page is the demo. Click a room or a critter to zoom in.
+    page is the demo. Click a room or a critter to zoom in. In demo, every **control** — commands,
+    notes, the gate Approve buttons — is simulated: nothing is written and no agent acts.
 
 ## What it shows — the views
 
@@ -46,7 +55,7 @@ every view; the data views float over it as soft, paper-toned panels.
 | **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, a **headless** chip when a launched agent is running, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless agents** section (backend · role · status · runtime) for any `agent_runner.py`-launched agent. |
 | **Library** | **every research document the lab writes, organized and beautifully rendered.** A left shelf: **The Lab** layer (pre-project **ideation** worksheets · **knowledge** · **notebook** · campaigns) above **one group per study** (IDEA → lit-review → decisions → proposal → sessions → critiques → paper + reviews) with the spawned **project repo's ledgers** (PLAN · EXPERIMENT_LOG · NOTES · TARGET · LOOP_BRIEF · analysis) resolved across the hub↔project boundary. The right pane renders Markdown with real typography, GFM tables, code blocks, **KaTeX math** (`$…$`/`$$…$$`), YAML front-matter as a chip strip, and doc-relative images inline — all offline (vendored `marked` + `DOMPurify` + KaTeX, `static/vendor/`). Filter box on top; every doc keeps its **open in editor ▸** link. **Every "read a document" action in the dashboard lands here** (gate bundles included); only raw run artifacts and tool output keep the bottom drawer. |
 | **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
-| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
+| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged — approving records your signature; the agent executes the transition at its next session/checkpoint, and the card shows *signed — waiting for the agent* until it does; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
 
 ### Gate review bundles — decide a gate without leaving the dashboard
@@ -210,6 +219,10 @@ Claude session). So it works in three tiers:
    and leaves the agent a `gate1_approved` command to transition + spawn; Gate 2 flips
    `gate2_envelope.pi_signed: true` (with `signed_via: dashboard:<ts>`) in `control.yaml`. Every
    gate click needs an explicit confirm and is written to `lab/.bus/pi-actions.jsonl`.
+   Like tier-1 commands, an approval **records the signature only** — the registry transition +
+   spawn (Gate 1) or the FULL runs (Gate 2) happen when an agent session next reaches an inbox
+   checkpoint; the card restyles to *signed — waiting for the agent* until then, and if no
+   session is running, start one (`claude` → `/lab-status`).
    **Gate 3 is never approvable here** — sending anything outside the lab is always done in a
    session. That is the one hard line.
 

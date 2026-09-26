@@ -14,7 +14,7 @@ The lifecycle skills: `setup-lab`, `lab-status`, `configure`, `discuss`, `ideate
 1. Read `lab/REGISTRY.md` — the single source of truth for what exists and what state it's in.
 2. Read the most recent entry in `lab/notebook/`.
 3. If working on a specific idea/project, read its `IDEA.md` / `PLAN.md` / `EXPERIMENT_LOG.md` — and its `SYSTEM.md` if present — before acting.
-4. **Reconcile project write-backs & escalations:** run `uv run --with pyyaml python tools/process_writebacks.py --apply` (scans every registry project's `EXPERIMENT_LOG.md` for `HUB-WRITEBACK-PENDING:` blocks, applies them to the hub notebook/knowledge + registry, and appends a `HUB-WRITEBACK-DONE` marker — append-only). Then scan each project's `.bus/events.jsonl` for unresolved `escalation` events and surface them as PI-attention items.
+4. **Reconcile project write-backs, escalations & inboxes:** run `uv run --with pyyaml python tools/process_writebacks.py --apply` (scans every registry project's `EXPERIMENT_LOG.md` for `HUB-WRITEBACK-PENDING:` blocks, applies them to the hub notebook/knowledge + registry, and appends a `HUB-WRITEBACK-DONE` marker — append-only). Then scan each project's `.bus/events.jsonl` for unresolved `escalation` events and surface them as PI-attention items. Finally check **every** inbox, not just the hub's: `uv run python tools/lab_bus.py inbox` for the hub bus, plus each registry project's `python <project>/scripts/lab_bus.py inbox` — a dashboard directive/command aimed at an idle project lands on that project's bus and is invisible to hub-bus-only checks; act on each within the protocol and ack it, so nothing the PI issued sits unconsumed.
 5. When in doubt about what to do next, run the `/lab-status` procedure.
 
 ## Lifecycle

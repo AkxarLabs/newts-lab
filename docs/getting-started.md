@@ -81,6 +81,13 @@ can **click to inspect** (a legend bottom-left maps role → colour with live he
 named Newt moves through it, and you click to **command** the agents (start/stop loops, request
 runs, approve Gate 1 & 2), all from the scene.
 
+One thing to know before you click: the dashboard **observes and signs — the agent executes**.
+Commands and gate approvals are recorded to the lab's file bus, and a Claude session acts on
+them at its **next checkpoint** (session start / loop cycle). With no session running, nothing
+happens until you start one (`claude` → `/lab-status`). Against a brand-new lab (empty registry)
+the world is empty and there are no gates to approve yet — they appear once a session produces
+a proposal.
+
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
 ```

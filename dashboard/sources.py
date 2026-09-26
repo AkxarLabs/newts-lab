@@ -388,6 +388,37 @@ def _gate_of(next_action: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# The dashboard's Gate-1 signature marker (serve.approve_gate writes it; defined here so the
+# snapshot can detect "signed, waiting for the agent" without importing the server).
+GATE1_MARK = "PI Gate 1 approved via Vivarium dashboard"
+
+
+def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
+    """True when the PI's signature for this gate is already recorded on disk AND still valid —
+    the approval is done, and what remains is the AGENT consuming it at its next checkpoint.
+    Rendering this distinctly is what stops a successful approval from looking like 'nothing
+    happened'. Detection rides on the on-disk signature (not the event bus), so it holds no
+    matter which session/tool signed, and it clears itself the moment the agent transitions the
+    registry row past the gate (the next-action text stops matching _GATE_RE, so gate -> None)."""
+    try:
+        if gate == 1:
+            p = HUB / "studies" / idea / "proposal.md"
+            return p.is_file() and GATE1_MARK in _read_text(p)
+        if gate == 2 and pdir is not None:
+            env = _load_yaml(pdir / "control.yaml").get("gate2_envelope") or {}
+            if not env.get("pi_signed"):
+                return False
+            # an EXPIRED signed envelope is not "waiting for the agent" — guard.py full-run and
+            # approve_gate both refuse it, so the PI must re-authorize; keep it an actionable gate.
+            expires = str(env.get("expires") or "").strip().lower()
+            if expires and expires not in ("null", "none", "~") and expires < time.strftime("%Y-%m-%d"):
+                return False
+            return True
+    except OSError:
+        pass
+    return False
+
+
 def _escalations(events: list[dict]) -> list[dict]:
     """Unresolved escalations, paired with their escalation_resolved events by ref. An escalation
     with no matching resolver stays 'needs you'; once an agent emits escalation_resolved (data.ref =
@@ -566,11 +597,13 @@ def snapshot() -> dict:
 
     for row in rows:
         pdir = _project_path(row)
+        gate = _gate_of(row["next"])   # the registry next-action text is the gate signal
         item = {
             "id": row["id"], "title": row["title"], "state": row["state"],
             "updated": row["updated"], "next": row["next"],
             "has_project": pdir is not None, "has_paper": bool((row.get("paper") or "").strip(" -—`")),
-            "project_dir": str(pdir) if pdir else None, "gate": _gate_of(row["next"]),
+            "project_dir": str(pdir) if pdir else None, "gate": gate,
+            "gate_signed": _gate_signed(row["id"], gate, pdir),
             "paper": _paper_status(row["id"]),   # the compiled PDF on disk (drives the paper viewer)
             "claims": _claims_count(row["id"]),  # number of claims in claims.yaml (drives the claims↔artifact map)
             "inflight": [], "best": None, "loop_active": False, "events": [],
@@ -600,8 +633,10 @@ def snapshot() -> dict:
         items.append(item)
 
     all_events.sort(key=lambda e: e.get("ts", ""))
-    # gates_waiting == the SAME set the "Needs you" panel renders (items with a parsed gate) so the
-    # topbar badge / beacon can never light up with an empty panel, and vice versa.
+    # gates_waiting counts gates that still need the PI's SIGNATURE — a signed-but-unconsumed gate
+    # renders in "Needs you" as 'signed, waiting for the agent' but no longer lights the badge/beacon
+    # (you already acted; the wait is the agent's). Still a subset of the panel's cards, so the badge
+    # can never light with an empty panel.
     held = slots()   # compute once (was called twice)
     return {
         "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -614,6 +649,6 @@ def snapshot() -> dict:
         "directives": _directive_threads(hub_bus),
         "workers": workers[-200:],
         "campaigns": campaigns(rows),
-        "gates_waiting": sum(1 for it in items if it["gate"]),
+        "gates_waiting": sum(1 for it in items if it["gate"] and not it["gate_signed"]),
         "cold": len(rows) == 0,
     }

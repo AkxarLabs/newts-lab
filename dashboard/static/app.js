@@ -294,7 +294,7 @@ function healthStripEl(s) {
 // gate badge, #gates deep-links, and the beacon's click target are all preserved.
 function renderGates(s) {
   const stage = $('#stage'); stage.innerHTML = '';
-  const p = el('section', 'panel', '<h2>Activity</h2><p class="lede">what needs you, and what’s running right now. Gate 1 & 2 you can approve here; Gate 3 is always done in a session.</p>');
+  const p = el('section', 'panel', '<h2>Activity</h2><p class="lede">what needs you, and what’s running right now. Gate 1 & 2 you can approve here — that records your signature; the agent acts on it at its next session/checkpoint. Gate 3 is always done in a session.</p>');
   const sv = sinceVisitEl(s); if (sv) p.appendChild(sv);
   p.appendChild(healthStripEl(s));
   const cols = el('div', 'activity-cols');
@@ -316,7 +316,10 @@ function renderGates(s) {
       row.appendChild(btn(previewLabel, 'tool', () => openLibraryBundle('gate', it.id, g, `Gate ${g} · ${it.title || it.id}`)));   // the composed gate bundle, rendered in the Library
       if (g === 3 && it.paper && it.paper.pdf) row.appendChild(btn('view paper ▸', 'go', () => openPaper(it.id, it.title || it.id)));
       if (g === 3 && it.claims) row.appendChild(btn(`claims (${it.claims}) ▸`, 'tool', () => openClaimsMap(it.id, it.title || it.id)));
-      if (g !== 3) row.appendChild(btn(`✓ Approve Gate ${g} (PI)`, 'go', () => openGate(it.id, g)));
+      // signed-but-unconsumed: the PI already acted — show the hand-off honestly instead of a live
+      // Approve button whose re-click errors ("already approved") and whose card never changes.
+      if (g !== 3 && it.gate_signed) card.appendChild(el('div', 'sub', '✓ signed — waiting for the agent to apply it at its next session/checkpoint (start one: claude → /lab-status).'));
+      else if (g !== 3) row.appendChild(btn(`✓ Approve Gate ${g} (PI)`, 'go', () => openGate(it.id, g)));
       card.appendChild(row);
       if (g === 3) card.appendChild(el('div', 'sub', 'Gate 3 (anything leaving the lab) is never one-click — open a session and run /finalize.'));
       wrap.appendChild(card);
@@ -370,10 +373,22 @@ function renderGates(s) {
 }
 
 let LEDGER_Q = '', LEDGER_HIDE = false, LEDGER_SHOWHIDDEN = false;
+// The demo world is synthetic, but its buttons used to be LIVE against the real server — a click on a
+// fake gate/withdraw could append demo ids to the REAL lab bus. Every write action passes through
+// this guard first. (DEMO is a top-level const declared at boot; hoisted functions read it at call time.)
+function demoBlock() {
+  if (DEMO) { toast('demo mode — controls are simulated; nothing is written'); return true; }
+  return false;
+}
 // withdraw a directive — appends an append-only "withdraw" marker (never erases the audit trail)
-async function withdrawDirective(target, id) {
-  try { await fetch('/api/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, id }) }); toast(`withdrew ${id}`); }
-  catch (e) { toast('could not reach the vivarium server'); }
+async function withdrawDirective(target, id, ts) {
+  if (demoBlock()) return;
+  try {
+    // ts pins the exact record: d-NNN ids are per-bus counters, so the hub and a project bus can
+    // both hold a d-003 — id alone could withdraw the wrong one. The server matches id AND ts.
+    const r = await fetch('/api/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, id, ts }) }).then(r => r.json());
+    toast(r.ok ? `withdrew ${id}` : (r.error || 'withdraw failed'));
+  } catch (e) { toast('could not reach the vivarium server'); }
 }
 // ── ledger decluttering. The lab's event bus on disk is APPEND-ONLY audit (hard rule) — we never
 // erase it. Instead the PI can HIDE rows from THIS view (stored locally in the browser); "restore"
@@ -415,7 +430,7 @@ function renderLedger(s) {
     const what = d.kind === 'command' ? `<span class="mono">${esc(d.action)}</span> ${esc(JSON.stringify(d.args || {}) === '{}' ? '' : JSON.stringify(d.args))} ${esc(d.text || '')}` : esc(d.text || '');
     const ev = d.ack && d.ack.evidence ? `<span class="mono">${esc(d.ack.evidence)}</span>` : (d.state === 'done' ? '<span class="unresolved">— none —</span>' : '');
     const canWithdraw = d.state === 'pending' || d.state === 'seen';
-    const wd = canWithdraw ? `<button class="x-row" data-wd="${esc(d.target)}|${esc(d.id)}" title="withdraw this directive">✕</button>` : '';
+    const wd = canWithdraw ? `<button class="x-row" data-wd="${esc(d.target)}|${esc(d.id)}" data-wd-ts="${esc(d.ts || '')}" title="withdraw this directive">✕</button>` : '';
     h += `<tr><td class="mono">${esc(d.id)}</td><td>${esc(d.target)}</td><td>${what}</td><td><span class="dchip ${d.state}${d.state === 'done' && !(d.ack && d.ack.evidence) ? ' noevidence' : ''}">${esc(d.state)}</span></td><td>${ev}</td><td>${wd}</td></tr>`;
   });
   h += `</tbody></table><h3 style="font-family:var(--display)">Event log <span class="sub" style="font-weight:400">· append-only audit${clearedAt || dismissed.size ? ` · ${hiddenCount} hidden from view` : ''}</span></h3><table><thead><tr><th>time</th><th>source</th><th>kind</th><th>detail</th><th></th></tr></thead><tbody>`;
@@ -429,7 +444,7 @@ function renderLedger(s) {
   });
   h += '</tbody></table>';
   const body = el('div', '', h);
-  body.querySelectorAll('[data-wd]').forEach(b => b.onclick = () => { const [tg2, id] = b.dataset.wd.split('|'); withdrawDirective(tg2, id); b.closest('tr').style.opacity = '.4'; });
+  body.querySelectorAll('[data-wd]').forEach(b => b.onclick = () => { const [tg2, id] = b.dataset.wd.split('|'); withdrawDirective(tg2, id, b.dataset.wdTs); b.closest('tr').style.opacity = '.4'; });
   body.querySelectorAll('[data-evi]').forEach(b => b.onclick = () => { const e = evs[+b.dataset.evi]; if (!e) return; b.dataset.evact === 'restore' ? restoreEvent(e) : dismissEvent(e); });
   p.appendChild(body); stage.appendChild(p);
 }
@@ -477,7 +492,7 @@ function paletteActions() {
     out.push({ label: 'Command · ' + nm, hint: 'steer', run: () => openSheet(it.id) });
     if (it.paper && it.paper.pdf) out.push({ label: 'Open paper · ' + nm, hint: 'paper', run: () => openPaper(it.id, nm) });
     if (it.claims) out.push({ label: 'Claims ↔ artifacts · ' + nm, hint: 'claims', run: () => openClaimsMap(it.id, nm) });
-    if (it.gate && it.gate !== 3) out.push({ label: `Approve Gate ${it.gate} · ${nm}`, hint: 'gate', run: () => openGate(it.id, it.gate) });
+    if (it.gate && it.gate !== 3 && !it.gate_signed) out.push({ label: `Approve Gate ${it.gate} · ${nm}`, hint: 'gate', run: () => openGate(it.id, it.gate) });
   });
   out.push({ label: 'Command the lab (Newt)', hint: 'hub', run: () => openSheet('hub') });
   out.push({ label: 'Open · Lab knowledge (findings / failures / open questions)', hint: 'read', run: () => openLibraryDoc('lab', null, 'knowledge/FINDINGS.md', 'Lab knowledge') });
@@ -556,10 +571,10 @@ function closeSettings() { $('#settingsScrim').hidden = true; $('#settings').hid
 /* ── attention inbox (the bell): everything that wants the PI, prioritised ── */
 function attentionItems(s) {
   const out = [];
-  (s.items || []).filter(it => it.gate).forEach(it => out.push({ sev: it.gate === 3 ? 'g3' : 'gate', icon: '⛓', title: `Gate ${it.gate} · ${it.title || it.id}`, sub: it.next || '', act: it.gate !== 3 ? { label: 'approve', fn: () => openGate(it.id, it.gate) } : null, go: () => openDetail(it.id) }));
+  (s.items || []).filter(it => it.gate).forEach(it => out.push({ sev: it.gate === 3 ? 'g3' : 'gate', icon: '⛓', title: `Gate ${it.gate} · ${it.title || it.id}`, sub: it.gate_signed ? 'signed ✓ — waiting for the agent' : (it.next || ''), act: it.gate !== 3 && !it.gate_signed ? { label: 'approve', fn: () => openGate(it.id, it.gate) } : null, go: () => openDetail(it.id) }));
   escList(s).slice(-8).reverse().forEach(e => out.push({ sev: 'warn', icon: '⚠', title: `${e.source || 'a project'} needs you`, sub: e.detail || '' }));
   const dirs = [...(s.directives || []).map(d => ({ ...d, target: d.target || 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: d.target || it.id })))];
-  dirs.filter(d => d.state === 'pending' || d.state === 'seen').forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${esc(d.target)}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id); setTimeout(renderAttention, 300); } } }));
+  dirs.filter(d => d.state === 'pending' || d.state === 'seen').forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${esc(d.target)}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id, d.ts); setTimeout(renderAttention, 300); } } }));
   (s.items || []).forEach(it => (it.inflight || []).filter(r => r.state === 'stalled').forEach(r => out.push({ sev: 'warn', icon: '◴', title: `stalled run · ${it.id}`, sub: r.run_id, go: () => openDetail(it.id) })));
   return out;
 }
@@ -615,7 +630,7 @@ function openDetail(id) {
   if (it.paper && it.paper.pdf) br.appendChild(btn('view paper', 'go', () => { closeDetail(); openPaper(it.id, it.title || it.id); }));
   if (it.claims) br.appendChild(btn(`claims (${it.claims})`, 'tool', () => { closeDetail(); openClaimsMap(it.id, it.title || it.id); }));
   if (it.project_dir && editorUri(it.project_dir)) br.appendChild(btn('open in editor', '', () => openInEditor(it.project_dir)));
-  if (it.gate && it.gate !== 3) br.appendChild(btn(`✓ Gate ${it.gate}`, 'go', () => { closeDetail(); openGate(it.id, it.gate); }));
+  if (it.gate && it.gate !== 3 && !it.gate_signed) br.appendChild(btn(`✓ Gate ${it.gate}`, 'go', () => { closeDetail(); openGate(it.id, it.gate); }));
   body.appendChild(br);
   closeRightDrawers('#detail');   // one right-drawer at a time
   $('#detail').hidden = false; syncOverlay();
@@ -770,7 +785,7 @@ function buildActions() {
   $('#sheetTitle').textContent = TARGET === 'hub' ? 'Command the lab' : `Steer ${TARGET}`;
   const set = TARGET === 'hub' ? ACTIONS.hub : (it && it.has_project ? ACTIONS.project : ACTIONS.idea);
   const grid = $('#actionGrid'); grid.innerHTML = '';
-  if (it && it.gate && it.gate !== 3) {
+  if (it && it.gate && it.gate !== 3 && !it.gate_signed) {
     const g = el('button', 'act gate', `<b>✓ Approve Gate ${it.gate}</b><small>record your PI signature (logged)</small>`);
     g.onclick = () => { closeSheet(); openGate(it.id, it.gate); }; grid.appendChild(g);
   }
@@ -787,15 +802,22 @@ function updateLatency() {
     : 'commands reach the agent at its next checkpoint (a loop cycle / session start) — not instant.';
 }
 async function doCommand(action, args, label) {
+  if (demoBlock()) { closeSheet(); return; }
   try {
-    await fetch('/api/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, action, args, text: label }) });
-    toast(`queued: ${label} → ${TARGET === 'hub' ? 'the lab' : TARGET}`); closeSheet();
+    const r = await fetch('/api/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, action, args, text: label }) }).then(r => r.json());
+    toast(r.ok ? `queued: ${label} → ${TARGET === 'hub' ? 'the lab' : TARGET} — the agent acts on it at its next checkpoint` : (r.error || 'command failed'));
+    closeSheet();
   } catch (e) { toast('could not reach the vivarium server'); }
 }
 async function sendNote() {
   const t = $('#noteText').value.trim(); if (!t) return;
-  try { await fetch('/api/directive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, text: t }) }); $('#noteText').value = ''; toast('note pinned — Newt will carry it'); closeSheet(); }
-  catch (e) { toast('could not reach the vivarium server'); }
+  if (demoBlock()) { closeSheet(); return; }
+  try {
+    const r = await fetch('/api/directive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, text: t }) }).then(r => r.json());
+    if (r.ok) { $('#noteText').value = ''; toast('note pinned — Newt reads it at its next checkpoint'); }
+    else toast(r.error || 'could not pin the note');
+    closeSheet();
+  } catch (e) { toast('could not reach the vivarium server'); }
 }
 
 /* ── gate approval ──────────────────────────────────────────────────────── */
@@ -805,9 +827,10 @@ function openGate(idea, gate) {
   const m = $('#modal'); m.classList.toggle('g3', gate === 3);
   $('#modalSeal').textContent = gate;
   $('#modalTitle').textContent = `Gate ${gate} — ${idea}`;
-  $('#modalBody').innerHTML = gate === 1
+  $('#modalBody').innerHTML = (gate === 1
     ? `Records your PI signature on <span class="mono">studies/${esc(idea)}/proposal.md</span> and lets the agent spawn the project.`
-    : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`;
+    : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`)
+    + `<div class="sub" style="margin-top:8px">This records your signature <b>now</b>; a live agent session acts on it at its <b>next checkpoint</b> — if none is running, start one (<span class="mono">claude</span> → <span class="mono">/lab-status</span>) and nothing happens until you do.</div>`;
   const read = $('#modalRead'); read.hidden = false;
   read.textContent = gate === 1 ? 'review proposal + novelty ▸' : 'review envelope + pilots ▸';
   read.onclick = () => { closeModal(); openLibraryBundle('gate', idea, gate, `Gate ${gate} · ${idea}`); };   // read first; approve again from Activity / the bell
@@ -816,9 +839,13 @@ function openGate(idea, gate) {
 function closeModal() { $('#modalScrim').hidden = true; $('#modal').hidden = true; $('#modal').classList.remove('g3'); pendingGate = null; syncOverlay(); }
 async function confirmGate() {
   if (!pendingGate) return;
+  if (demoBlock()) { closeModal(); return; }
   try {
     const r = await fetch('/api/gate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...pendingGate, confirm: true }) }).then(r => r.json());
-    toast(r.ok ? `Gate ${pendingGate.gate} approved ✓` : (r.error || 'failed'));
+    // surface the server's full answer: the note carries the crucial "the agent applies this at its
+    // next checkpoint" latency, the warnings carry e.g. "idea is not in state proposal".
+    toast(r.ok ? `Gate ${pendingGate.gate} approved ✓${r.note ? ' — ' + r.note : ''}` : (r.error || 'failed'));
+    (r.warnings || []).forEach(w => toast(`⚠ ${w}`));
   } catch (e) { toast('could not reach the server'); }
   closeModal();
 }
@@ -1905,7 +1932,7 @@ $('#clock').onclick = toggleScrubber;
 $('#scrubPlay').onclick = playScrub; $('#scrubLive').onclick = goLive; $('#scrubClose').onclick = closeScrubber;
 $('#scrubRange').addEventListener('input', e => showHistory(+e.target.value));
 // the listening command bar: free-text note to Newt (Enter or ➤); ⋯ opens the full console
-function sendCmd() { const inp = $('#cmdInput'); const v = (inp.value || '').trim(); if (!v) return; fetch('/api/directive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET || 'hub', text: v }) }).then(() => { inp.value = ''; toast(`note pinned → ${TARGET && TARGET !== 'hub' ? TARGET : 'the lab'}`); }).catch(() => toast('could not reach the vivarium server')); }
+function sendCmd() { const inp = $('#cmdInput'); const v = (inp.value || '').trim(); if (!v) return; if (demoBlock()) return; fetch('/api/directive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET || 'hub', text: v }) }).then(r => r.json()).then(r => { if (r.ok) { inp.value = ''; toast(`note pinned → ${TARGET && TARGET !== 'hub' ? TARGET : 'the lab'}`); } else toast(r.error || 'could not pin the note'); }).catch(() => toast('could not reach the vivarium server')); }
 $('#cmdSend').onclick = sendCmd;
 $('#cmdMore').onclick = () => openSheet(TARGET || 'hub');
 $('#cmdInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendCmd(); } });
@@ -1945,6 +1972,8 @@ function notifyChanges(prev, next) {
   const esc1 = fresh.filter(e => e.kind === 'escalation').slice(-1)[0];
   if (esc1) return toast(`⚠ ${esc1.source || 'a project'} needs you${esc1.detail ? ' · ' + esc1.detail : ''}`);
   if ((next.gates_waiting || 0) > (prev.gates_waiting || 0)) return toast('🔔 a new gate is waiting for you');
+  const gr = fresh.filter(e => e.kind === 'gate_resolved').slice(-1)[0];
+  if (gr) return toast(`⛓ gate resolved${gr.idea ? ' · ' + gr.idea : ''}${gr.detail ? ' — ' + gr.detail : ''}`);
   const fin = fresh.filter(e => e.kind === 'run_finished').slice(-1)[0];
   if (fin) return toast(`${fin.source ? fin.source + ' · ' : ''}${fin.run_id || 'run'} ${fin.status || 'finished'}`);
   const kill = fresh.filter(e => e.kind === 'kill').slice(-1)[0];
