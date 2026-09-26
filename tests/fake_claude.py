@@ -14,6 +14,8 @@ Behaviour is picked by env FAKE_MODE:
   mcp        ask the permission host to approve a Bash call; report its decision
   subagents  spawn an Agent subagent, let it act (parent_tool_use_id), return a result packet
   prose      end with a question in prose (no AskUserQuestion) — answered via reply/resume
+  auto       (demos) pick by procedure: /spawn-project|/discuss → defer, /experiment|/improve →
+             subagents, else complete (/propose adds a gate1 footer); FAKE_PACE=<s> paces the lines
 Optional env FAKE_REPORT='{"next": ..., "needs_pi": ..., "summary": ...}' makes the "agent" emit the
 run_report footer on the run's bus, as the preamble instructs.
 Every invocation appends {argv, stdin, cwd, env subset} to $NEWTS_RUN_DIR/fake_calls.jsonl.
@@ -34,6 +36,9 @@ from pathlib import Path
 def out(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
+    pace = float(os.environ.get("FAKE_PACE") or 0)
+    if pace:
+        time.sleep(pace)
 
 
 def parse(argv: list[str]) -> tuple[dict, list[str]]:
@@ -120,6 +125,21 @@ def main() -> int:
     sid = resume or (opts.get("--session-id") or [None])[0] or str(uuid.uuid4())
     settings = (opts.get("--settings") or [None])[0]
     mode = os.environ.get("FAKE_MODE", "complete")
+    if mode == "auto":
+        low = prompt.lower()
+        if "/spawn-project" in low or "/discuss" in low:
+            mode = "defer"
+        elif "/experiment" in low or "/improve" in low:
+            mode = "subagents"
+        else:
+            mode = "complete"
+        if "/propose" in low and not os.environ.get("FAKE_REPORT"):
+            rest = low.split("/propose", 1)[1].split()
+            slug = rest[0] if rest else "idea"
+            os.environ["FAKE_REPORT"] = json.dumps({"next": f"/spawn-project {slug}", "needs_pi": "gate1",
+                                                    "summary": f"proposal for {slug} written; staged plan + kill criteria ready for Gate 1"})
+        elif not os.environ.get("FAKE_REPORT"):
+            os.environ["FAKE_REPORT"] = json.dumps({"next": "", "needs_pi": "none", "summary": "done — see the notebook entry"})
     out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake-model"})
 
     def report():

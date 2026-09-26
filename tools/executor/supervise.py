@@ -196,14 +196,22 @@ _CONTINUE = ("This session was interrupted before it finished ({why}). Check wha
              "(the ledgers and git are the memory), then continue the procedure from where it stopped.")
 
 
+def _say(msg: str) -> None:
+    """One line to <run>.d/supervisor.log (our stdout) — how an early exit explains itself."""
+    print(f"[{now()}] supervise: {msg}", flush=True)
+
+
 def supervise(lab: Lab, run_id: str, target: str) -> int:
+    _say(f"start run={run_id} target={target} pid={os.getpid()}")
     workdir = lab.target_dir(target)
     if not workdir:
+        _say(f"exit 2: no workdir for target {target!r}")
         return 2
     adir = lab.agents_dir(workdir)
     mpath = adir / f"{run_id}.json"
-    m = read_manifest(mpath)
+    m = read_manifest(mpath, patience=5.0)
     if m is None:
+        _say(f"exit 2: manifest unreadable at {mpath}")
         return 2
     rd = run_dir(adir, run_id)
     lock = RunLock(rd / "lock")
@@ -212,13 +220,17 @@ def supervise(lab: Lab, run_id: str, target: str) -> int:
     deadline = time.time() + 5.0
     while not lock.try_acquire():
         if time.time() > deadline:
-            return 3   # another supervisor already owns this run
+            _say("exit 3: another supervisor owns this run")
+            return 3
         time.sleep(0.05)
     try:
-        m = read_manifest(mpath) or m   # re-read under the lock
+        m = read_manifest(mpath, patience=5.0) or m   # re-read under the lock
         if m.get("status") not in ("starting", "resuming"):
-            return 4   # a stale spawn (cancelled / already handled)
-        return _attempt(lab, Path(workdir), adir, mpath, m, rd)
+            _say(f"exit 4: status is {m.get('status')!r} (stale spawn)")
+            return 4
+        rc = _attempt(lab, Path(workdir), adir, mpath, m, rd)
+        _say(f"done rc={rc} status={m.get('status')}")
+        return rc
     finally:
         lock.release()
 

@@ -12,8 +12,10 @@ nothing; queued runs simply wait for the next tick from any client.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -31,6 +33,12 @@ _LAST_TICK: dict = {}
 
 # ── reconcile ────────────────────────────────────────────────────────────────
 
+def _still(path: Path, status: str) -> dict | None:
+    """The manifest re-read from disk, if it is STILL in `status` — else None (someone moved it on)."""
+    fresh = read_manifest(path)
+    return fresh if (fresh is not None and fresh.get("status") == status) else None
+
+
 def reconcile_manifest(lab: Lab, workdir: Path, path: Path, m: dict) -> bool:
     """Mark one orphaned run failed. Schema-2 runs: the supervisor's OS lock is the liveness signal.
     Legacy (agent_runner v1) manifests: pid liveness, as before. Returns True if it changed."""
@@ -38,9 +46,35 @@ def reconcile_manifest(lab: Lab, workdir: Path, path: Path, m: dict) -> bool:
     if m.get("schema") == 2 and st in ACTIVE:
         rd = run_dir(Path(path).parent, m.get("run_id") or m.get("agent_id"))
         age = time.time() - (parse_ts(m.get("status_ts")) or 0)
-        if st in ("starting", "resuming") and age < STARTING_GRACE_S:
-            return False   # the supervisor may not have taken its lock yet — and never probe it then
+        if st in ("starting", "resuming"):
+            spawn = {}
+            try:
+                spawn = json.loads((rd / "spawn.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+            booting = spawn.get("pid") and pid_alive(spawn["pid"])
+            if booting or (age < STARTING_GRACE_S and not spawn.get("pid")):
+                return False   # still coming up — and never probe its lock then
+            if spawn.get("pid") and not (rd / "lock").exists():
+                # its supervisor died before it ever took the run: no agent was started, so it is
+                # safe to put the run back in the queue (bounded) instead of failing it
+                m = _still(path, st)
+                if m is None:
+                    return False
+                tries = int(m.get("spawn_retries") or 0)
+                if tries < 3:
+                    with contextlib.suppress(OSError):
+                        (rd / "spawn.json").unlink()
+                    transition(lab, path, m, "queued", by="reconcile", spawn_retries=tries + 1,
+                               reason="supervisor exited before starting the run — re-queued")
+                    return True
         if is_locked(rd / "lock"):
+            return False
+        # The supervisor writes its final status BEFORE it releases the lock — so, having seen the lock
+        # free, re-read: if it just finished, the terminal record is already on disk and must win over
+        # the stale copy we were handed (a lost race here would turn "completed" into "failed").
+        m = _still(path, st)
+        if m is None:
             return False
         if m.get("pid") and pid_alive(m["pid"]):
             kill_tree(m["pid"])   # an undrained orphan can't be observed — stop it
@@ -52,6 +86,9 @@ def reconcile_manifest(lab: Lab, workdir: Path, path: Path, m: dict) -> bool:
         return True
     if m.get("schema") != 2 and st == "running":
         if pid_alive(m.get("pid")):
+            return False
+        m = _still(path, st)
+        if m is None:
             return False
         m.update(status="failed", finished=now(),
                  last_message=(m.get("last_message") or "") + " [reconciled: process gone]")
@@ -215,11 +252,22 @@ def spawn_supervisor(lab: Lab, target: str, run_id: str, log_path: Path) -> int:
     """Start `executor_cli.py supervise` fully detached (its own session / no console); it outlives
     whoever called tick(). Returns its pid."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    # Carry our import path: under `uv run --with pyyaml` the overlay that provides pyyaml may not
+    # be visible to a bare child of sys.executable — the supervisor must import exactly what we can.
+    env = dict(os.environ)
+    paths = [p for p in sys.path if p and os.path.isdir(p)]
+    if env.get("PYTHONPATH"):
+        paths.append(env["PYTHONPATH"])
+    env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(paths))
     with open(log_path, "ab") as log:
         p = subprocess.Popen([python_exe(), str(CLI), "--hub", str(lab.hub), "supervise",
                               "--run", run_id, "--target", target],
                              cwd=str(lab.hub), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                             close_fds=True, **DETACHED)
+                             env=env, close_fds=True, **DETACHED)
+    try:   # a sidecar, NOT the manifest (the supervisor owns the manifest from here on)
+        (log_path.parent / "spawn.json").write_text(json.dumps({"pid": p.pid, "ts": now()}), encoding="utf-8")
+    except OSError:
+        pass
     return p.pid
 
 

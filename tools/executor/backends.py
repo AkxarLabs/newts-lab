@@ -310,6 +310,9 @@ def summarize_input(tool: str | None, inp) -> str:
     if tool in ("Agent", "Task"):
         st = inp.get("subagent_type") or "general-purpose"
         return f"{st}: {inp.get('description') or inp.get('prompt') or ''}"[:400]
+    if tool == "AskUserQuestion":
+        qs = [q.get("question") for q in (inp.get("questions") or []) if isinstance(q, dict) and q.get("question")]
+        return (" · ".join(qs) or "a question for the PI")[:400]
     for k in _SUMMARY_KEYS:
         if inp.get(k):
             return str(inp[k])[:400]

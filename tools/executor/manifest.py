@@ -82,16 +82,23 @@ def write_manifest(path: Path, manifest: dict) -> None:
             time.sleep(0.02 * (attempt + 1))
 
 
-def read_manifest(path: Path) -> dict | None:
-    for _ in range(3):   # a reader can race the atomic replace on Windows — retry, never crash
-        try:
-            data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
-            return data if isinstance(data, dict) else None
-        except FileNotFoundError:
+def read_manifest(path: Path, patience: float = 0.0) -> dict | None:
+    """Read a manifest, never crashing. A reader can race the atomic replace on Windows (a sharing
+    violation, or even a transient not-found) — retry briefly; `patience` > 0 keeps retrying a
+    missing/unreadable file for that many seconds (for readers that know it must exist)."""
+    deadline = time.time() + patience
+    while True:
+        for _ in range(3):
+            try:
+                data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+                return data if isinstance(data, dict) else None
+            except FileNotFoundError:
+                break
+            except (OSError, json.JSONDecodeError):
+                time.sleep(0.02)
+        if time.time() >= deadline:
             return None
-        except (OSError, json.JSONDecodeError):
-            time.sleep(0.02)
-    return None
+        time.sleep(0.05)
 
 
 def run_dir(agents_dir: Path, run_id: str) -> Path:

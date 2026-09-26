@@ -468,3 +468,48 @@ def test_permission_host_waits_for_pi_decision(tmp_path):
                "arguments": {"tool_name": "Bash", "input": {"command": "uv run x"}}}}], wait="10")
     d = json.loads(res[0]["result"]["content"][0]["text"])
     assert d == {"behavior": "allow", "updatedInput": {"command": "uv run x"}}
+
+
+# ── check_lab: executor hygiene lints ────────────────────────────────────────
+
+def test_check_lab_executor_lints(hub, monkeypatch):
+    from conftest import load
+    m = load("check_lab")
+    monkeypatch.setattr(m, "HUB", hub.root)
+    adir = hub.lab / ".bus" / "agents"
+    adir.mkdir(parents=True)
+    (adir / "old.json").write_text(json.dumps({"run_id": "old", "status": "running", "max_minutes": 10,
+                                                "status_ts": "2020-01-01T00:00:00"}), encoding="utf-8")
+    (adir / "ask.json").write_text(json.dumps({"run_id": "ask", "status": "waiting_input",
+                                                "status_ts": "2020-01-01T00:00:00"}), encoding="utf-8")
+    cfg = {"agents": {"programmatic": {"enabled": False, "backends": {"claude": {"command": str(hub.root / "nope.exe")}}}},
+           "dashboard": {"auto_spawn_on_gate1": True}}
+    out = m.executor_checks(cfg, {}, hub.projects_root)
+    text = "\n".join(out)
+    assert "auto_spawn_on_gate1" in text and "nope.exe" in text
+    assert "run old has been 'running'" in text and "run ask has waited" in text
+
+
+def test_reconcile_never_overwrites_a_run_that_just_finished(hub):
+    """Race: reconcile holds a stale 'running' copy, the supervisor then writes 'completed' and frees its
+    lock. Reconcile must re-read and leave the terminal record alone (not turn it into 'failed')."""
+    lab = setup(hub)
+    rid = _queue(lab, 1)[0]
+    _t, workdir, path, m = executor.find_run(lab, rid)
+    stale = dict(m, status="running")
+    manifest.transition(lab, path, m, "completed", by="supervisor", finished=manifest.now())
+    assert scheduler.reconcile_manifest(lab, workdir, path, stale) is False
+    assert executor.find_run(lab, rid)[3]["status"] == "completed"
+
+
+def test_reconcile_requeues_a_run_whose_supervisor_died_before_starting(hub):
+    lab = setup(hub)
+    rid = _queue(lab, 1)[0]
+    _t, workdir, path, m = executor.find_run(lab, rid)
+    manifest.transition(lab, path, m, "starting", by="scheduler")
+    rd = manifest.run_dir(path.parent, rid)
+    rd.mkdir(parents=True, exist_ok=True)
+    (rd / "spawn.json").write_text(json.dumps({"pid": 999999991, "ts": manifest.now()}), encoding="utf-8")
+    assert scheduler.reconcile_manifest(lab, workdir, path, m) is True
+    m = executor.find_run(lab, rid)[3]
+    assert m["status"] == "queued" and m["spawn_retries"] == 1 and "re-queued" in m["reason"]
