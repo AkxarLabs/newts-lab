@@ -136,6 +136,16 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | `agents.programmatic.max_minutes` · `max_concurrent` · `max_depth` · `max_transcript_mb` | 240 · 3 · 1 · 200 | PI | per-agent wall-clock cap (watchdog) · per-project concurrency · launch-recursion cap (1 = no nesting) · stored-transcript cap (MB) |
 | `agents.programmatic.backends.<backend>.*` | — | PI | per-backend model/effort + safety knobs: claude `{model, effort, permission_mode}` · codex `{model, reasoning_effort, sandbox, approval, network_access}` · opencode `{model, variant, permission, agent, skip_permissions}` · all `{extra_args}`. The safety flags are *refused* in `extra_args` and must go through these dedicated keys |
 | `autopilot.max_concurrent_projects` | 1 | PI | how many projects an `/autopilot` campaign drives at once. `1` = one project end-to-end (sequential). `>1` turns autopilot into a coordinator that launches one headless session per project — and **requires** `agents.programmatic.enabled: true` |
+| `agents.programmatic.max_concurrent_total` | 3 | PI | lab-wide ceiling on live headless runs (the executor) |
+| `agents.programmatic.hub_max_concurrent` | 1 | PI | hub-level runs at once — 1 keeps two sessions from racing `lab/REGISTRY.md` |
+| `agents.programmatic.daily_max_runs` · `daily_max_minutes` | 0 · 0 | PI | usage brake: run attempts / agent-minutes per day (0 = no cap) |
+| `agents.programmatic.chain_max_steps` | 6 | PI | a *keep going until a gate* run chains at most this many steps (it always stops at a gate) |
+| `agents.programmatic.permission_wait_seconds` | 0 | PI | a headless run's permission prompts: 0 = deny + log at once; >0 = wait for the PI's allow/deny |
+| `agents.programmatic.backends.<b>.command` | "" | PI | the CLI to run (blank = PATH, then the usual install dirs — e.g. `~/.local/bin/claude.exe`) |
+| `agents.programmatic.backends.<b>.prompt_via` | stdin | PI | how the prompt reaches the CLI: `stdin` (no Windows command-line limit) or `argv` |
+| `dashboard.executor` | true | PI | run the executor's scheduler inside the dashboard (launching still needs `programmatic.enabled`) |
+| `dashboard.auto_spawn_on_gate1` | false | PI | signing Gate 1 in the dashboard also queues `/spawn-project` (off = a one-click button) |
+| `dashboard.tail_max_kb` | 64 | agent | live-transcript chunk per poll in the run view |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 

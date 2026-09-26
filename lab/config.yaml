@@ -93,6 +93,18 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # launch further agents (mirrors the no-nested-subagents rule)
     max_transcript_mb: 200      # cap each agent's stored stdout transcript (.bus/agents/*.stream.jsonl);
                                 # a runaway/looping agent can't fill the disk before the watchdog. 0 = unlimited.
+    # ── the executor (tools/executor; the dashboard's "Run a procedure", executor_cli.py) ──
+    max_concurrent_total: 3     # lab-wide ceiling on LIVE headless sessions (hub + every project)
+    hub_max_concurrent: 1       # hub-level sessions at once. 1 = serialized: two hub sessions editing
+                                # lab/REGISTRY.md + the notebook concurrently would race the source of truth
+    daily_max_runs: 0           # usage brake: max run attempts started per day (0 = no cap). Subscription
+                                # plans assume ordinary individual use — this keeps unattended use bounded
+    daily_max_minutes: 0        # usage brake: max headless agent-minutes per day (0 = no cap)
+    chain_max_steps: 6          # a run launched with chain=loop re-launches its own reported next step at
+                                # most this many times — and ALWAYS stops at any gate / needs-PI report
+    permission_wait_seconds: 0  # a headless run's permission prompts: 0 = deny at once + log (never hangs
+                                # an unattended run; denials surface as "needs you"). >0 = wait that long
+                                # for the PI's allow/deny in the dashboard, then deny
     backends:                   # per-backend invocation knobs. The safety-critical flags are REFUSED in
                                 # extra_args (so they can't silently negate human-in-loop); set them
                                 # through these DEDICATED keys instead — change as needed.
@@ -105,7 +117,12 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # use that default). e.g. `acceptEdits` / `plan` / `dontAsk` /
                                 # `bypassPermissions` (PI-owned) for the claude backend only.
         extra_args: ""          # appended to `claude -p` (advanced; --permission-mode and
-                                # --dangerously-skip-permissions are refused — use permission_mode above)
+                                # --dangerously-skip-permissions are refused — use permission_mode above;
+                                # so are the executor's own --settings/--resume/--session-id/--add-dir/…)
+        command: ""             # the CLI to run. Blank = found automatically (PATH, then the usual install
+                                # dirs — e.g. %USERPROFILE%\.local\bin\claude.exe, often NOT on a GUI app's
+                                # PATH). A path string, or an argv list.
+        prompt_via: stdin       # stdin (default; no ~32K Windows command-line limit) | argv
       codex:
         model: gpt-5.5          # per-backend default model (codex -m). Slug pattern gpt-5.<minor>[-mini|
                                 # -codex]; availability is account/auth-dependent — verify on the host.
@@ -270,3 +287,9 @@ dashboard:                      # ── optional Vivarium dashboard (dashboard/
   port: 8787                    # local-only; see docs/dashboard.md
   editor: vscode                # "open in editor" deep-links: vscode|cursor|vscodium|windsurf|none
                                 # (local-only → <scheme>://file/<abs-path> opens YOUR editor; none = off)
+  executor: true                # run the executor's scheduler inside the dashboard (starts queued runs,
+                                # reconciles, reads run reports). Launching itself still needs
+                                # agents.programmatic.enabled. false = observe-and-sign only.
+  auto_spawn_on_gate1: false    # signing Gate 1 here ALSO queues /spawn-project <idea>. Off = a one-click
+                                # "launch /spawn-project" button instead (it spends compute — PI-owned)
+  tail_max_kb: 64               # live-transcript chunk size per poll in a run's view

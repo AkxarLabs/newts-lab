@@ -129,6 +129,23 @@ uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exi
 
 One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates have no role file, so `/ideate` and `/scope` apply `agents.critic_model` (tier-resolved) as their per-spawn Task model on Claude Code and run them at the session model on other backends (subagent rule 7). **Only Claude and Codex are rendered** (known schemas); opencode / Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or `agent_runner.py` (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
 
+### `executor_cli.py` — headless procedure runs (the dashboard's engine)
+
+```bash
+uv run --with pyyaml python tools/executor_cli.py enqueue --skill <name> [--target <slug>] [--args "..."] \
+    [--backend claude|codex|opencode] [--chain off|next|loop] [--repeat-minutes N] [--wait]
+uv run --with pyyaml python tools/executor_cli.py serve | tick | list | show <run> | attention | health | skills
+uv run --with pyyaml python tools/executor_cli.py answer <run> --pick "<question>=<label>" | --text "..."
+uv run --with pyyaml python tools/executor_cli.py reply <run> --text "..." | resume | stop | cancel <run>
+```
+
+Runs a **whitelisted** lab procedure (`skills` lists them; `/finalize` is never one) as a headless
+agent session in a detached supervisor (`tools/executor/`): queued → started by the scheduler under
+the caps → live transcript + manifest + `lab/.bus/runs.jsonl` ledger → paused on a PI question and
+resumed on the answer (same session) → completed with a `run_report` footer (`next`, `needs_pi`,
+`summary`). PI-owned, off by default (`agents.programmatic.enabled`); every gate still binds; Gate 3 is
+never delegated. The dashboard's *Run a procedure* is this same engine. See [Autonomy](autonomy.md#headless-runs-the-executor).
+
 ### `agent_runner.py` — launch + capture headless top-level agents
 
 ```bash

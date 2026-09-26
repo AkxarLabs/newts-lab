@@ -18,7 +18,9 @@ itself in `TARGET.md`. Use when the success criterion is a number, not a claim.
 
 *Optional first:* if the target is fuzzy, run `/discuss target [task]` to grill the PI and
 research the task before this interview — its session doc lists the answers below, so this step
-transcribes rather than re-asks.
+transcribes rather than re-asks. *Headless (launched from the dashboard):* ask one question per turn —
+`AskUserQuestion` when it has discrete options, else prose as the turn's final message; the PI answers
+in the dashboard and the session resumes. Never set a `pi_signed` value from an answer — the PI signs.
 
 Spinning a project + spending compute is **Gate 1**; this interview *is* that PI conversation —
 write its outcome into `IDEA.md` (no separate proposal). Establish:

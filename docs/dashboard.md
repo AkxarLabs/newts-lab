@@ -23,18 +23,22 @@ frame for `prefers-reduced-motion` and `?static`.
 ```bash
 uv run --with pyyaml python dashboard/serve.py            # http://127.0.0.1:8787
 uv run --with pyyaml python dashboard/serve.py --port 9000
+uv run --with pyyaml python dashboard/serve.py --hub ../other-lab   # serve another lab
 ```
 
-Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface but stays
-honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)) — it **observes
-and signs; the agent executes**. Every command or approval is recorded to the file bus and takes
-effect when a Claude session next reaches an inbox checkpoint; with no session running, nothing
-moves until you start one.
+Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface and stays honest
+about what it can do (see [Controls](#controls-what-newt-can-actually-do)). With **programmatic
+launching** on (a PI-owned switch, off by default — flip it in ⚙ Settings), it is the **central
+interface**: you launch procedures as headless agent sessions, watch them (and every subagent) live,
+answer their questions, and stop or resume them — see [Running procedures](#running-procedures-headless-runs).
+With it off, it **observes and signs; the agent executes**: commands and approvals are recorded to
+the file bus and take effect when a Claude session next reaches an inbox checkpoint.
 
 !!! note "Fresh lab?"
     Against a brand-new lab (empty `lab/REGISTRY.md`, no bus yet) the world is intentionally
-    empty: no critters, nothing in Activity, no gates to approve. Gates appear once a session
-    produces a proposal. Commands you issue are queued but have no consumer until a session runs.
+    empty: no critters, nothing in Activity, no gates to approve. Gates appear once a proposal is
+    written. With programmatic launching on, start from the command sheet (⋯ → *Run a procedure* →
+    `/ideate`, or `/setup-lab` as an interview); with it off, commands are queued for your next session.
 
 !!! tip "Try it with no lab — demo mode (debugging)"
     Demo is a synthetic, living lab (agents come and go, runs progress, gates wait) — entirely
@@ -52,10 +56,10 @@ every view; the data views float over it as soft, paper-toned panels.
 | View | What it is |
 |---|---|
 | **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment sub-newts live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's sub-newts up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as sub-newts in their own room. |
-| **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, a **headless** chip when a launched agent is running, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless agents** section (backend · role · status · runtime) for any `agent_runner.py`-launched agent. |
+| **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, **headless** / **asking you** chips when a launched run is live or waiting on your answer, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless runs** section — each run clickable into its live view. |
 | **Library** | **every research document the lab writes, organized and beautifully rendered.** A left shelf: **The Lab** layer (pre-project **ideation** worksheets · **knowledge** · **notebook** · campaigns) above **one group per study** (IDEA → lit-review → decisions → proposal → sessions → critiques → paper + reviews) with the spawned **project repo's ledgers** (PLAN · EXPERIMENT_LOG · NOTES · TARGET · LOOP_BRIEF · analysis) resolved across the hub↔project boundary. The right pane renders Markdown with real typography, GFM tables, code blocks, **KaTeX math** (`$…$`/`$$…$$`), YAML front-matter as a chip strip, and doc-relative images inline — all offline (vendored `marked` + `DOMPurify` + KaTeX, `static/vendor/`). Filter box on top; every doc keeps its **open in editor ▸** link. **Every "read a document" action in the dashboard lands here** (gate bundles included); only raw run artifacts and tool output keep the bottom drawer. |
-| **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
-| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged — approving records your signature; the agent executes the transition at its next session/checkpoint, and the card shows *signed — waiting for the agent* until it does; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
+| **Agents** | **headless runs** first (every run you launched — running, waiting for you, queued, finished — as cards that open the [run view](#running-procedures-headless-runs)), then **every agent with its subagents nested under it**, grouped by where it works: each shows its label (the spawn's description — *"Novelty skeptic: sparse attention"*, *"variant exp-004"*), role, what it is doing right now (including *in Bash since 14:02* during a long training call), and — for finished subagents, which stay visible, greyed, for 30 minutes — what it handed back. |
+| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (a run's **question** to answer, a run that stopped at a gate or a kill criterion, a crashed run to resume, denied actions, escalations — each with its action buttons; then each pending Gate 1/2/3 as a sealed letter that opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; after Gate 1 the card offers **▸ launch /spawn-project**; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (headless runs, then one row per running experiment run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
 | **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
 
 ### Gate review bundles — decide a gate without leaving the dashboard
@@ -175,7 +179,7 @@ agent or subagent is **its own sub-newt**, colour-coded by role. Six roles:
 
 | Role | Colour | Note |
 |---|---|---|
-| **orchestrator** | gold | this *is* **Newt** — the larger creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
+| **orchestrator** | gold | an interactive session is **Newt** — the larger creature at the bottom of the world (click Newt to command the lab); a *headless run's* orchestrator appears as its own sub-newt in the room of what it's working on |
 | **experiment-runner** | teal | |
 | **fresh-context-reviewer** | violet | |
 | **overseer** | slate-blue | |
@@ -186,23 +190,32 @@ Each sub-newt lives in the room where its task is happening, so you can *see* a 
 ensemble fill the review panel or runners crowd the lab. Same-role workers are differentiated
 **deterministically** — hue, marking, and walk-phase are derived from the worker's id, so the same
 worker always looks the same. When a worker finishes its task it plays a **despawn animation**
-(it dissolves into motes). When a room gets crowded, the extra workers collapse into a single
-**"+N more"** cluster so the scene stays readable.
+(it dissolves into motes).
 
-A **legend** ("Who's working", bottom-left) is always visible: each role → its colour with a live
-head-count. Click a role to **highlight** every sub-newt of that role across the world.
+**The Key** (bottom-left) maps each role to its colour with live counts; click a role to **highlight**
+every sub-newt of that role across the world.
 
-**Click a sub-newt** to open an **inspector panel** showing that one worker's own clean
-action history — exactly what *that* agent did, in order, separated from everyone else's. This is
-backed by the per-worker logs described in [Traceability](#traceability-one-log-per-worker).
+**Click a sub-newt** (or its card in the Agents tab) to open an **inspector panel**: its label and
+role, **who spawned it** (↑ one click to the parent), its **subagents** (one click each), the tool
+it is **inside right now** and since when, what it **handed back** (the result packet / final
+message), and its full action timeline — exactly what *that* agent did, separated from everyone
+else's. A worker inside a long tool call stays *working* (it never drops off the roster mid-run);
+one silent with no open tool goes *idle*, and a subagent silent for 20 minutes shows up in *Needs
+you*. This is backed by the per-worker logs described in [Traceability](#traceability-one-log-per-worker).
 
 ## Controls — what Newt can actually do
 
-Click **Newt** — the orchestrator creature, who roams the world — or any other critter, to open
-the **command console** (the footer also carries a persistent Newt handle). One honest constraint shapes
-all of it: the dashboard is a local Python server — it can’t *run* an agent skill (that’s the
-Claude session). So it works in three tiers:
+Click **Newt** — the orchestrator creature — or any other critter, to open the **command console**
+(the footer also carries a persistent Newt handle). It works in four tiers:
 
+0. **Run a procedure** (when programmatic launching is on). The console's *Run a procedure* box
+   launches any **whitelisted** lab procedure for the chosen target as a headless agent session —
+   hub-level (`/lab-status`, `/ideate`, `/propose`, `/advance`, `/review-paper`, `/autopilot continue
+   <brief>`, …) or inside a project (`/experiment`, `/improve`, `/research-loop`); interviews
+   (`/discuss`, `/compete`, `/setup-lab`) work too, one question per turn. Pick the backend (claude ·
+   codex · opencode — only installed ones are offered) and what happens when it finishes: *stop*,
+   *run its reported next step*, or *keep going until a gate*. `/finalize` is never offered. See
+   [Running procedures](#running-procedures-headless-runs).
 1. **Structured commands** → the bus. Buttons like *Start loop ▸ execute/explore*, *Stop loop*,
    *Set mode ▸ explore/execute* (switch a live loop without restarting it), *Run smoke*,
    *Request a run*, *Analyze*, *Prioritize*, *Park*, *Kill* (and *Ideate* for the
@@ -210,7 +223,10 @@ Claude session). So it works in three tiers:
    its `target`, so a command aimed at a not-yet-spawned idea is never misattributed). The running
    agent picks it up at its **next checkpoint** (a loop cycle / session start — the console says
    so) and executes it **in-protocol**, then acks `seen → done`(+evidence) / `blocked`. A
-   command is never gate approval and can’t change a frozen/PI-owned setting.
+   command is never gate approval and can’t change a frozen/PI-owned setting. With launching on,
+   the commands marked *starts a run now* (*Run smoke*, *Request a run*, *Start loop*, *Analyze*,
+   *Ideate*) also launch the procedure that consumes them, and *Stop loop* stops a live
+   `/research-loop` run — the directive is still written, so an in-session agent sees it too.
 2. **Read-only tools** → run now. The per-project buttons execute whitelisted, side-effect-free
    tools (`check_lab`, `show_config`, `status`, `compare`, `inbox`, slot status) as subprocesses
    and show the output in a drawer. Nothing that trains or writes.
@@ -219,10 +235,10 @@ Claude session). So it works in three tiers:
    and leaves the agent a `gate1_approved` command to transition + spawn; Gate 2 flips
    `gate2_envelope.pi_signed: true` (with `signed_via: dashboard:<ts>`) in `control.yaml`. Every
    gate click needs an explicit confirm and is written to `lab/.bus/pi-actions.jsonl`.
-   Like tier-1 commands, an approval **records the signature only** — the registry transition +
-   spawn (Gate 1) or the FULL runs (Gate 2) happen when an agent session next reaches an inbox
-   checkpoint; the card restyles to *signed — waiting for the agent* until then, and if no
-   session is running, start one (`claude` → `/lab-status`).
+   An approval **records the signature only** — the registry transition + spawn (Gate 1) or the
+   FULL runs (Gate 2) happen in the next run or session. With launching on, a signed Gate 1 offers
+   **▸ launch /spawn-project** (or queues it itself with `dashboard.auto_spawn_on_gate1: true`);
+   with it off, start a session (`claude` → `/lab-status`).
    **Gate 3 is never approvable here** — sending anything outside the lab is always done in a
    session. That is the one hard line.
 
@@ -232,6 +248,46 @@ You can also leave a **free-text note** from the same console when no button fit
 ![The Activity screen — pending gates with one-click approve, and the in-flight run](assets/dashboard-activity-dark.png){ .as-shot }
 <figcaption>The <strong>Activity</strong> view is the control surface: <em>Needs you</em> (Gate 1 & 2 with a one-click <em>Approve</em>; Gate 3 shows only the command — it's never approvable here) beside <em>In flight</em> (the running experiment with its budget bar). Approvals are confirmed and written to the append-only audit.</figcaption>
 </figure>
+
+## Running procedures (headless runs)
+
+With **programmatic launching** on (⚙ Settings → *Agents & launching*; it writes
+`agents.programmatic.enabled` and is logged), every launch becomes a **run**: the unmodified agent
+CLI (`claude -p`, or `codex exec` / `opencode run`) started **as you, with your own login**, in its
+own detached supervisor process (`tools/executor/`). The dashboard is only its window: close the
+dashboard and runs keep going; reopen it and they're all still there.
+
+- **Launch** — from any command sheet (⋯, *command ▸* on a card, or the palette). The run is
+  *queued* first and starts as soon as a slot is free (`agents.programmatic.max_concurrent_total`,
+  `hub_max_concurrent` — 1 by default, so two hub sessions never edit the registry at once — and
+  the per-project `max_concurrent`). An optional daily brake (`daily_max_runs` / `daily_max_minutes`)
+  keeps unattended use bounded.
+- **Watch** — the **run view** (click any run) streams the transcript live: the agent's text, every
+  tool call, each **subagent's** actions tagged with its role and label, and each subagent's result
+  as it hands back. A header shows status, elapsed vs. budget, attempt, cost estimate, and session id;
+  a *Subagents* list shows each one's status, last action, and result.
+- **Answer** — when a procedure needs you (the project type at `/spawn-project`, an interview
+  question), the run **pauses** on an `AskUserQuestion`: the run shows *waiting for you*, the bell and
+  *Needs you* light up, and the run view shows the question with its options (plus a free-text
+  answer). Answering **resumes the same session** where it stopped. You can also **reply** in your
+  own words to a paused or finished run — it continues the same conversation.
+- **Stop / resume** — *stop* ends the session (macOS/Linux: a graceful signal first; Windows: ended
+  at once); it stays **resumable** — *resume* continues it. A queued run can be cancelled.
+- **Report & next step** — every run ends with a machine-readable footer (`run_report`:
+  `next`, `needs_pi`, `summary`), so a finished run shows what it did, whether it stopped at a gate
+  or kill criterion, and its next command as a one-click **▸ run** button — or, if you chose
+  *keep going until a gate*, the next run starts itself (never across a gate).
+
+**What never changes.** Every gate and hard rule binds a launched run exactly as in a session: FULL
+runs still need a signed Gate-2 envelope, a directive or answer never overrides a frozen/PI-owned
+setting, and Gate 3 is never delegated (`AUTOSCIENTIST_NO_GATE3` is set; `/finalize` is never
+launchable). Permission prompts a headless run can't ask go to a small local permission host that
+**denies and logs** them (they show up as *denied* in *Needs you*); set
+`agents.programmatic.permission_wait_seconds` to have it wait for your allow/deny instead.
+
+**No dashboard needed.** The same engine has a command line — `tools/executor_cli.py enqueue |
+serve | list | answer | reply | stop | resume | attention` — so everything above works headless too
+(see [Tools](tools.md)).
 
 ## How it stays honest (the bus)
 
@@ -264,9 +320,11 @@ an escalation; `lab_bus.py emit escalation_resolved --data ref=<id>` — the das
 counting it as "needs you", so a handled escalation clears instead of nagging forever),
 `score_read` (a target-driven `/compete` project read an
 external score under its PI-signed envelope — `scripts/report_score.py`), `agent_launched` /
-`agent_finished` (a headless top-level agent was spawned into / finished in a project by
-`tools/agent_runner.py` — its full transcript is in `<project>/.bus/agents/<id>.stream.jsonl`),
-`note`. The bus lives in gitignored `lab/.bus/` (hub) and
+`agent_finished` (a headless run started / ended — `tools/executor` or `tools/agent_runner.py`; its
+full transcript is `<bus>/agents/<id>.stream.jsonl`, its current state `<bus>/agents/<id>.json`, and
+every state change is appended to `lab/.bus/runs.jsonl`), `agent_waiting` (a run paused on a
+question for the PI), `agent_resumed` (it resumed — after an answer, a reply, or *resume*),
+`run_report` (a run's footer: `next`, `needs_pi`, `summary`), `note`. The bus lives in gitignored `lab/.bus/` (hub) and
 `<project>/.bus/` (each project); a project spawned before the bus existed still shows
 runs/registry/liveness — events only enrich.
 
@@ -276,16 +334,20 @@ The sub-newts and their per-worker inspector histories are backed by a **lab fea
 independent of the dashboard**: even if you delete `dashboard/`, these logs still get written.
 
 Claude Code **hooks** (`.claude/settings.json` → `tools/trace_hook.py`, and the same hook shipped
-in the project template) log every agent's and subagent's tool actions to **per-worker logs** —
-one file per worker:
+in the project template) log every agent's and subagent's activity to **per-worker logs** — a
+subagent's birth (`SubagentStart`), each tool call as it **begins** and as it **finishes**, each
+spawn (with its `tool_use_id` and description), and what each subagent **handed back**
+(`PostToolUse(Agent)` / `SubagentStop`) — one file per worker:
 
 - `lab/.bus/workers/<worker_id>.jsonl` in the hub, and
 - `<project>/.bus/workers/<worker_id>.jsonl` in each project.
 
 One file per worker means each agent's trace is clean and separated from every other's — which is
-exactly what the worker inspector renders. `dashboard/sources.py` aggregates these files into
-`snapshot().workers[]`, and the dashboard draws one sub-newt plus one inspectable history per
-worker. To bound growth, the hook prunes worker logs untouched for over 48 hours once per session.
+exactly what the worker inspector renders. Every subagent's lines carry its **parent session's id**,
+so `dashboard/sources.py` rebuilds the tree: it matches each subagent to the spawn that created it
+(label + result), nests it under its parent, attributes an `/improve` worktree
+(`<project>-wt-<variant>`) to its project and variant, and joins a headless run to the session that
+executes it. To bound growth, the hook prunes worker logs untouched for over 48 hours once per session.
 
 Two properties keep this safe and lightweight:
 
@@ -304,6 +366,11 @@ native watcher), `POST /api/directive` and `POST /api/command` (append to the bu
 (run a whitelisted read-only tool — including `audit_claims`, the mechanical claims audit),
 `POST /api/read` (a gate review bundle / doc view) and `POST /api/claims` (the structured claims ↔
 artifact map), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3 refused), the
+**executor** set — `POST /api/run` (queue a whitelisted procedure), `POST /api/run/answer|reply|stop|
+resume|cancel|permission`, `POST /api/attention/ack`, `POST /api/escalation/resolve`,
+`POST /api/executor/enable` (the master switch; confirm + logged), `GET /api/run?run_id=` (a run's
+detail), `GET /api/run/tail?run_id=&offset=` (new transcript lines from a byte offset — the raw
+transcript never leaves the machine), `GET /api/run/log`, `GET /api/executor/health` — the
 **Library** trio — `GET /api/library` (the document tree), `POST /api/libdoc` (one document's text;
 fixed root per scope + containment + an extension whitelist — never a free path), `GET /api/libfile`
 (an image a document references, same containment) — and three read-only binary views —

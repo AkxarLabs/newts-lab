@@ -108,7 +108,7 @@ newts-lab/
 ├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
-├── tools/               # guard.py (lifecycle guards), agent_runner.py (headless launch), audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
+├── tools/               # guard.py (lifecycle guards), executor/ + executor_cli.py (headless procedure runs), agent_runner.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
 ├── dashboard/           # Vivarium — optional local living-world dashboard (rooms, critters, sub-newts + Newt; delete it and nothing changes)
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
@@ -135,7 +135,7 @@ uv run --with properdocs --with mkdocs-material properdocs serve   # styled docs
 uv run --with pyyaml python dashboard/serve.py                     # optional live dashboard → http://127.0.0.1:8787
 ```
 
-Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight, with a **Library** tab that renders every document the lab writes (ideation, proposals, critiques, experiment ledgers — Markdown + LaTeX, offline) — it's optional; delete `dashboard/` and nothing else changes.
+Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight, with a **Library** tab that renders every document the lab writes (ideation, proposals, critiques, experiment ledgers — Markdown + LaTeX, offline). Turn on **programmatic launching** (a PI-owned switch in its settings) and it becomes the lab's **central interface**: launch any procedure as a headless session, watch it and every subagent live, answer its questions when it pauses, stop or resume it — [Running procedures](docs/dashboard.md#running-procedures-headless-runs). It's optional; delete `dashboard/` and nothing else changes (the same engine has a CLI: `tools/executor_cli.py`).
 
 ## Contributing
 

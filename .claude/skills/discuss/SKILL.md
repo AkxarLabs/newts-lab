@@ -54,7 +54,9 @@ addition:
   discipline). Fuel for the discussion, not the lit review itself.
 - **How to ask:** `AskUserQuestion` when the question has a small set of discrete options (your
   recommended answer becomes the first option); otherwise conversationally. Either way, **one
-  question at a time**.
+  question at a time**. *Headless (launched from the dashboard):* prefer `AskUserQuestion` (the run
+  pauses on it and resumes with the answer); a prose question must be your final message of the turn —
+  the PI's reply resumes the session.
 - **Stop** when two consecutive questions add nothing new, or the PI ends the session.
 
 ## 3. Record outcomes & seed the next stage

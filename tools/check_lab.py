@@ -9,6 +9,9 @@ Checks:
      studies/<slug>/paper/ — nested under the study, so it needs no separate check.)
   3. Stale: non-terminal rows not updated in --stale-days (default lab/config.yaml
      lab.stale_days, else 14) or with an empty "Next action".
+  4. Executor (headless runs): a configured backend CLI that can't be found; dashboard
+     auto_spawn_on_gate1 on while programmatic launching is off (no effect); runs stuck "live"
+     past 2x their max_minutes (orphans — `executor_cli.py reconcile`); runs waiting days for an answer.
 
 Exit 1 on mismatches/orphans (always) or stale items (with --strict); else 0.
 """
@@ -16,7 +19,10 @@ Exit 1 on mismatches/orphans (always) or stale items (with --strict); else 0.
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -109,6 +115,9 @@ def main() -> int:
         except ValueError:
             stale.append(f"{slug}: unparseable Updated date '{row['updated']}'")
 
+    # 4. Executor hygiene (review-level: configuration and orphans, never a hard inconsistency).
+    stale.extend(executor_checks(config, rows, projects_root))
+
     print(f"## Lab check — {len(rows)} registry rows, {len(study_dirs)} study dirs\n")
     if problems:
         print("**Inconsistencies (fix now):**")
@@ -124,6 +133,44 @@ def main() -> int:
     if problems or (args.strict and stale):
         return 1
     return 0
+
+
+def executor_checks(config: dict, rows: dict, projects_root: Path) -> list[str]:
+    out = []
+    prog = ((config.get("agents") or {}).get("programmatic")) or {}
+    dash = config.get("dashboard") or {}
+    if dash.get("auto_spawn_on_gate1") and not prog.get("enabled"):
+        out.append("dashboard.auto_spawn_on_gate1 is on but agents.programmatic.enabled is off — it has no effect")
+    for name, b in (prog.get("backends") or {}).items():
+        cmd = (b or {}).get("command") if isinstance(b, dict) else None
+        if isinstance(cmd, str) and cmd.strip() and not (Path(cmd).expanduser().exists() or shutil.which(cmd)):
+            out.append(f"agents.programmatic.backends.{name}.command = {cmd!r} was not found")
+    try:
+        max_min = float(prog.get("max_minutes") or 240)
+    except (TypeError, ValueError):
+        max_min = 240.0
+    dirs = [HUB / "lab" / ".bus" / "agents"]
+    for slug, row in rows.items():
+        raw = (row.get("project") or "").strip().strip("`")
+        pdir = (Path(raw) if Path(raw).is_absolute() else (HUB / raw).resolve()) if raw and raw not in ("-", "—") \
+            else projects_root / slug
+        dirs.append(pdir / ".bus" / "agents")
+    now = time.time()
+    for d in dirs:
+        for f in (sorted(d.glob("*.json")) if d.is_dir() else []):
+            try:
+                m = json.loads(f.read_text(encoding="utf-8-sig"))
+                ts = time.mktime(time.strptime(str(m.get("status_ts") or m.get("started") or "")[:19], "%Y-%m-%dT%H:%M:%S"))
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            age_min = (now - ts) / 60
+            rid = m.get("run_id") or m.get("agent_id") or f.stem
+            if m.get("status") in ("starting", "running", "resuming") and age_min > 2 * float(m.get("max_minutes") or max_min):
+                out.append(f"run {rid} has been '{m.get('status')}' for {age_min:.0f} min (> 2x max_minutes) — "
+                           "orphaned? run `executor_cli.py reconcile`")
+            elif m.get("status") == "waiting_input" and age_min > 3 * 24 * 60:
+                out.append(f"run {rid} has waited {age_min / 1440:.0f} days for your answer (dashboard → Needs you)")
+    return out
 
 
 if __name__ == "__main__":

@@ -181,6 +181,15 @@ session but in a fresh clone — only useful if your lab state is pushed and you
 compute is reachable from it. (`claude -p` headless is also how the lab launches *project*
 agents programmatically — see the next section.)
 
+**No open session at all — the executor.** The re-entry loop above needs a terminal kept open. The
+executor (`tools/executor/`, driven from the dashboard or `tools/executor_cli.py`) replaces it:
+launch `/autopilot continue lab/campaigns/<file>` with a repeat interval
+(`executor_cli.py enqueue --skill autopilot --args <file> --repeat-minutes 30`, or the dashboard's
+run box) and each cycle is a fresh headless session, started by the scheduler when it's due — until
+a stop condition, a needs-PI report, or `--max-repeats`. `/advance` works the same way with
+*keep going until a gate* (`--chain loop`): each stage launches the next one it reports, and stops at
+the first gate. See [Headless runs](#headless-runs-the-executor) below.
+
 ## Programmatic agents & multi-project fleets
 
 A single session orchestrates work by spawning **worktree subagents** (the Task tool) for
@@ -274,6 +283,47 @@ delegated** — a launched agent stops its pipeline at `internal-review`, never 
 next `lab_bus.py inbox` checkpoint), `agent_runner.py kill`, or `compute.max_concurrent_runs: 0` (no
 session can acquire a training slot). The number of autonomous agents the lab may spin up is itself a
 gated, PI-signed quantity — full autonomy *with* the brakes left in.
+
+## Headless runs (the executor)
+
+`agent_runner.py` launches a session and blocks until it ends. The **executor** (`tools/executor/`)
+is the general form the dashboard uses: any **whitelisted** procedure, hub-level or in a project,
+becomes a *run* with a durable record and a life of its own.
+
+```bash
+uv run --with pyyaml python tools/executor_cli.py enqueue --skill propose --target my-idea
+uv run --with pyyaml python tools/executor_cli.py serve                 # the scheduler (the dashboard runs one too)
+uv run --with pyyaml python tools/executor_cli.py list | show <run> | attention
+uv run --with pyyaml python tools/executor_cli.py answer <run> --pick "Which project type?=empirical"
+uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
+```
+
+- **A run outlives whoever started it.** Each run gets a detached supervisor process that owns it:
+  it spawns the agent CLI, captures the full transcript (`<bus>/agents/<run>.stream.jsonl`), keeps the
+  manifest (`<run>.json`) current, enforces `max_minutes`, and records every state change in
+  `lab/.bus/runs.jsonl`. The supervisor holds an OS lock for its whole life; the kernel releases it on
+  any death, which is how the scheduler tells a crashed run from a live one (no pid guessing).
+- **States:** `queued → starting → running → completed | waiting_input | failed | timeout | killed`;
+  a paused (`waiting_input`) or ended run resumes **the same session** on an answer, a reply, or
+  *resume* (`claude -p --resume <session>`).
+- **Questions without a terminal.** `claude -p` only offers `AskUserQuestion` when a *permission host*
+  exists, so every run gets a tiny local MCP host plus a per-run `PreToolUse` hook: the hook
+  **defers** the question (the process exits with `stop_reason: tool_deferred`, the question saved),
+  the PI answers, and the resumed attempt's hook returns the answer — the model continues as if the
+  PI had typed it. Other permission prompts are **denied and logged** (or wait for the PI when
+  `permission_wait_seconds > 0`). codex/opencode runs ask by escalating and ending their turn; the
+  PI's reply resumes them.
+- **Caps and brakes:** `max_concurrent_total`, `hub_max_concurrent` (1 — hub sessions share the
+  registry), per-project `max_concurrent`, `daily_max_runs` / `daily_max_minutes`, and the master
+  switch itself — all `agents.programmatic.*`, all PI-owned. Training still serializes through
+  `compute.max_concurrent_runs`.
+- **Gates are untouched.** The executor never signs anything and never launches `/finalize`; a run
+  that reaches a gate reports `needs_pi` and stops. The unmodified CLI runs as the logged-in user —
+  the executor never reads or handles credentials.
+
+**Subscriptions.** Headless `claude -p` draws from your plan's usage like any session (Anthropic
+paused a planned move of headless usage to a separate credit in June 2026; check their current terms).
+Plan limits assume ordinary individual use — the daily brake exists so an unattended lab stays within it.
 
 ## The integrity stack (what keeps unattended ≠ unhinged)
 

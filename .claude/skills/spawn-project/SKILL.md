@@ -43,7 +43,9 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    field, an optional **domain profile** from `templates/domain-profiles/` (or draft one). If none
    fits, propose a NEW type (a `TYPE.md` card) — a PI-owned act. **Present the chosen {type, domain}
    to the PI and get confirmation** before proceeding (it shapes the whole project — Gate-1-adjacent;
-   under a signed `/autopilot` campaign, decide within its delegation bounds). This decision is
+   under a signed `/autopilot` campaign, decide within its delegation bounds; *headless without a
+   campaign*: ask it as ONE `AskUserQuestion` — options = the candidate {type, domain} pairs, your
+   pick first — and continue when resumed with the answer). This decision is
    PI-confirmed and passed to step 3's `spawn_project.py` via `--project-type` / `--domain` /
    `--overlay` (step 3 does the copying). You still set by hand:
    - `control.yaml` `runner:` — `python-import` for `ml`/`target-driven`/Python work; `shell-command`

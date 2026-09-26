@@ -12,6 +12,7 @@ uv run --with pyyaml python tools/run_slots.py acquire|touch|release|status     
 uv run --with pyyaml python tools/s2.py search|bibtex|verify ...                  # literature API + citation audit
 uv run python tools/lab_bus.py emit|inbox|ack ...                                # event bus / PI directives (dashboard)
 uv run --with pyyaml python tools/agent_runner.py launch|list|kill ...           # optional headless programmatic agents
+uv run --with pyyaml python tools/executor_cli.py enqueue|serve|list|answer|stop ... # headless procedure runs (the dashboard's engine)
 ```
 
 - `guard.py` — the enforcement layer for the highest-risk transitions (Gate-1 recorded before
@@ -30,6 +31,9 @@ uv run --with pyyaml python tools/agent_runner.py launch|list|kill ...          
 - `lab_bus.py` — the append-only event bus the optional dashboard reads (`emit` events,
   `inbox` PI directives, `ack` them). Best-effort and never required; see `docs/dashboard.md`.
   The same file ships into every project as `scripts/lab_bus.py` (auto-detects hub vs project).
+- `executor_cli.py` + `executor/` — the executor: runs whitelisted procedures as headless sessions in
+  detached supervisors (queue, caps, live transcript, pause-on-question + resume, stop, run ledger);
+  the dashboard's *Run a procedure* uses it. PI-owned, OFF by default; Gate 3 never delegated.
 - `agent_runner.py` — optional, PI-owned, OFF by default: launches a headless top-level agent
   (`claude` / `codex` / `opencode`) into a project repo for concurrent multi-project work; see
   `docs/autonomy.md`.

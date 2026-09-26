@@ -10,7 +10,15 @@ sub-newts spawning into the rooms to do the work. Optional: delete this folder a
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
+uv run --with pyyaml python dashboard/serve.py --hub ../other-lab   # serve another lab
 ```
+
+**It can also run the lab.** With programmatic launching on (⚙ Settings → *Agents & launching*,
+PI-owned, off by default), the command sheet's *Run a procedure* launches lab procedures as headless
+agent sessions through `tools/executor/` — each in a detached supervisor that outlives this server —
+and the **run view** streams its transcript, shows its subagents and their results, pauses on its
+questions for your answer, and stops/resumes it. Gate 3 is never delegated. See
+`docs/dashboard.md` → *Running procedures*.
 
 **See it alive without a session — demo mode (debugging).** Demo is a synthetic, living lab —
 studies/projects in every room, agents that spawn, despawn, and stroll around — for development and
@@ -30,12 +38,17 @@ simulated no-ops (blocked client-side) and record nothing.
                  bundle), the **Library** trio `GET /api/library` / `POST /api/libdoc` /
                  `GET /api/libfile` (the document tree + one doc's text + a doc-relative image;
                  fixed roots, containment-checked, extension-whitelisted). Writes:
-                 `POST /api/directive` & `POST /api/command` (append to the bus), `POST /api/gate`
-                 (PI-confirmed Gate 1/2 approval; Gate 3 refused), `POST /api/tool` (run a
-                 whitelisted read-only tool).
+                 `POST /api/directive` & `POST /api/command` (append to the bus; `launch:true`
+                 also starts the consuming procedure), `POST /api/gate` (PI-confirmed Gate 1/2
+                 approval; Gate 3 refused), `POST /api/tool` (run a whitelisted read-only tool).
+                 Executor: `POST /api/run` (+ `/answer` `/reply` `/stop` `/resume` `/cancel`
+                 `/permission`), `POST /api/attention/ack`, `POST /api/escalation/resolve`,
+                 `POST /api/executor/enable`, `GET /api/run` · `/api/run/tail` · `/api/run/log` ·
+                 `/api/executor/health`; a scheduler thread starts queued runs.
 - `sources.py` — read-only, tolerant tailers over the registry, the event bus, run records,
-                 slots, in-flight liveness, and the per-worker traceability logs
-                 (`.bus/workers/*.jsonl`) folded into `snapshot().workers[]`.
+                 slots, in-flight liveness, headless runs (`.bus/agents/*.json`), the one
+                 "needs you" queue, and the per-worker traceability logs (`.bus/workers/*.jsonl`)
+                 folded into `snapshot().workers[]` as a run → session → subagent tree.
 - `static/`    — the single-page frontend: `index.html`, `terrarium.css`, `app.js`. The whole
                  world (rooms + critters + Newt + the sub-newts) is drawn on a single
                  **hand-drawn Canvas-2D** surface — vanilla JS, no build, fully offline.

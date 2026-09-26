@@ -65,5 +65,9 @@ End every `/advance` with a verification summary:
    verdict, decisions.md's riskiest decision, the ledger entry, the draft's claims).
 3. **What the next `/advance` would do** — so "continue" is an informed yes.
 
+Headless (`NEWTS_RUN_ID` set): the same summary is your final message, and the run footer carries
+`next="/advance <slug>"` (or the stage command) with `needs_pi=none` — or the gate you stopped at
+(`gate1` / `gate2` / `gate3`) — so the dashboard can offer the next stage as one click, or chain it.
+
 Then the standard write-back (registry + notebook — hard rule 11 per session, and a
 stage is a session's worth of work).

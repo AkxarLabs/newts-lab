@@ -26,7 +26,7 @@ Operates inside the project repo at `<projects_root>/<slug>` (path in the regist
 
 - **Debug cap:** max `experiment.max_debug_depth` (default 3) consecutive fix attempts on a failing experiment; then record the failure (with diagnosis) and move to the next planned item. When debugging, look at the *ancestral chain* (this experiment's previous attempts), not unrelated history.
 - **Frozen things:** eval protocol, test set, seeds policy, budgets. If a result requires touching any of them, stop and flag the PI. Changing the seed/timeout/eval to make a number better — never.
-- **Kill criteria:** check PLAN.md's kill criteria after every PILOT. If triggered, stop the loop and report to the PI with the evidence — recommendation kill/park, their call.
+- **Kill criteria:** check PLAN.md's kill criteria after every PILOT. If triggered, stop the loop and report to the PI with the evidence — recommendation kill/park, their call (headless: run footer `needs_pi=kill_criteria` with the evidence path in `summary`).
 - **Multi-seed:** before any result is treated as a finding (analysis/paper), re-run the winning config at ≥ `seeds.multi_seed_n` (default 3) seeds via `scripts/sweep.py`, report mean ± spread.
 - **Plan drift:** new experiment ideas discovered mid-loop go into PLAN.md as new rows (with criteria) — not executed ahead of planned work unless cheaper AND more decisive.
 

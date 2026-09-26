@@ -81,12 +81,15 @@ can **click to inspect** (a legend bottom-left maps role → colour with live he
 named Newt moves through it, and you click to **command** the agents (start/stop loops, request
 runs, approve Gate 1 & 2), all from the scene.
 
-One thing to know before you click: the dashboard **observes and signs — the agent executes**.
-Commands and gate approvals are recorded to the lab's file bus, and a Claude session acts on
-them at its **next checkpoint** (session start / loop cycle). With no session running, nothing
-happens until you start one (`claude` → `/lab-status`). Against a brand-new lab (empty registry)
-the world is empty and there are no gates to approve yet — they appear once a session produces
-a proposal.
+**Two ways to drive it.** Out of the box the dashboard **observes and signs — the agent executes**:
+commands and gate approvals are recorded to the lab's file bus, and a Claude session acts on them
+at its **next checkpoint** (start one: `claude` → `/lab-status`). Turn on **programmatic launching**
+(⚙ Settings → *Agents & launching* — a PI-owned switch) and the dashboard becomes the whole
+interface: *Run a procedure* launches any lab procedure as a headless session (as you, with your own
+Claude login), you watch it and its subagents live, answer its questions when it pauses, and stop or
+resume it — no terminal needed ([Running procedures](dashboard.md#running-procedures-headless-runs)).
+Against a brand-new lab (empty registry) the world is empty and there are no gates yet — launch
+`/ideate` (or `/setup-lab`, an interview) to begin.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
