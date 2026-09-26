@@ -38,11 +38,9 @@ Safety (the lab is "full autonomy WITH many human-intervention points"):
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 import threading
@@ -52,6 +50,14 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # tools/ — the shared executor package
+from executor import backends as _bk  # noqa: E402
+from executor import manifest as _man  # noqa: E402
+from executor import procs as _procs  # noqa: E402
+from executor import scheduler as _sched  # noqa: E402
+from executor import supervise as _sup  # noqa: E402
+from executor.lab import Lab as _Lab  # noqa: E402
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -60,8 +66,7 @@ LAB = HUB / "lab"
 _COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 _DEPTH_ENV = "AUTOSCIENTIST_AGENT_DEPTH"
 # Match sweep.py: a killable process group so we can reap the whole tree on timeout.
-_NEW_GROUP = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
-    else {"start_new_session": True}
+_NEW_GROUP = _procs.NEW_GROUP
 
 
 # ── config / registry ───────────────────────────────────────────────────────────
@@ -93,30 +98,10 @@ def _pos_float(value, default: float) -> float:
         return default
 
 
-@contextlib.contextmanager
 def _launch_lock(adir: Path):
     """Serialize the cap-check + manifest reservation so two near-simultaneous launches can't both
     pass max_concurrent. A crashed holder's lock (>2 min old) is reclaimed."""
-    lock = adir / ".launch.lock"
-    deadline = time.time() + 30
-    fd = None
-    while fd is None:
-        try:
-            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            with contextlib.suppress(OSError):
-                if time.time() - lock.stat().st_mtime > 120:
-                    lock.unlink(); continue
-            if time.time() > deadline:
-                raise TimeoutError("launch ledger busy")
-            time.sleep(0.05)
-    try:
-        yield
-    finally:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            lock.unlink()
+    return _man.launch_lock(adir)
 
 
 def _registry_rows() -> list[dict]:
@@ -154,37 +139,14 @@ def _resolve_project(arg: str) -> Path | None:
     return cand if cand.exists() else None
 
 
-# ── process helpers (mirror sweep.py) ─────────────────────────────────────────────
+# ── process helpers (shared with the executor: tools/executor/procs.py) ──────────
 
 def _pid_alive(pid) -> bool:
-    if not pid:
-        return False
-    try:
-        if os.name == "nt":
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
-                                 capture_output=True, text=True, check=False).stdout
-            return f'"{pid}"' in out  # CSV quotes the PID column; "No tasks" banner won't contain it
-        os.kill(int(pid), 0)
-        return True
-    except (OSError, ProcessLookupError, ValueError):
-        return False
+    return _procs.pid_alive(pid)
 
 
 def _kill_tree(pid) -> None:
-    try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
-        else:
-            pgid = os.getpgid(int(pid))
-            # Safety belt: every launched agent is its own session leader (**_NEW_GROUP), so pgid==pid.
-            # If a caller ever spawns the child WITHOUT start_new_session, pgid resolves to OUR group and
-            # killpg would SIGKILL the orchestrator itself — refuse the group kill, target the pid alone.
-            if pgid == os.getpgid(0):
-                os.kill(int(pid), signal.SIGKILL)
-            else:
-                os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, OSError):
-        pass
+    _procs.kill_tree(pid)
 
 
 # ── persistence (mirror tracking.py shapes) ───────────────────────────────────────
@@ -196,16 +158,7 @@ def _agents_dir(pdir: Path) -> Path:
 
 
 def _write_manifest(path: Path, manifest: dict) -> None:
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    for attempt in range(5):   # Windows can transiently WinError 5 on rename (AV/indexer lock) — retry
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if attempt == 4:
-                raise
-            time.sleep(0.02)
+    _man.write_manifest(path, manifest)
 
 
 def _list_manifests(pdir: Path) -> list[dict]:
@@ -246,134 +199,18 @@ def _worker_line(wlog: Path, **fields) -> None:
         pass
 
 
-# ── backends ──────────────────────────────────────────────────────────────────────
+# ── backends (shared with the executor: tools/executor/backends.py) ───────────────
 
 def _build_command(backend: str, prompt: str, pdir: Path, model: str,
                    permission_mode: str, prog: dict) -> tuple[list[str], bool]:
     """Return (argv, fires_claude_hooks). The launcher only synthesizes a worker log when the
     backend does NOT fire Claude Code hooks (claude does; codex / test backends don't)."""
-    bcfg = (prog.get("backends") or {}).get(backend) or {}
-    extra = str(bcfg.get("extra_args") or "")
-    # Model resolution: an explicit launch/global model wins; otherwise the backend's own default.
-    eff_model = model if (model and model != "inherit") else (bcfg.get("model") or "inherit")
-
-    def _guard_extra(forbidden: tuple[str, ...]) -> None:
-        # extra_args is a PI-owned advanced knob; it must NOT silently negate the human-in-loop
-        # permission/sandbox defaults this tool promises. Refuse rather than override. Match the
-        # `=`-joined form too (`--sandbox=danger-full-access`), which clap accepts and bare-token
-        # equality would miss.
-        toks = extra.split()
-        hit = sorted({f for f in forbidden for tok in toks if tok == f or tok.startswith(f + "=")})
-        if hit:
-            raise SystemExit(f"[agent_runner] backends.{backend}.extra_args may not set {hit} — that "
-                             "would defeat the human-in-loop default; set the dedicated config key instead")
-
-    if backend == "claude":
-        _guard_extra(("--permission-mode", "--dangerously-skip-permissions"))
-        mode = bcfg.get("permission_mode") or permission_mode   # per-backend key overrides the launch default
-        cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose"]
-        if eff_model and eff_model != "inherit":
-            cmd += ["--model", str(eff_model)]
-        if mode:
-            cmd += ["--permission-mode", str(mode)]
-        if bcfg.get("effort"):
-            cmd += ["--effort", str(bcfg["effort"])]   # claude --effort: low|medium|high|xhigh|max
-        if extra:
-            cmd += extra.split()
-        return cmd, True
-    if backend == "codex":
-        _guard_extra(("--sandbox", "-a", "--ask-for-approval", "--dangerously-bypass-approvals-and-sandbox", "--yolo"))
-        cmd = ["codex", "exec", prompt, "--json",
-               "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
-               "-a", str(bcfg.get("approval") or "never"),
-               "--skip-git-repo-check", "-C", str(pdir)]
-        if bcfg.get("network_access"):   # workspace-write disables network by default; opt-in per genuine need
-            cmd += ["-c", "sandbox_workspace_write.network_access=true"]
-        if bcfg.get("reasoning_effort"):   # codex has no --effort flag; it's a config override
-            cmd += ["-c", f"model_reasoning_effort={bcfg['reasoning_effort']}"]
-        if eff_model and eff_model != "inherit":
-            cmd += ["-m", str(eff_model)]
-        if extra:
-            cmd += extra.split()
-        return cmd, False
-    if backend == "opencode":
-        # `opencode run <prompt> --format json` is the non-interactive entrypoint; it streams NDJSON to
-        # stdout and exits when idle. Autonomy is NOT a flag — opencode's defaults already give the codex
-        # posture (bash/edit allow = autonomous in-repo; external_directory auto-deny = contained), and the
-        # override rides OPENCODE_PERMISSION in the child env (set in cmd_launch), not extra_args.
-        _guard_extra(("--dangerously-skip-permissions", "--dir", "--format"))
-        cmd = ["opencode", "run", prompt, "--format", "json", "--dir", str(pdir)]
-        if eff_model and eff_model != "inherit":
-            cmd += ["--model", str(eff_model)]   # MUST be provider/model form, e.g. anthropic/claude-...
-        if bcfg.get("variant"):
-            cmd += ["--variant", str(bcfg["variant"])]   # opencode's reasoning-effort analogue
-        if bcfg.get("agent"):
-            cmd += ["--agent", str(bcfg["agent"])]       # pin a primary orchestrator agent (optional)
-        if bcfg.get("skip_permissions"):   # version-dependent flag; the stable control is the env above
-            cmd += ["--dangerously-skip-permissions"]
-        if extra:
-            cmd += extra.split()
-        return cmd, False
-    if backend == "_dummy":  # test backend: a portable JSONL emitter configured in lab/config.yaml
-        c = bcfg.get("command")
-        if not c:
-            raise SystemExit("_dummy backend needs agents.programmatic.backends._dummy.command")
-        return (c if isinstance(c, list) else str(c).split()), False
-    raise SystemExit(f"[agent_runner] unknown backend {backend!r} (claude | codex | opencode)")
+    return _bk.build_command(backend, prompt, pdir, model, permission_mode, prog)
 
 
 def _parse_activity(backend: str, obj: dict) -> dict | None:
     """Translate one stream JSON object into a worker-activity dict, or None to ignore."""
-    t = obj.get("type")
-    if backend == "claude":
-        # `claude -p --output-format stream-json` emits envelope objects: system(init),
-        # assistant/user (each with a full message.content[] of complete tool_use/text/tool_result
-        # blocks — NOT raw Messages-API deltas), and a final result.
-        if t == "system" and obj.get("subtype") == "init":
-            return {"event": "start", "status": "working", "session_id": obj.get("session_id")}
-        if t == "assistant":
-            for block in ((obj.get("message") or {}).get("content") or []):
-                if isinstance(block, dict) and block.get("type") == "tool_use":
-                    return {"event": "action", "tool": block.get("name"), "kind": "tool",
-                            "summary": str(block.get("input") or "")[:200]}
-            return None
-        if t == "result":
-            return {"event": "result", "last_message": obj.get("result"), "session_id": obj.get("session_id")}
-        return None
-    if backend == "opencode":
-        # `opencode run --format json` emits NDJSON: each line {type, timestamp, sessionID, ...data},
-        # type ∈ {step_start, step_finish, tool_use, text, reasoning, error}. There is NO init event and
-        # NO single result envelope — sessionID rides EVERY line, and the final message is the LAST `text`
-        # part (the terminal step_finish can be dropped, so finalize on stdout EOF, never on a sentinel).
-        # Nested part.* paths are community-sourced — every access is defensive (.get).
-        sid = obj.get("sessionID")
-        part = obj.get("part") or {}
-        if t == "tool_use":
-            state = part.get("state") or {}
-            summary = state.get("title") or state.get("input") or part.get("tool")
-            return {"event": "action", "tool": part.get("tool"), "kind": "tool",
-                    "summary": str(summary or "")[:200], "session_id": sid}
-        if t == "text" and part.get("text"):
-            return {"event": "result", "last_message": str(part["text"]), "session_id": sid}
-        if t == "error":
-            err = obj.get("error") or {}
-            msg = (err.get("data") or {}).get("message") or err.get("name") or "opencode error"
-            return {"event": "result", "last_message": f"[error] {msg}", "session_id": sid}
-        # step_start / step_finish / reasoning / unknown: capture session_id only, no activity line
-        return {"event": "start", "status": "working", "session_id": sid} if sid else None
-    # codex (and the _dummy test backend mimics codex's ThreadEvent JSONL shape)
-    if t in ("thread.started",):
-        return {"event": "start", "status": "working",
-                "session_id": obj.get("thread_id") or obj.get("session_id")}
-    if t in ("item.started", "item.completed"):
-        it = obj.get("item") or {}
-        itype = it.get("type")
-        if itype in ("command_execution", "mcp_tool_calls", "web_searches", "file_changes"):
-            return {"event": "action", "tool": itype, "kind": "tool",
-                    "summary": str(it.get("command") or it.get("status") or itype)[:200]}
-        if itype == "agent_message" and t == "item.completed":
-            return {"event": "result", "last_message": str(it.get("text") or "")[:500]}
-    return None
+    return _bk.parse_activity(backend, obj)
 
 
 # ── commands ────────────────────────────────────────────────────────────────────
@@ -439,6 +276,9 @@ def cmd_launch(a) -> int:
             stream_path = adir / f"{agent_id}.stream.jsonl"
             wlog = None if fires_hooks else (pdir / ".bus" / "workers" / f"{agent_id}.jsonl")
             manifest = {
+                "schema": 2, "run_id": agent_id, "target": pdir.name, "level": "project",
+                "created_by": "agent_runner", "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "attempt": 1, "status_ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "agent_id": agent_id, "backend": backend, "model": model, "role": role,
                 "label": a.label, "project": pdir.name, "cwd": str(pdir),
                 "prompt_summary": prompt.strip()[:200], "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -459,13 +299,40 @@ def cmd_launch(a) -> int:
         if operm:   # blank = opencode's defaults (in-repo allow + external_directory auto-deny = contained)
             env["OPENCODE_PERMISSION"] = json.dumps(operm)   # string "allow" or a full {bash,edit,…} object
     print(f"[agent_runner] launching {backend} agent '{agent_id}' in {pdir.name} (depth {depth + 1})", flush=True)
+    lab = _Lab(HUB)
+    lock = _procs.RunLock(_man.run_dir(adir, agent_id) / "lock")   # liveness for reconcile (kernel-freed on death)
+    lock.try_acquire()
+    state = {"sid": None, "last": None}
+
+    def on_spawn(pid):
+        manifest["pid"] = pid
+        _write_manifest(manifest_path, manifest)
+        _emit(pdir, "agent_launched", detail=agent_id, data={"backend": backend, "role": role, "pid": pid})
+        if wlog:
+            _worker_line(wlog, worker_id=agent_id, role=role, event="start", status="working", idea=pdir.name)
+
+    def on_event(act):
+        if act.get("session_id") and not state["sid"]:
+            state["sid"] = act["session_id"]
+            manifest["session_id"] = state["sid"]      # recorded the moment it is known, not at exit —
+            _write_manifest(manifest_path, manifest)   # so the dashboard can join the run to its worker log
+        if act.get("event") == "result" and act.get("last_message"):
+            state["last"] = act["last_message"]
+        if wlog and act.get("event") == "action":  # 'start' was already written at launch
+            _worker_line(wlog, worker_id=agent_id, role=role, event="action",
+                         tool=act.get("tool"), kind=act.get("kind"), summary=act.get("summary"),
+                         idea=pdir.name)
+
+    # Cap the persisted transcript so a runaway/looping agent can't fill the disk before the
+    # max_minutes watchdog fires (default 200 MB; 0 = unlimited). Parsing for activity continues.
+    max_bytes = _pos_int(prog.get("max_transcript_mb", 200), 200, 0) * 1024 * 1024
     try:
-        # stdin=DEVNULL: a headless launch must never inherit the orchestrator's stdin (and it heads off
-        # the opencode --format json first-readline hang seen when stdin is a live tty).
-        proc = subprocess.Popen(cmd, cwd=str(pdir), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace", env=env, **_NEW_GROUP)
-    except FileNotFoundError:
+        res = _sup.run_process(cmd, cwd=pdir, env=env, stream_path=stream_path, backend=backend,
+                               max_seconds=max_minutes * 60, max_bytes=max_bytes,
+                               on_spawn=on_spawn, on_event=on_event)
+    finally:
+        lock.release()
+    if res.cli_missing:
         manifest.update(status="failed", finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
                         last_message=f"backend CLI not found on PATH: {cmd[0]}")
         _write_manifest(manifest_path, manifest)
@@ -478,61 +345,16 @@ def cmd_launch(a) -> int:
         }.get(backend, "install the backend CLI")
         print(f"[agent_runner] FAILED: backend CLI '{cmd[0]}' not found on PATH ({hint}).")
         return 1
+    if res.breached:
+        print(f"[agent_runner] TIMEOUT — max_minutes={max_minutes} breached; killed '{agent_id}'", flush=True)
 
-    manifest["pid"] = proc.pid
-    _write_manifest(manifest_path, manifest)
-    _emit(pdir, "agent_launched", detail=agent_id, data={"backend": backend, "role": role, "pid": proc.pid})
-    if wlog:
-        _worker_line(wlog, worker_id=agent_id, role=role, event="start", status="working", idea=pdir.name)
-
-    t0 = time.time()
-    done = threading.Event()
-    breached = {"v": False}
-
-    def _watchdog() -> None:
-        if not done.wait(timeout=max_minutes * 60):
-            if done.is_set():   # the drain loop finished in the wake-up window — stand down
-                return
-            breached["v"] = True
-            _kill_tree(proc.pid)
-            print(f"[agent_runner] TIMEOUT — max_minutes={max_minutes} breached; killed '{agent_id}'", flush=True)
-
-    threading.Thread(target=_watchdog, daemon=True).start()
-
-    last_message = session_id = None
-    # Cap the persisted transcript so a runaway/looping agent can't fill the disk before the
-    # max_minutes watchdog fires (default 200 MB; 0 = unlimited). Parsing for activity continues.
-    max_bytes = _pos_int(prog.get("max_transcript_mb", 200), 200, 0) * 1024 * 1024
-    written, truncated = 0, False
-    with stream_path.open("a", encoding="utf-8") as sf:
-        for line in proc.stdout:  # type: ignore[union-attr]
-            if max_bytes <= 0 or written < max_bytes:
-                sf.write(line)
-                sf.flush()
-                written += len(line.encode("utf-8", "replace"))
-                if max_bytes > 0 and written >= max_bytes and not truncated:
-                    sf.write('{"_truncated":"transcript hit max_transcript_mb; further output is '
-                             'parsed for activity but no longer stored"}\n')
-                    sf.flush()
-                    truncated = True
-            s = line.strip()
-            if not s:
-                continue
-            try:
-                obj = json.loads(s)
-            except json.JSONDecodeError:
-                continue
-            act = _parse_activity(backend, obj)
-            if not act:
-                continue
-            session_id = act.get("session_id") or session_id
-            last_message = act.get("last_message") or last_message
-            if wlog and act.get("event") == "action":  # 'start' was already written at launch
-                _worker_line(wlog, worker_id=agent_id, role=role, event="action",
-                             tool=act.get("tool"), kind=act.get("kind"), summary=act.get("summary"),
-                             idea=pdir.name)
-    done.set()  # pipe closed -> child is finishing; tell the watchdog to stand down before status
-    proc.wait()
+    class _P:  # the returncode view the status logic below reads
+        returncode = res.rc
+    proc = _P()
+    breached = {"v": res.breached}
+    session_id = state["sid"] or res.session_id
+    last_message = res.last_message or state["last"]
+    t0 = time.time() - res.wall
     # Returncode is authoritative: a clean exit is 'completed' even if the watchdog raced at the
     # boundary; a non-zero exit is 'timeout' only when the watchdog actually killed it, else 'failed'.
     if proc.returncode == 0:
@@ -541,10 +363,11 @@ def cmd_launch(a) -> int:
         status = "timeout"
     else:
         status = "failed"
-    manifest.update(status=status, exit_code=proc.returncode, finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
+    manifest.update(exit_code=proc.returncode, finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
                     wall_seconds=round(time.time() - t0, 1), session_id=session_id,
                     last_message=(last_message or "")[:1000] or None)
-    _write_manifest(manifest_path, manifest)
+    _man.transition(lab, manifest_path, manifest, status, by="agent_runner",
+                    reason=None if status == "completed" else f"exit {proc.returncode}")
     if wlog:
         _worker_line(wlog, worker_id=agent_id, role=role, event="stop", status="done", idea=pdir.name)
     _emit(pdir, "agent_finished", detail=agent_id, status=status, data={"exit_code": proc.returncode})
@@ -570,21 +393,16 @@ def cmd_list(a) -> int:
 
 
 def _reconcile_project(pdir: Path) -> int:
-    """Mark every 'running' manifest whose process is gone as failed. Returns the count."""
+    """Mark every orphaned 'running' manifest as failed. Returns the count. Executor-era manifests
+    are judged by their supervisor's OS lock; legacy ones by pid liveness (tools/executor/scheduler.py)."""
     adir = pdir / ".bus" / "agents"
+    lab = _Lab(HUB)
     n = 0
-    for f in (sorted(adir.glob("*.json")) if adir.exists() else []):
+    for f, m in _man.list_manifests(adir):
         try:
-            m = json.loads(f.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError):
+            n += int(_sched.reconcile_manifest(lab, pdir, f, m))
+        except OSError:
             continue
-        if m.get("status") != "running" or _pid_alive(m.get("pid")):
-            continue
-        m.update(status="failed", finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                 last_message=(m.get("last_message") or "") + " [reconciled: process gone]")
-        _write_manifest(f, m)
-        _emit(pdir, "agent_finished", detail=m.get("agent_id"), status="failed", data={"reconciled": True})
-        n += 1
     return n
 
 
