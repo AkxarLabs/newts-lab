@@ -123,7 +123,7 @@ def main() -> int:
         with Path(run_dir, "fake_calls.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps({"argv": argv, "stdin": stdin_text, "cwd": os.getcwd(),
                                 "env": {k: v for k, v in os.environ.items()
-                                        if k.startswith(("AUTOSCIENTIST_", "NEWTS_"))}}) + "\n")
+                                        if k.startswith(("AUTOSCIENTIST_", "NEWTS_", "CLAUDE_CODE_"))}}) + "\n")
     resume = (opts.get("--resume") or [None])[0]
     sid = resume or (opts.get("--session-id") or [None])[0] or str(uuid.uuid4())
     settings = (opts.get("--settings") or [None])[0]

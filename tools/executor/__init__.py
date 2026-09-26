@@ -25,6 +25,11 @@ from .spec import NEVER, SKILL_REGISTRY, RunSpec, SpecError
 from .supervise import supervise as run_supervisor
 
 
+_ENV_AUTH = {"claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+                         "CLAUDE_CODE_USE_FOUNDRY"),
+             "codex": ("CODEX_API_KEY", "OPENAI_API_KEY")}
+
+
 def health(lab: Lab) -> dict:
     """What the dashboard badge shows: is launching possible, which CLIs exist, caps, load."""
     prog = lab.prog()
@@ -33,14 +38,13 @@ def health(lab: Lab) -> dict:
     for b in backends.BACKENDS:
         bcfg = (prog.get("backends") or {}).get(b) or {}
         pre = backends.resolve_cli(b, bcfg)
-        ver = backends.cli_version(pre) if (pre and b == prog.get("backend", "claude")) else None
+        ver = backends.cli_version(pre) if pre else None
         clis[b] = {"found": bool(pre), "path": (pre[-1] if pre else None), "version": backends.version_str(ver),
                    "shim": bool(pre and os.name == "nt" and pre[-1].lower().endswith((".cmd", ".bat")))}
-        if pre and b == "claude" and b == prog.get("backend", "claude"):
-            auth = backends.cli_auth(pre)
-            # an API key / cloud provider in the environment also works without a claude.ai login
-            env_auth = any(os.environ.get(k) for k in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK",
-                                                        "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"))
+        if pre:
+            auth = backends.cli_auth(pre, backend=b)
+            # an API key / cloud provider in the environment also works without an interactive login
+            env_auth = any(os.environ.get(k) for k in _ENV_AUTH.get(b, ()))
             clis[b]["logged_in"] = None if auth is None else (auth["logged_in"] or env_auth)
     return {
         "enabled": bool(prog.get("enabled")),
@@ -54,13 +58,22 @@ def health(lab: Lab) -> dict:
         "queued": sum(1 for m in runs if m.get("status") == "queued"),
         "waiting": sum(1 for m in runs if m.get("status") in PAUSED),
         "last_tick": last_tick(lab),
+        "config": {k: prog.get(k) for k in CONFIG_KEYS if k in prog},
+        "auto_spawn_on_gate1": bool((lab.dashboard_cfg() or {}).get("auto_spawn_on_gate1")),
     }
+
+
+# agents.programmatic keys the dashboard settings panel may change (PI-owned; the dashboard is the PI's
+# localhost console, every change is confirmed and logged). The master switch has its own endpoint.
+CONFIG_KEYS = ("backend", "model", "permission_mode", "max_minutes", "max_concurrent", "max_concurrent_total",
+               "hub_max_concurrent", "daily_max_runs", "daily_max_minutes", "chain_max_steps",
+               "permission_wait_seconds")
 
 
 __all__ = [
     "Lab", "HUB_TARGET", "RunSpec", "SpecError", "SKILL_REGISTRY", "NEVER",
     "enqueue", "answer", "reply", "resume", "cancel", "stop", "list_runs", "queue_position",
-    "check_enabled", "permission_decision", "tick", "tick_loop", "reconcile", "run_supervisor",
+    "check_enabled", "permission_decision", "CONFIG_KEYS", "tick", "tick_loop", "reconcile", "run_supervisor",
     "caps", "brake", "daily_usage", "last_tick", "health", "attention", "backends",
     "find_run", "all_runs", "ledger", "ACTIVE", "PAUSED", "RESUMABLE", "TERMINAL", "STATUSES",
 ]

@@ -208,19 +208,22 @@ uv run --with pyyaml python tools/agent_runner.py list|reconcile|kill --project 
 uv run --with pyyaml python tools/agent_runner.py kill-campaign --campaign <manifest|id>
 ```
 
-`launch-many` is the `/autopilot` multi-project path: it runs one `launch` per project up to
-`min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` concurrently — the tool
-owns the concurrency (no shell backgrounding), isolates per-project failures, and writes a campaign
+`launch-many` is the `/autopilot` multi-project path: it queues one **executor run** per project
+(`parent` = the campaign id) up to `min(autopilot.max_concurrent_projects,
+agents.programmatic.max_concurrent)` at once and waits for each to finish **or pause for the PI** —
+so every campaign worker is a first-class run in the dashboard (live subagents, stop, answer, resume),
+subject to the executor's caps and daily brake. It isolates per-project failures and writes a campaign
 manifest at `lab/.bus/campaign-agents/<id>.json`; `kill-campaign` stops the whole fleet.
 
 - **Backends, via config (default claude).** `agents.programmatic.backend: claude` runs `claude -p`
   (headless); `codex` runs `codex exec`; `opencode` runs `opencode run --format json`. Each launched
   agent is a **top-level** session in the project's cwd (not a nested subagent) and is **depth-capped**
   (`max_depth: 1`) so it can't launch more. What each can spawn **in turn** depends on its role-file
-  scaffolding: **Claude** and **Codex** ship generated role files (`tools/role_sync.py` renders
-  `.claude/agents/*.md` + `.codex/agents/*.toml` from `agent-roles/`), so Claude spawns native parallel
-  Task subagents and Codex uses its GA Subagents (`[agents]` in `config.toml` + `.codex/agents/`);
-  **opencode / Gemini / Cursor are compatibility-only** (no rendered role files yet). Regardless of
+  scaffolding: **Claude**, **Codex** and **opencode** ship generated role files (`tools/role_sync.py`
+  renders `.claude/agents/*.md` + `.codex/agents/*.toml` + `.opencode/agents/*.md` from `agent-roles/`),
+  so Claude spawns native parallel Task subagents, Codex uses its subagents (`spawn_agent`, `[agents]` in
+  `config.toml` + `.codex/agents/`) and opencode its `task` child sessions; **Gemini / Cursor are
+  compatibility-only** (no rendered role files yet). Regardless of
   backend, the robust cross-backend path for heterogeneous fresh-context work is this launcher's "one
   headless process per unit of work" (a `codex exec --json` / `opencode run --format json` per lens or
   variant), coordinated by the file bus + slot ledger; the in-process Codex fan-out is newer /
@@ -232,8 +235,8 @@ manifest at `lab/.bus/campaign-agents/<id>.json`; `kill-campaign` stops the whol
 | Backend | Role file | Native subagent | Headless launch | JSON/event stream | Safety boundary | Status |
 |---|---|---|---|---|---|---|
 | Claude Code | `.claude/agents/*.md` (generated) | yes (Task subagents) | `claude -p` | stream-json | `permission_mode` (`.claude/settings.json`) | **stable / default** |
-| Codex | `.codex/agents/*.toml` (generated) + `.codex/config.toml` | yes (GA Subagents) | `codex exec --json` | JSON | `sandbox_mode` (`workspace-write`), `approval` | beta (rough edges) |
-| opencode | — (none yet) | child sessions (Task/@mention) | `opencode run --format json` | NDJSON | `OPENCODE_PERMISSION` (in-repo allow) | compatibility-only |
+| Codex | `.codex/agents/*.toml` (generated) + `.codex/config.toml` | yes (`spawn_agent` subagents) | `codex exec --json` (resume: `exec resume <thread> -`) | JSON | `sandbox_mode` (`workspace-write`) | beta (rough edges) |
+| opencode | `.opencode/agents/*.md` (generated, `mode: subagent`) | child sessions (`task` tool) | `opencode run --format json` (resume: `-s <session>`) | NDJSON | `OPENCODE_PERMISSION` (in-repo allow) | beta |
 | Gemini CLI | — (none yet) | documented, unverified | — | — | — | compatibility-only (smoke required) |
 | Cursor | — (none yet) | documented, unverified | `cursor` headless | — | — | compatibility-only (smoke required) |
 
@@ -255,8 +258,8 @@ proves its role-file schema (add a render target in `tools/role_sync.py` to prom
   answers via a dashboard directive — the existing human-in-loop channel, no per-call approval UI needed.
   (`bypassPermissions` is deliberately *not* the default; `dontAsk` is the stricter fail-closed
   alternative if a project wants only the allowlist to run.) A **Codex** agent gets the equivalent from
-  its OS-enforced sandbox: `--sandbox workspace-write -a never` (edit + run inside the repo, network off
-  by default; a sandbox-forbidden op fails and escalates the same way). Every one of these safety knobs is
+  its OS-enforced sandbox: `--sandbox workspace-write` (edit + run inside the repo, network off by
+  default; `codex exec` never prompts — a sandbox-forbidden op fails and escalates the same way). Every one of these safety knobs is
   a **dedicated per-backend config key** — `agents.programmatic.permission_mode` (and
   `backends.claude.permission_mode`), `backends.codex.{sandbox,approval,network_access}` — so they can be
   tuned as needed; the same flags are *refused* in `extra_args` so they can't be smuggled past review.
@@ -264,8 +267,28 @@ proves its role-file schema (add a render target in `tools/role_sync.py` to prom
   (Claude backends) and `run.py` already emit run/worker signals into `<project>/.bus/`. On top of
   that the launcher persists the **full stdout transcript** (`<project>/.bus/agents/<id>.stream.jsonl`),
   a **manifest** (`<id>.json`, status `running`→terminal, pid, timing — reconciled on crash like a
-  killed run), `agent_launched`/`agent_finished` **bus events**, and a synthesized **worker log** for
-  non-Claude backends — so the dashboard catches every launched agent as its own room/sprite, live.
+  killed run) and `agent_launched`/`agent_finished` **bus events**, so the dashboard catches every
+  launched agent as its own room/sprite, live.
+- **Subagents are traced on every backend, through the same `trace_hook.py`.** Each harness calls it
+  with a Claude-shaped hook payload — root `session_id`, plus `agent_id`/`agent_type` inside a subagent —
+  so the dashboard draws one run → session → subagent tree whichever CLI ran it:
+
+  | Backend | How the tracer is wired | Live subagent steps? |
+  |---|---|---|
+  | Claude Code | `.claude/settings.json` hooks (SessionStart, SubagentStart, Pre/PostToolUse `*`, SubagentStop, SessionEnd) | yes |
+  | Codex | headless runs: the executor passes the same hooks as `-c hooks.<Event>=…` session flags + `--dangerously-bypass-hook-trust` (codex runs an unreviewed hook only with it; `backends.codex.trace_hooks: false` turns this off). Interactive sessions: `.codex/hooks.json`, once the repo is trusted and its hooks reviewed in `/hooks` | yes |
+  | opencode | the `.opencode/plugins/newts-trace.js` plugin (loaded from any `.opencode/` between the cwd and the git root) maps session / `task` child-session / tool events onto the same payloads | yes |
+
+  The stream adds a hook-free view on top: Claude's `parent_tool_use_id`, Codex's `collab_tool_call`
+  items (spawn / wait with the child's final message), opencode's finished `task` call (child session id
+  + `<task_result>`). A backend with no tracer available gets a synthesized worker log instead.
+  Projects spawned before these files existed: `tools/upgrade_project.py --all` copies them in.
+- **Headless runs and background work.** `claude -p` kills background shell jobs ~5 s after the
+  session ends and waits for background subagents only up to a ceiling; the executor lifts that ceiling
+  (`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`, bounded by its own watchdog) and its standing instructions
+  tell every headless agent never to end a turn while a job or subagent it started is still running.
+  A subagent can't ask the PI directly (the question hook refuses it); it returns the question in its
+  result and the parent asks.
 - **Coordination is the existing slot ledger.** N launched sessions advance their CPU-light stages in
   parallel; **training still serializes** through `tools/run_slots.py` (`compute.max_concurrent_runs`).
   No new lock — the file-based substrate already arbitrates cross-project compute.

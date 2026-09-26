@@ -127,7 +127,7 @@ uv run --with pyyaml python tools/role_sync.py render   # write/update generated
 uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exit 1 if any is stale
 ```
 
-One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates have no role file, so `/ideate` and `/scope` apply `agents.critic_model` (tier-resolved) as their per-spawn Task model on Claude Code and run them at the session model on other backends (subagent rule 7). **Only Claude and Codex are rendered** (known schemas); opencode / Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or `agent_runner.py` (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
+One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates have no role file, so `/ideate` and `/scope` apply `agents.critic_model` (tier-resolved) as their per-spawn Task model on Claude Code and run them at the session model on other backends (subagent rule 7). opencode gets `.opencode/agents/<name>.md` too (`mode: subagent`; the role's Claude tool list mapped onto opencode permissions, `task: deny`; no model line — its subagents inherit the session model). Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or `agent_runner.py` (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
 
 ### `executor_cli.py` — headless procedure runs (the dashboard's engine)
 
@@ -218,3 +218,15 @@ The project-side analogue of `check_lab.py`: required files present, no unfilled
 ## Design note
 
 There is deliberately **no orchestrator binary and no pip package**. The tools are boring on purpose: each one reads files a human can read, prints markdown a human can paste, and exits with a code a script can branch on. The agent's judgment plus these deterministic checks is the architecture.
+
+## `upgrade_project.py` — bring spawned projects up to date
+
+A project is a snapshot of `templates/project/` at spawn, so later improvements to agent tracing never reach it on
+their own. This copies only the template-owned plumbing — `scripts/trace_hook.py`, `scripts/lab_bus.py`, the
+`hooks` block of `.claude/settings.json` (permissions untouched), `.codex/hooks.json`, the opencode tracer plugin
+and the role files — never research content. Idempotent; it does not commit.
+
+```bash
+uv run --with pyyaml python tools/upgrade_project.py --all --check   # report stale files (exit 1 if any)
+uv run --with pyyaml python tools/upgrade_project.py --all           # or: <slug> [<slug>…]
+```

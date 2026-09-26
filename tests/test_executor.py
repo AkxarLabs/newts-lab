@@ -160,9 +160,16 @@ def test_run_command_other_backends(hub):
     assert rc.argv[:3] == ["oc", "run", "do it\n\n---\nRULES"] and rc.argv[rc.argv.index("-s") + 1] == "ses_1"
     assert rc.stdin_text is None and rc.fires_hooks is False
     rc = backends.build_run_command("codex", prompt="go", workdir=hub.root, prog={}, cli=["cx"])
-    assert rc.argv[:3] == ["cx", "exec", "-"] and rc.stdin_text == "go"
-    with pytest.raises(SystemExit, match="codex"):
-        backends.build_run_command("codex", prompt="go", workdir=hub.root, prog={}, cli=["cx"], resume_sid="t")
+    assert rc.argv[:2] == ["cx", "exec"] and rc.argv[-1] == "-" and rc.stdin_text == "go"
+    assert "--json" in rc.argv and "-a" not in rc.argv and "resume" not in rc.argv
+    assert rc.fires_hooks is False                       # no tracer hooks passed → synthesized worker log
+    # resume (codex ≥0.35): exec-level options BEFORE the subcommand, then `resume <thread> -`
+    rc = backends.build_run_command("codex", prompt="more", workdir=hub.root, prog={}, cli=["cx"], resume_sid="t-1")
+    assert rc.argv[-3:] == ["resume", "t-1", "-"] and rc.stdin_text == "more"
+    assert rc.argv.index("-C") < rc.argv.index("resume") and rc.argv.index("--sandbox") < rc.argv.index("resume")
+    with pytest.raises(SystemExit, match="resume"):
+        backends.build_run_command("codex", prompt="go", workdir=hub.root, cli=["cx"],
+                                   prog={"backends": {"codex": {"extra_args": "resume --last"}}})
 
 
 def test_resolve_cli(tmp_path, monkeypatch):

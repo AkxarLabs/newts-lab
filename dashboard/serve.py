@@ -361,13 +361,14 @@ def launch_run(body: dict, by: str = "dashboard") -> tuple[dict, int]:
     try:
         max_minutes = float(body["max_minutes"]) if body.get("max_minutes") not in (None, "") else None
         repeat = float(body["repeat_minutes"]) if body.get("repeat_minutes") not in (None, "") else None
+        max_rep = int(body["max_repeats"]) if body.get("max_repeats") not in (None, "") else None
     except (TypeError, ValueError):
-        return {"error": "max_minutes / repeat_minutes must be numbers"}, 400
+        return {"error": "max_minutes / repeat_minutes / max_repeats must be numbers"}, 400
     spec = executor.RunSpec(
         skill=str(body.get("skill") or ""), target=str(body.get("target") or "hub"),
         args=str(body.get("args") or ""), backend=body.get("backend") or None,
         model=body.get("model") or None, effort=body.get("effort") or None, max_minutes=max_minutes,
-        chain=str(body.get("chain") or "off"), repeat_minutes=repeat, created_by=by)
+        chain=str(body.get("chain") or "off"), repeat_minutes=repeat, max_repeats=max_rep, created_by=by)
     try:
         m = executor.enqueue(_xlab(), spec)
     except executor.SpecError as e:
@@ -482,6 +483,121 @@ def set_programmatic(body: dict) -> tuple[dict, int]:
     return {"ok": True, "enabled": enabled,
             "note": ("programmatic launching ON — the dashboard can now start headless sessions"
                      if enabled else "programmatic launching OFF — nothing new starts; running runs finish")}, 200
+
+
+# key → (config path, parser). Parsers raise ValueError on a bad value.
+def _enum(*allowed):
+    def f(v):
+        v = str(v).strip()
+        if v not in allowed:
+            raise ValueError(f"one of {', '.join(allowed)}")
+        return v
+    return f
+
+
+def _num(lo, integer=False):
+    def f(v):
+        x = int(v) if integer else float(v)
+        if x != x or x < lo:
+            raise ValueError(f"a number ≥ {lo}")
+        return int(x) if float(x).is_integer() else x
+    return f
+
+
+def _model_val(v):
+    v = str(v).strip() or "inherit"
+    if v != "inherit" and not executor.spec.MODEL_RE.match(v):
+        raise ValueError("a model id or alias")
+    return v
+
+
+EXEC_CONFIG = {
+    "backend": (["agents", "programmatic", "backend"], _enum("claude", "codex", "opencode")),
+    "model": (["agents", "programmatic", "model"], _model_val),
+    # bypassPermissions is deliberately absent: it would remove the human-in-loop floor
+    "permission_mode": (["agents", "programmatic", "permission_mode"],
+                        _enum("auto", "acceptEdits", "default", "plan", "dontAsk")),
+    "max_minutes": (["agents", "programmatic", "max_minutes"], _num(5)),
+    "max_concurrent": (["agents", "programmatic", "max_concurrent"], _num(1, True)),
+    "max_concurrent_total": (["agents", "programmatic", "max_concurrent_total"], _num(1, True)),
+    "hub_max_concurrent": (["agents", "programmatic", "hub_max_concurrent"], _num(1, True)),
+    "daily_max_runs": (["agents", "programmatic", "daily_max_runs"], _num(0, True)),
+    "daily_max_minutes": (["agents", "programmatic", "daily_max_minutes"], _num(0)),
+    "chain_max_steps": (["agents", "programmatic", "chain_max_steps"], _num(1, True)),
+    "permission_wait_seconds": (["agents", "programmatic", "permission_wait_seconds"], _num(0)),
+    "auto_spawn_on_gate1": (["dashboard", "auto_spawn_on_gate1"],
+                            lambda v: v if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes", "on")),
+}
+
+
+def _stamp_or_insert(profiles, text: str, dotted: list, value) -> tuple[str, bool]:
+    """profiles.stamp, plus: a key missing from an OLDER lab/config.yaml is inserted at the end of its
+    parent block (the parent must exist). Comments and every other byte are kept."""
+    new, changed = profiles.stamp(text, dotted, value)
+    if changed:
+        return new, True
+    lines = text.split("\n")
+    lo, hi, indent = 0, len(lines), 0
+    for key in dotted[:-1]:
+        i = profiles._find_key(lines, key, lo, hi, indent)
+        if i < 0:
+            return text, False
+        lo, hi = i + 1, profiles._block_end(lines, i, indent)
+        indent += 2
+    j = hi   # back over blank lines / the NEXT section's leading comments (shallower than this block)
+    while j > lo and (not lines[j - 1].strip() or
+                      (lines[j - 1].lstrip().startswith("#") and profiles._indent(lines[j - 1]) < indent)):
+        j -= 1
+    lines.insert(j, f"{' ' * indent}{dotted[-1]}: {profiles._fmt(value)}")
+    return "\n".join(lines), True
+
+
+def set_executor_config(body: dict) -> tuple[dict, int]:
+    """Change executor settings in lab/config.yaml (comment-preserving stamp, the /configure writer).
+    Whitelisted keys only, each validated; all-or-nothing; confirmed and logged."""
+    if executor is None:
+        return _no_executor()
+    if not body.get("confirm"):
+        return {"error": "changing settings needs explicit confirm"}, 400
+    changes = body.get("changes")
+    if not isinstance(changes, dict) or not changes:
+        return {"error": "no changes"}, 400
+    parsed = {}
+    for k, v in changes.items():
+        if k not in EXEC_CONFIG:
+            return {"error": f"'{k}' can't be changed from the dashboard"}, 400
+        try:
+            parsed[k] = EXEC_CONFIG[k][1](v)
+        except (TypeError, ValueError) as e:
+            return {"error": f"{k}: must be {e}"}, 400
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    import profiles   # noqa: E402 — tools/profiles.stamp (the /configure writer)
+    cfg = LAB / "config.yaml"
+    try:
+        text = cfg.read_text(encoding="utf-8-sig")
+    except OSError:
+        return {"error": "no lab/config.yaml"}, 400
+    for k, v in parsed.items():
+        text, changed = _stamp_or_insert(profiles, text, EXEC_CONFIG[k][0], v)
+        if not changed:
+            return {"error": f"lab/config.yaml has no '{EXEC_CONFIG[k][0][0]}' section to put "
+                             f"{'.'.join(EXEC_CONFIG[k][0])} in"}, 400
+    try:   # never write a config that no longer parses to the values we meant
+        import yaml
+        doc = yaml.safe_load(text) or {}
+        for k, v in parsed.items():
+            node = doc
+            for part in EXEC_CONFIG[k][0]:
+                node = node.get(part) if isinstance(node, dict) else None
+            if node != v:
+                raise ValueError(k)
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"refused: the edited lab/config.yaml would not read back correctly ({e})"}, 400
+    cfg.write_text(text, encoding="utf-8", newline="")
+    _pi_log({"action": "executor.config", "changes": parsed})
+    sources._EXEC_CACHE["ts"] = 0   # re-probe (e.g. the new backend's CLI) on the next snapshot
+    _KICK.set()
+    return {"ok": True, "changes": parsed, "note": f"saved {len(parsed)} setting(s) to lab/config.yaml"}, 200
 
 
 def run_detail(run_id: str) -> tuple[dict, int]:
@@ -1508,6 +1624,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/attention/ack": lambda b: ack_attention(b),
         "/api/escalation/resolve": lambda b: resolve_escalation(b),
         "/api/executor/enable": lambda b: set_programmatic(b),
+        "/api/executor/config": lambda b: set_executor_config(b),
     }
 
     def _dispatch_post(self):

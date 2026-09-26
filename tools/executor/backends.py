@@ -42,13 +42,41 @@ _CLAUDE_EXECUTOR_OWNED = ("--settings", "--mcp-config", "--permission-prompt-too
                           "--session-id", "--add-dir", "--continue", "--fork-session",
                           "--append-system-prompt", "--append-system-prompt-file",
                           "--allow-dangerously-skip-permissions")
-_CODEX_FORBID = ("--sandbox", "-a", "--ask-for-approval", "--dangerously-bypass-approvals-and-sandbox", "--yolo")
+_CODEX_FORBID = ("--sandbox", "-s", "-a", "--ask-for-approval", "--dangerously-bypass-approvals-and-sandbox",
+                 "--yolo", "--full-auto", "--approve-for-me", "--not-so-yolo", "resume", "fork")
 _OPENCODE_FORBID = ("--dangerously-skip-permissions", "--dir", "--format")
 
 
 def _eff_model(model, bcfg: dict):
     # An explicit launch/global model wins; otherwise the backend's own default.
     return model if (model and model != "inherit") else (bcfg.get("model") or "inherit")
+
+
+def _toml_str(v) -> str:
+    """A `-c key=value` value is parsed as TOML: quote strings so `medium` isn't a TOML error."""
+    return json.dumps(str(v))
+
+
+def _codex_opts(bcfg: dict, workdir, eff_model) -> list[str]:
+    """`codex exec` options shared by a fresh run and a resume (they go BEFORE the `resume`
+    subcommand: -s / -C are exec-level flags the resume inherits).
+
+    `codex exec` has no -a/--ask-for-approval flag (that is the interactive TUI's); exec already
+    runs with approval_policy=never — a blocked op fails back to the model, never prompts. A PI who
+    sets `approval` to something stricter gets it as a config override (approvals are then rejected
+    in exec, i.e. the op fails)."""
+    opts = ["--json", "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
+            "--skip-git-repo-check", "-C", str(workdir)]
+    appr = str(bcfg.get("approval") or "never")
+    if appr != "never":
+        opts += ["-c", f"approval_policy={_toml_str(appr)}"]
+    if bcfg.get("network_access"):   # workspace-write disables network by default; opt-in per genuine need
+        opts += ["-c", "sandbox_workspace_write.network_access=true"]
+    if bcfg.get("reasoning_effort"):   # codex has no --effort flag; it's a config override
+        opts += ["-c", f"model_reasoning_effort={_toml_str(bcfg['reasoning_effort'])}"]
+    if eff_model and eff_model != "inherit":
+        opts += ["-m", str(eff_model)]
+    return opts
 
 
 def build_command(backend: str, prompt: str, pdir: Path, model: str,
@@ -74,16 +102,7 @@ def build_command(backend: str, prompt: str, pdir: Path, model: str,
         return cmd, True
     if backend == "codex":
         _guard_extra(backend, extra, _CODEX_FORBID)
-        cmd = ["codex", "exec", prompt, "--json",
-               "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
-               "-a", str(bcfg.get("approval") or "never"),
-               "--skip-git-repo-check", "-C", str(pdir)]
-        if bcfg.get("network_access"):   # workspace-write disables network by default; opt-in per genuine need
-            cmd += ["-c", "sandbox_workspace_write.network_access=true"]
-        if bcfg.get("reasoning_effort"):   # codex has no --effort flag; it's a config override
-            cmd += ["-c", f"model_reasoning_effort={bcfg['reasoning_effort']}"]
-        if eff_model and eff_model != "inherit":
-            cmd += ["-m", str(eff_model)]
+        cmd = ["codex", "exec", prompt, *_codex_opts(bcfg, pdir, eff_model)]
         if extra:
             cmd += extra.split()
         return cmd, False
@@ -193,27 +212,108 @@ def version_str(v) -> str | None:
 _AUTH_CACHE: dict[tuple, tuple[float, dict | None]] = {}
 
 
-def cli_auth(prefix: list[str] | None, ttl: float = 60.0) -> dict | None:
-    """`claude auth status` → {"logged_in": bool, "method": str}, cached `ttl` s; None if unknown.
-    Read-only: it never touches credentials, it only asks the CLI whether it has a login."""
-    if not prefix:
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_AUTH_ARGS = {"claude": ["auth", "status"], "codex": ["login", "status"], "opencode": ["providers", "list"]}
+
+
+def _auth_from(backend: str, out: subprocess.CompletedProcess) -> dict | None:
+    if backend == "claude":   # JSON: {"loggedIn": bool, "authMethod": ...}
+        data = json.loads((out.stdout or "").strip() or "null")
+        if isinstance(data, dict) and "loggedIn" in data:
+            return {"logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
         return None
-    key = tuple(prefix)
+    text = _ANSI_RE.sub("", (out.stdout or "") + "\n" + (out.stderr or ""))
+    if backend == "codex":    # exit 0 + "Logged in using …" on stderr; exit 1 + "Not logged in"
+        if "not logged in" in text.lower():
+            return {"logged_in": False, "method": None}
+        if out.returncode == 0:
+            m = re.search(r"Logged in using ([^\n-]+)", text)
+            return {"logged_in": True, "method": (m.group(1).strip() if m else None)}
+        return None
+    if backend == "opencode":  # "N credentials" (auth.json) + "N environment variables" (provider keys)
+        nums = [int(n) for n in re.findall(r"(\d+)\s+(?:credentials?|environment variables?)", text)]
+        if not nums:
+            return None
+        return {"logged_in": sum(nums) > 0, "method": "providers" if sum(nums) else None}
+    return None
+
+
+def cli_auth(prefix: list[str] | None, ttl: float = 60.0, backend: str = "claude") -> dict | None:
+    """Is the backend CLI signed in? → {"logged_in": bool, "method": str}, cached `ttl` s; None if
+    unknown. claude: `auth status` (JSON). codex: `login status` (exit code; note CODEX_API_KEY in
+    the env also works for exec although `login status` ignores it). opencode: `providers list`
+    (stored credentials + detected provider env keys). Read-only: it never touches credentials."""
+    if not prefix or backend not in _AUTH_ARGS:
+        return None
+    key = (backend, *prefix)
     hit = _AUTH_CACHE.get(key)
     if hit and time.time() - hit[0] < ttl:
         return hit[1]
     info = None
     try:
-        out = subprocess.run([*prefix, "auth", "status"], capture_output=True, text=True, timeout=20,
-                             encoding="utf-8", errors="replace",
+        out = subprocess.run([*prefix, *_AUTH_ARGS[backend]], capture_output=True, text=True, timeout=20,
+                             encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0)
-        data = json.loads((out.stdout or "").strip() or "null")
-        if isinstance(data, dict) and "loggedIn" in data:
-            info = {"logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
+        info = _auth_from(backend, out)
     except (OSError, subprocess.SubprocessError, ValueError):
         info = None
     _AUTH_CACHE[key] = (time.time(), info)
     return info
+
+
+# ── subagent tracing for codex / opencode (the same trace_hook.py the claude hooks call) ──────
+
+TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
+
+
+def trace_script(workdir) -> Path | None:
+    """The lab's tracer for a run's workdir: the hub's tools/trace_hook.py or a project's
+    scripts/trace_hook.py (a git worktree of a project has its own copy)."""
+    w = Path(workdir)
+    for rel in (("tools", "trace_hook.py"), ("scripts", "trace_hook.py")):
+        f = w.joinpath(*rel)
+        if f.is_file():
+            return f
+    return None
+
+
+def codex_hook_overrides(workdir, bcfg: dict | None = None, python: str | None = None) -> list[str] | None:
+    """codex exec flags that register trace_hook.py on every hook event for THIS invocation.
+
+    Why flags and not the repo's .codex/hooks.json: codex loads a repo's .codex/ layer only when
+    the project is marked trusted, and every non-managed hook (repo, user, or -c session flags)
+    runs only once its hash was reviewed in the TUI's /hooks — neither holds for a headless run in
+    a fresh project. So the executor passes the hooks as `-c hooks.<Event>=[…]` session flags plus
+    `--dangerously-bypass-hook-trust` ("enabled hooks may run without review for this invocation";
+    it applies to the user's own ~/.codex hooks too). The payload matches Claude Code's: root
+    `session_id` (= the exec thread id), `agent_id`/`agent_type` inside a subagent.
+    `backends.codex.trace_hooks: false` turns this off (subagents then show from the stream only)."""
+    bcfg = bcfg or {}
+    if bcfg.get("trace_hooks") is False:
+        return None
+    script = trace_script(workdir)
+    if not script:
+        return None
+    import sys as _sys
+    cmd = f'"{python or _sys.executable or "python"}" "{script}"'
+    handler = "{type=\"command\",command=" + _toml_str(cmd) + ",timeout=10}"
+    out = ["--dangerously-bypass-hook-trust"]
+    for ev in TRACE_EVENTS:
+        group = "{" + ('matcher="*",' if ev in ("PreToolUse", "PostToolUse") else "") + f"hooks=[{handler}]" + "}"
+        out += ["-c", f"hooks.{ev}=[{group}]"]
+    return out
+
+
+def opencode_traced(workdir) -> bool:
+    """opencode loads plugins from every .opencode/ dir between the cwd and the git worktree root;
+    the lab's tracer plugin there feeds the same worker logs as the claude/codex hooks."""
+    w = Path(workdir).resolve()
+    for d in [w, *w.parents]:
+        if (d / ".opencode" / "plugins" / "newts-trace.js").is_file():
+            return True
+        if (d / ".git").exists():
+            break
+    return False
 
 
 # ── executor run command ──────────────────────────────────────────────────────
@@ -233,7 +333,8 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
                       add_dirs: list[Path] | None = None, settings_path: Path | None = None,
                       mcp_config_path: Path | None = None, permission_tool: str | None = None,
                       system_prompt_file: Path | None = None, preamble: str | None = None,
-                      cli_ver: tuple | None = None) -> RunCommand:
+                      cli_ver: tuple | None = None, codex_hooks: list[str] | None = None,
+                      opencode_traced: bool = False) -> RunCommand:
     """The executor's argv for one attempt. `prompt=None` on a claude resume means "continue the
     deferred turn" (the answer rides the AskUserQuestion hook, not a new user message)."""
     bcfg = (prog.get("backends") or {}).get(backend) or {}
@@ -287,21 +388,15 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
     if preamble and text:
         text = f"{text}\n\n---\n{preamble}"
     if backend == "codex":
-        if resume_sid:
-            raise SystemExit("[executor] resuming a codex session is not supported yet — start a new run")
+        # codex exec [opts] [resume <thread_id>] <prompt|->   (`-` = the prompt is stdin; resume ≥0.35)
         _guard_extra(backend, extra, _CODEX_FORBID)
-        argv = [*cli, "exec", "-" if via != "argv" else text, "--json",
-                "--sandbox", str(bcfg.get("sandbox") or "workspace-write"),
-                "-a", str(bcfg.get("approval") or "never"), "--skip-git-repo-check", "-C", str(workdir)]
-        if bcfg.get("network_access"):
-            argv += ["-c", "sandbox_workspace_write.network_access=true"]
-        if bcfg.get("reasoning_effort"):
-            argv += ["-c", f"model_reasoning_effort={bcfg['reasoning_effort']}"]
-        if eff_model and eff_model != "inherit":
-            argv += ["-m", str(eff_model)]
+        argv = [*cli, "exec", *_codex_opts(bcfg, workdir, eff_model), *(codex_hooks or [])]
         if extra:
             argv += extra.split()
-        return RunCommand(argv, text if via != "argv" else None, False, notes)
+        if resume_sid:
+            argv += ["resume", resume_sid]
+        argv.append("-" if via != "argv" else text)
+        return RunCommand(argv, text if via != "argv" else None, bool(codex_hooks), notes)
     if backend == "opencode":
         _guard_extra(backend, extra, _OPENCODE_FORBID)
         # opencode keeps the prompt on argv: with a live stdin its --format json mode can block on
@@ -319,7 +414,7 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
             argv += ["--dangerously-skip-permissions"]
         if extra:
             argv += extra.split()
-        return RunCommand(argv, None, False, notes)
+        return RunCommand(argv, None, opencode_traced, notes)
     if backend == "_dummy":
         # Tests: the configured command is the whole argv; the prompt goes to stdin, and the resume
         # session id rides the env (the supervisor sets NEWTS_RESUME_SID).
@@ -417,43 +512,133 @@ def parse_events(backend: str, obj: dict) -> list[dict]:
                      "denials": len(obj.get("permission_denials") or [])}]
         return []
     if backend == "opencode":
-        # NDJSON: {type, timestamp, sessionID, part{…}}; no init event, no single result envelope —
-        # sessionID rides every line and the final message is the LAST `text` part (finalize on EOF).
-        sid = obj.get("sessionID")
-        part = obj.get("part") or {}
-        if t == "tool_use":
-            state = part.get("state") or {}
-            summary = state.get("title") or state.get("input") or part.get("tool")
-            return [{"event": "action", "tool": part.get("tool"), "kind": "tool",
-                     "summary": str(summary or "")[:200], "session_id": sid}]
-        if t == "text" and part.get("text"):
-            return [{"event": "result", "last_message": str(part["text"]), "session_id": sid}]
-        if t == "error":
-            err = obj.get("error") or {}
-            msg = (err.get("data") or {}).get("message") or err.get("name") or "opencode error"
-            return [{"event": "result", "last_message": f"[error] {msg}", "session_id": sid}]
-        return [{"event": "start", "status": "working", "session_id": sid}] if sid else []
-    # codex (and the _dummy test backend mimics codex's ThreadEvent JSONL shape)
+        return _parse_opencode(obj)
+    return _parse_codex(obj)
+
+
+_TASK_RESULT_RE = re.compile(r"<task_result>(.*?)</task_result>", re.S)
+
+
+def _parse_opencode(obj: dict) -> list[dict]:
+    """opencode `run --format json` (1.18): {type, timestamp, sessionID, part}. Types: step_start,
+    step_finish (cost + tokens), text (a finished text part), reasoning (--thinking only), tool_use
+    (emitted once the tool is completed|error — no pending/running lines), error. No init / result
+    envelope: sessionID rides every line; the final message is the LAST text part (finalize on EOF).
+
+    Only the ROOT session's parts are printed: a subagent (`task` tool) shows up once, when it
+    returns, with its child session id in state.metadata.sessionId and its final answer inside
+    <task_result>. Live child activity comes from the .opencode/plugins/newts-trace.js plugin."""
+    t = obj.get("type")
+    sid = obj.get("sessionID")
+    part = obj.get("part") or {}
+    if t == "tool_use":
+        state = part.get("state") or {}
+        tool, inp = part.get("tool"), state.get("input") or {}
+        err = state.get("status") == "error"
+        if tool == "task" and isinstance(inp, dict):
+            call = part.get("callID") or part.get("id")
+            meta = state.get("metadata") or {}
+            out = str(state.get("output") or state.get("error") or "")
+            m = _TASK_RESULT_RE.search(out)
+            desc = str(inp.get("description") or inp.get("prompt") or "")[:200]
+            return [{"event": "action", "tool": "task", "kind": "tool", "tool_use_id": call,
+                     "summary": f"{inp.get('subagent_type') or 'general'}: {desc}"[:200], "session_id": sid,
+                     "spawn": {"subagent_type": inp.get("subagent_type") or "general", "description": desc,
+                               "child_session": meta.get("sessionId")}},
+                    {"event": "tool_result", "tool_use_id": call, "is_error": err,
+                     "text": (m.group(1) if m else out).strip()[:2000]}]
+        summary = state.get("title") or summarize_input(tool, inp) or tool
+        ev = {"event": "action", "tool": tool, "kind": "tool", "summary": str(summary or "")[:200],
+              "session_id": sid, "tool_use_id": part.get("callID")}
+        return [ev] + ([{"event": "tool_result", "tool_use_id": part.get("callID"), "is_error": True,
+                         "text": str(state.get("error") or "")[:2000]}] if err else [])
+    if t == "text" and part.get("text"):
+        return [{"event": "result", "last_message": str(part["text"]), "session_id": sid},
+                {"event": "text", "text": str(part["text"]), "parent": None}]
+    if t == "step_finish":
+        tok = part.get("tokens") or {}
+        usage = {k: tok[k] for k in ("input", "output", "reasoning") if isinstance(tok.get(k), (int, float))}
+        cache = tok.get("cache") or {}
+        if isinstance(cache.get("read"), (int, float)):
+            usage["cache_read"] = cache["read"]
+        return [{"event": "usage", "usage": usage, "cost_delta": part.get("cost"), "session_id": sid},
+                {"event": "start", "status": "working", "session_id": sid}]
+    if t == "error":
+        err = obj.get("error") or {}
+        msg = (err.get("data") or {}).get("message") or err.get("name") or "opencode error"
+        return [{"event": "result", "last_message": f"[error] {msg}", "session_id": sid, "is_error": True}]
+    return [{"event": "start", "status": "working", "session_id": sid}] if sid else []
+
+
+def _parse_codex(obj: dict) -> list[dict]:
+    """codex `exec --json` ThreadEvents (the _dummy test backend mimics this shape): thread.started
+    {thread_id} · turn.started · turn.completed {usage} · turn.failed {error} · item.started /
+    item.updated (todo_list only) / item.completed {item} · error. Only the PRIMARY thread's items
+    stream; subagents appear as `collab_tool_call` items (spawn_agent / send_input / wait /
+    close_agent) with receiver_thread_ids + agents_states — their own tool calls come from the codex
+    hooks (.codex/hooks.json → trace_hook.py), not from this stream."""
+    t = obj.get("type")
     if t == "thread.started":
         return [{"event": "start", "status": "working",
                  "session_id": obj.get("thread_id") or obj.get("session_id")}]
     if t in ("item.started", "item.completed"):
         it = obj.get("item") or {}
         itype = it.get("type")
+        if itype in ("collab_tool_call", "collab_agent_tool_call"):
+            return _codex_collab(t, it)
         # codex has emitted both singular and plural item type names across versions
         if itype in ("command_execution", "mcp_tool_call", "mcp_tool_calls", "web_search",
                      "web_searches", "file_change", "file_changes"):
-            summary = str(it.get("command") or it.get("query") or it.get("status") or itype)[:200]
+            tool = itype
+            if itype.startswith("mcp_tool_call") and it.get("tool"):
+                tool = f"mcp__{it.get('server') or 'mcp'}__{it['tool']}"
+            summary = it.get("command") or it.get("query")
+            if not summary and isinstance(it.get("changes"), list):
+                summary = ", ".join(str((c or {}).get("path") or "") for c in it["changes"][:4])
+            summary = str(summary or it.get("status") or itype)[:200]
             if t == "item.started":
-                return [{"event": "begin", "tool": itype, "summary": summary}]
-            return [{"event": "action", "tool": itype, "kind": "tool", "summary": summary}]
+                return [{"event": "begin", "tool": tool, "summary": summary}]
+            out = [{"event": "action", "tool": tool, "kind": "tool", "summary": summary, "tool_use_id": it.get("id")}]
+            if it.get("status") == "declined":
+                out.append({"event": "denied", "tool": tool, "tool_use_id": it.get("id")})
+            return out
         if itype == "agent_message" and t == "item.completed":
-            return [{"event": "result", "last_message": str(it.get("text") or "")[:2000]}]
+            return [{"event": "result", "last_message": str(it.get("text") or "")[:2000]},
+                    {"event": "text", "text": str(it.get("text") or "")[:800], "parent": None}]
     if t == "turn.completed" and isinstance(obj.get("usage"), dict):
         return [{"event": "usage", "usage": obj["usage"]}]
+    if t == "turn.failed":
+        msg = (obj.get("error") or {}).get("message") or "turn failed"
+        return [{"event": "result", "last_message": f"[error] {msg}", "is_error": True}]
     if t == "error":
         return [{"event": "result", "last_message": f"[error] {obj.get('message') or 'codex error'}"}]
     return []
+
+
+def _codex_collab(t: str, it: dict) -> list[dict]:
+    """A codex multi-agent call → the executor's subagent events, keyed by the child thread id."""
+    tool = it.get("tool") or "collab"
+    states = it.get("agents_states") if isinstance(it.get("agents_states"), dict) else {}
+    receivers = [r for r in (it.get("receiver_thread_ids") or []) if r] or list(states)
+    out: list[dict] = []
+    if tool == "spawn_agent":
+        if t != "item.completed":
+            return [{"event": "begin", "tool": "spawn_agent", "summary": str(it.get("prompt") or "")[:200]}]
+        desc = str(it.get("prompt") or "")[:200]
+        for tid in receivers:
+            out.append({"event": "action", "tool": "spawn_agent", "kind": "tool", "tool_use_id": tid,
+                        "summary": f"subagent: {desc}"[:200],
+                        "spawn": {"subagent_type": str(it.get("agent_type") or it.get("agent_name") or "subagent"),
+                                  "description": desc, "child_session": tid}})
+    elif t == "item.completed":
+        out.append({"event": "action", "tool": tool, "kind": "tool",
+                    "summary": f"{tool} {', '.join(r[:8] for r in receivers)}"[:200]})
+    for tid, stt in states.items():
+        status = (stt or {}).get("status") if isinstance(stt, dict) else None
+        if t == "item.completed" and status in ("completed", "errored", "interrupted", "shutdown", "not_found"):
+            out.append({"event": "tool_result", "tool_use_id": tid, "is_error": status != "completed",
+                        "text": str((stt or {}).get("message") or status)[:2000]})
+    return out
 
 
 def parse_activity(backend: str, obj: dict) -> dict | None:

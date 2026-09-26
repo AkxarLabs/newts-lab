@@ -254,7 +254,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         emit(lab, workdir, "agent_finished", detail=run_id, status="failed",
              data={"reason": "cli-not-found", "run_id": run_id})
         return 1
-    ver = backends.cli_version(cli) if backend == "claude" else None
+    ver = backends.cli_version(cli) if backend in ("claude", "codex") else None
     m["cli"] = cli[-1] if len(cli) == 1 else " ".join(cli)
     m["cli_version"] = backends.version_str(ver)
 
@@ -284,6 +284,11 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     env.update(env_extra)
     env["AUTOSCIENTIST_AGENT_DEPTH"] = str(depth + 1)
     env["AUTOSCIENTIST_NO_GATE3"] = "1"   # Gate 3 is never delegated — guard.py finalization hard-stops it
+    env["NEWTS_PYTHON"] = python_exe()   # the opencode tracer plugin shells out to trace_hook.py with it
+    if backend == "claude":
+        # `claude -p` waits for background SUBAGENTS before exiting, but only up to a 10-minute ceiling;
+        # a lab runner in a long PILOT must not be cut off — the executor's own watchdog bounds the run.
+        env.setdefault("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0")
     if backend == "opencode":
         env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "1")
         if bcfg.get("permission"):
@@ -298,16 +303,21 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         if preamble_text:
             sys_prompt = rd / "preamble.md"
     add_dirs = [lab.hub] if (backend == "claude" and m.get("level") == "project") else []
+    codex_hooks = backends.codex_hook_overrides(workdir, bcfg, python_exe()) if backend == "codex" else None
+    if codex_hooks:
+        env["NEWTS_TRACE_FLAGS"] = "1"   # a trusted repo's own .codex/hooks.json then stands down (no double log)
+    oc_traced = backend == "opencode" and backends.opencode_traced(workdir)
 
     try:
         rc_cmd = backends.build_run_command(
             backend, prompt=prompt, workdir=workdir, prog=prog, cli=cli, model=m.get("model"),
             permission_mode=m.get("permission_mode"), effort=m.get("effort"),
             session_id=m.get("session_id") if (backend == "claude" and not resuming) else None,
-            resume_sid=resume_sid if backend in ("claude", "opencode") else None,
+            resume_sid=resume_sid if backend in ("claude", "opencode", "codex") else None,
             max_turns=m.get("max_turns"), add_dirs=add_dirs, settings_path=settings_path,
             mcp_config_path=mcp_path, permission_tool=PERMISSION_TOOL if mcp_path else None,
-            system_prompt_file=sys_prompt, preamble=preamble_text, cli_ver=ver)
+            system_prompt_file=sys_prompt, preamble=preamble_text, cli_ver=ver,
+            codex_hooks=codex_hooks, opencode_traced=oc_traced)
     except SystemExit as e:
         st.transition("failed", reason=str(e), finished=now(), last_message=str(e))
         emit(lab, workdir, "agent_finished", detail=run_id, status="failed", data={"run_id": run_id})
@@ -370,11 +380,14 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
             else:
                 m["n_actions"] = int(m.get("n_actions") or 0) + 1
                 m["last_action"] = act
-            if ev.get("spawn") and ev.get("tool_use_id") and len(subagents) < MAX_SUBAGENTS:
-                subagents[ev["tool_use_id"]] = {
+            tu = ev.get("tool_use_id")
+            if ev.get("spawn") and tu and tu not in subagents and len(subagents) < MAX_SUBAGENTS:
+                subagents[tu] = {
                     "type": ev["spawn"]["subagent_type"], "description": ev["spawn"]["description"],
                     "status": "working", "started": now(), "finished": None, "n_actions": 0,
                     "last_action": None, "result": None, "parent": parent}
+                if ev["spawn"].get("child_session"):   # codex thread id / opencode child session id
+                    subagents[tu]["session"] = ev["spawn"]["child_session"]
             if wlog:
                 worker_line(wlog, worker_id=run_id, role=role, event="action", tool=ev.get("tool"),
                             kind=ev.get("kind"), summary=ev.get("summary"), idea=idea)
@@ -406,7 +419,15 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
             if ev.get("denials"):
                 m["denials"] = max(int(m.get("denials") or 0), int(ev["denials"]))
         elif e == "usage" and isinstance(ev.get("usage"), dict):
-            m.setdefault("usage", {})["tokens"] = ev["usage"]
+            u = m.setdefault("usage", {})
+            if "cost_delta" in ev:   # opencode: one step_finish per model step → accumulate
+                tok = u.setdefault("tokens", {})
+                for k, v in ev["usage"].items():
+                    tok[k] = tok.get(k, 0) + v
+                if isinstance(ev.get("cost_delta"), (int, float)):
+                    u["cost_usd"] = round(float(u.get("cost_usd") or 0) + ev["cost_delta"], 6)
+            else:                    # codex: turn.completed carries the turn's totals
+                u["tokens"] = ev["usage"]
         st.write()
 
     res = run_process(rc_cmd.argv, cwd=workdir, env=env, stream_path=stream, backend=backend,
@@ -442,6 +463,12 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         if backend == "claude" and any(k in low for k in ("not logged in", "/login", "authentication_failed",
                                                              "failed to authenticate", "oauth session expired")):
             reason = "the claude CLI is not logged in — in a terminal run `claude`, then /login (your own account)"
+        elif backend == "codex" and any(k in low for k in ("not logged in", "401", "unauthorized", "codex login")):
+            reason = "the codex CLI is not signed in — in a terminal run `codex login` (your own account)"
+        elif backend == "opencode" and any(k in low for k in ("no provider", "api key", "providermodelnotfound",
+                                                               "unauthorized", "401")):
+            reason = "opencode has no working provider for this model — run `opencode auth login`, or set " \
+                     "agents.programmatic.backends.opencode.model to a provider/model you have"
         elif "rate limit" in low or "usage limit" in low:
             reason = "usage limit reached — resume later"
 

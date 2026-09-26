@@ -261,7 +261,9 @@ dashboard and runs keep going; reopen it and they're all still there.
   *queued* first and starts as soon as a slot is free (`agents.programmatic.max_concurrent_total`,
   `hub_max_concurrent` — 1 by default, so two hub sessions never edit the registry at once — and
   the per-project `max_concurrent`). An optional daily brake (`daily_max_runs` / `daily_max_minutes`)
-  keeps unattended use bounded.
+  keeps unattended use bounded. *options* on the launcher override the model, effort and time limit
+  for one run, or **repeat** it every N minutes (e.g. `/autopilot continue <brief>` every 30 min —
+  it stops at any gate, a failure, or the repeat cap).
 - **Watch** — the **run view** (click any run) streams the transcript live: the agent's text, every
   tool call, each **subagent's** actions tagged with its role and label, and each subagent's result
   as it hands back. A header shows status, elapsed vs. budget, attempt, cost estimate, and session id;
@@ -272,7 +274,9 @@ dashboard and runs keep going; reopen it and they're all still there.
   answer). Answering **resumes the same session** where it stopped. You can also **reply** in your
   own words to a paused or finished run — it continues the same conversation.
 - **Stop / resume** — *stop* ends the session (macOS/Linux: a graceful signal first; Windows: ended
-  at once); it stays **resumable** — *resume* continues it. A queued run can be cancelled.
+  at once); it stays **resumable** — *resume* continues it (claude `--resume`, codex `exec resume`,
+  opencode `-s`). A queued run can be cancelled. `/autopilot` campaign workers are runs too, so the
+  same buttons work on them.
 - **Report & next step** — every run ends with a machine-readable footer (`run_report`:
   `next`, `needs_pi`, `summary`), so a finished run shows what it did, whether it stopped at a gate
   or kill criterion, and its next command as a one-click **▸ run** button — or, if you chose
@@ -284,6 +288,19 @@ setting, and Gate 3 is never delegated (`AUTOSCIENTIST_NO_GATE3` is set; `/final
 launchable). Permission prompts a headless run can't ask go to a small local permission host that
 **denies and logs** them (they show up as *denied* in *Needs you*); set
 `agents.programmatic.permission_wait_seconds` to have it wait for your allow/deny instead.
+
+**Settings, from here.** ⚙ Settings → *Agents & launching* shows each CLI (found, version, signed
+in — with the exact login command when it isn't) and an **Executor settings** form for the PI-owned
+knobs: default backend and model, claude permission mode, time limit, the concurrency caps, the daily
+brake, the *keep going* step cap, permission wait, and whether signing Gate 1 also queues
+`/spawn-project`. Saving shows the diff for confirmation, writes `lab/config.yaml` comment-preserving
+(the `/configure` writer), and logs the change; `bypassPermissions` can't be chosen here.
+
+**Subagents on every backend.** Claude, Codex and opencode runs all feed the same run → session →
+subagent tree: the Claude hooks, the Codex hooks (passed by the executor as `-c` flags) and the
+opencode plugin all call `trace_hook.py` with the same payload. See
+[Autonomy](autonomy.md) for the per-backend wiring; projects spawned before it existed get it with
+`tools/upgrade_project.py --all`.
 
 **No dashboard needed.** The same engine has a command line — `tools/executor_cli.py enqueue |
 serve | list | answer | reply | stop | resume | attention` — so everything above works headless too

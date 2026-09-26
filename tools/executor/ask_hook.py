@@ -8,6 +8,8 @@ own settings. STDLIB ONLY: it runs under a bare interpreter.
                        and the pending call preserved in the session.
   answer on file     → (on `claude -p --resume`) return "allow" + updatedInput {questions, answers}:
                        the tool runs with the PI's answers and the model continues.
+  asked in a subagent → "deny" with a reason: the subagent returns the question in its result and
+                       the parent (main thread) asks the PI.
 
 Fail-open: any error → exit 0 with no output (Claude Code's default, which in a headless run with a
 permission host routes the call to the host — never a crash of the run).
@@ -36,6 +38,15 @@ def main() -> int:
     except (json.JSONDecodeError, OSError, ValueError):
         return 0
     if payload.get("tool_name") != "AskUserQuestion":
+        return 0
+    if payload.get("agent_id"):
+        # Inside a SUBAGENT: a deferred call only pauses the main thread's turn, and background
+        # subagents have no AskUserQuestion at all. Hand the question back to the parent instead.
+        _out({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny",
+            "permissionDecisionReason": "Subagents cannot ask the PI directly in a headless run. Finish "
+                                        "what you can, then put the open question (with concrete options) "
+                                        "in your final result; the parent session will ask the PI."}})
         return 0
     rd = Path(run_dir)
     tool_input = payload.get("tool_input") or {}

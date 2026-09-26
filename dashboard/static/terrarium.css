@@ -896,3 +896,16 @@ html[data-lamp="day"] .rc-cmd,html[data-lamp="day"] .q-q,html[data-lamp="day"] .
 .att-row .att-acts{flex-basis:100%; justify-content:flex-start; padding-left:26px}
 .att-row .att-t b,.att-row .att-t small{white-space:normal}
 .set-note .warnc{color:var(--amber)}
+
+/* launcher options + executor settings form */
+.rb-more,.exec-cfg{border:1px solid var(--card-edge); border-radius:10px; padding:6px 10px; margin:6px 0}
+.rb-more summary,.exec-cfg summary{cursor:pointer; font-size:.74rem; color:var(--ink-soft)}
+.exec-cfg summary small{margin-left:6px; opacity:.75}
+.rb-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 10px; margin:8px 0}
+.rb-field{display:flex; flex-direction:column; gap:3px; font-size:.7rem; color:var(--ink-soft); min-width:0}
+.rb-field input,.rb-field select{font-family:var(--mono); font-size:.74rem; padding:5px 7px; border-radius:8px;
+  border:1px solid var(--card-edge); background:var(--card); color:var(--ink); min-width:0; width:100%; box-sizing:border-box}
+.rb-note{font-size:.7rem; color:var(--ink-soft); line-height:1.5}
+.rb-check{display:flex; align-items:center; gap:8px; font-size:.74rem; color:var(--ink); margin:4px 0 8px}
+.exec-cfg .btn{margin:4px 0 2px}
+@media (max-width:700px){ .rb-grid{grid-template-columns:1fr} }

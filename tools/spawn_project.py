@@ -36,7 +36,7 @@ if hasattr(sys.stdout, "reconfigure"):
 HUB = Path(__file__).resolve().parents[1]
 
 # Runtime cruft that must never travel into a fresh project (it's regenerated / gitignored there).
-_EXCLUDE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", ".bus", ".guard"}
+_EXCLUDE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", ".bus", ".guard", "node_modules"}
 _PLACEHOLDERS = ("{{slug}}", "{{title}}", "{{date}}", "{{hub_path}}")  # ONLY these four — leave {{c}} etc.
 
 

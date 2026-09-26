@@ -87,7 +87,7 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
                              detail={"count": den, "recent": denied[-5:]},
                              actions=[{"id": "dismiss", "label": "dismiss"}]))
         if st in ("failed", "timeout", "killed") and m.get("reason") != "cancelled":
-            can = bool(m.get("session_id")) and m.get("backend") != "codex"
+            can = bool(m.get("session_id"))
             out.append(_item("crashed", "warn", f"crashed:{rid}:{att}", m,
                              f"{label} {st}", body=m.get("reason") or (m.get("last_message") or "")[:300],
                              actions=([{"id": "resume", "label": "resume"}] if can else [])

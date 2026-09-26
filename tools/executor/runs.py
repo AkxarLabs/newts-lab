@@ -202,8 +202,6 @@ def reply(lab: Lab, run_id: str, text: str, by: str = "dashboard") -> dict:
             raise SpecError(f"run {run_id} is {m.get('status')} — reply once it has paused or finished")
         if not m.get("session_id"):
             raise SpecError(f"run {run_id} has no session to continue")
-        if m.get("backend") == "codex":
-            raise SpecError("codex sessions can't be resumed yet — start a new run")
         _clear_stop(path, run_id)
         transition(lab, path, m, "queued", by=by, reason="reply", resume={"mode": "reply", "text": text},
                    post_processed=False, not_before=None)
@@ -218,8 +216,6 @@ def resume(lab: Lab, run_id: str, by: str = "dashboard") -> dict:
             raise SpecError(f"run {run_id} is {m.get('status')} — only a finished/failed/stopped run resumes")
         if not m.get("session_id"):
             raise SpecError(f"run {run_id} never got a session id — start a new run instead")
-        if m.get("backend") == "codex":
-            raise SpecError("codex sessions can't be resumed yet — start a new run")
         _clear_stop(path, run_id)
         transition(lab, path, m, "queued", by=by, reason="resume", resume={"mode": "continue"},
                    post_processed=False, not_before=None)

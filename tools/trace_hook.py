@@ -23,6 +23,7 @@ lab is unchanged.
 """
 
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -42,6 +43,41 @@ PROJ_RE = re.compile(r"([a-z0-9][a-z0-9._-]*)/(?:runs/|PLAN\.md|EXPERIMENT_LOG\.
 # an /improve variant runs in a git worktree `<project>-wt-<variant>` — even when the subagent's hook
 # cwd is the HUB session's, its commands/paths name the worktree: attribute it to the project + variant.
 WT_RE = re.compile(r"([A-Za-z0-9][A-Za-z0-9._]*(?:-[A-Za-z0-9._]+)*?)-wt-([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+# The same tracer serves three harnesses. Codex hooks (Bash / apply_patch / spawn_agent / mcp__*)
+# and the opencode plugin (.opencode/plugins/newts-trace.js: bash, read, edit, task, … with camelCase
+# inputs) send Claude-shaped payloads under their own tool names — fold them onto Claude's names so
+# summaries, kinds and the dashboard read one vocabulary.
+TOOL_ALIASES = {"bash": "Bash", "shell": "Bash", "exec_command": "Bash", "local_shell": "Bash",
+                "read": "Read", "edit": "Edit", "multiedit": "Edit", "patch": "Edit", "apply_patch": "Edit",
+                "write": "Write", "glob": "Glob", "list": "Glob", "grep": "Grep", "task": "Agent",
+                "spawn_agent": "Agent", "webfetch": "WebFetch", "websearch": "WebSearch",
+                "todowrite": "TodoWrite", "skill": "Skill"}
+PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+TASK_RESULT_RE = re.compile(r"<task_result>(.*?)</task_result>", re.S)
+
+
+def _normalize(tool: str, ti):
+    """(claude-style tool name, input with the keys the summaries read)."""
+    if not tool or tool.startswith("mcp__"):
+        return tool, ti
+    name = TOOL_ALIASES.get(tool) or TOOL_ALIASES.get(tool.lower()) or tool
+    if not isinstance(ti, dict):
+        return name, ti
+    ti = dict(ti)
+    for src, dst in (("filePath", "file_path"), ("subagentType", "subagent_type")):
+        if src in ti and dst not in ti:
+            ti[dst] = ti[src]
+    if isinstance(ti.get("command"), list):
+        ti["command"] = " ".join(str(x) for x in ti["command"])
+    if tool == "apply_patch":
+        files = PATCH_FILE_RE.findall(str(ti.get("command") or ""))
+        ti = {"file_path": files[0].strip() if files else "", "files": [f.strip() for f in files]}
+    elif tool == "spawn_agent":   # codex: {message, agent_type?, task_name?}
+        ti = {"subagent_type": ti.get("agent_type") or "default",
+              "description": ti.get("task_name") or ti.get("message") or ""}
+    return name, ti
 
 
 def _now() -> str:
@@ -168,7 +204,23 @@ def _text(v) -> str:
 
 
 def _result(v) -> str:
-    return _text(v).strip()[:MAX_RESULT]
+    t = _text(v)
+    m = TASK_RESULT_RE.search(t)   # an opencode task returns <task …><task_result>…</task_result></task>
+    return (m.group(1) if m else t).strip()[:MAX_RESULT]
+
+
+def _child_of(v) -> str:
+    """The spawned child's id in a spawn tool's response (codex spawn_agent → agent_id; the opencode
+    plugin passes the child session id) — an exact spawn → child link for the dashboard."""
+    if isinstance(v, dict):
+        c = v.get("agent_id") or v.get("child_session")
+        return str(c) if c else ""
+    if isinstance(v, str) and v.lstrip().startswith("{"):
+        try:
+            return _child_of(json.loads(v))
+        except ValueError:
+            return ""
+    return ""
 
 
 def _worktree_of(ti, cwd: str) -> tuple:
@@ -182,6 +234,10 @@ def _worktree_of(ti, cwd: str) -> tuple:
 
 
 def main() -> None:
+    # a trusted repo's .codex/hooks.json (--from-repo) stands down when the executor already passed
+    # the same hooks as codex -c session flags — one line per event, not two
+    if "--from-repo" in sys.argv[1:] and os.environ.get("NEWTS_TRACE_FLAGS") == "1":
+        return
     raw = sys.stdin.read()
     data = json.loads(raw) if raw.strip() else {}
 
@@ -189,8 +245,8 @@ def main() -> None:
     session_id = data.get("session_id") or ""
     agent_id = data.get("agent_id") or ""
     agent_type = data.get("agent_type") or ""
-    tool = data.get("tool_name") or ""
-    ti = data.get("tool_input") or {}
+    raw_tool = data.get("tool_name") or ""
+    tool, ti = _normalize(raw_tool, data.get("tool_input") or {})
     cwd = data.get("cwd") or ""
     tuid = data.get("tool_use_id") or ""
 
@@ -233,12 +289,22 @@ def main() -> None:
     elif event == "PreToolUse":
         # "in <tool> since <ts>": a worker inside a 40-minute training call stays visibly busy
         rec.update(event="begin", tool=tool, kind=_kind(tool, ti), summary=_summary(tool, ti))
+    elif event == "PostToolUse" and raw_tool == "spawn_agent":
+        # codex: spawn_agent returns at once with the child's id ({agent_id, nickname}); the child
+        # runs on and its result arrives with its own SubagentStop
+        rec.update(event="action", tool=tool, kind="spawn", summary=_summary(tool, ti))
+        child = _child_of(data.get("tool_response"))
+        if child:
+            rec["child"] = child
     elif event == "PostToolUse" and tool in ("Task", "Agent"):
         # the subagent handed back: its result packet is the return value of the Agent call
         rec.update(event="return", tool=tool, kind="spawn", summary=_summary(tool, ti))
         res = _result(data.get("tool_response"))
         if res:
             rec["result"] = res
+        child = _child_of(data.get("tool_response"))
+        if child:
+            rec["child"] = child
     elif event == "PostToolUse":
         rec.update(event="action", tool=tool, kind=_kind(tool, ti), summary=_summary(tool, ti))
     else:

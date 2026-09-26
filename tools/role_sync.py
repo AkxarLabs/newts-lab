@@ -16,9 +16,10 @@ A spawned project INSTANCE is resolved at spawn by `render_project(dir)` (called
 tools/spawn_project.py) — a snapshot of the hub tiers at that moment, so the project (and any headless
 agent working in it) runs its named-role subagents at the resolved tier, not the neutral `inherit`.
 
-Only Claude and Codex are rendered: their file schemas are known. opencode / Gemini CLI / Cursor are
-COMPATIBILITY-ONLY (documented in docs/autonomy.md) until a CLI smoke proves their role-file schema —
-the robust cross-backend path meanwhile is one headless process per unit of work via agent_runner.py.
+Claude, Codex and opencode are rendered (`.opencode/agents/<name>.md`: `mode: subagent`, the role's
+Claude tool list mapped onto opencode permissions, no model line — opencode models are provider/model
+strings the lab's tier ladder doesn't know, so its subagents inherit the session model). Gemini CLI /
+Cursor stay COMPATIBILITY-ONLY (docs/autonomy.md).
 
     uv run --with pyyaml python tools/role_sync.py render               # write/update hub + template
     uv run --with pyyaml python tools/role_sync.py check                # exit 1 if any is stale
@@ -159,17 +160,33 @@ def _render_codex(meta: dict, body: str, agents_cfg: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_opencode(meta: dict, body: str, agents_cfg: dict) -> str:
+    """opencode agent file (1.18 schema: description, mode, permission{edit,bash,webfetch,task,...}).
+    A lab subagent never spawns subagents (hard rule), so `task` is always denied."""
+    import json as _json
+    tools = {t.strip() for t in str(meta.get("tools_claude") or "").split(",") if t.strip()}
+    perm = {"edit": "allow" if tools & {"Edit", "Write", "NotebookEdit"} else "deny",
+            "bash": "allow" if "Bash" in tools else "deny",
+            "webfetch": "allow" if "WebFetch" in tools else "deny",
+            "websearch": "allow" if "WebSearch" in tools else "deny",
+            "task": "deny"}
+    lines = ["---", f"description: {_json.dumps(str(meta['description']))}", "mode: subagent", "permission:"]
+    lines += [f"  {k}: {v}" for k, v in perm.items()]
+    return "\n".join(lines) + "\n---\n\n" + body
+
+
 # Per role: the two HUB files render from the LIVE config (a hub session's subagents honor the PI's
 # ladder); the two project-TEMPLATE files render NEUTRAL (empty config -> model: inherit / role-yaml
 # effort) so a PI's local tier choice can never leak into the committed, shipped template. A spawned
 # project INSTANCE is resolved at spawn by render_project(), never here.
 def _rel_targets(name: str) -> list[tuple[Path, str]]:
     return [(Path(".claude") / "agents" / f"{name}.md", "claude"),
-            (Path(".codex") / "agents" / f"{name}.toml", "codex")]
+            (Path(".codex") / "agents" / f"{name}.toml", "codex"),
+            (Path(".opencode") / "agents" / f"{name}.md", "opencode")]
 
 
 def _content(kind: str, meta: dict, body: str, agents_cfg: dict) -> str:
-    return _render_claude(meta, body, agents_cfg) if kind == "claude" else _render_codex(meta, body, agents_cfg)
+    return {"claude": _render_claude, "codex": _render_codex, "opencode": _render_opencode}[kind](meta, body, agents_cfg)
 
 
 def _plan() -> list[tuple[Path, str]]:
@@ -207,6 +224,21 @@ def render_project(project_dir) -> int:
                 path.write_text(expected, encoding="utf-8", newline="")
                 written += 1
     return written
+
+
+def project_stale(project_dir) -> list[Path]:
+    """Role files in a spawned project that `render_project` would (re)write — a read-only check."""
+    project_dir = Path(project_dir)
+    live = _cfg_agents()
+    stale = []
+    for name in _role_names():
+        meta, body = _spec(name)
+        for rel, kind in _rel_targets(name):
+            path = project_dir / rel
+            current = _norm(path.read_text(encoding="utf-8")) if path.exists() else None
+            if current != _content(kind, meta, body, live):
+                stale.append(path)
+    return stale
 
 
 def render() -> int:

@@ -558,6 +558,10 @@ def _fold_worker(lines: list[dict]) -> dict:
                                "summary": ln.get("summary"), "ts": ln.get("ts")})
             if ev == "return" and ln.get("tool_use_id"):
                 returns[ln["tool_use_id"]] = ln.get("result")
+            if ln.get("child") and ln.get("tool_use_id"):   # codex / opencode name the child exactly
+                for sp in spawns:
+                    if sp.get("tool_use_id") == ln["tool_use_id"]:
+                        sp["child"] = ln["child"]
             if ev in ("action", "return"):
                 open_tool = None          # the call that was in flight has finished
             if ev != "return":
@@ -662,7 +666,8 @@ def _link_workers(workers: list[dict]) -> list[dict]:
         parent["children"] = [c["worker_id"] for c in children]
         free = list(parent.get("spawned") or [])
         for c in children:
-            match = next((s for s in free if s["type"] == c["role"]), None) or \
+            match = next((s for s in free if s.get("child") == c["worker_id"]), None) or \
+                next((s for s in free if s["type"] == c["role"] and not s.get("child")), None) or \
                 (next((s for s in free if s["type"] == "general-purpose"), None) if c["role"] == "general-purpose" else None)
             if match:
                 free.remove(match)
@@ -918,6 +923,10 @@ def executor_status() -> dict:
         _EXEC_CACHE.update(ts=time.time(), key=key, value=base)
     prog = lab.prog()
     runs = [m for *_x, m in executor.all_runs(lab)]
+    # settings the PI can change here: always fresh (the cached part is only the CLI probes)
+    base.update(backend=prog.get("backend") or "claude", permission_mode=prog.get("permission_mode") or "auto",
+                caps=executor.caps(lab), config={k: prog.get(k) for k in executor.CONFIG_KEYS if k in prog},
+                auto_spawn_on_gate1=bool((lab.dashboard_cfg() or {}).get("auto_spawn_on_gate1")))
     base.update(available=True, enabled=bool(prog.get("enabled")),
                 active=sum(1 for m in runs if m.get("status") in executor.ACTIVE),
                 queued=sum(1 for m in runs if m.get("status") == "queued"),

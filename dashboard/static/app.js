@@ -2060,11 +2060,29 @@ function buildRunBox() {
   sel.onchange = sync;
   row.append(sel, args, be, chain);
   box.appendChild(row);
+  // per-run overrides (blank = the lab defaults in Settings)
+  const more = el('details', 'rb-more');
+  more.appendChild(el('summary', '', 'options · model, effort, time limit, repeat'));
+  const grid = el('div', 'rb-grid');
+  const field = (label, input) => { const w = el('label', 'rb-field', `<span>${esc(label)}</span>`); w.appendChild(input); grid.appendChild(w); return input; };
+  const numIn = (ph, min) => { const i = el('input'); i.type = 'number'; i.min = String(min); i.placeholder = ph; return i; };
+  const model = field('model', el('input')); model.type = 'text'; model.maxLength = 120;
+  model.placeholder = (x.config || {}).model && x.config.model !== 'inherit' ? x.config.model : 'lab default';
+  const effort = field('effort', el('select'));
+  [['', 'default'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max']].forEach(([v, l]) => { const o = el('option', '', l); o.value = v; effort.appendChild(o); });
+  const maxMin = field('time limit (min)', numIn(String((x.config || {}).max_minutes || 240), 5));
+  const every = field('repeat every (min)', numIn('off', 5));
+  const times = field('repeat at most', numIn('∞', 1));
+  more.appendChild(grid);
+  more.appendChild(el('div', 'rb-note', 'Repeat re-queues the same procedure after each finished run (e.g. <span class="mono">/autopilot continue</span> every 30 min) — it stops at any gate, a failure, or the cap. Overrides are validated and recorded on the run.'));
+  box.appendChild(more);
   const foot = el('div', 'rb-foot');
   foot.appendChild(el('span', 'rb-hint', '')); foot.lastChild.id = 'rbHint';
   const go = btn('▸ launch', 'go', async () => {
     go.disabled = true;
-    const r = await api('/api/run', { skill: sel.value, target: TARGET, args: args.hidden ? '' : args.value, backend: be.value, chain: chain.value, confirm: true });
+    const r = await api('/api/run', { skill: sel.value, target: TARGET, args: args.hidden ? '' : args.value, backend: be.value, chain: chain.value,
+      model: model.value.trim() || null, effort: effort.value || null, max_minutes: maxMin.value || null,
+      repeat_minutes: every.value || null, max_repeats: every.value ? (times.value || null) : null, confirm: true });
     go.disabled = false;
     if (!r.ok) return toast(r.error || 'launch refused');
     toast(`queued ${r.command || r.run_id} — ${r.note || ''}`);
@@ -2160,7 +2178,7 @@ function renderRunDetail(r) {
   const ctl = el('div', 'btnrow');
   if (RUN_ACTIVE.has(r.status)) ctl.appendChild(btn('■ stop', 'warn', () => confirmStop(r)));
   if (r.status === 'queued') ctl.appendChild(btn('cancel', 'warn', async () => { const x = await api('/api/run/cancel', { run_id: r.run_id }); toast(x.ok ? x.note : x.error); loadRunDetail(); }));
-  if (RUN_DONE.has(r.status) && r.session_id && r.backend !== 'codex') ctl.appendChild(btn('↻ resume', '', async () => { const x = await api('/api/run/resume', { run_id: r.run_id }); toast(x.ok ? x.note : x.error); loadRunDetail(); }));
+  if (RUN_DONE.has(r.status) && r.session_id) ctl.appendChild(btn('↻ resume', '', async () => { const x = await api('/api/run/resume', { run_id: r.run_id }); toast(x.ok ? x.note : x.error); loadRunDetail(); }));
   if (r.transcript && editorUri(r.transcript)) ctl.appendChild(btn('transcript ▸', 'tool', () => openInEditor(r.transcript)));
   ctl.appendChild(btn('supervisor log', 'tool', async () => { const x = await fetch(`/api/run/log?run_id=${encodeURIComponent(r.run_id)}`).then(y => y.json()).catch(() => ({})); $('#drawer').hidden = false; syncOverlay(); $('#drawerTitle').textContent = `supervisor log · ${r.run_id}`; $('#drawerBody').textContent = x.text || '(empty)'; }));
   top.appendChild(ctl);
@@ -2218,7 +2236,7 @@ function renderAsk(r) {
     host.appendChild(card);
   }
   if (r.status === 'waiting_input' || RUN_DONE.has(r.status)) {
-    if (!r.session_id || r.backend === 'codex') return;
+    if (!r.session_id) return;
     const box = el('div', 'rv-reply');
     const ta = el('textarea'); ta.rows = 2; ta.placeholder = r.status === 'waiting_input' ? 'reply in your own words instead…' : 'reply to this run — continues the same session…';
     const b = btn('send ▸', '', async () => {
@@ -2331,10 +2349,59 @@ function renderExecSettings(body) {
   const cl = Object.entries(clis).map(([k, v]) => `${esc(k)}: ${v.found ? `✓${v.version ? ' ' + esc(v.version) : ''}${v.shim ? ' (.cmd shim)' : ''}` : '—'}`).join(' · ');
   const c = x.caps || {};
   const bc = clis[x.backend || 'claude'] || {};
+  const LOGIN_HOW = { claude: '<span class="mono">claude</span> → <span class="mono">/login</span>', codex: '<span class="mono">codex login</span>', opencode: '<span class="mono">opencode auth login</span>' };
   const login = bc.logged_in === false
-    ? `<br><b class="warnc">⚠ the ${esc(x.backend || 'claude')} CLI is not logged in</b> — runs will fail until you open a terminal and run <span class="mono">claude</span> → <span class="mono">/login</span> (your own account)`
+    ? `<br><b class="warnc">⚠ the ${esc(x.backend || 'claude')} CLI is not signed in</b> — runs will fail until you open a terminal and run ${LOGIN_HOW[x.backend || 'claude'] || 'its login'} (your own account)`
     : '';
   body.appendChild(el('div', 'set-note', `backend <b>${esc(x.backend || 'claude')}</b> · permissions <span class="mono">${esc(x.permission_mode || 'auto')}</span><br>${cl}${login}<br>caps: ${c.total ?? '?'} at once · ${c.hub ?? '?'} in the hub · ${c.per_project ?? '?'} per project${c.daily_runs ? ` · ${c.daily_runs}/day` : ''}${c.daily_minutes ? ` · ${c.daily_minutes} min/day` : ''}${x.brake ? `<br><b>brake:</b> ${esc(x.brake)}` : ''}`));
+  renderExecConfig(body, x);
+}
+// The PI-owned executor settings (agents.programmatic.* in lab/config.yaml), edited in place: the
+// server whitelists + validates every key and stamps it comment-preserving, like /configure.
+const EXEC_FIELDS = [
+  ['backend', 'default backend', 'select', ['claude', 'codex', 'opencode']],
+  ['model', 'default model', 'text', 'inherit = each backend’s own default'],
+  ['permission_mode', 'claude permission mode', 'select', ['auto', 'acceptEdits', 'default', 'plan', 'dontAsk']],
+  ['max_minutes', 'time limit per run (min)', 'number', 5],
+  ['max_concurrent_total', 'runs at once (lab-wide)', 'number', 1],
+  ['hub_max_concurrent', 'hub runs at once', 'number', 1],
+  ['max_concurrent', 'runs at once per project', 'number', 1],
+  ['daily_max_runs', 'daily run cap (0 = off)', 'number', 0],
+  ['daily_max_minutes', 'daily agent-minutes cap (0 = off)', 'number', 0],
+  ['chain_max_steps', 'max steps for “keep going”', 'number', 1],
+  ['permission_wait_seconds', 'wait for your allow/deny (s, 0 = deny + log)', 'number', 0],
+];
+function renderExecConfig(body, x) {
+  const cfg = x.config || {};
+  const box = el('details', 'exec-cfg');
+  box.appendChild(el('summary', '', 'Executor settings <small>backend, limits, permissions</small>'));
+  const grid = el('div', 'rb-grid');
+  const inputs = {};
+  EXEC_FIELDS.forEach(([k, label, kind, extra]) => {
+    const w = el('label', 'rb-field', `<span>${esc(label)}</span>`);
+    let i;
+    if (kind === 'select') { i = el('select'); extra.forEach(v => { const o = el('option', '', v); o.value = v; if (String(cfg[k] ?? '') === v) o.selected = true; i.appendChild(o); }); }
+    else { i = el('input'); i.type = kind; if (kind === 'number') i.min = String(extra); else i.placeholder = extra; i.value = cfg[k] ?? ''; }
+    inputs[k] = i; w.appendChild(i); grid.appendChild(w);
+  });
+  box.appendChild(grid);
+  const gate1 = el('label', 'rb-check'); const g1 = el('input'); g1.type = 'checkbox'; g1.checked = !!x.auto_spawn_on_gate1;
+  gate1.append(g1, el('span', '', 'signing Gate 1 also queues <span class="mono">/spawn-project</span>'));
+  box.appendChild(gate1);
+  const save = btn('save changes…', 'go', () => {
+    const changes = {};
+    Object.entries(inputs).forEach(([k, i]) => { const v = i.value.trim(); if (v !== '' && v !== String(cfg[k] ?? '')) changes[k] = i.type === 'number' ? Number(v) : v; });
+    if (g1.checked !== !!x.auto_spawn_on_gate1) changes.auto_spawn_on_gate1 = g1.checked;
+    const keys = Object.keys(changes);
+    if (!keys.length) return toast('nothing changed');
+    openConfirm({ title: 'Save executor settings?', seal: '⚙', ok: 'save',
+      body: `These are PI-owned settings in <span class="mono">lab/config.yaml</span> (comments kept, change logged):<br>` +
+        keys.map(k => `<span class="mono">${esc(k)}</span>: ${esc(String(cfg[k] ?? (k === 'auto_spawn_on_gate1' ? x.auto_spawn_on_gate1 : '—')))} → <b>${esc(String(changes[k]))}</b>`).join('<br>') +
+        `<br>Running runs keep their settings; new runs use these.`,
+      onOk: async () => { const r = await api('/api/executor/config', { changes, confirm: true }); toast(r.ok ? r.note : (r.error || 'failed')); } });
+  });
+  box.appendChild(save);
+  body.appendChild(box);
 }
 function renderExecBadge(s) {
   const b = $('#execBadge'); if (!b) return;

@@ -1,0 +1,73 @@
+{
+  "description": "Newts' Lab activity tracer (same trace_hook.py as .claude/settings.json). Loads once this repo is trusted and its hooks reviewed in codex /hooks; headless executor runs pass the same hooks as -c flags instead.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/trace_hook.py --from-repo",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

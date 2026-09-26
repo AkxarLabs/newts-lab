@@ -228,7 +228,7 @@ def test_build_command_claude_and_codex(hub, monkeypatch):
     codex_cmd, fires2 = m._build_command("codex", "hi", proj, "gpt-5", "auto", prog)
     assert codex_cmd[:2] == ["codex", "exec"] and "--json" in codex_cmd
     assert "-C" in codex_cmd and ["-m", "gpt-5"] == codex_cmd[codex_cmd.index("-m"):codex_cmd.index("-m") + 2]
-    assert codex_cmd[codex_cmd.index("-a") + 1] == "never"    # codex approval default
+    assert "-a" not in codex_cmd and "--ask-for-approval" not in codex_cmd  # exec has no such flag (TUI-only)
     assert codex_cmd[codex_cmd.index("--sandbox") + 1] == "workspace-write"
     assert "-c" not in codex_cmd                              # network off + no reasoning override by default
     assert fires2 is False                                    # codex needs a synthesized worker log
@@ -247,7 +247,7 @@ def test_per_backend_model_and_effort_defaults():
     assert cc[cc.index("--effort") + 1] == "high"
     xc, _ = m._build_command("codex", "hi", Path("."), "inherit", "auto", prog)
     assert xc[xc.index("-m") + 1] == "gpt-5.5"
-    assert "model_reasoning_effort=medium" in xc             # passed as a -c override (no --effort flag)
+    assert 'model_reasoning_effort="medium"' in xc           # a -c override (TOML-quoted; no --effort flag)
     # an explicit launch/global model overrides the per-backend default
     cc2, _ = m._build_command("claude", "hi", Path("."), "claude-sonnet-4-6", "auto", prog)
     assert cc2[cc2.index("--model") + 1] == "claude-sonnet-4-6"
@@ -315,10 +315,11 @@ def test_per_backend_safety_knobs_are_configurable(hub, monkeypatch):
     assert claude_cmd[claude_cmd.index("--permission-mode") + 1] == "plan"  # per-backend key wins
 
     codex_cmd, _ = m._build_command("codex", "hi", proj, "inherit", "auto", prog)
-    assert codex_cmd[codex_cmd.index("-a") + 1] == "untrusted"
+    pairs = list(zip(codex_cmd, codex_cmd[1:]))
+    assert ("-c", 'approval_policy="untrusted"') in pairs             # stricter approval = a config override
+    assert "-a" not in codex_cmd                                      # (codex exec has no -a flag)
     assert codex_cmd[codex_cmd.index("--sandbox") + 1] == "read-only"
-    assert ["-c", "sandbox_workspace_write.network_access=true"] == \
-        codex_cmd[codex_cmd.index("-c"):codex_cmd.index("-c") + 2]      # opt-in network override emitted
+    assert ("-c", "sandbox_workspace_write.network_access=true") in pairs   # opt-in network override emitted
 
 
 # ── headless permission contract: the project ships an engine allowlist ────────────
@@ -442,9 +443,9 @@ def test_cmd_kill_terminates_running_agent(hub, monkeypatch):
         while child.poll() is None and time.time() < deadline:
             time.sleep(0.1)
         assert child.poll() is not None                       # the tree was actually killed
-        m.cmd_reconcile(types.SimpleNamespace(project="demo"))  # idempotent: mark the now-dead manifest
+        m.cmd_reconcile(types.SimpleNamespace(project="demo"))  # idempotent: nothing left to mark
         man = json.loads((adir / "live.json").read_text(encoding="utf-8"))
-        assert man["status"] == "failed"
+        assert man["status"] == "killed"                      # recorded as the PI's stop, not a crash
     finally:
         if child.poll() is None:
             child.kill()

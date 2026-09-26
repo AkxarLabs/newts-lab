@@ -135,6 +135,20 @@ def main() -> int:
     return 0
 
 
+def _tracing_stale(pdir: Path) -> bool:
+    """A spawned project missing the current tracer plumbing (subagents then show up less completely)."""
+    tmpl = HUB / "templates" / "project"
+    for rel in ("scripts/trace_hook.py", ".opencode/plugins/newts-trace.js", ".codex/hooks.json"):
+        want, have = tmpl / rel, pdir / rel
+        try:
+            if want.exists() and (not have.exists() or
+                                  have.read_bytes().replace(b"\r\n", b"\n") != want.read_bytes().replace(b"\r\n", b"\n")):
+                return True
+        except OSError:
+            return True
+    return False
+
+
 def executor_checks(config: dict, rows: dict, projects_root: Path) -> list[str]:
     out = []
     prog = ((config.get("agents") or {}).get("programmatic")) or {}
@@ -155,6 +169,9 @@ def executor_checks(config: dict, rows: dict, projects_root: Path) -> list[str]:
         pdir = (Path(raw) if Path(raw).is_absolute() else (HUB / raw).resolve()) if raw and raw not in ("-", "—") \
             else projects_root / slug
         dirs.append(pdir / ".bus" / "agents")
+        if (pdir / "control.yaml").exists() and _tracing_stale(pdir):
+            out.append(f"project {slug}: its subagent-tracing files predate the template (trace_hook / hooks / "
+                       "opencode plugin) — run `tools/upgrade_project.py " + slug + "`")
     now = time.time()
     for d in dirs:
         for f in (sorted(d.glob("*.json")) if d.is_dir() else []):

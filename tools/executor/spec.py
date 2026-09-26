@@ -74,6 +74,11 @@ class RunSpec:
         return asdict(self)
 
 
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,119}$")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+MIN_REPEAT_MINUTES = 5
+
+
 class SpecError(ValueError):
     """A run request that must be refused, with a message fit to show the PI."""
 
@@ -130,6 +135,13 @@ def validate(lab: Lab, spec: RunSpec) -> dict:
         args = brief.relative_to(lab.hub).as_posix()
     if spec.chain not in ("off", "next", "loop"):
         raise SpecError("chain must be off | next | loop")
+    if spec.model and spec.model != "inherit" and not MODEL_RE.match(spec.model):
+        raise SpecError("model must be a model id/alias (letters, digits, . _ : / [ ] -), e.g. opus or "
+                        "claude-opus-5-5 or openai/gpt-5.5")
+    if spec.effort and spec.effort not in EFFORTS:
+        raise SpecError(f"effort must be one of {', '.join(EFFORTS)}")
+    if spec.repeat_minutes is not None and not (spec.repeat_minutes >= MIN_REPEAT_MINUTES):
+        raise SpecError(f"repeat interval must be at least {MIN_REPEAT_MINUTES} minutes")
     return {"skill": skill, "cfg": cfg, "workdir": workdir, "subject": subject, "args": args,
             "level": cfg["level"], "target": target}
 
@@ -200,6 +212,11 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
         "- Gate 3 (finalization, sending anything outside the lab) is NEVER yours: stop at it and report.",
         f"- When the procedure needs a PI decision, {ask}",
         "- Do everything the procedure allows without the PI; never idle waiting.",
+        "- Background work dies with this session: a background shell job is killed as soon as your "
+        "session ends. Never end your turn while a job or subagent you started is still running — "
+        "stay in the turn and poll it (check its log / the compute slot on the procedure's cadence) "
+        "until it finishes; the executor's watchdog bounds the run. Subagents cannot ask the PI: they "
+        "return open questions in their result and you ask.",
         ("- This is an interactive procedure: ask one question per turn and wait for the answer."
          if interactive else "- Keep going until the procedure's own stop point."),
         "- Before you end ANY turn in which the procedure finished or stopped, emit the run footer "

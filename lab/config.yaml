@@ -136,14 +136,20 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # and the agent escalates it to the bus — codex exec has no per-call
                                 # human approval routing. read-only = stricter; danger-full-access
                                 # removes the boundary entirely (PI-owned escape hatch — avoid).
-        approval: never         # codex -a (--ask-for-approval): `never` = autonomous headless (the only
-                                # sane value for codex exec — `on-request`/`untrusted` are interactive
-                                # and will stall or fail in exec). PI-owned.
+        approval: never         # codex approval_policy. `codex exec` already runs with `never` (it has no
+                                # -a flag — that is the TUI's): a blocked op fails back to the model.
+                                # A stricter value is passed as `-c approval_policy=…`, which in exec
+                                # means such ops are REJECTED (exec can't ask). PI-owned.
         network_access: false   # workspace-write turns network OFF by default; set true to let codex
                                 # reach the network for a genuine need (passes
                                 # `-c sandbox_workspace_write.network_access=true`). PI-owned capability
                                 # widening; the codex config key is version-dependent — verify if it errors.
-        extra_args: ""          # appended to `codex exec` (advanced; --sandbox / -a /
+        trace_hooks: true       # subagent tracing for headless codex runs: pass trace_hook.py as
+                                # `-c hooks.<Event>=…` flags + --dangerously-bypass-hook-trust (codex runs
+                                # an unreviewed hook only with that flag; it also lets your own
+                                # ~/.codex hooks run unreviewed for that invocation). false = no hooks:
+                                # subagents then show from the stream only (spawn + result, no live steps).
+        extra_args: ""          # appended to `codex exec` (advanced; --sandbox / -a / resume /
                                 # --dangerously-bypass-approvals-and-sandbox / --yolo are refused — use
                                 # the sandbox / approval keys above)
       opencode:                 # SST opencode (`opencode run --format json`). OPTIONAL install — only
@@ -162,6 +168,9 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # fine-grained hardening. PI-owned. NB: opencode has no OS sandbox.
         agent: ""               # optional: pin a primary orchestrator agent shipped in the project's
                                 # .opencode/agents/ (mode: primary). Blank = opencode's built-in agent.
+                                # The lab's named roles (experiment-runner, critics, …) are rendered to
+                                # .opencode/agents/ as mode: subagent; the .opencode/plugins/newts-trace.js
+                                # plugin traces every session + subagent into the dashboard's worker logs.
         skip_permissions: false # also pass --dangerously-skip-permissions. Default OFF: that flag is
                                 # version-dependent (an open request on some builds); the env above is the
                                 # stable control. Turn on only if a host smoke shows the env alone stalls.

@@ -329,7 +329,8 @@ def cmd_launch(a) -> int:
     try:
         res = _sup.run_process(cmd, cwd=pdir, env=env, stream_path=stream_path, backend=backend,
                                max_seconds=max_minutes * 60, max_bytes=max_bytes,
-                               on_spawn=on_spawn, on_event=on_event)
+                               on_spawn=on_spawn, on_event=on_event,
+                               stop_file=_man.run_dir(adir, agent_id) / "stop")   # the dashboard's stop
     finally:
         lock.release()
     if res.cli_missing:
@@ -359,15 +360,22 @@ def cmd_launch(a) -> int:
     # boundary; a non-zero exit is 'timeout' only when the watchdog actually killed it, else 'failed'.
     if proc.returncode == 0:
         status = "completed"
+    elif res.stopped:
+        status = "killed"
     elif breached["v"]:
         status = "timeout"
     else:
         status = "failed"
+    try:
+        (_man.run_dir(adir, agent_id) / "stop").unlink()
+    except OSError:
+        pass
     manifest.update(exit_code=proc.returncode, finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
                     wall_seconds=round(time.time() - t0, 1), session_id=session_id,
                     last_message=(last_message or "")[:1000] or None)
     _man.transition(lab, manifest_path, manifest, status, by="agent_runner",
-                    reason=None if status == "completed" else f"exit {proc.returncode}")
+                    reason=None if status == "completed" else
+                    ("stopped by the PI" if status == "killed" else f"exit {proc.returncode}"))
     if wlog:
         _worker_line(wlog, worker_id=agent_id, role=role, event="stop", status="done", idea=pdir.name)
     _emit(pdir, "agent_finished", detail=agent_id, status=status, data={"exit_code": proc.returncode})
@@ -407,15 +415,28 @@ def _reconcile_project(pdir: Path) -> int:
 
 
 def _kill_project(pdir: Path, *, kill_all: bool = False, agent: str | None = None) -> int:
-    """Kill running agents on one project (all, or one by id) and reconcile them. Returns count killed."""
-    targets = [m for m in _list_manifests(pdir)
-               if m.get("status") == "running" and (kill_all or m.get("agent_id") == agent)]
+    """Stop agents on one project (all, or one by id) and reconcile. Returns how many were stopped.
+
+    Goes through the executor's stop — the same as the dashboard button — so a supervised run is
+    recorded as `killed` (and stays resumable), a queued one is cancelled, one paused for the PI is
+    closed; a manifest the executor can't place (an unregistered path) falls back to killing its pid."""
+    from executor import runs as _runs
+    from executor.spec import SpecError
+    lab = _Lab(HUB)
+    stoppable = _man.ACTIVE | _man.PAUSED | {"queued"}
     killed = 0
-    for m in targets:
-        if m.get("pid"):
+    for m in _list_manifests(pdir):
+        rid = m.get("run_id") or m.get("agent_id")
+        if m.get("status") not in stoppable or not (kill_all or agent in (rid, m.get("agent_id"))):
+            continue
+        try:
+            _runs.stop(lab, rid, by="agent_runner")
+        except (SpecError, TypeError, KeyError):
+            if not m.get("pid"):
+                continue
             _kill_tree(m["pid"])
-            killed += 1
-            print(f"[agent_runner] killed {m.get('agent_id')} (pid {m.get('pid')})")
+        killed += 1
+        print(f"[agent_runner] stopped {rid}" + (f" (pid {m.get('pid')})" if m.get("pid") else ""))
     _reconcile_project(pdir)
     return killed
 
@@ -481,23 +502,52 @@ def _count_escalations(pdir: Path) -> int:
     return n
 
 
+def _slug_of(lab, pdir: Path) -> str:
+    """The registry slug whose project repo is `pdir` (else the dir name)."""
+    want = Path(pdir).resolve()
+    for slug, d in lab.project_dirs():
+        if d.resolve() == want:
+            return slug
+    return Path(pdir).name
+
+
+CAMPAIGN_POLL_S = 3.0
+
+
 def _default_launch(pdir: Path, prompt_file: Path, *, backend=None, model=None,
                     role="orchestrator", label=None) -> dict:
-    """Spawn `agent_runner.py launch` as a subprocess for ONE project (reuses cmd_launch verbatim,
-    including all its safety gates). Blocks until that project's agent finishes."""
-    cmd = [sys.executable, str(Path(__file__).resolve()), "launch",
-           "--project", str(pdir), "--prompt-file", str(prompt_file), "--role", role]
-    if label:
-        cmd += ["--label", label]
-    if backend:
-        cmd += ["--backend", backend]
-    if model:
-        cmd += ["--model", model]
-    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    m = re.search(r"launching \S+ agent '([^']+)'", res.stdout or "")
-    status = {0: "completed", 2: "agent-nonclean"}.get(res.returncode, "failed")
-    return {"agent_id": m.group(1) if m else None, "exit_code": res.returncode,
-            "status": status, "stdout_tail": (res.stdout or "")[-400:]}
+    """ONE project's campaign worker, run by the executor — so it is a first-class run: listed in the
+    dashboard with its subagents, stoppable, and able to pause on a PI question — then wait for it.
+
+    The wait ends when the run finishes OR pauses for the PI (`waiting_input`): the campaign reports
+    that project as waiting and moves on; the PI answers from the dashboard and the run resumes on
+    its own. All executor gates apply (programmatic.enabled, max_depth, caps, daily brake)."""
+    from executor import runs as _runs
+    from executor.spec import RunSpec, SpecError
+    lab = _Lab(HUB)
+    slug = _slug_of(lab, pdir)
+    spec = RunSpec(skill="", target=slug, prompt_override=Path(prompt_file).read_text(encoding="utf-8"),
+                   backend=backend, model=model if model and model != "inherit" else None, role=role,
+                   label=label or "campaign", parent=label, campaign=label, created_by="campaign")
+    try:
+        m = _runs.enqueue(lab, spec)
+    except SpecError as e:
+        return {"agent_id": None, "exit_code": None, "status": "launch-error", "error": str(e)}
+    run_id = m["run_id"]
+    while True:
+        try:
+            _sched.tick(lab)
+        except Exception:  # noqa: BLE001 — another ticker (the dashboard) may hold the lock; just wait
+            pass
+        hit = _man.find_run(lab, run_id)
+        st = (hit[3] if hit else {}).get("status")
+        if st in _man.TERMINAL or st in _man.PAUSED:
+            break
+        time.sleep(CAMPAIGN_POLL_S)
+    cur = hit[3] if hit else {}
+    status = {"completed": "completed", "waiting_input": "waiting-for-pi"}.get(st, "agent-nonclean")
+    return {"agent_id": run_id, "exit_code": cur.get("exit_code"), "status": status,
+            "stdout_tail": str(cur.get("last_message") or "")[-400:]}
 
 
 def run_campaign(projects: list[str], prompt_text: str, *, campaign=None, backend=None, model=None,
