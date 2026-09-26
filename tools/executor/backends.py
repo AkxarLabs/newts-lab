@@ -8,10 +8,12 @@ the per-run settings + MCP permission host, and hub skill access for project run
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -186,6 +188,32 @@ def cli_version(prefix: list[str] | None) -> tuple | None:
 
 def version_str(v) -> str | None:
     return ".".join(str(x) for x in v) if v else None
+
+
+_AUTH_CACHE: dict[tuple, tuple[float, dict | None]] = {}
+
+
+def cli_auth(prefix: list[str] | None, ttl: float = 60.0) -> dict | None:
+    """`claude auth status` → {"logged_in": bool, "method": str}, cached `ttl` s; None if unknown.
+    Read-only: it never touches credentials, it only asks the CLI whether it has a login."""
+    if not prefix:
+        return None
+    key = tuple(prefix)
+    hit = _AUTH_CACHE.get(key)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1]
+    info = None
+    try:
+        out = subprocess.run([*prefix, "auth", "status"], capture_output=True, text=True, timeout=20,
+                             encoding="utf-8", errors="replace",
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0)
+        data = json.loads((out.stdout or "").strip() or "null")
+        if isinstance(data, dict) and "loggedIn" in data:
+            info = {"logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        info = None
+    _AUTH_CACHE[key] = (time.time(), info)
+    return info
 
 
 # ── executor run command ──────────────────────────────────────────────────────

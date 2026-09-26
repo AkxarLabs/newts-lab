@@ -107,6 +107,9 @@ def main() -> int:
     if argv[:1] == ["--version"]:
         print("9.9.9 (Claude Code)")
         return 0
+    if argv[:2] == ["auth", "status"]:
+        print(json.dumps({"loggedIn": os.environ.get("FAKE_LOGGED_IN", "1") == "1", "authMethod": "fake"}))
+        return 0
     opts, pos = parse(argv)
     stdin_text = ""
     if not sys.stdin.isatty():
@@ -200,6 +203,10 @@ def main() -> int:
         return finish("slept")
     if mode == "crash":
         return 3
+    if mode == "authfail":   # what an expired / missing login looks like from `claude -p`
+        out({"type": "result", "subtype": "error", "is_error": True, "session_id": sid,
+             "result": "Failed to authenticate: OAuth session expired and could not be refreshed"})
+        return 1
     if mode == "mcp":
         mcp = (opts.get("--mcp-config") or [None])[0]
         tool = (opts.get("--permission-prompt-tool") or [None])[0]

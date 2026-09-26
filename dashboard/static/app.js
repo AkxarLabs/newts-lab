@@ -2330,7 +2330,11 @@ function renderExecSettings(body) {
   const clis = x.clis || {};
   const cl = Object.entries(clis).map(([k, v]) => `${esc(k)}: ${v.found ? `✓${v.version ? ' ' + esc(v.version) : ''}${v.shim ? ' (.cmd shim)' : ''}` : '—'}`).join(' · ');
   const c = x.caps || {};
-  body.appendChild(el('div', 'set-note', `backend <b>${esc(x.backend || 'claude')}</b> · permissions <span class="mono">${esc(x.permission_mode || 'auto')}</span><br>${cl}<br>caps: ${c.total ?? '?'} at once · ${c.hub ?? '?'} in the hub · ${c.per_project ?? '?'} per project${c.daily_runs ? ` · ${c.daily_runs}/day` : ''}${c.daily_minutes ? ` · ${c.daily_minutes} min/day` : ''}${x.brake ? `<br><b>brake:</b> ${esc(x.brake)}` : ''}`));
+  const bc = clis[x.backend || 'claude'] || {};
+  const login = bc.logged_in === false
+    ? `<br><b class="warnc">⚠ the ${esc(x.backend || 'claude')} CLI is not logged in</b> — runs will fail until you open a terminal and run <span class="mono">claude</span> → <span class="mono">/login</span> (your own account)`
+    : '';
+  body.appendChild(el('div', 'set-note', `backend <b>${esc(x.backend || 'claude')}</b> · permissions <span class="mono">${esc(x.permission_mode || 'auto')}</span><br>${cl}${login}<br>caps: ${c.total ?? '?'} at once · ${c.hub ?? '?'} in the hub · ${c.per_project ?? '?'} per project${c.daily_runs ? ` · ${c.daily_runs}/day` : ''}${c.daily_minutes ? ` · ${c.daily_minutes} min/day` : ''}${x.brake ? `<br><b>brake:</b> ${esc(x.brake)}` : ''}`));
 }
 function renderExecBadge(s) {
   const b = $('#execBadge'); if (!b) return;
@@ -2339,9 +2343,11 @@ function renderExecBadge(s) {
   const act = x.active || 0, wait = x.waiting || 0, q = x.queued || 0;
   b.hidden = false;
   b.className = 'exec-badge' + (wait ? ' wait' : act ? ' on' : '') + (x.enabled ? '' : ' off');
-  b.textContent = !x.enabled ? '▸ launching off' : wait ? `? ${wait} waiting` : act ? `● ${act} running${q ? ` · ${q} queued` : ''}` : (q ? `${q} queued` : '▸ idle');
-  b.title = x.enabled ? `headless runs · ${act} running · ${wait} waiting for you · ${q} queued — open the Agents tab` : 'programmatic launching is off — open Settings to turn it on';
-  b.onclick = () => x.enabled ? goTab('agents') : openSettings();
+  const noLogin = x.enabled && ((x.clis || {})[x.backend || 'claude'] || {}).logged_in === false;
+  b.textContent = !x.enabled ? '▸ launching off' : wait ? `? ${wait} waiting` : act ? `● ${act} running${q ? ` · ${q} queued` : ''}` : noLogin ? '⚠ CLI not logged in' : (q ? `${q} queued` : '▸ idle');
+  if (noLogin && !wait && !act) b.className += ' wait';
+  b.title = noLogin ? 'the agent CLI is not logged in — open Settings for the fix' : x.enabled ? `headless runs · ${act} running · ${wait} waiting for you · ${q} queued — open the Agents tab` : 'programmatic launching is off — open Settings to turn it on';
+  b.onclick = () => (x.enabled && !noLogin) ? goTab('agents') : openSettings();
 }
 
 /* ── wiring ─────────────────────────────────────────────────────────────── */

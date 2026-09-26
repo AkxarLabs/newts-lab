@@ -287,3 +287,12 @@ def test_missing_cli_refused_at_enqueue(hub):
     lab = setup(hub, backend_cmd=str(hub.root / "no-such-claude.exe"))   # a string = one executable path
     with pytest.raises(SpecError, match="CLI was not found"):
         executor.enqueue(lab, RunSpec(skill="lab-status"))
+
+
+def test_expired_login_gets_an_actionable_reason(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "authfail")
+    lab = setup(hub)
+    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
+    assert m["status"] == "failed" and "not logged in" in m["reason"] and "/login" in m["reason"]
+    it = next(i for i in executor.attention.collect(lab) if i["run_id"] == m["run_id"])
+    assert it["kind"] == "crashed" and "/login" in it["body"]

@@ -513,3 +513,15 @@ def test_reconcile_requeues_a_run_whose_supervisor_died_before_starting(hub):
     assert scheduler.reconcile_manifest(lab, workdir, path, m) is True
     m = executor.find_run(lab, rid)[3]
     assert m["status"] == "queued" and m["spawn_retries"] == 1 and "re-queued" in m["reason"]
+
+
+def test_health_reports_cli_login(hub, monkeypatch):
+    lab = setup(hub)
+    backends._AUTH_CACHE.clear()
+    monkeypatch.setenv("FAKE_LOGGED_IN", "0")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert executor.health(lab)["clis"]["claude"]["logged_in"] is False
+    backends._AUTH_CACHE.clear()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")          # an API key also works without a claude.ai login
+    assert executor.health(lab)["clis"]["claude"]["logged_in"] is True
+    backends._AUTH_CACHE.clear()

@@ -36,6 +36,12 @@ def health(lab: Lab) -> dict:
         ver = backends.cli_version(pre) if (pre and b == prog.get("backend", "claude")) else None
         clis[b] = {"found": bool(pre), "path": (pre[-1] if pre else None), "version": backends.version_str(ver),
                    "shim": bool(pre and os.name == "nt" and pre[-1].lower().endswith((".cmd", ".bat")))}
+        if pre and b == "claude" and b == prog.get("backend", "claude"):
+            auth = backends.cli_auth(pre)
+            # an API key / cloud provider in the environment also works without a claude.ai login
+            env_auth = any(os.environ.get(k) for k in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK",
+                                                        "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"))
+            clis[b]["logged_in"] = None if auth is None else (auth["logged_in"] or env_auth)
     return {
         "enabled": bool(prog.get("enabled")),
         "backend": prog.get("backend") or "claude",

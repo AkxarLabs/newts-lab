@@ -438,6 +438,12 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         reason = "stopped by the PI"
     elif status == "failed":
         reason = f"exit {res.rc}"
+        low = str(res.last_message or "").lower()
+        if backend == "claude" and any(k in low for k in ("not logged in", "/login", "authentication_failed",
+                                                             "failed to authenticate", "oauth session expired")):
+            reason = "the claude CLI is not logged in — in a terminal run `claude`, then /login (your own account)"
+        elif "rate limit" in low or "usage limit" in low:
+            reason = "usage limit reached — resume later"
 
     if wlog and status != "waiting_input":
         worker_line(wlog, worker_id=run_id, role=role, event="stop", status="done", idea=idea)

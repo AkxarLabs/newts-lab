@@ -895,3 +895,4 @@ html[data-lamp="day"] .rc-cmd,html[data-lamp="day"] .q-q,html[data-lamp="day"] .
 .att-row:has(.att-acts){flex-wrap:wrap}
 .att-row .att-acts{flex-basis:100%; justify-content:flex-start; padding-left:26px}
 .att-row .att-t b,.att-row .att-t small{white-space:normal}
+.set-note .warnc{color:var(--amber)}
