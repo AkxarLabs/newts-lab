@@ -52,7 +52,7 @@ function envelopeChip(it) {
 }
 
 /* ── PI preferences (persisted locally) — toggled in the ⚙ Settings panel ─────── */
-const PREF_DEFAULTS = { narrate: false, ambient: true, density: 'comfortable', legend: true, status: true, keyOpen: false };
+const PREF_DEFAULTS = { narrate: false, ambient: true, density: 'comfortable', legend: true, status: true, keyOpen: false, scene: 'code' };
 let PREFS = (() => { try { return { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem('viv-prefs') || '{}') }; } catch (e) { return { ...PREF_DEFAULTS }; } })();
 function applyPrefs() {
   document.body.dataset.density = PREFS.density;
@@ -584,6 +584,7 @@ function renderSettings() {
   body.appendChild(el('div', 'd-sec', 'Appearance'));
   body.appendChild(segRow('Theme', lampMode(), [['light', 'Light'], ['dark', 'Dark']], setLampMode));
   body.appendChild(segRow('Density', PREFS.density, [['comfortable', 'Cozy'], ['compact', 'Compact']], v => setPref('density', v)));
+  body.appendChild(segRow('Rooms', PREFS.scene, [['code', 'Drawn · beta'], ['painted', 'Painted']], v => { setPref('scene', v); applyRoomLayouts(); }));
   body.appendChild(el('div', 'd-sec', 'On screen'));
   body.appendChild(toggleRow('Status line', PREFS.status, v => setPref('status', v), 'the live pulse strip'));
   body.appendChild(toggleRow('The Key', PREFS.legend, v => setPref('legend', v), 'colour & role legend'));
@@ -1451,6 +1452,18 @@ const PATHS = {
   archive:   [[0.16, 0.70], [0.28, 0.50], [0.30, 0.42], [0.42, 0.54], [0.50, 0.56], [0.60, 0.54], [0.72, 0.42], [0.78, 0.60], [0.82, 0.74]],
   margins:   [[0.20, 0.42], [0.36, 0.50], [0.50, 0.40], [0.64, 0.50], [0.78, 0.46], [0.62, 0.64], [0.50, 0.78], [0.38, 0.64]],
 };
+// Code-drawn rooms (static/rooms/*.js) bring their own station + path layout; the painted values are
+// kept so the Settings toggle can switch back live.
+const PAINTED_LAYOUT = { stations: JSON.parse(JSON.stringify(STATIONS)), paths: JSON.parse(JSON.stringify(PATHS)) };
+function codeRoomFor(key) { return PREFS.scene === 'code' && window.CodeRooms ? window.CodeRooms[key] || null : null; }
+function applyRoomLayouts() {
+  for (const k of ROOM_KEYS) {
+    const R = codeRoomFor(k);
+    STATIONS[k] = R && R.stations ? { ...PAINTED_LAYOUT.stations[k], ...R.stations } : PAINTED_LAYOUT.stations[k];
+    PATHS[k] = R && R.paths ? R.paths : PAINTED_LAYOUT.paths[k];
+  }
+}
+applyRoomLayouts();
 function samplePath(P, t) { const n = P.length; t = clamp(t, 0, n - 1); const i = Math.min(n - 2, Math.floor(t)), f = t - i; return { x: P[i][0] + (P[i + 1][0] - P[i][0]) * f, y: P[i][1] + (P[i + 1][1] - P[i][1]) * f }; }
 function nearestT(P, x, y) { let bi = 0, bd = 1e9; for (let i = 0; i < P.length; i++) { const d = (P[i][0] - x) ** 2 + (P[i][1] - y) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; }
 // per-project stable hue rotation (deg) for buddy colour — bucketed for tint caching; Newt = 0 (pink)
@@ -1713,15 +1726,48 @@ function createWorld(canvas, opts) {
     if (view.level === 'WORLD' && !cam.q.length && (t - userT) > 4) { const f = worldFit(); if (Math.abs(f.zoom - cam.zoom) > 0.001 || Math.abs(f.x - cam.x) > 1 || Math.abs(f.y - cam.y) > 1) focusOn(f.x, f.y, f.zoom, false); }
   }
 
+  // ── code-drawn rooms: bake per theme × resolution (off the frame, then cached), draw live on top ──
+  const bakes = {}; let baking = null; const codeRects = {};
+  function bakeScale(pxW) { const k = pxW / 1600; return k <= 0.8 ? 0.75 : k <= 1.15 ? 1 : 1.5; }
+  function roomBake(key, scale) {
+    const R = codeRoomFor(key); if (!R) return null;
+    const want = key + ':' + theme + '@' + scale;
+    if (!bakes[want] && !baking) {
+      baking = want;
+      setTimeout(() => { try { bakes[want] = R.bake(theme, scale); } catch (e) { bakes[want] = 'err'; console.error('room bake failed', key, e); } baking = null; if (reduced) drawOnce(); }, 16);
+    }
+    if (bakes[want] && bakes[want] !== 'err') return bakes[want];
+    for (const s2 of [1.5, 1, 0.75]) { const b2 = bakes[key + ':' + theme + '@' + s2]; if (b2 && b2 !== 'err') return b2; }
+    return null;
+  }
+  function sceneState(key) {
+    const here = items.filter(o => roomOfState(o.state) === key);
+    const ids = new Set(here.map(o => o.id));
+    const crew = workforce.filter(w => (w.project && ids.has(w.project)) || (w.idea && ids.has(w.idea)));
+    return { slotsCap: slots.cap || 0, slotsUse: slots.in_use || 0, busy: crew.filter(w => w.status === 'working').length,
+      nActive: here.filter(o => o.state === 'active').length, nAnalysis: here.filter(o => o.state === 'analysis').length,
+      seed: here.length ? hash01(here.map(o => o.id).join()) * 6 : 1 };
+  }
+
   function drawBox(key) {
     const b = ROOM_BOX[key], tl = w2s(b.x, b.y), brc = w2s(b.x + b.w, b.y + b.h);
     const x = tl.x, y = tl.y, w = brc.x - tl.x, h = brc.y - tl.y;
+    codeRects[key] = null;
     if (x > W + 60 || brc.x < -60 || y > H + 60 || brc.y < -60) return;
-    const im = backImg(key), rad = Math.max(7, 20 * cam.zoom);
+    const R = codeRoomFor(key), baked = R ? roomBake(key, bakeScale(w * dpr)) : null;
+    const im = baked ? null : backImg(key), rad = Math.max(7, 20 * cam.zoom);
     // outer glow for a gate-waiting room
     if (ROOM_GATE[key] && items.some(o => o.gate && roomOfState(o.state) === key)) { const g = ROOM_GATE[key]; softGlow(x + w / 2, y + h / 2, Math.max(w, h) * 0.6, gl(g === 3 ? 12 : 45, 80, 60), 0.16 + 0.06 * Math.sin(t * 3)); }
     ctx.save(); rrect(x, y, w, h, rad); ctx.clip();
-    if (im) { const s = Math.max(w / im.width, h / im.height), iw = im.width * s, ih = im.height * s; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
+    if (baked) {
+      ctx.imageSmoothingQuality = 'high'; ctx.drawImage(baked, x, y, w, h);
+      if (w > 260) {   // the live layer (steam, LEDs, screens…) — skipped when the room is a thumbnail
+        ctx.save(); ctx.translate(x, y); ctx.scale(w / 1600, h / 900);
+        try { R.live(ctx, theme, reduced ? 0 : t, sceneState(key)); } catch (e) { /* never let a room break the frame */ }
+        ctx.restore();
+      }
+      codeRects[key] = { x, y, w, h };
+    } else if (im) { const s = Math.max(w / im.width, h / im.height), iw = im.width * s, ih = im.height * s; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
     else { ctx.fillStyle = theme === 'day' ? '#e9e0ca' : '#0a121a'; ctx.fillRect(x, y, w, h); }
     ctx.restore();
     rrect(x, y, w, h, rad); ctx.lineWidth = Math.max(1, 2 * cam.zoom); ctx.strokeStyle = theme === 'day' ? 'rgba(96,74,42,0.5)' : 'rgba(150,190,200,0.32)'; ctx.stroke();
@@ -1730,7 +1776,7 @@ function createWorld(canvas, opts) {
     ctx.save(); ctx.globalAlpha = 0.95; ctx.beginPath(); ctx.arc(bx0, by0, bs, 0, 6.28); ctx.fillStyle = theme === 'day' ? 'rgba(60,44,22,0.82)' : 'rgba(10,16,22,0.7)'; ctx.fill(); ctx.strokeStyle = theme === 'day' ? 'rgba(120,90,50,0.8)' : 'rgba(160,200,210,0.55)'; ctx.lineWidth = 1.2; ctx.stroke();
     ctx.fillStyle = theme === 'day' ? '#f4ecda' : '#dff0f2'; ctx.font = `${bs * 1.1}px ${getSerif()}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ROOM_N[key], bx0, by0 + 1);
     // the parchment room art already carries a hand-lettered title, so only label in the dark theme
-    if (theme !== 'day' && cam.zoom > 0.16) { ctx.textAlign = 'left'; ctx.font = `600 ${Math.max(10, 14 * cam.zoom)}px ${getRound()}`; ctx.fillStyle = 'rgba(223,240,242,0.9)'; ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 3; ctx.fillText(ROOM_LABEL[key].toUpperCase(), bx0 + bs + 8, by0 + 1); ctx.shadowBlur = 0; }
+    if ((theme !== 'day' || codeRects[key]) && cam.zoom > 0.16) { ctx.textAlign = 'left'; ctx.font = `600 ${Math.max(10, 14 * cam.zoom)}px ${getRound()}`; ctx.fillStyle = 'rgba(223,240,242,0.9)'; ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 3; ctx.fillText(ROOM_LABEL[key].toUpperCase(), bx0 + bs + 8, by0 + 1); ctx.shadowBlur = 0; }
     ctx.restore();
   }
 
@@ -1795,6 +1841,11 @@ function createWorld(canvas, opts) {
     drawConnectors();
     for (const k of ROOM_KEYS) drawBox(k);
     hits = []; let hoverDraw = null;
+    for (const k of ROOM_KEYS) {   // hoverable things in a code-drawn room (only once it's big enough to point at)
+      const rc = codeRects[k], R = rc && codeRoomFor(k); if (!R || !R.objects || rc.w < 520) continue;
+      const sx = rc.w / 1600, sy = rc.h / 900, st = sceneState(k);
+      for (const o of R.objects(st)) hits.push({ kind: 'obj', room: k, id: o.id, label: o.label, rect: [rc.x + o.x * sx, rc.y + o.y * sy, rc.x + (o.x + o.w) * sx, rc.y + (o.y + o.h) * sy] });
+    }
     const zoomedIn = cam.zoom > 0.5;
     const list = [...ents.values()].filter(e => e.init && (e._vis || e.dying));
     // world-y sort (uses the path position)
@@ -1829,6 +1880,7 @@ function createWorld(canvas, opts) {
       }
     });
     if (hoverDraw) drawHoverRing(hoverDraw);
+    else if (hot && hot.kind === 'obj') { const cur = hits.find(h => h.kind === 'obj' && h.room === hot.room && h.id === hot.id); if (cur) drawObjHover(cur); }
     if (spores.length && ambient) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sp of spores) softGlow(sp.x * W, sp.y * H, 2 + sp.d * 5, gl(theme === 'day' ? 45 : 190, 30, theme === 'day' ? 60 : 80), 0.08 * sp.d); ctx.restore(); }
     drawNewt();
     const v = ctx.createRadialGradient(W / 2, H * 0.46, Math.min(W, H) * 0.42, W / 2, H * 0.5, Math.max(W, H) * 0.85);
@@ -1848,14 +1900,30 @@ function createWorld(canvas, opts) {
 
   // ── interaction ──
   function toCanvas(ev) { const r = canvas.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; }
-  function pick(p) { let best = null, bd = 1e9; for (const h of hits) { const d = Math.hypot(p.x - h.sx, p.y - h.sy); if (d < h.r && d < bd) { bd = d; best = h; } } return best; }
+  function pick(p) {
+    let best = null, bd = 1e9;
+    for (const h of hits) { if (h.rect) continue; const d = Math.hypot(p.x - h.sx, p.y - h.sy); if (d < h.r && d < bd) { bd = d; best = h; } }
+    if (best) return best;   // creatures win over the furniture behind them
+    for (let i = hits.length - 1; i >= 0; i--) { const h = hits[i]; if (h.rect && p.x >= h.rect[0] && p.x <= h.rect[2] && p.y >= h.rect[1] && p.y <= h.rect[3]) return h; }
+    return null;
+  }
+  function drawObjHover(h) {
+    const [x0, y0, x1, y1] = h.rect;
+    ctx.save(); ctx.strokeStyle = theme === 'day' ? 'rgba(60,44,22,0.55)' : 'rgba(185,225,230,0.6)'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.5;
+    rrect(x0, y0, x1 - x0, y1 - y0, 10); ctx.stroke(); ctx.restore();
+    const label = String(h.label || ''); ctx.save(); ctx.font = `600 13px ${getRound()}`;
+    const tw = ctx.measureText(label).width, pw = tw + 18, ph = 22, px = clamp((x0 + x1) / 2 - pw / 2, 6, W - pw - 6), py = Math.max(6, y0 - ph - 6);
+    ctx.fillStyle = theme === 'day' ? 'rgba(255,255,255,0.95)' : 'rgba(9,14,20,0.9)'; rrect(px, py, pw, ph, 7); ctx.fill();
+    ctx.fillStyle = theme === 'day' ? '#21242b' : '#e8f3f4'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, px + pw / 2, py + ph / 2 + 0.5);
+    ctx.restore();
+  }
   function boxAt(p) { const wpt = s2w(p.x, p.y); for (const k of ROOM_KEYS) { const b = ROOM_BOX[k]; if (wpt.x >= b.x && wpt.x <= b.x + b.w && wpt.y >= b.y && wpt.y <= b.y + b.h) return k; } return null; }
   function clampCam() { const b = boxesBBox(); cam.x = clamp(cam.x, b.x - 400, b.x + b.w + 400); cam.y = clamp(cam.y, b.y - 400, b.y + b.h + 400); }
   let down = null, panned = false;
   canvas.addEventListener('pointerdown', ev => { down = toCanvas(ev); panned = false; try { canvas.setPointerCapture(ev.pointerId); } catch (e) {} });
   canvas.addEventListener('pointerleave', () => { if (hot) { hot = null; if (reduced) drawOnce(); } });   // clear a stuck hover ring/cursor when the cursor leaves the canvas
   canvas.addEventListener('pointermove', ev => { const p = toCanvas(ev); if (down) { const dx = p.x - down.x, dy = p.y - down.y; if (panned || Math.hypot(dx, dy) > 6) { panned = true; if (followId !== null) { followId = null; fireFollow(); } cam.q = []; camFrom = null; cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom; clampCam(); down = p; userT = t; if (reduced) drawOnce(); } } else { hot = pick(p); if (reduced) drawOnce(); } });
-  canvas.addEventListener('pointerup', ev => { const p = toCanvas(ev); if (down && !panned) { const h = pick(p); if (h) { if (h.kind === 'item') { const o = items.find(x => x.id === h.id); if (o && o.has_project) { userT = t; focusProject(h.id); } else if (onItem) onItem(h.id); } else if (h.kind === 'worker' && onWorker) onWorker(h.id); else if (h.kind === 'newt' && onNewt) onNewt(); } else { const rk = boxAt(p); if (rk && !(view.level !== 'WORLD' && view.room === rk)) { userT = t; goRegion(rk); } } } down = null; panned = false; });
+  canvas.addEventListener('pointerup', ev => { const p = toCanvas(ev); if (down && !panned) { const h = pick(p); if (h) { if (h.kind === 'item') { const o = items.find(x => x.id === h.id); if (o && o.has_project) { userT = t; focusProject(h.id); } else if (onItem) onItem(h.id); } else if (h.kind === 'worker' && onWorker) onWorker(h.id); else if (h.kind === 'newt' && onNewt) onNewt(); else if (h.kind === 'obj') { if (view.level === 'WORLD') { userT = t; goRegion(h.room); } else if (h.id === 'rack') runTool('slots'); else toast(h.label); } } else { const rk = boxAt(p); if (rk && !(view.level !== 'WORLD' && view.room === rk)) { userT = t; goRegion(rk); } } } down = null; panned = false; });
   canvas.addEventListener('wheel', ev => { ev.preventDefault(); if (followId !== null) { followId = null; fireFollow(); } const cp = toCanvas(ev), before = s2w(cp.x, cp.y); cam.q = []; camFrom = null; cam.zoom = clamp(cam.zoom * (1 + (ev.deltaY < 0 ? 0.14 : -0.14)), 0.06, 2.6); const after = w2s(before.x, before.y); cam.x += (after.x - cp.x) / cam.zoom; cam.y += (after.y - cp.y) / cam.zoom; clampCam(); userT = t; if (reduced) drawOnce(); }, { passive: false });
 
   if (reduced) drawOnce(); else startLoop();

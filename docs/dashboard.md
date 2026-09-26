@@ -151,6 +151,19 @@ between rooms:
 Each idea/project critter's look reflects its situation: a live run makes its room and its critter
 active, a killed idea's critter sinks and greys out, a parked one rests dim.
 
+**Rooms drawn in code (beta).** The lab room is now drawn by code instead of a painting
+(`dashboard/static/rooms/`), and the other rooms follow. The same objects are drawn once and lit two
+ways: sunlight through the windows by day, and the room's own lamps, screens and glowing reactor by
+night. Objects show real state:
+
+- the compute rack's lit slots are the compute slots actually in use;
+- the reactor bubbles harder the more compute is running;
+- the debug screens scroll only while an agent is working in the room;
+- the clock tells the real time.
+
+Hover an object to see its live status; click the rack to see the slot ledger. ⚙ Settings →
+*Rooms* switches between the drawn and painted versions.
+
 <figure markdown>
 ![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
 <figcaption>Click a room (or a project critter) to <strong>zoom in</strong>. Here, inside <em>the lab</em>: stations for smoke/pilot/full, improve/debug, in-project ideation, quality-check, and analysis — with each running sub-newt standing at its task, labelled with what it's doing.</figcaption>
@@ -375,6 +388,22 @@ Two properties keep this safe and lightweight:
   shared ledgers; the trace is the harness observing them, not them reporting.
 
 ## Tech notes
+
+**Code-drawn rooms** (`static/rooms/kit.js` + one file per room).
+
+- **Design space:** each room is drawn in a fixed 1600 × 900 space as three layers. The *albedo* layer holds
+  the surfaces: procedural stone, wood grain, glass and brass. The *light* layer is multiplied over it: ambient
+  light, lamp pools, window light projected onto the floor through the window bars, and cast and contact
+  shadows. The *emissive* layer holds screens, bulbs, glowing liquid and sky, and is added with a bloom.
+  A per-frame *live* layer adds the motion.
+- **Themes:** day and night are one albedo under two light/emissive layers.
+- **Baking:** a room is baked once per theme and resolution (about 0.3 s, off the frame) and then cached.
+- **Contract:** a room registers `CodeRooms.<key> = {bake, live, objects, stations, paths}`. Its stations and
+  walk paths replace the painted room's calibration.
+- **Preview:** `static/rooms/preview.html?room=lab&theme=day&scale=1.5&crop=x,y,w,h` renders a room at 1:1 for
+  authoring.
+- **No build step:** it is plain Canvas2D, blurring by downscaling and upscaling so it works in every browser.
+
 
 `dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (+ pyyaml) serving a no-build single-page
 scene. Endpoints: `GET /api/state` (a snapshot rebuilt from files on every request — the lab’s
