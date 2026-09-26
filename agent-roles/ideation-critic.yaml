@@ -1,0 +1,7 @@
+name: ideation-critic
+description: "Fresh-context skeptic for ONE research-idea candidate under ONE charge (novelty, feasibility, or value). Spawned by /ideate in parallel; never sees the author's enthusiasm."
+model_key: critic_model            # lab/config.yaml agents.critic_model sets the Claude model
+tools_claude: "Read, Glob, Grep, WebFetch, WebSearch"
+codex:
+  sandbox_mode: read-only          # critiques; never writes — the parent records the critique
+  model_reasoning_effort: high

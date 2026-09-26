@@ -139,3 +139,16 @@ def test_directive_dropped_when_withdrawn(hub, monkeypatch):
         {"kind": "withdraw", "ref": "d-001", "ts": "t2"},
     ])
     assert m.unresolved_directives() == []
+
+
+def test_executor_kinds_and_run_report_autofills_run_id(hub, monkeypatch):
+    """Headless runs emit a machine-readable footer; its run id comes from NEWTS_RUN_ID when omitted."""
+    import types
+    m, bus = _mod(hub, monkeypatch)
+    assert {"agent_waiting", "agent_resumed", "run_report"} <= m.KINDS
+    monkeypatch.setenv("NEWTS_RUN_ID", "hub-propose-x-1")
+    m.cmd_emit(types.SimpleNamespace(kind="run_report", idea=None, run_id=None, stage=None, status=None,
+                                     detail=None, data=["next=/spawn-project x", "needs_pi=gate1", "summary=ready"]))
+    ev = m._read_jsonl(bus / "events.jsonl")[-1]
+    assert ev["kind"] == "run_report" and ev["run_id"] == "hub-propose-x-1"
+    assert ev["data"] == {"next": "/spawn-project x", "needs_pi": "gate1", "summary": "ready"}

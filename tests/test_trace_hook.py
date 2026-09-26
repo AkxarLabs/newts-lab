@@ -159,3 +159,74 @@ def test_template_idea_of_resolves_studies_paths():
     tpl = load("templates/project/scripts/trace_hook")
     assert tpl._idea_of({"file_path": "studies/demo/proposal.md"}) == "demo"
     assert tpl._idea_of({"file_path": "studies/demo/paper/main.tex"}) == "demo"
+
+
+# ── subagent visibility: birth, in-flight tools, result packets, worktree attribution ──
+
+def _run_hook(tmp_path, payload: dict) -> list[dict]:
+    """Run the real hook as Claude Code does (JSON on stdin) against a fake hub; return its log lines."""
+    import json
+    import subprocess
+    import sys
+    hubdir = tmp_path / "hub"
+    (hubdir / "lab").mkdir(parents=True, exist_ok=True)
+    (hubdir / "lab" / "REGISTRY.md").write_text("# r\n", encoding="utf-8")
+    payload = {"cwd": str(hubdir), **payload}
+    r = subprocess.run([sys.executable, str(REPO / "tools" / "trace_hook.py")], input=json.dumps(payload),
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0 and r.stdout == ""          # never speaks, never blocks
+    wdir = hubdir / "lab" / ".bus" / "workers"
+    out = []
+    for f in sorted(wdir.glob("*.jsonl")) if wdir.exists() else []:
+        out += [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
+    return out
+
+
+def test_subagent_start_records_birth_with_parent_session(tmp_path):
+    lines = _run_hook(tmp_path, {"hook_event_name": "SubagentStart", "session_id": "PARENT",
+                                 "agent_id": "agent-7", "agent_type": "fresh-context-reviewer"})
+    assert lines == [{**lines[0], "worker_id": "agent-7", "role": "fresh-context-reviewer",
+                      "event": "start", "status": "working", "session_id": "PARENT"}]
+
+
+def test_pretooluse_any_tool_is_an_in_flight_begin(tmp_path):
+    lines = _run_hook(tmp_path, {"hook_event_name": "PreToolUse", "session_id": "S", "agent_id": "a1",
+                                 "agent_type": "experiment-runner", "tool_name": "Bash", "tool_use_id": "tu9",
+                                 "tool_input": {"command": "uv run scripts/run.py --config configs/exp-004.yaml"}})
+    rec = lines[0]
+    assert rec["event"] == "begin" and rec["kind"] == "run" and rec["tool_use_id"] == "tu9"
+    assert "exp-004.yaml" in rec["summary"]
+
+
+def test_spawn_and_return_carry_tool_use_id_and_result_packet(tmp_path):
+    spawn = _run_hook(tmp_path, {"hook_event_name": "PreToolUse", "session_id": "S", "tool_name": "Agent",
+                                 "tool_use_id": "tuA", "tool_input": {"subagent_type": "overseer",
+                                                                      "description": "check the claim"}})
+    assert spawn[0]["event"] == "spawn" and spawn[0]["spawns"] == "overseer" and spawn[0]["tool_use_id"] == "tuA"
+    ret = _run_hook(tmp_path, {"hook_event_name": "PostToolUse", "session_id": "S", "tool_name": "Agent",
+                               "tool_use_id": "tuA", "tool_input": {"subagent_type": "overseer"},
+                               "tool_response": {"content": [{"type": "text", "text": "SUPPORTED — evidence at runs/x"}]}})
+    last = ret[-1]
+    assert last["event"] == "return" and last["result"].startswith("SUPPORTED")
+
+
+def test_subagent_stop_keeps_final_message(tmp_path):
+    lines = _run_hook(tmp_path, {"hook_event_name": "SubagentStop", "session_id": "S", "agent_id": "a2",
+                                 "agent_type": "experiment-runner", "last_assistant_message": "packet: metric=0.91"})
+    assert lines[0]["event"] == "stop" and lines[0]["result"] == "packet: metric=0.91"
+
+
+def test_worktree_attribution():
+    m = _mod()
+    assert m._worktree_of({"command": "cd ../newts-lab-projects/demo-wt-exp-004 && uv run x"}, "") == ("demo", "exp-004")
+    assert m._worktree_of({}, r"C:\p\my-proj-wt-v2\sub") == ("my-proj", "v2")
+    assert m._worktree_of({"command": "ls"}, "/hub") == ("", "")
+    assert m.MAX_SUMMARY == 400
+
+
+def test_hub_and_template_settings_register_subagent_hooks():
+    import json
+    for rel in (".claude/settings.json", "templates/project/.claude/settings.json"):
+        hooks = json.loads((REPO / rel).read_text(encoding="utf-8"))["hooks"]
+        assert "SubagentStart" in hooks and "SubagentStop" in hooks, rel
+        assert hooks["PreToolUse"][0]["matcher"] == "*", rel   # every tool: in-flight 'begin' lines

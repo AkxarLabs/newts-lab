@@ -8,11 +8,12 @@ description: Phased idea pipeline — research, generate, multi-agent reflection
 Goal: end with 1–3 ideas in state `triaged` that have already survived adversarial
 reflection — not a long list of shallow ones. Depth knobs: `ideation.*` in
 `lab/config.yaml` (`candidates`, `reflection_rounds`, `critics_per_idea`,
-`enable_combination`). **Critic model + effort** (Claude Code): resolve them once, mechanically —
-`uv run --with pyyaml python tools/role_sync.py resolve critic` prints `model=<m>` and `effort=<e>`
-(from `agents.critic_model`/`critic_effort`, tier-resolved) — pass `model` as each critic Task spawn's
-`model` (skip if `inherit`) and `effort` as its `effort` (skip if empty). Don't re-derive them from
-config by hand. Backends without a per-spawn override run critics at the session model.
+`enable_combination`). **Critics are the named `ideation-critic` role** (`.claude/agents/
+ideation-critic.md`, rendered by `tools/role_sync.py` with `agents.critic_model`/`critic_effort`
+already resolved) — spawn them with `subagent_type: ideation-critic` so the model binding and the
+dashboard's trace both come for free (each critic shows up by role, with its verdict as its result).
+Backends without role files: `uv run --with pyyaml python tools/role_sync.py resolve critic` prints
+the `model=`/`effort=` to pass per spawn; otherwise critics run at the session model.
 
 ## Phase 0 — Fuel
 
@@ -44,9 +45,10 @@ experiment, how it fails fast. Discard anything that can't produce all three. Se
 
 ## Phase 2 — Reflect (multi-agent self-feedback)
 
-For each candidate, spawn `ideation.critics_per_idea` critic subagents **in parallel** (model+effort
-from `role_sync.py resolve critic` — see the header note) (fresh context — each receives only the
-candidate's hypothesis/sketch text, never your enthusiasm). Distinct charges:
+For each candidate, spawn `ideation.critics_per_idea` **`ideation-critic`** subagents **in parallel**
+(see the header note) (fresh context — each receives only the candidate's hypothesis/sketch text and
+its charge, never your enthusiasm; start each spawn's description with the charge, e.g. "Novelty
+skeptic: <candidate>", so the PI can tell the critics apart). Distinct charges:
 
 - **Novelty skeptic**: "Assume someone has done this. Search for them. Name the closest
   work and what delta, if any, survives."
@@ -122,8 +124,8 @@ framing below. Skip silently in autonomous / `/autopilot` runs.
    For each: one-sentence approach statement, why results so far make it promising, the cheapest
    decisive experiment under the frozen budgets, and — explicitly — **whether it changes the
    headline hypothesis** (`Headline-change: yes/no`).
-2. **Reflect** — fresh-context critic ensemble (`ideation.critics_per_idea`, model+effort from
-   `role_sync.py resolve critic`; charges novelty/feasibility/value exactly as Phase 2) on
+2. **Reflect** — fresh-context `ideation-critic` ensemble (`ideation.critics_per_idea`; charges
+   novelty/feasibility/value exactly as Phase 2) on
    each candidate; critics receive only the candidate text + the frozen-set description, never your
    enthusiasm.
 3. **Tournament & triage** — rank survivors as in Phase 5; then route each by the gate rule

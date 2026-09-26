@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-safe activity tracer for the Newts' Lab (a Claude Code hook).
 
-Registered in `.claude/settings.json` on SessionStart, PreToolUse(Task|Agent),
+Registered in `.claude/settings.json` on SessionStart, SubagentStart, PreToolUse(*),
 PostToolUse(*), SubagentStop(*) and SessionEnd. It reads one hook JSON object on stdin
 and appends ONE compact line to a per-worker log:
 
@@ -28,7 +28,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-MAX_SUMMARY = 200
+MAX_SUMMARY = 400
+MAX_RESULT = 2000                 # a subagent's result packet / final message, as returned
 WORKER_RETENTION_S = 48 * 3600   # SessionStart prunes worker logs untouched longer than this
 SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
@@ -38,6 +39,9 @@ IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
 # unrelated path may yield a phantom 'idea'. Acceptable: attribution is best-effort dashboard colour,
 # never a correctness signal (the canonical record is the project's ledgers, not this trace).
 PROJ_RE = re.compile(r"([a-z0-9][a-z0-9._-]*)/(?:runs/|PLAN\.md|EXPERIMENT_LOG\.md)", re.I)
+# an /improve variant runs in a git worktree `<project>-wt-<variant>` — even when the subagent's hook
+# cwd is the HUB session's, its commands/paths name the worktree: attribute it to the project + variant.
+WT_RE = re.compile(r"([A-Za-z0-9][A-Za-z0-9._]*(?:-[A-Za-z0-9._]+)*?)-wt-([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 
 def _now() -> str:
@@ -149,6 +153,34 @@ def _idea_of(ti) -> str:
     return m.group(1) if m else ""
 
 
+def _text(v) -> str:
+    """A tool_response / last message as plain text (Agent results are content-block lists)."""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        for k in ("content", "result", "text", "output"):
+            if k in v:
+                return _text(v[k])
+        return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, list):
+        return "\n".join(_text(x.get("text") if isinstance(x, dict) and "text" in x else x) for x in v)
+    return "" if v is None else str(v)
+
+
+def _result(v) -> str:
+    return _text(v).strip()[:MAX_RESULT]
+
+
+def _worktree_of(ti, cwd: str) -> tuple:
+    """(project, variant) if the call names an /improve worktree `<project>-wt-<variant>`."""
+    blob = [cwd or ""]
+    if isinstance(ti, dict):
+        blob += [v for k, v in ti.items() if isinstance(v, str) and k in
+                 ("file_path", "notebook_path", "path", "command", "cwd")]
+    m = WT_RE.search(re.sub(r"[\\/]+", "/", " ".join(blob)))
+    return (m.group(1).rsplit("/", 1)[-1], m.group(2).split("/", 1)[0]) if m else ("", "")
+
+
 def main() -> None:
     raw = sys.stdin.read()
     data = json.loads(raw) if raw.strip() else {}
@@ -160,16 +192,27 @@ def main() -> None:
     tool = data.get("tool_name") or ""
     ti = data.get("tool_input") or {}
     cwd = data.get("cwd") or ""
+    tuid = data.get("tool_use_id") or ""
 
-    # worker identity: a subagent if agent_id is present, else the (orchestrator) session
+    # worker identity: a subagent if agent_id is present, else the (orchestrator) session. A
+    # subagent's lines carry the PARENT session's id in `session_id` — that is the parent link the
+    # dashboard uses to draw run → session → subagent trees.
     worker_id = agent_id or session_id or "unknown"
     role = agent_type or "orchestrator"
 
     rec = {"ts": _now(), "worker_id": worker_id, "role": role,
            "event": "action", "session_id": session_id}
+    if tuid:
+        rec["tool_use_id"] = tuid
 
     if event == "SessionStart":
         rec.update(event="start", status="working")
+        if data.get("source"):
+            rec["source"] = data["source"]          # startup | resume | clear | compact
+    elif event == "SubagentStart":
+        if not agent_id:
+            return
+        rec.update(event="start", status="working")  # born now — not at its first finished tool
     elif event == "SessionEnd":
         rec.update(event="stop", status="done")
     elif event == "SubagentStop":
@@ -179,16 +222,31 @@ def main() -> None:
         if not agent_id:
             return
         rec.update(event="stop", status="done")
+        res = _result(data.get("last_assistant_message"))
+        if res:
+            rec["result"] = res
     elif event == "PreToolUse" and tool in ("Task", "Agent"):
         child = ti.get("subagent_type") if isinstance(ti, dict) else ""
         rec.update(event="spawn", tool=tool, kind="spawn", summary=_summary(tool, ti))
         if child:
             rec["spawns"] = child
+    elif event == "PreToolUse":
+        # "in <tool> since <ts>": a worker inside a 40-minute training call stays visibly busy
+        rec.update(event="begin", tool=tool, kind=_kind(tool, ti), summary=_summary(tool, ti))
+    elif event == "PostToolUse" and tool in ("Task", "Agent"):
+        # the subagent handed back: its result packet is the return value of the Agent call
+        rec.update(event="return", tool=tool, kind="spawn", summary=_summary(tool, ti))
+        res = _result(data.get("tool_response"))
+        if res:
+            rec["result"] = res
     elif event == "PostToolUse":
         rec.update(event="action", tool=tool, kind=_kind(tool, ti), summary=_summary(tool, ti))
     else:
         return  # uninteresting event -> write nothing
 
+    proj, variant = _worktree_of(ti, cwd)
+    if proj:
+        rec["project"], rec["variant"] = proj, variant
     idea = _idea_of(ti)
     if idea:
         rec["idea"] = idea

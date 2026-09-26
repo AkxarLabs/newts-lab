@@ -16,8 +16,11 @@
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }
     ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }
+    ],
     "PreToolUse": [
-      { "matcher": "Task|Agent", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }
     ],
     "PostToolUse": [
       { "matcher": "*", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/scripts/trace_hook.py\"", "timeout": 10 } ] }

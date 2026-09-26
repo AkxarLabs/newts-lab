@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -24,6 +25,14 @@ import yaml
 
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
+
+# The executor (tools/executor) is optional for the dashboard: import it from THIS repo's tools/
+# (never from a monkeypatched HUB), and degrade to observe-and-sign if it's missing.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+try:
+    import executor  # noqa: E402
+except Exception:  # noqa: BLE001 — a broken/missing executor must never blank the dashboard
+    executor = None
 TERMINAL_STATES = {"final", "killed", "parked"}
 _REGISTRY_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 
@@ -145,11 +154,57 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
     return out
 
 
+_RUN_KEYS = ("agent_id", "run_id", "backend", "role", "status", "started", "finished", "wall_seconds",
+             "exit_code", "prompt_summary", "session_id", "skill", "command", "target", "subject", "level",
+             "attempt", "reason", "status_ts", "pending_question", "report", "usage", "chain", "chain_child",
+             "parent", "created_by", "created", "max_minutes", "n_actions", "denials", "mode", "label",
+             "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema")
+
+
+def _r10(x) -> int | None:
+    return None if x is None else int(x // 10 * 10)
+
+
+def _compact_run(m: dict) -> dict:
+    """A run manifest → the fields the dashboard renders. Time-varying numbers are rounded to 10 s
+    so the SSE signature (which ignores `now`) doesn't change every tick."""
+    out = {k: m.get(k) for k in _RUN_KEYS}
+    out["run_id"] = out["run_id"] or out["agent_id"]
+    out["last_message"] = (m.get("last_message") or "")[:1200] or None
+    out["last_text"] = (m.get("last_text") or "")[:400] or None
+    la = m.get("last_action")
+    out["last_action"] = {"tool": la.get("tool"), "summary": (la.get("summary") or "")[:200], "ts": la.get("ts")} \
+        if isinstance(la, dict) else None
+    now = time.time()
+    st = m.get("status")
+    started = _epoch(m.get("started"))
+    if st in ("starting", "running", "resuming") and started:
+        prior = sum(float(a.get("wall_seconds") or 0) for a in (m.get("attempts") or [])[:-1])
+        cur = _epoch(((m.get("attempts") or [{}])[-1] or {}).get("started")) or started
+        out["elapsed_s"] = _r10(prior + max(0.0, now - cur))
+    else:
+        out["elapsed_s"] = _r10(float(m.get("wall_seconds") or 0)) if m.get("wall_seconds") is not None else None
+    hb = _epoch(m.get("heartbeat"))
+    out["heartbeat_age_s"] = _r10(now - hb) if (hb and st in ("starting", "running", "resuming")) else None
+    subs = m.get("subagents") or {}
+    out["subagents"] = [{"id": k, "type": v.get("type"), "description": v.get("description"),
+                         "status": v.get("status"), "n_actions": v.get("n_actions"),
+                         "last_action": (v.get("last_action") or {}).get("summary"),
+                         "result": (v.get("result") or "")[:600] or None,
+                         "started": v.get("started"), "finished": v.get("finished")}
+                        for k, v in list(subs.items())[-40:]]
+    out["n_qa"] = len(m.get("qa") or [])
+    return out
+
+
 def _launched_agents(project_dir: Path) -> list[dict]:
-    """Headless top-level agents launched into this project by tools/agent_runner.py — each is a
-    <project>/.bus/agents/<id>.json manifest. Surfaces who/what/status; the full transcript lives
-    next to it as <id>.stream.jsonl. Best-effort, absent dir => []."""
-    adir = project_dir / ".bus" / "agents"
+    """Headless agents launched into this project (tools/executor runs or tools/agent_runner.py
+    launches) — each is a <project>/.bus/agents/<id>.json manifest; the full transcript lives next to
+    it as <id>.stream.jsonl. Best-effort, absent dir => []."""
+    return _agents_in(project_dir / ".bus" / "agents")
+
+
+def _agents_in(adir: Path) -> list[dict]:
     if not adir.exists():
         return []
     out = []
@@ -158,9 +213,8 @@ def _launched_agents(project_dir: Path) -> list[dict]:
             m = json.loads(_read_text(f))
         except json.JSONDecodeError:
             continue
-        out.append({k: m.get(k) for k in
-                    ("agent_id", "backend", "role", "status", "started", "finished",
-                     "wall_seconds", "exit_code", "prompt_summary")})
+        if isinstance(m, dict):
+            out.append(_compact_run(m))
     return out
 
 
@@ -444,74 +498,185 @@ def _escalations(events: list[dict]) -> list[dict]:
 
 # ── workers (per-agent activity from .bus/workers/*.jsonl — the traceability feed) ──
 #
-# tools/trace_hook.py (a Claude Code hook) writes ONE file per agent/subagent. We fold
-# each file into a roster entry: who it is (role), what it's doing (status + recent
-# actions), and where (project / idea). Best-effort and non-canonical, like the rest of
-# the bus — absent dir => []. The dashboard renders one sprite per entry.
+# tools/trace_hook.py (a Claude Code hook) writes ONE file per agent/subagent. We fold each file into
+# a roster entry: who it is (role + a readable label), what it's doing (status, the tool it is inside
+# right now, recent actions), where (project / idea / worktree variant), who spawned it (parent) and
+# what it handed back (result). Best-effort and non-canonical, like the rest of the bus.
+#
+# Tree: a subagent's lines carry the PARENT session's id in `session_id`; its parent's file holds a
+# `spawn` line (tool_use_id, subagent type, description) and later a `return` line (the result
+# packet). `_link_workers` matches each child to its spawn, so the UI can draw
+# run → session → subagents with every subagent's label, status and result.
 
-_WORKER_LINGER_S = 300   # keep a finished worker on the roster this long (for its despawn anim)
-_WORKER_STALE_S = 150    # no activity & no stop -> treat as idle, not "working"
+_WORKER_DONE_KEEP_S = 1800   # a finished worker stays on the roster (greyed, with its result) this long
+_WORKER_DEAD_S = 7200        # a file with no 'stop' untouched this long = a session that died uncleanly
+_WORKER_STALE_S = 150        # no activity, no open tool, no stop -> idle (not "working")
+_SUBAGENT_STUCK_S = 1200     # an idle, unfinished subagent this long is surfaced as needing a look
 _MAX_RECENT = 40
 _KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
                 "overseer", "ideation-critic", "scoping-advocate"}
+_WORKER_CACHE: dict[str, tuple] = {}
 
 
-def _workers(bus_dir: Path, project: str | None = None) -> list[dict]:
+def _epoch(ts) -> float | None:
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        return time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return None
+
+
+def _fold_worker(lines: list[dict]) -> dict:
+    """One worker file's lines → its roster facts (pure; cached by file mtime+size)."""
+    role, idea, proj, variant, sid = "orchestrator", None, None, None, None
+    stop_i, start_i = -1, -1
+    actions, spawns, returns = [], [], {}
+    open_tool, result, n_actions = None, None, 0
+    for i, ln in enumerate(lines):
+        if ln.get("role"):
+            role = ln["role"]
+        if ln.get("idea"):
+            idea = ln["idea"]
+        if ln.get("project"):
+            proj, variant = ln["project"], ln.get("variant") or variant
+        if ln.get("session_id") and not sid:
+            sid = ln["session_id"]
+        ev = ln.get("event")
+        if ev == "start":
+            start_i = i
+        elif ev == "stop":
+            stop_i = i
+            if ln.get("result"):
+                result = ln["result"]
+        elif ev == "begin":
+            open_tool = {"tool": ln.get("tool"), "summary": ln.get("summary"), "since": ln.get("ts"),
+                         "kind": ln.get("kind"), "tool_use_id": ln.get("tool_use_id")}
+        elif ev in ("action", "spawn", "return"):
+            if ev == "spawn":
+                spawns.append({"tool_use_id": ln.get("tool_use_id"), "type": ln.get("spawns") or "general-purpose",
+                               "summary": ln.get("summary"), "ts": ln.get("ts")})
+            if ev == "return" and ln.get("tool_use_id"):
+                returns[ln["tool_use_id"]] = ln.get("result")
+            if ev in ("action", "return"):
+                open_tool = None          # the call that was in flight has finished
+            if ev != "return":
+                n_actions += 1
+            actions.append({"ts": ln.get("ts"), "text": ln.get("summary") or ln.get("tool") or ev,
+                            "kind": ln.get("kind") or ev, "event": ev})
+    done = stop_i >= 0 and stop_i >= start_i    # a later 'start' (a resumed session) reopens it
+    return {"role": role, "idea": idea, "project_hint": proj, "variant": variant, "session_id": sid,
+            "done": done, "open_tool": None if done else open_tool, "result": result,
+            "spawns": spawns, "returns": returns, "n_actions": n_actions,
+            "recent_actions": actions[-_MAX_RECENT:], "started": lines[0].get("ts"),
+            "last_ts": lines[-1].get("ts")}
+
+
+def _workers(bus_dir: Path, project: str | None = None, projects: set | None = None) -> list[dict]:
     wdir = bus_dir / "workers"
     if not wdir.exists():
         return []
     now = time.time()
     out = []
     for f in sorted(wdir.glob("*.jsonl")):
-        # Age-gate BEFORE parsing: a file untouched past the linger window is off the roster
-        # regardless of whether it finished cleanly — a 'done' worker that lingered out, or a
-        # dead/crashed session that never wrote a 'stop' (orchestrator files only get one on a
-        # clean SessionEnd). Skipping here means old logs are never read, so the roster cost
-        # stays O(recent) even before trace_hook's retention sweep trims them from disk.
         try:
-            age = now - f.stat().st_mtime
+            st = f.stat()
         except OSError:
-            age = 0
-        if age > _WORKER_LINGER_S:
             continue
-        lines = _read_jsonl(f)
-        if not lines:
+        age = now - st.st_mtime
+        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S):
+            continue   # never parsed: roster cost stays O(recent) before trace_hook's retention sweep
+        key = str(f)
+        hit = _WORKER_CACHE.get(key)
+        if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+            fold = hit[2]
+        else:
+            lines = _read_jsonl(f)
+            if not lines:
+                continue
+            fold = _fold_worker(lines)
+            _WORKER_CACHE[key] = (st.st_mtime, st.st_size, fold)
+        if fold["done"] and age > _WORKER_DONE_KEEP_S:
             continue
-        role, idea, done, spawns, actions = "orchestrator", None, False, None, []
-        for ln in lines:
-            if ln.get("role"):
-                role = ln["role"]
-            if ln.get("idea"):
-                idea = ln["idea"]
-            if ln.get("spawns"):
-                spawns = ln["spawns"]
-            ev = ln.get("event")
-            if ev == "stop":
-                done = True
-            if ev in ("action", "spawn"):
-                actions.append({"ts": ln.get("ts"),
-                                "text": ln.get("summary") or ln.get("tool") or ev,
-                                "kind": ln.get("kind") or ev})
-        if done:
+        if fold["done"]:
             status = "done"
+        elif fold["open_tool"]:
+            status = "working"            # inside a tool call — however long it takes
         elif age > _WORKER_STALE_S:
             status = "idle"
         else:
             status = "working"
+        wid = f.stem
+        # attribution: an explicit project bus wins; a hub-bus worker whose calls named a registered
+        # project (its /improve worktree, its runs/…) is promoted to that project so the project's
+        # lab view and worker count include it
+        proj = project
+        if not proj:
+            for cand in (fold["project_hint"], fold["idea"]):
+                if cand and projects and cand in projects:
+                    proj = cand
+                    break
+        sid = fold["session_id"]
+        is_sub = bool(sid and sid != wid)
         out.append({
-            "worker_id": f.stem,
-            "role": role,
-            "role_known": role in _KNOWN_ROLES,
+            "worker_id": wid,
+            "role": fold["role"],
+            "role_known": fold["role"] in _KNOWN_ROLES,
             "status": status,
-            "project": project,
-            "idea": idea,
-            "spawns": spawns,
-            "started": lines[0].get("ts"),
-            "last_ts": lines[-1].get("ts"),
-            "n_actions": sum(1 for ln in lines if ln.get("event") in ("action", "spawn")),
-            "recent_actions": actions[-_MAX_RECENT:],
+            "project": proj,
+            "idea": fold["idea"] or (proj if proj != project else None),
+            "variant": fold["variant"],
+            "session_id": sid,
+            "parent": sid if is_sub else None,
+            "is_subagent": is_sub,
+            "children": [],
+            "label": None,
+            "spawns": fold["spawns"][-1]["type"] if fold["spawns"] else None,
+            "spawned": fold["spawns"][-20:],
+            "started": fold["started"],
+            "last_ts": fold["last_ts"],
+            "idle_s": int(age // 10 * 10),
+            "in_tool": fold["open_tool"],
+            "result": fold["result"],
+            "n_actions": fold["n_actions"],
+            "recent_actions": fold["recent_actions"],
+            "_returns": fold["returns"],
         })
     return out
+
+
+def _link_workers(workers: list[dict]) -> list[dict]:
+    """Match each subagent to the spawn line in its parent's log (same session, same type, in order)
+    → a readable label, the spawn id, and the result packet if the child's own stop didn't carry it.
+    Fills parent.children. Mutates and returns `workers`."""
+    by_id = {w["worker_id"]: w for w in workers}
+    kids: dict[str, list[dict]] = {}
+    for w in workers:
+        if w["is_subagent"]:
+            kids.setdefault(w["parent"], []).append(w)
+    for pid, children in kids.items():
+        parent = by_id.get(pid)
+        children.sort(key=lambda c: c.get("started") or "")
+        if parent is None:
+            continue
+        parent["children"] = [c["worker_id"] for c in children]
+        free = list(parent.get("spawned") or [])
+        for c in children:
+            match = next((s for s in free if s["type"] == c["role"]), None) or \
+                (next((s for s in free if s["type"] == "general-purpose"), None) if c["role"] == "general-purpose" else None)
+            if match:
+                free.remove(match)
+                desc = (match.get("summary") or "").split(": ", 2)[-1]
+                c["label"] = desc[:160] or None
+                c["spawn_id"] = match.get("tool_use_id")
+                if not c.get("result") and match.get("tool_use_id"):
+                    c["result"] = (parent.get("_returns") or {}).get(match["tool_use_id"])
+            if not c.get("project") and parent.get("project"):
+                c["project"] = parent["project"]
+    for w in workers:
+        w.pop("_returns", None)
+        w.pop("spawned", None)
+    return workers
 
 
 # ── campaigns (/autopilot) — first-class grouping of delegated projects ─────────
@@ -590,7 +755,9 @@ def snapshot() -> dict:
     rows = parse_registry()
     hub_bus = LAB / ".bus"
     items, all_events = [], []
-    workers = _workers(hub_bus, None)
+    proj_ids = {r["id"] for r in rows if _project_path(r) is not None}
+    workers = _workers(hub_bus, None, proj_ids)
+    hub_runs = _agents_in(hub_bus / "agents")
 
     for e in _read_jsonl(hub_bus / "events.jsonl", limit=400):
         all_events.append(e)
@@ -627,10 +794,16 @@ def snapshot() -> dict:
             pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)
-            pworkers = _workers(pdir / ".bus", row["id"])
-            item["n_workers"] = sum(1 for w in pworkers if w["status"] != "done")
-            workers.extend(pworkers)
+            workers.extend(_workers(pdir / ".bus", row["id"], proj_ids))
         items.append(item)
+
+    # hub-bus workers promoted to a project (its /improve worktrees) count toward that project too
+    for item in items:
+        item["n_workers"] = sum(1 for w in workers if w["project"] == item["id"] and w["status"] != "done")
+    runs = hub_runs + [a for it in items for a in (it.get("agents") or [])]
+    _join_runs(workers, runs)
+    _link_workers(workers)
+    workers.sort(key=lambda w: w.get("last_ts") or "")
 
     all_events.sort(key=lambda e: e.get("ts", ""))
     # gates_waiting counts gates that still need the PI's SIGNATURE — a signed-but-unconsumed gate
@@ -651,4 +824,106 @@ def snapshot() -> dict:
         "campaigns": campaigns(rows),
         "gates_waiting": sum(1 for it in items if it["gate"] and not it["gate_signed"]),
         "cold": len(rows) == 0,
+        "runs": sorted(runs, key=lambda r: r.get("created") or r.get("started") or "", reverse=True)[:100],
+        "hub_agents": hub_runs,
+        "attention": _attention(items, all_events, workers, runs),
+        "executor": executor_status(),
+        "skills": (executor.SKILL_REGISTRY if executor else {}),
     }
+
+
+def _join_runs(workers: list[dict], runs: list[dict]) -> None:
+    """A headless run's orchestrator IS a worker (its session id names the trace file): tag it with
+    the run so the roster nests run → session → subagents, and give it the run's role/label."""
+    by_sid = {r["session_id"]: r for r in runs if r.get("session_id")}
+    for w in workers:
+        r = by_sid.get(w["worker_id"]) or (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
+        if not r:
+            continue
+        w["run_id"] = r["run_id"]
+        if not w.get("is_subagent"):
+            w["label"] = r.get("command") or r.get("prompt_summary")
+            if r.get("status") in ("completed", "failed", "timeout", "killed", "waiting_input") and w["status"] != "done":
+                w["status"] = "done" if r["status"] != "waiting_input" else "idle"
+
+
+# ── attention: one "needs you" queue ─────────────────────────────────────────
+
+def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -> list[dict]:
+    """Lab-derived items in the executor's normalized shape (gates, escalations, stalled runs,
+    stuck subagents). Run-derived items come from executor.attention."""
+    out = []
+    for it in items:
+        if it.get("gate") and not it.get("gate_signed") and it["gate"] in (1, 2, 3):
+            g = it["gate"]
+            out.append({"id": f"gate:{it['id']}:{g}", "kind": "gate", "sev": "block", "ts": it.get("updated"),
+                        "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
+                        "title": f"Gate {g} — {it.get('title') or it['id']}",
+                        "body": it.get("next") or "", "detail": {"gate": g},
+                        "actions": ([{"id": "sign", "label": f"approve Gate {g}"}] if g in (1, 2) else [])
+                        + [{"id": "bundle", "label": "review bundle"}]})
+        for r in it.get("inflight") or []:
+            if r.get("state") == "stalled":
+                out.append({"id": f"stalled:{it['id']}:{r.get('run_id')}", "kind": "stalled", "sev": "warn",
+                            "ts": None, "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
+                            "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}",
+                            "detail": r, "actions": [{"id": "dismiss", "label": "dismiss"}]})
+    for e in _escalations(events):
+        out.append({"id": f"esc:{e['id']}", "kind": "escalation", "sev": "warn" if e.get("severity") != "high" else "block",
+                    "ts": e.get("ts"), "target": e.get("source"), "idea": e.get("source"), "run_id": None,
+                    "skill": None, "title": "Escalation from " + str(e.get("source")), "body": e.get("detail") or "",
+                    "detail": e, "actions": [{"id": "reply", "label": "reply"}, {"id": "resolve", "label": "mark handled"}]})
+    for w in workers:
+        if w.get("is_subagent") and w["status"] == "idle" and not w.get("in_tool") and w.get("idle_s", 0) >= _SUBAGENT_STUCK_S:
+            out.append({"id": f"subagent:{w['worker_id']}:{w.get('last_ts')}", "kind": "subagent", "sev": "warn",
+                        "ts": w.get("last_ts"), "target": w.get("project") or "hub", "idea": w.get("idea"),
+                        "run_id": w.get("run_id"), "skill": None,
+                        "title": f"{w.get('role')} has been silent for {w['idle_s'] // 60} min",
+                        "body": w.get("label") or "", "detail": {"worker_id": w["worker_id"]},
+                        "actions": [{"id": "inspect", "label": "inspect"}, {"id": "dismiss", "label": "dismiss"}]})
+    return out
+
+
+def _attention(items, events, workers, runs) -> list[dict]:
+    extra = _lab_attention(items, events, workers)
+    if executor is None:
+        return extra
+    try:
+        lab = executor.Lab(HUB)
+        manifests = []
+        for _t, _w, path, m in executor.all_runs(lab):
+            manifests.append((path, m))
+        brake = executor.brake(lab, [m for _p, m in manifests])
+        return executor.attention.collect(lab, runs=manifests, extra=extra, brake_reason=brake)
+    except Exception:  # noqa: BLE001 — never blank the dashboard
+        return extra
+
+
+_EXEC_CACHE: dict = {"ts": 0.0, "key": None, "value": None}
+
+
+def executor_status() -> dict:
+    """Launching possible? Which CLIs exist? Caps and load. The CLI probe (a subprocess) is cached 30 s."""
+    if executor is None:
+        return {"available": False, "enabled": False, "reason": "tools/executor is missing"}
+    lab = executor.Lab(HUB)
+    key = str(lab.hub)
+    if _EXEC_CACHE["key"] == key and time.time() - _EXEC_CACHE["ts"] < 30 and _EXEC_CACHE["value"]:
+        base = dict(_EXEC_CACHE["value"])
+    else:
+        try:
+            base = executor.health(lab)
+        except Exception as e:  # noqa: BLE001
+            base = {"enabled": False, "error": str(e)}
+        _EXEC_CACHE.update(ts=time.time(), key=key, value=base)
+    prog = lab.prog()
+    runs = [m for *_x, m in executor.all_runs(lab)]
+    base.update(available=True, enabled=bool(prog.get("enabled")),
+                active=sum(1 for m in runs if m.get("status") in executor.ACTIVE),
+                queued=sum(1 for m in runs if m.get("status") == "queued"),
+                waiting=sum(1 for m in runs if m.get("status") in executor.PAUSED))
+    lt = base.get("last_tick")
+    if isinstance(lt, dict):
+        base["last_tick"] = {k: v for k, v in lt.items() if k != "ts"}   # keep the SSE signature stable
+    base.pop("daily", None)
+    return base

@@ -419,3 +419,108 @@ def test_gate2_expired_signed_envelope_is_not_signed_state(hub, monkeypatch):
     snap = m.snapshot()
     assert snap["items"][0]["gate"] == 2 and snap["items"][0]["gate_signed"] is False
     assert snap["gates_waiting"] == 1
+
+
+# ── subagent visibility: tree, liveness, results, attribution, run join ──────────
+
+def _wlog(bus, wid, lines):
+    import time as _t
+    wdir = bus / "workers"
+    wdir.mkdir(parents=True, exist_ok=True)
+    ts = _t.strftime("%Y-%m-%dT%H:%M:%S")
+    (wdir / f"{wid}.jsonl").write_text(
+        "\n".join(json.dumps({"ts": ts, "worker_id": wid, **ln}) for ln in lines) + "\n", encoding="utf-8")
+
+
+def test_worker_tree_links_spawn_to_child_with_label_and_result(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "SESS", [
+        {"role": "orchestrator", "event": "start", "session_id": "SESS"},
+        {"role": "orchestrator", "event": "spawn", "session_id": "SESS", "tool_use_id": "tuA",
+         "spawns": "ideation-critic", "summary": "Agent: ideation-critic: Novelty skeptic: sparse attn"},
+        {"role": "orchestrator", "event": "return", "session_id": "SESS", "tool_use_id": "tuA",
+         "result": "verdict: bruised — closest work is X"},
+    ])
+    _wlog(bus, "agent-1", [
+        {"role": "ideation-critic", "event": "start", "session_id": "SESS"},
+        {"role": "ideation-critic", "event": "action", "session_id": "SESS", "tool": "WebSearch", "summary": "q"},
+    ])
+    ws = {w["worker_id"]: w for w in m._link_workers(m._workers(bus, None))}
+    child, parent = ws["agent-1"], ws["SESS"]
+    assert child["is_subagent"] and child["parent"] == "SESS" and parent["children"] == ["agent-1"]
+    assert child["label"] == "Novelty skeptic: sparse attn" and child["spawn_id"] == "tuA"
+    assert child["result"].startswith("verdict: bruised")          # from the parent's return line
+    assert parent["n_actions"] == 1                                 # the Post(Agent) 'return' isn't double-counted
+
+
+def test_worker_inside_long_tool_stays_working(hub, monkeypatch):
+    import os
+    import time as _t
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "agent-2", [
+        {"role": "experiment-runner", "event": "start", "session_id": "S"},
+        {"role": "experiment-runner", "event": "begin", "session_id": "S", "tool": "Bash",
+         "summary": "Bash: uv run scripts/run.py", "kind": "run"},
+    ])
+    old = _t.time() - 1500                                          # 25 min into a PILOT run
+    os.utime(bus / "workers" / "agent-2.jsonl", (old, old))
+    w = m._workers(bus, None)[0]
+    assert w["status"] == "working" and w["in_tool"]["tool"] == "Bash"   # not idle, not dropped
+
+
+def test_done_worker_lingers_with_result_and_resume_reopens(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "agent-3", [{"role": "overseer", "event": "start", "session_id": "S"},
+                           {"role": "overseer", "event": "stop", "session_id": "S", "result": "SUPPORTED"}])
+    w = m._workers(bus, None)[0]
+    assert w["status"] == "done" and w["result"] == "SUPPORTED"
+    _wlog(bus, "S", [{"event": "start", "session_id": "S"}, {"event": "stop", "session_id": "S"},
+                     {"event": "start", "session_id": "S", "source": "resume"}])
+    w = next(x for x in m._workers(bus, None) if x["worker_id"] == "S")
+    assert w["status"] != "done"                                    # a resumed session is live again
+
+
+def test_hub_worker_promoted_to_project_from_worktree(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    _wlog(hub.lab / ".bus", "agent-4", [
+        {"role": "experiment-runner", "event": "action", "session_id": "S", "project": "demo",
+         "variant": "exp-004", "summary": "Bash: uv run x"}])
+    snap = m.snapshot()
+    w = next(x for x in snap["workers"] if x["worker_id"] == "agent-4")
+    assert w["project"] == "demo" and w["variant"] == "exp-004"
+    assert next(it for it in snap["items"] if it["id"] == "demo")["n_workers"] == 1
+
+
+def test_snapshot_joins_headless_run_to_its_session_worker(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    adir = hub.lab / ".bus" / "agents"
+    adir.mkdir(parents=True)
+    (adir / "hub-propose-x-1.json").write_text(json.dumps({
+        "schema": 2, "run_id": "hub-propose-x-1", "agent_id": "hub-propose-x-1", "status": "running",
+        "session_id": "SID9", "command": "/propose x", "level": "hub", "target": "x", "backend": "claude",
+        "started": "2026-01-01T00:00:00", "attempts": [{"started": "2026-01-01T00:00:00"}]}), encoding="utf-8")
+    _wlog(hub.lab / ".bus", "SID9", [{"event": "start", "session_id": "SID9"}])
+    snap = m.snapshot()
+    assert snap["runs"][0]["run_id"] == "hub-propose-x-1" and snap["hub_agents"]
+    w = next(x for x in snap["workers"] if x["worker_id"] == "SID9")
+    assert w["run_id"] == "hub-propose-x-1" and w["label"] == "/propose x"
+    for key in ("runs", "attention", "executor", "skills"):
+        assert key in snap
+    assert snap["executor"]["available"] is True and "propose" in snap["skills"]
+
+
+def test_attention_includes_gates_and_escalations(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("idea-g", state="proposal", next="Gate 1: approve the proposal")
+    (hub.lab / ".bus").mkdir(parents=True, exist_ok=True)
+    (hub.lab / ".bus" / "events.jsonl").write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00", "source": "hub", "kind": "escalation", "detail": "need FULL run",
+         "data": {"id": "e-1"}}) + "\n", encoding="utf-8")
+    kinds = {it["kind"]: it for it in m.snapshot()["attention"]}
+    assert kinds["gate"]["sev"] == "block" and kinds["gate"]["detail"]["gate"] == 1
+    assert kinds["escalation"]["detail"]["id"] == "e-1"
