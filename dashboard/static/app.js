@@ -67,7 +67,7 @@ function setPref(k, v) { PREFS[k] = v; try { localStorage.setItem('viv-prefs', J
    listening command bar) must recede so nothing floats over a "screen". One source of truth — the DOM
    itself — drives a `body.overlay-open` class, so it can never drift out of sync with the individual
    open/close fns. Every opener/closer calls syncOverlay() as its last act; render() calls it too. */
-const OVERLAY_IDS = ['#sheet', '#modal', '#drawer', '#inspector', '#detail', '#attention', '#help', '#settings', '#palette', '#paper', '#claims'];
+const OVERLAY_IDS = ['#sheet', '#modal', '#drawer', '#inspector', '#runview', '#detail', '#attention', '#help', '#settings', '#palette', '#paper', '#claims'];
 let OVERLAY_OPEN = false;
 function syncOverlay() {
   OVERLAY_OPEN = OVERLAY_IDS.some(id => { const n = $(id); return n && !n.hidden; });
@@ -78,8 +78,9 @@ function syncOverlay() {
 // The right-side drawers (detail · inspector · attention · command sheet · settings) are mutually
 // exclusive — only one open at a time. Each opener calls this first (a no-op on itself).
 function closeRightDrawers(except) {
-  const drawers = [['#detail', null], ['#inspector', null], ['#attention', null], ['#claims', null], ['#sheet', '#sheetScrim'], ['#settings', '#settingsScrim']];
+  const drawers = [['#detail', null], ['#inspector', null], ['#runview', null], ['#attention', null], ['#claims', null], ['#sheet', '#sheetScrim'], ['#settings', '#settingsScrim']];
   drawers.forEach(([id, scrim]) => { if (id === except) return; const n = $(id); if (n && !n.hidden) { n.hidden = true; if (scrim) { const sc = $(scrim); if (sc) sc.hidden = true; } } });
+  if (except !== '#runview' && typeof RUNVIEW !== 'undefined' && RUNVIEW) { clearInterval(RUNVIEW.timer); RUNVIEW = null; }   // stop the tail poller
 }
 
 /* ── Newt's mind: pose + speech ─────────────────────────────────────────── */
@@ -151,6 +152,7 @@ function renderMeters(s) {
   ff.title = `${sl.in_use}/${sl.cap} compute slots in use${staleN ? ` · ${staleN} stale` : ''}` + (holderLines.length ? '\n' + holderLines.join('\n') : '');
   for (let i = 0; i < sl.cap; i++) { const lit = i < sl.in_use; ff.appendChild(el('i', lit ? (held[i] && held[i].stale ? 'lit stale' : 'lit') : '')); }
   const c = $('#clock'); c.textContent = hhmm(s.now); c.classList.remove('stopped');
+  renderExecBadge(s);
 }
 
 /* ── the World view: the canvas IS the scene; the DOM only holds a cold note */
@@ -220,7 +222,9 @@ function renderShelf(s) {
     const c = el('div', 'pcard');
     let chips = `<span class="chip state">${esc(it.state)}</span>` + (it.loop_active ? '<span class="chip live">loop</span>' : '');
     if (it.n_workers) chips += `<span class="chip work">${it.n_workers} working</span>`;
-    if ((it.agents || []).some(a => a.status === 'running')) chips += `<span class="chip agent">${(it.agents || []).filter(a => a.status === 'running').length} headless</span>`;
+    const hl = (it.agents || []).filter(a => RUN_ACTIVE.has(a.status)).length, hw = (it.agents || []).filter(a => a.status === 'waiting_input').length;
+    if (hl) chips += `<span class="chip agent">${hl} headless</span>`;
+    if (hw) chips += `<span class="chip note">${hw} asking you</span>`;
     fly.forEach(r => chips += `<span class="chip ${r.state === 'stalled' ? 'stalled' : 'live'}">${esc(r.run_id)} ${r.state}</span>`);
     chips += envelopeChip(it);
     c.innerHTML = `<h3>${plantFor(it.state)} ${esc(it.title || it.id)}</h3><div class="row">${chips}</div>
@@ -229,7 +233,7 @@ function renderShelf(s) {
     const br = el('div', 'btnrow');
     br.appendChild(btn('details', '', () => openDetail(it.id)));
     br.appendChild(btn('docs ▸', '', () => openLibraryGroup(it.id)));
-    br.appendChild(btn('command ▸', 'go', () => openSheet(it.id)));
+    br.appendChild(btn(execOn(s) ? 'command / run ▸' : 'command ▸', 'go', () => openSheet(it.id)));
     if (it.has_project) {
       br.appendChild(btn('enter lab', '', () => { enterTerrarium(); Scene.focusProject(it.id); }));
       br.appendChild(btn('status', 'tool', () => runTool('status', it.id)));
@@ -294,7 +298,7 @@ function healthStripEl(s) {
 // gate badge, #gates deep-links, and the beacon's click target are all preserved.
 function renderGates(s) {
   const stage = $('#stage'); stage.innerHTML = '';
-  const p = el('section', 'panel', '<h2>Activity</h2><p class="lede">what needs you, and what’s running right now. Gate 1 & 2 you can approve here — that records your signature; the agent acts on it at its next session/checkpoint. Gate 3 is always done in a session.</p>');
+  const p = el('section', 'panel', `<h2>Activity</h2><p class="lede">what needs you, and what’s running right now. Gate 1 & 2 you can approve here — that records your signature${execOn(s) ? '' : '; the agent acts on it at its next session/checkpoint'}. Answer a run’s question, resume or stop it from its card. Gate 3 is always done in a session.</p>`);
   const sv = sinceVisitEl(s); if (sv) p.appendChild(sv);
   p.appendChild(healthStripEl(s));
   const cols = el('div', 'activity-cols');
@@ -302,8 +306,10 @@ function renderGates(s) {
   // ── Needs you (left): the gates ──
   const need = el('div', 'act-col');
   need.appendChild(el('div', 'd-sec', 'Needs you'));
+  const att = (s.attention || []).filter(a => a.kind !== 'gate' && a.kind !== 'report');
+  if (att.length) { const wrapA = el('div', 'att-list'); att.forEach(a => wrapA.appendChild(attRow(a, false))); need.appendChild(wrapA); }
   const waiting = s.items.filter(it => it.gate);
-  if (!waiting.length) need.appendChild(el('div', 'empty-note sm', '<span class="en-ico">✓</span>nothing needs your sign-off.'));
+  if (!waiting.length && !att.length) need.appendChild(el('div', 'empty-note sm', '<span class="en-ico">✓</span>nothing needs you.'));
   else {
     const wrap = el('div', 'letters');
     waiting.forEach(it => {
@@ -318,7 +324,11 @@ function renderGates(s) {
       if (g === 3 && it.claims) row.appendChild(btn(`claims (${it.claims}) ▸`, 'tool', () => openClaimsMap(it.id, it.title || it.id)));
       // signed-but-unconsumed: the PI already acted — show the hand-off honestly instead of a live
       // Approve button whose re-click errors ("already approved") and whose card never changes.
-      if (g !== 3 && it.gate_signed) card.appendChild(el('div', 'sub', '✓ signed — waiting for the agent to apply it at its next session/checkpoint (start one: claude → /lab-status).'));
+      if (g !== 3 && it.gate_signed) {
+        card.appendChild(el('div', 'sub', execOn(s) ? '✓ signed — the next run in this lab applies it.' : '✓ signed — waiting for the agent to apply it at its next session/checkpoint (start one: claude → /lab-status).'));
+        if (g === 1 && execOn(s) && !runsOf(s, r => r.skill === 'spawn-project' && r.subject === it.id && !RUN_DONE.has(r.status)).length)
+          row.appendChild(btn(`▸ launch /spawn-project ${it.id}`, 'go', () => launchCommand(`/spawn-project ${it.id}`)));
+      }
       else if (g !== 3) row.appendChild(btn(`✓ Approve Gate ${g} (PI)`, 'go', () => openGate(it.id, g)));
       card.appendChild(row);
       if (g === 3) card.appendChild(el('div', 'sub', 'Gate 3 (anything leaving the lab) is never one-click — open a session and run /finalize.'));
@@ -333,6 +343,8 @@ function renderGates(s) {
   //    · alive/stalled. When nothing is executing, show the active projects and the lifecycle stage they sit in. ──
   const fly = el('div', 'act-col');
   fly.appendChild(el('div', 'd-sec', 'In flight'));
+  const liveRuns = runsOf(s, r => RUN_ACTIVE.has(r.status) || r.status === 'waiting_input' || r.status === 'queued');
+  if (liveRuns.length) { const g = el('div', 'run-grid'); liveRuns.slice(0, 8).forEach(r => g.appendChild(runCard(r))); fly.appendChild(el('div', 'leg-sec', 'Headless runs')); fly.appendChild(g); }
   const live = [];
   s.items.forEach(it => (it.inflight || []).forEach(r => live.push({ ...r, slug: it.id, title: it.title || it.id })));
   if (live.length) {
@@ -449,31 +461,46 @@ function renderLedger(s) {
   p.appendChild(body); stage.appendChild(p);
 }
 
-/* ── the Agents roster: every live agent/subagent, grouped by where it works ── */
+/* ── the Agents roster: headless runs, then every agent → its subagents, grouped by where it works ── */
+function workerCard(w, depth) {
+  const role = ROLE_ORDER.includes(w.role) ? w.role : 'other';
+  const last = (w.recent_actions || []).slice(-1)[0];
+  const doing = w.in_tool ? `in <b>${esc(w.in_tool.tool || 'a tool')}</b> · ${esc(w.in_tool.summary || '')}` : (last ? esc(last.text) : '— no actions logged —');
+  const st = w.status === 'working' && w.in_tool ? `working · ${esc(w.in_tool.tool || '')}` : w.status;
+  const c = el('button', `wcard ${w.status === 'working' ? 'on' : w.status === 'done' ? 'done' : 'idle'}${depth ? ' child' : ''}`,
+    `<div class="wc-top"><span class="sw role-${role}"></span><span class="wc-id">${esc(w.label || w.worker_id)}</span><span class="wc-st">${esc(st)}</span></div>
+     <div class="wc-role">${esc(ROLE_LABEL[role] || w.role)}${w.variant ? ` · <span class="mono">${esc(w.variant)}</span>` : ''}${w.run_id ? ' · headless' : ''}</div>
+     <div class="wc-last">${doing}</div>
+     ${w.result && w.status === 'done' ? `<div class="wc-res">↩ ${esc(String(w.result).slice(0, 140))}</div>` : ''}
+     <div class="wc-n">${w.n_actions || 0} action${w.n_actions === 1 ? '' : 's'}${(w.children || []).length ? ` · ${w.children.length} subagent${w.children.length > 1 ? 's' : ''}` : ''}</div>`);
+  c.onclick = () => openWorkerInspector(w.worker_id);
+  return c;
+}
 function renderRoster(s) {
   const stage = $('#stage'); stage.innerHTML = '';
-  const p = el('section', 'panel', '<h2>Agents</h2><p class="lede">every agent &amp; subagent at work right now — grouped by where it works. Click one to read its own action log.</p>');
-  const wk = (s.workers || []).filter(w => w.status !== 'done');
-  if (!wk.length) { p.innerHTML += '<div class="empty-note"><span class="en-ico">😴</span>no agents at work right now — the lab is quiet.</div>'; stage.appendChild(p); return; }
+  const p = el('section', 'panel', '<h2>Agents</h2><p class="lede">headless runs you launched, and every agent at work with its subagents nested under it — what each is doing right now, and what finished ones handed back. Click any to open it.</p>');
+  runsSection(s, p);
+  const all = s.workers || [];
+  const shown = all.filter(w => w.status !== 'done' || w.is_subagent || w.run_id);
+  if (!shown.length) { p.appendChild(el('div', 'empty-note', '<span class="en-ico">😴</span>no agents at work right now — the lab is quiet.')); stage.appendChild(p); return; }
+  const byId = new Map(all.map(w => [w.worker_id, w]));
+  const roots = shown.filter(w => !w.is_subagent || !byId.has(w.parent));
   const groups = {};
-  wk.forEach(w => { const key = w.project ? 'project:' + w.project : (w.idea ? 'idea:' + w.idea : 'hub'); (groups[key] = groups[key] || []).push(w); });
+  roots.forEach(w => { const key = w.project ? 'project:' + w.project : (w.idea ? 'idea:' + w.idea : 'hub'); (groups[key] = groups[key] || []).push(w); });
   const titleFor = it => { const o = (s.items || []).find(x => x.id === it); return o && (o.title || o.id) || it; };
   const label = k => k === 'hub' ? 'The Lab (hub)' : k.startsWith('project:') ? 'project · ' + titleFor(k.slice(8)) : 'idea · ' + titleFor(k.slice(5));
   Object.keys(groups).sort((a, b) => (a === 'hub' ? -1 : b === 'hub' ? 1 : a.localeCompare(b))).forEach(k => {
-    p.appendChild(el('div', 'roster-grouphead', esc(label(k)) + ` · ${groups[k].length}`));
-    const grid = el('div', 'roster-grid');
-    groups[k].forEach(w => {
-      const role = ROLE_ORDER.includes(w.role) ? w.role : 'other';
-      const last = (w.recent_actions || []).slice(-1)[0];
-      const c = el('button', 'wcard ' + (w.status === 'working' ? 'on' : 'idle'),
-        `<div class="wc-top"><span class="sw role-${role}"></span><span class="wc-id">${esc(w.worker_id)}</span><span class="wc-st">${esc(w.status)}</span></div>
-         <div class="wc-role">${esc(ROLE_LABEL[role] || w.role)}</div>
-         <div class="wc-last">${last ? esc(last.text) : '— no actions logged —'}</div>
-         <div class="wc-n">${w.n_actions || 0} action${w.n_actions === 1 ? '' : 's'}</div>`);
-      c.onclick = () => openWorkerInspector(w.worker_id);
-      grid.appendChild(c);
-    });
-    p.appendChild(grid);
+    const live = groups[k].filter(w => w.status !== 'done').length;
+    p.appendChild(el('div', 'roster-grouphead', esc(label(k)) + ` · ${live} active`));
+    const tree = el('div', 'wtree');
+    const addNode = (w, depth) => {
+      const node = el('div', 'wnode'); node.style.setProperty('--depth', depth);
+      node.appendChild(workerCard(w, depth));
+      tree.appendChild(node);
+      (w.children || []).map(id => byId.get(id)).filter(Boolean).filter(c => c.status !== 'done' || depth < 2).forEach(c => addNode(c, depth + 1));
+    };
+    groups[k].sort((a, b) => (a.status === 'done') - (b.status === 'done')).forEach(w => addNode(w, 0));
+    p.appendChild(tree);
   });
   stage.appendChild(p);
 }
@@ -495,6 +522,9 @@ function paletteActions() {
     if (it.gate && it.gate !== 3 && !it.gate_signed) out.push({ label: `Approve Gate ${it.gate} · ${nm}`, hint: 'gate', run: () => openGate(it.id, it.gate) });
   });
   out.push({ label: 'Command the lab (Newt)', hint: 'hub', run: () => openSheet('hub') });
+  if (execOn(STATE)) out.push({ label: 'Run a procedure in the lab…', hint: 'launch', run: () => openSheet('hub') });
+  runsOf(STATE, r => r.status === 'waiting_input').forEach(r => out.push({ label: 'Answer · ' + runTitle(r), hint: 'question', run: () => openRun(r.run_id) }));
+  runsOf(STATE, r => RUN_ACTIVE.has(r.status)).forEach(r => out.push({ label: 'Watch · ' + runTitle(r), hint: 'run', run: () => openRun(r.run_id) }));
   out.push({ label: 'Open · Lab knowledge (findings / failures / open questions)', hint: 'read', run: () => openLibraryDoc('lab', null, 'knowledge/FINDINGS.md', 'Lab knowledge') });
   out.push({ label: 'Open · Settings', hint: 'prefs', run: openSettings });
   out.push({ label: 'Open · History timeline (replay this session)', hint: 'time', run: () => { if ($('#scrubber').hidden) toggleScrubber(); } });
@@ -559,6 +589,7 @@ function renderSettings() {
   body.appendChild(toggleRow('The Key', PREFS.legend, v => setPref('legend', v), 'colour & role legend'));
   body.appendChild(toggleRow('Newt narration', PREFS.narrate, v => setPref('narrate', v), 'speech-bubble commentary'));
   body.appendChild(toggleRow('Ambient motion', PREFS.ambient, v => setPref('ambient', v), 'drifting motes & footstep dust'));
+  renderExecSettings(body);
   body.appendChild(el('div', 'd-sec', 'More'));
   const more = el('div', 'set-more');
   more.appendChild(btn('Lab knowledge', '', () => { closeSettings(); openLibraryDoc('lab', null, 'knowledge/FINDINGS.md', 'Lab knowledge'); }));
@@ -569,23 +600,35 @@ function openSettings() { closeRightDrawers('#settings'); renderSettings(); $('#
 function closeSettings() { $('#settingsScrim').hidden = true; $('#settings').hidden = true; syncOverlay(); }
 
 /* ── attention inbox (the bell): everything that wants the PI, prioritised ── */
-function attentionItems(s) {
+function pendingDirectiveRows(s) {
+  const dirs = [...(s.directives || []).map(d => ({ ...d, target: d.target || 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: d.target || it.id })))];
+  return dirs.filter(d => d.state === 'pending' || d.state === 'seen');
+}
+function attentionItems(s) {   // legacy / demo path (snapshots without the server-computed queue)
   const out = [];
   (s.items || []).filter(it => it.gate).forEach(it => out.push({ sev: it.gate === 3 ? 'g3' : 'gate', icon: '⛓', title: `Gate ${it.gate} · ${it.title || it.id}`, sub: it.gate_signed ? 'signed ✓ — waiting for the agent' : (it.next || ''), act: it.gate !== 3 && !it.gate_signed ? { label: 'approve', fn: () => openGate(it.id, it.gate) } : null, go: () => openDetail(it.id) }));
   escList(s).slice(-8).reverse().forEach(e => out.push({ sev: 'warn', icon: '⚠', title: `${e.source || 'a project'} needs you`, sub: e.detail || '' }));
-  const dirs = [...(s.directives || []).map(d => ({ ...d, target: d.target || 'hub' })), ...(s.items || []).flatMap(it => (it.directives || []).map(d => ({ ...d, target: d.target || it.id })))];
-  dirs.filter(d => d.state === 'pending' || d.state === 'seen').forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${esc(d.target)}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id, d.ts); setTimeout(renderAttention, 300); } } }));
+  pendingDirectiveRows(s).forEach(d => out.push({ sev: 'pending', icon: '✎', title: `pending → ${esc(d.target)}`, sub: d.text || d.action || '', act: { label: 'withdraw', fn: () => { withdrawDirective(d.target, d.id, d.ts); setTimeout(renderAttention, 300); } } }));
   (s.items || []).forEach(it => (it.inflight || []).filter(r => r.state === 'stalled').forEach(r => out.push({ sev: 'warn', icon: '◴', title: `stalled run · ${it.id}`, sub: r.run_id, go: () => openDetail(it.id) })));
   return out;
 }
 function renderAttention() {
   const s = STATE; if (!s) return;
-  const items = attentionItems(s);
-  const badge = $('#bellN'); if (items.length) { badge.hidden = false; badge.textContent = items.length; } else badge.hidden = true;
+  const server = Array.isArray(s.attention) ? s.attention : null;
+  const pend = server ? pendingDirectiveRows(s) : [];
+  const legacy = server ? [] : attentionItems(s);
+  const urgent = server ? server.filter(a => a.sev !== 'info').length + pend.length : legacy.length;
+  const badge = $('#bellN'); if (urgent) { badge.hidden = false; badge.textContent = urgent; } else badge.hidden = true;
   if ($('#attention').hidden) return;
   const body = $('#attentionBody'); body.innerHTML = '';
-  if (!items.length) { body.appendChild(el('div', 'empty-note', 'all clear — nothing needs you.')); return; }
-  items.forEach(it => {
+  if (server) {
+    if (!server.length && !pend.length) { body.appendChild(el('div', 'empty-note', 'all clear — nothing needs you.')); return; }
+    server.forEach(a => body.appendChild(attRow(a, false)));
+    pend.forEach(d => { const row = el('div', 'att-row sev-pending'); row.innerHTML = `<span class="att-i">✎</span><span class="att-t"><b>pending → ${esc(d.target)}</b><small>${esc(d.text || d.action || '')}</small></span>`; const b = el('button', 'btn att-b', 'withdraw'); b.onclick = () => { withdrawDirective(d.target, d.id, d.ts); setTimeout(renderAttention, 300); }; row.appendChild(b); body.appendChild(row); });
+    return;
+  }
+  if (!legacy.length) { body.appendChild(el('div', 'empty-note', 'all clear — nothing needs you.')); return; }
+  legacy.forEach(it => {
     const row = el('div', 'att-row sev-' + it.sev);
     row.innerHTML = `<span class="att-i">${it.icon}</span><span class="att-t"><b>${esc(it.title)}</b><small>${esc(it.sub)}</small></span>`;
     if (it.act) { const b = el('button', 'btn go att-b', it.act.label); b.onclick = it.act.fn; row.appendChild(b); }
@@ -604,18 +647,11 @@ function openDetail(id) {
   if (it.best && it.best.series) h += sparkline(it.best.series);
   const fly = it.inflight || [];
   if (fly.length) { h += '<div class="d-sec">In flight</div>'; fly.forEach(r => { const pct = r.budget_min ? Math.min(100, r.elapsed_s / (r.budget_min * 60) * 100) : 0; h += `<div class="nrow ${r.state === 'stalled' ? 'stalled' : ''}"><span class="rid">${esc(r.run_id)}</span><span class="barwrap"><i style="width:${pct.toFixed(0)}%"></i></span><span class="met">${Math.round(r.elapsed_s / 60)}m/${r.budget_min || '∞'}m · ${esc(r.state)}</span><button class="x-row peek" data-peek="${esc(it.id)}|${esc(r.run_id)}" title="peek at this run's metrics">⤢</button></div>`; }); }
-  // headless top-level agents launched into this project (agent_runner.py). The data was always in the
-  // snapshot (item.agents) but never rendered — a running `codex exec`/`claude -p` was invisible.
-  const agents = it.agents || [];
-  if (agents.length) {
-    h += '<div class="d-sec">Headless agents</div>';
-    agents.slice(-6).reverse().forEach(a => {
-      const running = a.status === 'running';
-      const dur = a.wall_seconds != null ? `${Math.round(a.wall_seconds / 60)}m` : (a.started ? `since ${hhmm(a.started)}` : '');
-      const tail = running ? '' : ` · exit ${a.exit_code != null ? esc(String(a.exit_code)) : '?'}`;
-      h += `<div class="iact"><span class="ik ${running ? 'run' : ''}">${running ? '● ' : ''}${esc(a.backend || 'agent')}</span><span class="ix">${esc(a.role || a.agent_id || '')}${a.prompt_summary ? ' · ' + esc(a.prompt_summary) : ''}</span><span class="it">${esc(a.status || '')} ${esc(dur)}${tail}</span></div>`;
-    });
-    if (agents.some(a => a.status === 'running')) h += `<div class="sub" style="margin-top:4px">stop one in a session: <span class="mono">agent_runner.py kill &lt;agent_id&gt;</span></div>`;
+  // headless runs on this project/idea (the executor, or agent_runner.py) — click one for its live view
+  const runs = runsOf(STATE, r => r.target === it.id || r.subject === it.id);
+  if (runs.length) {
+    h += '<div class="d-sec">Headless runs</div>';
+    runs.slice(0, 8).forEach(r => { h += `<div class="iact run-row" data-run="${esc(r.run_id)}"><span class="ik ${RUN_ACTIVE.has(r.status) ? 'run' : ''}">${esc(r.backend || 'agent')}</span><span class="ix">${esc(runTitle(r))}</span><span class="it">${runPill(r)} ${esc(mins(r.elapsed_s))}</span></div>`; });
   }
   const dirs = (it.directives || []).filter(d => d.state === 'pending' || d.state === 'seen');
   if (dirs.length) { h += '<div class="d-sec">Pending directives</div>'; dirs.forEach(d => h += `<div class="iact"><span class="ix">${esc(d.text || d.action)}</span><span class="ik">${esc(d.state)}</span></div>`); }
@@ -623,8 +659,9 @@ function openDetail(id) {
   if (evs.length) { h += '<div class="d-sec">Recent events</div>'; evs.forEach(e => h += `<div class="iact"><span class="it">${hhmm(e.ts)}</span><span class="ix">${esc(e.kind)} ${esc(e.detail || '')}</span></div>`); }
   const body = $('#detailBody'); body.innerHTML = h;
   body.querySelectorAll('[data-peek]').forEach(b => b.onclick = () => { const [pid, rid] = b.dataset.peek.split('|'); openDoc('run', pid, null, `${pid} · ${rid}`, rid); });
+  body.querySelectorAll('[data-run]').forEach(b => { b.style.cursor = 'pointer'; b.onclick = () => openRun(b.dataset.run); });
   const br = el('div', 'btnrow');
-  br.appendChild(btn('command ▸', 'go', () => { closeDetail(); openSheet(it.id); }));
+  br.appendChild(btn(execOn(STATE) ? 'command / run ▸' : 'command ▸', 'go', () => { closeDetail(); openSheet(it.id); }));
   br.appendChild(btn('docs ▸', '', () => { closeDetail(); openLibraryGroup(it.id); }));
   if (it.has_project) { br.appendChild(btn('enter lab', '', () => { closeDetail(); enterTerrarium(); Scene.focusProject(it.id); })); br.appendChild(btn('status', 'tool', () => runTool('status', it.id))); br.appendChild(btn('compare', 'tool', () => runTool('compare', it.id))); }
   if (it.paper && it.paper.pdf) br.appendChild(btn('view paper', 'go', () => { closeDetail(); openPaper(it.id, it.title || it.id); }));
@@ -789,23 +826,33 @@ function buildActions() {
     const g = el('button', 'act gate', `<b>✓ Approve Gate ${it.gate}</b><small>record your PI signature (logged)</small>`);
     g.onclick = () => { closeSheet(); openGate(it.id, it.gate); }; grid.appendChild(g);
   }
+  const on = execOn(STATE);
   set.forEach(([action, label, hint, cls, args]) => {
-    const a = el('button', 'act ' + (cls || ''), `<b>${esc(label)}</b><small>${esc(hint)}</small>`);
+    const runs = on && LAUNCHABLE_CMDS.has(action);
+    const a = el('button', 'act ' + (cls || ''), `<b>${esc(label)}</b><small>${esc(hint)}${runs ? (action === 'stop_loop' ? ' · stops its run now' : ' · starts a run now') : ''}</small>`);
     a.onclick = () => doCommand(action, args || {}, label);
     grid.appendChild(a);
   });
+  buildRunBox();
 }
 function updateLatency() {
   const it = targetItem(TARGET);
   $('#latency').textContent = (it && it.loop_active)
     ? 'a loop is live here — it reads this at its next cycle.'
-    : 'commands reach the agent at its next checkpoint (a loop cycle / session start) — not instant.';
+    : execOn(STATE)
+      ? 'commands marked “starts a run” launch a headless session now; the rest (and notes) reach the agent at its next checkpoint.'
+      : 'commands reach the agent at its next checkpoint (a loop cycle / session start) — not instant.';
 }
 async function doCommand(action, args, label) {
   if (demoBlock()) { closeSheet(); return; }
   try {
-    const r = await fetch('/api/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, action, args, text: label }) }).then(r => r.json());
-    toast(r.ok ? `queued: ${label} → ${TARGET === 'hub' ? 'the lab' : TARGET} — the agent acts on it at its next checkpoint` : (r.error || 'command failed'));
+    const launch = execOn(STATE) && LAUNCHABLE_CMDS.has(action);
+    const r = await fetch('/api/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: TARGET, action, args, text: label, launch }) }).then(r => r.json());
+    if (!r.ok) toast(r.error || 'command failed');
+    else if (r.launch && r.launch.ok) { toast(`${label}: queued ${r.launch.command} — watch it live`); closeSheet(); return openRun(r.launch.run_id); }
+    else if (r.launch && r.launch.error) toast(`${label}: directive queued, but the run was refused — ${r.launch.error}`);
+    else if (r.stopped) toast(r.stopped.length ? `${label}: stopping ${r.stopped.length} run(s)` : `${label}: queued (no loop run was live)`);
+    else toast(`queued: ${label} → ${TARGET === 'hub' ? 'the lab' : TARGET} — the agent acts on it at its next checkpoint`);
     closeSheet();
   } catch (e) { toast('could not reach the vivarium server'); }
 }
@@ -823,6 +870,7 @@ async function sendNote() {
 /* ── gate approval ──────────────────────────────────────────────────────── */
 let pendingGate = null;
 function openGate(idea, gate) {
+  MODAL_OK = null; $('#modalOk').textContent = 'confirm';
   pendingGate = { idea, gate };
   const m = $('#modal'); m.classList.toggle('g3', gate === 3);
   $('#modalSeal').textContent = gate;
@@ -830,13 +878,15 @@ function openGate(idea, gate) {
   $('#modalBody').innerHTML = (gate === 1
     ? `Records your PI signature on <span class="mono">studies/${esc(idea)}/proposal.md</span> and lets the agent spawn the project.`
     : `Sets <span class="mono">gate2_envelope.pi_signed: true</span> in the project's control.yaml, authorizing the pre-agreed FULL runs.`)
-    + `<div class="sub" style="margin-top:8px">This records your signature <b>now</b>; a live agent session acts on it at its <b>next checkpoint</b> — if none is running, start one (<span class="mono">claude</span> → <span class="mono">/lab-status</span>) and nothing happens until you do.</div>`;
+    + (execOn(STATE)
+      ? `<div class="sub" style="margin-top:8px">This records your signature <b>now</b>.${gate === 1 ? ' You can then launch <span class="mono">/spawn-project</span> from the Activity tab (or it starts itself if <span class="mono">dashboard.auto_spawn_on_gate1</span> is on).' : ' Runs inside the envelope can go FULL from now on.'}</div>`
+      : `<div class="sub" style="margin-top:8px">This records your signature <b>now</b>; a live agent session acts on it at its <b>next checkpoint</b> — if none is running, start one (<span class="mono">claude</span> → <span class="mono">/lab-status</span>) and nothing happens until you do.</div>`);
   const read = $('#modalRead'); read.hidden = false;
   read.textContent = gate === 1 ? 'review proposal + novelty ▸' : 'review envelope + pilots ▸';
   read.onclick = () => { closeModal(); openLibraryBundle('gate', idea, gate, `Gate ${gate} · ${idea}`); };   // read first; approve again from Activity / the bell
   $('#modalScrim').hidden = false; m.hidden = false; syncOverlay();
 }
-function closeModal() { $('#modalScrim').hidden = true; $('#modal').hidden = true; $('#modal').classList.remove('g3'); pendingGate = null; syncOverlay(); }
+function closeModal() { $('#modalScrim').hidden = true; $('#modal').hidden = true; $('#modal').classList.remove('g3'); pendingGate = null; MODAL_OK = null; syncOverlay(); }
 async function confirmGate() {
   if (!pendingGate) return;
   if (demoBlock()) { closeModal(); return; }
@@ -845,6 +895,7 @@ async function confirmGate() {
     // surface the server's full answer: the note carries the crucial "the agent applies this at its
     // next checkpoint" latency, the warnings carry e.g. "idea is not in state proposal".
     toast(r.ok ? `Gate ${pendingGate.gate} approved ✓${r.note ? ' — ' + r.note : ''}` : (r.error || 'failed'));
+    if (r.launch && r.launch.ok) setTimeout(() => openRun(r.launch.run_id), 200);
     (r.warnings || []).forEach(w => toast(`⚠ ${w}`));
   } catch (e) { toast('could not reach the server'); }
   closeModal();
@@ -1263,7 +1314,7 @@ function openWorkerInspector(id) {
   const role = ROLE_ORDER.includes(w.role) ? w.role : 'other';
   const where = w.project ? `project · ${esc(titleOfAnchor(w))}` : (w.idea ? `idea · ${esc(titleOfAnchor(w))}` : 'the hub');
   const live = w.status === 'working';
-  $('#inspectorTitle').innerHTML = `<span class="who"><span class="nm">${esc(w.worker_id)}</span>
+  $('#inspectorTitle').innerHTML = `<span class="who"><span class="nm">${esc(w.label ? String(w.label).slice(0, 60) : w.worker_id)}</span>
      <span class="rl"><span class="sw role-${role}"></span>${esc(ROLE_LABEL[role] || w.role)}<span class="wsep">·</span><span class="wst ${live ? 'live' : ''}">${live ? '● ' : ''}${esc(w.status)}</span><span class="wsep">·</span>${where}</span></span>`;
   const body = $('#inspectorBody'); body.innerHTML = '';
   // follow toggle + at-a-glance meta
@@ -1272,17 +1323,31 @@ function openWorkerInspector(id) {
   followBtn.onclick = () => { if (Scene.following() === id) Scene.stopFollow(); else { enterTerrarium(); Scene.followWorker(id); } };
   ctl.appendChild(followBtn);
   body.appendChild(ctl);
-  const meta = el('div', 'insp-meta', `<span><b>${w.n_actions || 0}</b> actions</span>${w.started ? `<span>started <span class="mono">${hhmm(w.started)}</span></span>` : ''}${w.last_ts ? `<span>last <span class="mono">${hhmm(w.last_ts)}</span></span>` : ''}`);
+  const meta = el('div', 'insp-meta', `<span><b>${w.n_actions || 0}</b> actions</span>${w.started ? `<span>started <span class="mono">${hhmm(w.started)}</span></span>` : ''}${w.last_ts ? `<span>last <span class="mono">${hhmm(w.last_ts)}</span></span>` : ''}${w.variant ? `<span>variant <span class="mono">${esc(w.variant)}</span></span>` : ''}`);
   body.appendChild(meta);
+  if (w.label) body.appendChild(el('div', 'insp-label', esc(w.label)));
+  const rel = el('div', 'insp-rel');
+  const parent = w.parent && workerById(w.parent);
+  if (parent) { const pb = btn(`↑ spawned by ${parent.label || ROLE_LABEL[parent.role] || parent.worker_id}`, 'tool', () => openWorkerInspector(parent.worker_id)); rel.appendChild(pb); }
+  if (w.run_id) rel.appendChild(btn('headless run ▸', 'tool', () => openRun(w.run_id)));
+  if (rel.children.length) body.appendChild(rel);
+  if (w.in_tool) body.appendChild(el('div', 'insp-now', `<div class="now-h">▸ inside ${esc(w.in_tool.tool || 'a tool')} since <span class="mono">${hhmm(w.in_tool.since)}</span></div><div class="now-row"><span class="ik ${esc(w.in_tool.kind || '')}">${esc(w.in_tool.kind || '')}</span><span class="now-x">${esc(w.in_tool.summary || '')}</span></div>`));
+  if (w.result) body.appendChild(el('div', 'insp-res', `<div class="now-h">↩ handed back</div><div>${esc(w.result)}</div>`));
+  const kids = (w.children || []).map(workerById).filter(Boolean);
+  if (kids.length) {
+    body.appendChild(el('div', 'd-sec', `Subagents · ${kids.length}`));
+    kids.forEach(k => { const kr = ROLE_ORDER.includes(k.role) ? k.role : 'other'; const row = el('button', 'iact kid', `<span class="sw role-${kr}"></span><span class="ix">${esc(k.label || ROLE_LABEL[kr] || k.role)}</span><span class="ik ${k.status === 'working' ? 'run' : ''}">${esc(k.status)}</span>`); row.onclick = () => openWorkerInspector(k.worker_id); body.appendChild(row); });
+  }
   const acts = (w.recent_actions || []).slice();
   // current action (the latest) gets its own highlighted callout
   const cur = acts[acts.length - 1];
-  if (cur && live) {
+  const showNow = !!(cur && live && !w.in_tool);   // an in-flight tool already has its own callout above
+  if (showNow) {
     const k = esc(cur.kind || '');
     body.appendChild(el('div', 'insp-now', `<div class="now-h">▸ doing now</div><div class="now-row"><span class="ik ${k}">${k}</span><span class="now-x">${esc(cur.text || '')}</span></div>`));
   }
-  body.appendChild(el('div', 'd-sec', live && cur ? 'Earlier actions' : 'Action timeline'));
-  const past = (live && cur ? acts.slice(0, -1) : acts).reverse();
+  body.appendChild(el('div', 'd-sec', showNow || w.in_tool ? 'Earlier actions' : 'Action timeline'));
+  const past = (showNow ? acts.slice(0, -1) : acts).reverse();
   if (!past.length) { body.appendChild(el('div', 'empty-note', cur ? 'no earlier actions logged.' : 'no actions logged yet.')); }
   past.forEach(a => {
     const row = el('div', 'iact');
@@ -1529,7 +1594,7 @@ function createWorld(canvas, opts) {
   function reconcile() {
     const seen = new Set();
     items.forEach(o => { const k = 'it:' + o.id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'item', o, jx: hash01(o.id + 'a') - 0.5, jy: hash01(o.id + 'b') - 0.5 }); ents.set(k, e); } e.o = o; });
-    workforce.forEach(w => { if (w.role === 'orchestrator') return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: hash01(w.worker_id + 'a') - 0.5, jy: hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; });   // despawn is handled below (a worker that left the live set), so done workers never reach here
+    workforce.forEach(w => { if (w.role === 'orchestrator' && !w.run_id) return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: hash01(w.worker_id + 'a') - 0.5, jy: hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; });   // despawn is handled below (a worker that left the live set), so done workers never reach here
     for (const [k, e] of ents) { if (!seen.has(k)) { if (e.kind === 'worker' && !e.dying) { e.dying = true; e.dieT = 0; } else if (e.kind === 'item') ents.delete(k); } }
   }
   // which room + station an entity belongs to, and whether it's visible in this view
@@ -1909,6 +1974,376 @@ function renderMinimap(info) {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Headless runs (the executor): launch · watch · answer · steer · stop.
+   The server (serve.py → tools/executor) does the work; this is the PI's surface for it. Honest by
+   construction: a launch says QUEUED, "waiting for you" is never shown as running, Gate 3 is absent.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const RUN_ACTIVE = new Set(['starting', 'running', 'resuming']);
+const RUN_DONE = new Set(['completed', 'failed', 'timeout', 'killed']);
+const RUN_LABEL = { queued: 'queued', starting: 'starting', running: 'running', resuming: 'resuming',
+  waiting_input: 'waiting for you', completed: 'completed', failed: 'failed', timeout: 'timed out', killed: 'stopped' };
+const LAUNCHABLE_CMDS = new Set(['start_loop', 'stop_loop', 'run_smoke', 'request_run', 'analyze', 'ideate']);
+const execInfo = s => (s && s.executor) || {};
+const execOn = s => !!(execInfo(s).available && execInfo(s).enabled);
+const runsOf = (s, pred) => ((s && s.runs) || []).filter(pred || (() => true));
+const runById = id => ((STATE && STATE.runs) || []).find(r => r.run_id === id);
+const mins = sec => sec == null ? '' : (sec < 90 ? `${Math.round(sec)}s` : `${Math.round(sec / 60)}m`);
+function runPill(r) {
+  const st = r.status || 'queued';
+  return `<span class="rpill st-${esc(st)}">${RUN_ACTIVE.has(st) ? '● ' : st === 'waiting_input' ? '? ' : ''}${esc(RUN_LABEL[st] || st)}</span>`;
+}
+function runTitle(r) { return r.command || r.prompt_summary || r.run_id; }
+
+// one POST helper for the executor surface (older call sites keep their inline fetch)
+async function api(path, body) {
+  if (demoBlock()) return { error: 'demo mode — nothing is written', demo: true };
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    return await r.json();
+  } catch (e) { return { error: 'could not reach the vivarium server' }; }
+}
+
+// generic confirm modal (the gate modal's chrome, with a caller-supplied OK action)
+let MODAL_OK = null;
+function openConfirm({ title, body, ok = 'confirm', seal = '!', onOk }) {
+  if (!$('#settings').hidden) closeSettings();   // settings sits above the modal layer — never confirm behind it
+  pendingGate = null;
+  const m = $('#modal'); m.classList.remove('g3');
+  $('#modalSeal').textContent = seal; $('#modalTitle').textContent = title; $('#modalBody').innerHTML = body;
+  $('#modalRead').hidden = true; $('#modalOk').textContent = ok;
+  MODAL_OK = async () => { closeModal(); await onOk(); };
+  $('#modalScrim').hidden = false; m.hidden = false; syncOverlay();
+}
+
+/* ── the run launcher (inside the command sheet) ──────────────────────────── */
+function skillsFor(s, target) {
+  const reg = (s && s.skills) || {}, it = target === 'hub' ? null : targetItem(target);
+  return Object.entries(reg).filter(([name, c]) => {
+    const slugSchema = (c.args || '').startsWith('slug');
+    if (target === 'hub') return c.level === 'hub' && (!slugSchema || c.args === 'slug?');
+    if (it && it.has_project) return c.level === 'project' || ['analyze', 'make-figures', 'write-paper', 'critique-paper', 'review-paper', 'advance'].includes(name);
+    return c.level === 'hub' && slugSchema && !['analyze', 'make-figures'].includes(name);
+  }).sort((a, b) => (a[1].level === 'project' ? 0 : 1) - (b[1].level === 'project' ? 0 : 1));   // a project's own procedures first
+}
+function buildRunBox() {
+  const box = $('#runBox'); box.innerHTML = '';
+  const x = execInfo(STATE);
+  if (!x.available) { box.hidden = true; return; }
+  box.hidden = false;
+  box.appendChild(el('div', 'rb-head', 'Run a procedure <small>a headless agent session, watched & answered from here</small>'));
+  if (!x.enabled) {
+    const off = el('div', 'rb-off', 'Programmatic launching is <b>off</b> (a PI-owned switch). Until it is on, commands above are queued for your next session.');
+    off.appendChild(btn('turn it on…', 'go', () => { closeSheet(); openSettings(); }));
+    box.appendChild(off); return;
+  }
+  const skills = skillsFor(STATE, TARGET);
+  if (!skills.length) { box.appendChild(el('div', 'sub', 'no launchable procedures for this target.')); return; }
+  const row = el('div', 'rb-row');
+  const sel = el('select', 'rb-skill');
+  skills.forEach(([name, c]) => { const o = el('option', '', `/${esc(name)}${c.mode === 'interactive' ? ' · interview' : ''}`); o.value = name; sel.appendChild(o); });
+  const args = el('input', 'rb-args'); args.type = 'text'; args.maxLength = 400;
+  const be = el('select', 'rb-backend');
+  const clis = x.clis || {};
+  ['claude', 'codex', 'opencode'].forEach(b => { const o = el('option', '', b + (clis[b] && !clis[b].found ? ' (not installed)' : '')); o.value = b; o.disabled = !!(clis[b] && !clis[b].found); if (b === (x.backend || 'claude')) o.selected = true; be.appendChild(o); });
+  const chain = el('select', 'rb-chain');
+  [['off', 'stop when done'], ['next', 'then run its next step'], ['loop', 'keep going until a gate']].forEach(([v, l]) => { const o = el('option', '', l); o.value = v; chain.appendChild(o); });
+  const sync = () => {
+    const c = ((STATE.skills || {})[sel.value]) || {};
+    const takesText = (c.args || '').includes('text') || c.args === 'campaign';
+    args.hidden = !takesText; args.placeholder = c.hint || '';
+    const it = targetItem(TARGET);
+    $('#rbHint').textContent = `${c.mode === 'interactive' ? 'An interview: it asks, you answer here. ' : ''}` +
+      `runs in ${c.level === 'project' ? 'the project repo' : 'the hub'}${TARGET !== 'hub' && (c.args || '').startsWith('slug') ? ` · for ${TARGET}` : ''}` +
+      `${it && it.gate && !it.gate_signed ? ` · Gate ${it.gate} is still unsigned here` : ''}.`;
+  };
+  sel.onchange = sync;
+  row.append(sel, args, be, chain);
+  box.appendChild(row);
+  const foot = el('div', 'rb-foot');
+  foot.appendChild(el('span', 'rb-hint', '')); foot.lastChild.id = 'rbHint';
+  const go = btn('▸ launch', 'go', async () => {
+    go.disabled = true;
+    const r = await api('/api/run', { skill: sel.value, target: TARGET, args: args.hidden ? '' : args.value, backend: be.value, chain: chain.value, confirm: true });
+    go.disabled = false;
+    if (!r.ok) return toast(r.error || 'launch refused');
+    toast(`queued ${r.command || r.run_id} — ${r.note || ''}`);
+    closeSheet(); openRun(r.run_id);
+  });
+  foot.appendChild(go);
+  box.appendChild(foot);
+  sync();
+}
+
+/* ── the run view drawer: one run, live ───────────────────────────────────── */
+let RUNVIEW = null;   // { id, offset, timer, detail, stick }
+function openRun(id) {
+  if (!id) return;
+  closeRightDrawers('#runview');
+  if (RUNVIEW && RUNVIEW.timer) clearInterval(RUNVIEW.timer);
+  RUNVIEW = { id, offset: 0, timer: null, detail: null, stick: true, status: null, lastDetail: 0 };
+  $('#runviewTitle').textContent = 'run · loading…';
+  const body = $('#runviewBody'); body.innerHTML = '';
+  body.appendChild(el('div', 'rv-top', '')); body.appendChild(el('div', 'rv-ask', ''));
+  body.appendChild(el('div', 'd-sec', 'Live transcript'));
+  const tail = el('div', 'rv-tail', '<div class="sub">waiting for output…</div>');
+  tail.onscroll = () => { if (RUNVIEW) RUNVIEW.stick = tail.scrollTop + tail.clientHeight >= tail.scrollHeight - 24; };
+  body.appendChild(tail);
+  body.appendChild(el('div', 'rv-subs', '')); body.appendChild(el('div', 'rv-qa', ''));
+  $('#runview').hidden = false; syncOverlay();
+  pollRun(true);
+  RUNVIEW.timer = setInterval(() => pollRun(false), 1500);
+}
+function closeRun() { if (RUNVIEW && RUNVIEW.timer) clearInterval(RUNVIEW.timer); RUNVIEW = null; $('#runview').hidden = true; syncOverlay(); }
+async function pollRun(first) {
+  const rv = RUNVIEW; if (!rv || $('#runview').hidden) return;
+  if (DEMO) return;
+  try {
+    const t = await fetch(`/api/run/tail?run_id=${encodeURIComponent(rv.id)}&offset=${rv.offset}`).then(r => r.json());
+    if (RUNVIEW !== rv) return;
+    if (t.ok) {
+      rv.offset = t.offset;
+      if (t.lines && t.lines.length) appendTail(t.lines, t.skipped);
+      if (first || t.status !== rv.status || Date.now() - rv.lastDetail > 5000) { rv.status = t.status; await loadRunDetail(); }
+    } else if (first) { $('#runviewTitle').textContent = 'run'; $('.rv-top').innerHTML = `<div class="empty-note">${esc(t.error || 'no such run')}</div>`; }
+  } catch (e) {}
+}
+function appendTail(lines, skipped) {
+  const tail = $('.rv-tail'); if (!tail) return;
+  if (tail.querySelector('.sub')) tail.innerHTML = skipped ? `<div class="tl tl-raw">… earlier output skipped (${Math.round(skipped / 1024)} KB)</div>` : '';
+  lines.forEach(l => {
+    const who = l.who ? `<span class="tl-who">${esc(l.who)}</span>` : '';
+    let h;
+    switch (l.k) {
+      case 'text': h = `<div class="tl tl-text">${who}${esc(l.t)}</div>`; break;
+      case 'tool': h = `<div class="tl tl-tool">${who}<span class="tl-k">${esc(l.tool || 'tool')}</span> ${esc(l.t)}</div>`; break;
+      case 'sub': h = `<div class="tl tl-sub">↩ <span class="tl-who">${esc(l.who || 'subagent')}</span> returned: ${esc(l.t)}</div>`; break;
+      case 'end': h = `<div class="tl tl-end">${l.stop === 'tool_deferred' ? '⏸ paused — waiting for your answer' : '■ ' + esc(l.t || 'finished')}${l.cost != null ? ` <span class="tl-cost">$${(+l.cost).toFixed(3)}</span>` : ''}</div>`; break;
+      case 'err': h = `<div class="tl tl-err">${who}${esc(l.t)}</div>`; break;
+      case 'attempt': h = `<div class="tl tl-att">${esc(l.t)}</div>`; break;
+      case 'start': h = `<div class="tl tl-att">${esc(l.t)}</div>`; break;
+      default: h = `<div class="tl tl-raw">${esc(l.t)}</div>`;
+    }
+    tail.insertAdjacentHTML('beforeend', h);
+  });
+  while (tail.children.length > 1500) tail.removeChild(tail.firstChild);
+  if (RUNVIEW && RUNVIEW.stick) tail.scrollTop = tail.scrollHeight;
+}
+async function loadRunDetail() {
+  const rv = RUNVIEW; if (!rv) return;
+  let d;
+  try { d = await fetch(`/api/run?run_id=${encodeURIComponent(rv.id)}`).then(r => r.json()); } catch (e) { return; }
+  if (RUNVIEW !== rv || !d.ok) return;
+  rv.detail = d.run; rv.lastDetail = Date.now();
+  renderRunDetail(d.run);
+}
+function renderRunDetail(r) {
+  $('#runviewTitle').innerHTML = `<span class="who"><span class="nm">${esc(runTitle(r))}</span><span class="rl">${runPill(r)}<span class="wsep">·</span>${esc(r.backend || '')}${r.attempt > 1 ? `<span class="wsep">·</span>attempt ${r.attempt}` : ''}<span class="wsep">·</span>${esc(r.level === 'project' ? 'project ' + (r.target || '') : 'the hub')}</span></span>`;
+  const top = $('.rv-top'); top.innerHTML = '';
+  const meta = [];
+  if (r.elapsed_s != null) meta.push(`<span><b>${mins(r.elapsed_s)}</b>${r.max_minutes ? ` / ${Math.round(r.max_minutes)}m` : ''}</span>`);
+  if (r.n_actions) meta.push(`<span><b>${r.n_actions}</b> actions</span>`);
+  if ((r.subagents || []).length) meta.push(`<span><b>${r.subagents.length}</b> subagents</span>`);
+  if (r.usage && r.usage.cost_usd != null) meta.push(`<span>≈ $${(+r.usage.cost_usd).toFixed(2)} <small>(est.)</small></span>`);
+  if (r.session_id) meta.push(`<span class="mono" title="session id">${esc(String(r.session_id).slice(0, 8))}</span>`);
+  top.appendChild(el('div', 'insp-meta', meta.join('')));
+  if (r.reason && !RUN_ACTIVE.has(r.status)) top.appendChild(el('div', 'sub', esc(r.reason)));
+  if (r.status === 'queued') top.appendChild(el('div', 'sub', r.not_before ? `scheduled for ${esc(hhmm(r.not_before))}` : 'queued — starts as soon as a slot is free (caps: agents.programmatic.*).'));
+  if (RUN_ACTIVE.has(r.status) && r.last_action) top.appendChild(el('div', 'insp-now', `<div class="now-h">▸ doing now</div><div class="now-row"><span class="ik">${esc(r.last_action.tool || '')}</span><span class="now-x">${esc(r.last_action.summary || '')}</span></div>`));
+  if (r.report && RUN_DONE.has(r.status)) {
+    const rep = r.report;
+    const needs = rep.needs_pi ? `<div class="rv-needs">needs you: <b>${esc(rep.needs_pi)}</b></div>` : '';
+    const box = el('div', 'rv-report', `<div class="now-h">report</div>${needs}<div>${esc(rep.summary || '(no summary)')}</div>`);
+    if (rep.next) { const nb = btn(`▸ run ${rep.next}`, 'go', () => launchCommand(rep.next, r)); box.appendChild(nb); }
+    top.appendChild(box);
+  }
+  const ctl = el('div', 'btnrow');
+  if (RUN_ACTIVE.has(r.status)) ctl.appendChild(btn('■ stop', 'warn', () => confirmStop(r)));
+  if (r.status === 'queued') ctl.appendChild(btn('cancel', 'warn', async () => { const x = await api('/api/run/cancel', { run_id: r.run_id }); toast(x.ok ? x.note : x.error); loadRunDetail(); }));
+  if (RUN_DONE.has(r.status) && r.session_id && r.backend !== 'codex') ctl.appendChild(btn('↻ resume', '', async () => { const x = await api('/api/run/resume', { run_id: r.run_id }); toast(x.ok ? x.note : x.error); loadRunDetail(); }));
+  if (r.transcript && editorUri(r.transcript)) ctl.appendChild(btn('transcript ▸', 'tool', () => openInEditor(r.transcript)));
+  ctl.appendChild(btn('supervisor log', 'tool', async () => { const x = await fetch(`/api/run/log?run_id=${encodeURIComponent(r.run_id)}`).then(y => y.json()).catch(() => ({})); $('#drawer').hidden = false; syncOverlay(); $('#drawerTitle').textContent = `supervisor log · ${r.run_id}`; $('#drawerBody').textContent = x.text || '(empty)'; }));
+  top.appendChild(ctl);
+  renderAsk(r);
+  renderRunSubagents(r);
+  const qa = $('.rv-qa'); qa.innerHTML = '';
+  if ((r.qa || []).length) {
+    qa.appendChild(el('div', 'd-sec', 'Questions & answers'));
+    r.qa.slice().reverse().forEach(q => {
+      const qs = ((q.question || {}).questions || []).map(x => x.question).join(' · ');
+      const ans = Object.entries(q.answers || {}).map(([k, v]) => `${Array.isArray(v) ? v.join(', ') : v}`).join(' · ') || q.response || '';
+      qa.appendChild(el('div', 'iact', `<span class="it">${hhmm(q.answered_at)}</span><span class="ix">${esc(qs)} → <b>${esc(ans)}</b></span>`));
+    });
+  }
+}
+function renderAsk(r) {
+  const host = $('.rv-ask'); if (!host) return;
+  // rebuild only when the question (or the run's state) actually changes — a periodic detail refresh
+  // must never wipe an option the PI just picked or a reply they are typing
+  const key = ((r.pending_question || {}).tool_use_id || '') + '|' + r.status + '|' + (r.attempt || 0);
+  if (host.dataset.q === key) return;
+  host.dataset.q = key;
+  host.innerHTML = '';
+  if (r.status === 'waiting_input' && r.pending_question) {
+    const qs = ((r.pending_question.input || {}).questions) || [];
+    const card = el('div', 'qcard');
+    card.appendChild(el('div', 'q-h', '? the agent is asking you'));
+    const answers = {};
+    qs.forEach((q, qi) => {
+      const g = el('div', 'q-block');
+      g.appendChild(el('div', 'q-q', `${q.header ? `<span class="q-tag">${esc(q.header)}</span>` : ''}${esc(q.question || '')}`));
+      (q.options || []).forEach((o, oi) => {
+        const id = `q${qi}o${oi}`;
+        const lab = el('label', 'q-opt', `<input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="q${qi}" id="${id}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span>`);
+        lab.querySelector('input').onchange = e => {
+          if (q.multiSelect) { const cur = new Set(answers[q.question] || []); e.target.checked ? cur.add(o.label) : cur.delete(o.label); answers[q.question] = [...cur]; }
+          else answers[q.question] = o.label;
+        };
+        g.appendChild(lab);
+      });
+      const other = el('input', 'q-other'); other.type = 'text'; other.placeholder = 'or type your own answer…';
+      other.oninput = () => { if (other.value.trim()) answers[q.question] = other.value.trim(); };
+      g.appendChild(other);
+      card.appendChild(g);
+    });
+    const send = btn('▸ answer & resume', 'go', async () => {
+      if (!Object.keys(answers).length) return toast('pick an option (or type an answer) first');
+      send.disabled = true;
+      const x = await api('/api/run/answer', { run_id: r.run_id, answers });
+      send.disabled = false;
+      toast(x.ok ? x.note : (x.error || 'could not answer'));
+      if (x.ok) { host.dataset.q = ''; loadRunDetail(); }
+    });
+    card.appendChild(send);
+    host.appendChild(card);
+  }
+  if (r.status === 'waiting_input' || RUN_DONE.has(r.status)) {
+    if (!r.session_id || r.backend === 'codex') return;
+    const box = el('div', 'rv-reply');
+    const ta = el('textarea'); ta.rows = 2; ta.placeholder = r.status === 'waiting_input' ? 'reply in your own words instead…' : 'reply to this run — continues the same session…';
+    const b = btn('send ▸', '', async () => {
+      const v = ta.value.trim(); if (!v) return;
+      const x = await api('/api/run/reply', { run_id: r.run_id, text: v });
+      toast(x.ok ? x.note : (x.error || 'could not send'));
+      if (x.ok) { ta.value = ''; host.dataset.q = ''; loadRunDetail(); }
+    });
+    box.append(ta, b); host.appendChild(box);
+  }
+}
+function renderRunSubagents(r) {
+  const host = $('.rv-subs'); if (!host) return; host.innerHTML = '';
+  const subs = r.subagents || []; if (!subs.length) return;
+  host.appendChild(el('div', 'd-sec', `Subagents · ${subs.length}`));
+  subs.slice().reverse().forEach(sa => {
+    const role = ROLE_ORDER.includes(sa.type) ? sa.type : 'other';
+    const live = sa.status === 'working';
+    const row = el('div', 'sa-row' + (live ? ' on' : ''));
+    row.innerHTML = `<div class="sa-top"><span class="sw role-${role}"></span><b>${esc(ROLE_LABEL[role] || sa.type)}</b><span class="sa-d">${esc(sa.description || '')}</span><span class="wst ${live ? 'live' : ''}">${live ? '● ' : ''}${esc(sa.status || '')}</span></div>`
+      + (live && sa.last_action ? `<div class="sa-last">▸ ${esc(sa.last_action)}</div>` : '')
+      + (sa.result ? `<details class="sa-res"><summary>result</summary><div>${esc(sa.result)}</div></details>` : '');
+    host.appendChild(row);
+  });
+}
+function confirmStop(r) {
+  openConfirm({ title: `Stop ${runTitle(r)}?`, seal: '■', ok: 'stop it',
+    body: `Stops the agent session${r.subagents && r.subagents.length ? ' and its subagents' : ''}. On macOS/Linux it gets a graceful signal first; on Windows it is ended at once. <div class="sub" style="margin-top:8px">The session stays <b>resumable</b> — nothing is lost, and the ledgers/git are the memory.</div>`,
+    onOk: async () => { const x = await api('/api/run/stop', { run_id: r.run_id, confirm: true }); toast(x.ok ? x.note : (x.error || 'could not stop')); if (RUNVIEW) loadRunDetail(); } });
+}
+// run "/skill a b" as reported by a run's footer (the server re-validates everything)
+function parseCommand(cmd, fallbackTarget) {
+  const toks = String(cmd || '').trim().split(/\s+/); const skill = (toks[0] || '').replace(/^\//, '');
+  const c = ((STATE && STATE.skills) || {})[skill]; if (!c) return null;
+  const rest = toks.slice(1);
+  if (skill === 'autopilot') return rest[0] === 'continue' && rest[1] ? { skill, target: 'hub', args: rest[1] } : null;
+  if ((c.args || '').startsWith('slug')) return rest.length ? { skill, target: rest[0], args: rest.slice(1).join(' ') } : { skill, target: 'hub', args: '' };
+  return { skill, target: c.level === 'project' ? (fallbackTarget || 'hub') : 'hub', args: rest.join(' ') };
+}
+async function launchCommand(cmd, fromRun) {
+  const p = parseCommand(cmd, fromRun && fromRun.target);
+  if (!p) return toast(`“${cmd}” isn't a launchable procedure — run it in a session`);
+  const x = await api('/api/run', { ...p, backend: fromRun && fromRun.backend, confirm: true });
+  if (!x.ok) return toast(x.error || 'launch refused');
+  toast(`queued ${x.command} — ${x.note}`); openRun(x.run_id);
+}
+
+/* ── attention: the server's one "needs you" queue, with typed actions ─────── */
+const ATT_ICON = { question: '?', needs_pi: '⛓', gate: '⛓', permission: '🔐', denied: '⊘', crashed: '✖', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸' };
+async function attAct(it, a) {
+  const run = it.run_id, d = it.detail || {};
+  switch (a.id) {
+    case 'answer': case 'tail': case 'reply': return openRun(run);
+    case 'stop': { const r = runById(run); return r ? confirmStop(r) : null; }
+    case 'resume': { const x = await api('/api/run/resume', { run_id: run }); return toast(x.ok ? x.note : x.error); }
+    case 'next': return launchCommand(a.command || d.next, runById(run));
+    case 'allow': case 'deny': { const x = await api('/api/run/permission', { run_id: run, n: d.n, allow: a.id === 'allow' }); return toast(x.ok ? (a.id === 'allow' ? 'allowed once' : 'denied') : x.error); }
+    case 'sign': return openGate(it.idea, d.gate);
+    case 'bundle': return openLibraryBundle('gate', it.idea, d.gate, it.title);
+    case 'resolve': { const x = await api('/api/escalation/resolve', { ref: d.id, source: d.source }); return toast(x.ok ? 'marked handled' : x.error); }
+    case 'inspect': return openWorkerInspector(d.worker_id);
+    case 'dismiss': { const x = await api('/api/attention/ack', { id: it.id, action: 'dismiss' }); if (!x.ok) toast(x.error); return; }
+  }
+  if (it.kind === 'escalation' && a.id === 'reply') return openSheet(it.target || 'hub');
+}
+function attRow(it, compact) {
+  const row = el('div', `att-row sev-${it.sev === 'block' ? 'gate' : it.sev === 'warn' ? 'warn' : 'info'} k-${it.kind}`);
+  row.innerHTML = `<span class="att-i">${ATT_ICON[it.kind] || '•'}</span><span class="att-t"><b>${esc(it.title)}</b><small>${esc(it.body || (it.run_id ? '' : ''))}</small></span>`;
+  const acts = el('span', 'att-acts');
+  (it.actions || []).slice(0, compact ? 2 : 4).forEach(a => { const b = el('button', 'btn att-b' + (['answer', 'sign', 'allow', 'next'].includes(a.id) ? ' go' : ''), esc(a.label)); b.onclick = e => { e.stopPropagation(); attAct(it, a); }; acts.appendChild(b); });
+  row.appendChild(acts);
+  if (it.run_id) { const t = row.querySelector('.att-t'); t.style.cursor = 'pointer'; t.onclick = () => openRun(it.run_id); }
+  else if (it.kind === 'gate') { const t = row.querySelector('.att-t'); t.style.cursor = 'pointer'; t.onclick = () => openDetail(it.idea); }
+  return row;
+}
+
+/* ── runs list (Agents tab + Activity) ─────────────────────────────────────── */
+function runCard(r) {
+  const c = el('button', 'run-card st-' + (r.status || 'queued'));
+  const subs = (r.subagents || []).filter(x => x.status === 'working').length;
+  const what = r.status === 'waiting_input' ? (((r.pending_question || {}).input || {}).questions || [{}])[0].question || 'asking you'
+    : (RUN_ACTIVE.has(r.status) && r.last_action ? `${r.last_action.tool || ''} · ${r.last_action.summary || ''}` : ((r.report && r.report.summary) || r.reason || r.last_message || ''));
+  c.innerHTML = `<div class="rc-top"><span class="rc-cmd">${esc(runTitle(r))}</span>${runPill(r)}</div>
+    <div class="rc-mid">${esc(String(what).slice(0, 180))}</div>
+    <div class="rc-bot"><span>${esc(r.backend || '')}</span>${r.elapsed_s != null ? `<span>${mins(r.elapsed_s)}${r.max_minutes && RUN_ACTIVE.has(r.status) ? ` / ${Math.round(r.max_minutes)}m` : ''}</span>` : ''}${subs ? `<span>${subs} subagent${subs > 1 ? 's' : ''} working</span>` : ''}${r.attempt > 1 ? `<span>attempt ${r.attempt}</span>` : ''}<span class="mono">${hhmm(r.started || r.created)}</span></div>`;
+  c.onclick = () => openRun(r.run_id);
+  return c;
+}
+function runsSection(s, host, { limit = 12, title = 'Headless runs' } = {}) {
+  const runs = runsOf(s, r => r.schema === 2 || r.skill);
+  if (!runs.length && !execOn(s)) return;
+  const order = r => r.status === 'waiting_input' ? 0 : RUN_ACTIVE.has(r.status) ? 1 : r.status === 'queued' ? 2 : 3;
+  const list = runs.slice().sort((a, b) => order(a) - order(b)).slice(0, limit);
+  host.appendChild(el('div', 'roster-grouphead', `${esc(title)} · ${runs.filter(r => RUN_ACTIVE.has(r.status)).length} running · ${runs.filter(r => r.status === 'waiting_input').length} waiting for you`));
+  if (!list.length) { host.appendChild(el('div', 'quiet sm', execOn(s) ? 'no runs yet — launch one from any command sheet (⋯ or “command ▸”).' : '')); return; }
+  const grid = el('div', 'run-grid'); list.forEach(r => grid.appendChild(runCard(r))); host.appendChild(grid);
+}
+
+/* ── executor settings + topbar badge ─────────────────────────────────────── */
+function renderExecSettings(body) {
+  const x = execInfo(STATE);
+  body.appendChild(el('div', 'd-sec', 'Agents & launching'));
+  if (!x.available) { body.appendChild(el('div', 'sub', 'The executor (tools/executor) isn’t in this checkout — the dashboard stays observe-and-sign.')); return; }
+  body.appendChild(toggleRow('Programmatic launching', !!x.enabled, v => openConfirm({
+    title: v ? 'Turn programmatic launching on?' : 'Turn programmatic launching off?', seal: v ? '▸' : '■', ok: v ? 'turn on' : 'turn off',
+    body: v ? `The dashboard will be able to start headless agent sessions (<span class="mono">${esc(x.backend || 'claude')}</span>, as you, with your own login) for the procedures you launch. Every gate and hard rule still binds them; Gate 3 is never delegated. Sets <span class="mono">agents.programmatic.enabled: true</span> (logged).`
+      : 'No new runs will start. Runs already going finish normally (or stop them from their run view).',
+    onOk: async () => { const r = await api('/api/executor/enable', { enabled: v, confirm: true }); toast(r.ok ? r.note : (r.error || 'failed')); } }), 'PI-owned · agents.programmatic.enabled'));
+  const clis = x.clis || {};
+  const cl = Object.entries(clis).map(([k, v]) => `${esc(k)}: ${v.found ? `✓${v.version ? ' ' + esc(v.version) : ''}${v.shim ? ' (.cmd shim)' : ''}` : '—'}`).join(' · ');
+  const c = x.caps || {};
+  body.appendChild(el('div', 'set-note', `backend <b>${esc(x.backend || 'claude')}</b> · permissions <span class="mono">${esc(x.permission_mode || 'auto')}</span><br>${cl}<br>caps: ${c.total ?? '?'} at once · ${c.hub ?? '?'} in the hub · ${c.per_project ?? '?'} per project${c.daily_runs ? ` · ${c.daily_runs}/day` : ''}${c.daily_minutes ? ` · ${c.daily_minutes} min/day` : ''}${x.brake ? `<br><b>brake:</b> ${esc(x.brake)}` : ''}`));
+}
+function renderExecBadge(s) {
+  const b = $('#execBadge'); if (!b) return;
+  const x = execInfo(s);
+  if (!x.available) { b.hidden = true; return; }
+  const act = x.active || 0, wait = x.waiting || 0, q = x.queued || 0;
+  b.hidden = false;
+  b.className = 'exec-badge' + (wait ? ' wait' : act ? ' on' : '') + (x.enabled ? '' : ' off');
+  b.textContent = !x.enabled ? '▸ launching off' : wait ? `? ${wait} waiting` : act ? `● ${act} running${q ? ` · ${q} queued` : ''}` : (q ? `${q} queued` : '▸ idle');
+  b.title = x.enabled ? `headless runs · ${act} running · ${wait} waiting for you · ${q} queued — open the Agents tab` : 'programmatic launching is off — open Settings to turn it on';
+  b.onclick = () => x.enabled ? goTab('agents') : openSettings();
+}
+
 /* ── wiring ─────────────────────────────────────────────────────────────── */
 function goTab(m) { MODE = m; location.hash = m; try { localStorage.setItem('viv-tab', m); } catch (e) {} render(); Scene.setView(m); }
 $$('.tab').forEach(b => b.onclick = () => goTab(b.dataset.go));
@@ -1921,7 +2356,8 @@ $('#newtStage').onclick = () => openSheet(TARGET || 'hub');
 $('#lantern').onclick = () => { MODE = 'gates'; location.hash = 'gates'; render(); Scene.setView('gates'); };
 $('#sheetClose').onclick = closeSheet; $('#sheetScrim').onclick = closeSheet;
 $('#sendNote').onclick = sendNote;
-$('#modalCancel').onclick = closeModal; $('#modalScrim').onclick = closeModal; $('#modalOk').onclick = confirmGate;
+$('#modalCancel').onclick = closeModal; $('#modalScrim').onclick = closeModal; $('#modalOk').onclick = () => (MODAL_OK ? MODAL_OK() : confirmGate());
+$('#runviewClose').onclick = closeRun;
 $('#drawerClose').onclick = closeDrawer;
 $('#inspectorClose').onclick = closeInspector;
 $('#cameraBack').onclick = () => Scene.back();
@@ -1951,7 +2387,7 @@ $('#claimsClose').onclick = closeClaims;
 window.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
   if (e.key === '/' && !typing && $('#palette').hidden) { e.preventDefault(); openPalette(); }
-  else if (e.key === 'Escape') { if (!$('#paper').hidden) closePaper(); else if (!$('#claims').hidden) closeClaims(); else if (!$('#help').hidden) closeHelp(); else if (!$('#settings').hidden) closeSettings(); else if (!$('#palette').hidden) closePalette(); else if (!$('#detail').hidden) closeDetail(); else if (!$('#attention').hidden) { $('#attention').hidden = true; syncOverlay(); } else if (!$('#scrubber').hidden) closeScrubber(); }
+  else if (e.key === 'Escape') { if (!$('#runview').hidden) closeRun(); else if (!$('#paper').hidden) closePaper(); else if (!$('#claims').hidden) closeClaims(); else if (!$('#help').hidden) closeHelp(); else if (!$('#settings').hidden) closeSettings(); else if (!$('#palette').hidden) closePalette(); else if (!$('#detail').hidden) closeDetail(); else if (!$('#attention').hidden) { $('#attention').hidden = true; syncOverlay(); } else if (!$('#scrubber').hidden) closeScrubber(); }
 });
 window.addEventListener('hashchange', () => { let m = location.hash.slice(1); if (m === 'night') m = 'gates'; if (VIEWS[m]) { MODE = m; render(); Scene.setView(m); } });
 // canvas clicks → the same console / gates / inspector the rest of the UI uses
@@ -1969,11 +2405,15 @@ function notifyChanges(prev, next) {
   if (!prev) { _seenEventTs = lastTs; return; }                 // don't toast the initial load
   const fresh = _seenEventTs ? ev.filter(e => (e.ts || '') > _seenEventTs) : [];
   _seenEventTs = lastTs;
+  const ask = fresh.filter(e => e.kind === 'agent_waiting').slice(-1)[0];
+  if (ask) { const r = runById((ask.data || {}).run_id); return toast(`? ${(r && runTitle(r)) || 'a run'} is asking you${(ask.data || {}).question ? ': ' + ask.data.question : ''}`); }
   const esc1 = fresh.filter(e => e.kind === 'escalation').slice(-1)[0];
   if (esc1) return toast(`⚠ ${esc1.source || 'a project'} needs you${esc1.detail ? ' · ' + esc1.detail : ''}`);
   if ((next.gates_waiting || 0) > (prev.gates_waiting || 0)) return toast('🔔 a new gate is waiting for you');
   const gr = fresh.filter(e => e.kind === 'gate_resolved').slice(-1)[0];
   if (gr) return toast(`⛓ gate resolved${gr.idea ? ' · ' + gr.idea : ''}${gr.detail ? ' — ' + gr.detail : ''}`);
+  const af = fresh.filter(e => e.kind === 'agent_finished' && (e.data || {}).run_id).slice(-1)[0];
+  if (af) { const r = runById(af.data.run_id); return toast(`${(r && runTitle(r)) || af.detail || 'a run'} ${RUN_LABEL[af.status] || af.status || 'finished'}`); }
   const fin = fresh.filter(e => e.kind === 'run_finished').slice(-1)[0];
   if (fin) return toast(`${fin.source ? fin.source + ' · ' : ''}${fin.run_id || 'run'} ${fin.status || 'finished'}`);
   const kill = fresh.filter(e => e.kind === 'kill').slice(-1)[0];

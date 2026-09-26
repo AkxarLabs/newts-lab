@@ -30,6 +30,7 @@
     <button class="tab" data-go="ledger">Ledger</button>
   </nav>
   <div class="status">
+    <button class="exec-badge" id="execBadge" title="headless runs (the executor)" hidden></button>
     <span class="motes" id="fireflies" title="compute slots"></span>
     <span class="clock" id="clock" title="last sync">··:··</span>
     <button class="iconbtn" id="paletteBtn" title="search / jump (press /)">⌕</button>
@@ -153,6 +154,7 @@
     <span>send to</span><span class="chips" id="targetChips"></span>
   </div>
   <div class="actions" id="actionGrid"></div>
+  <div class="runbox" id="runBox" hidden></div>
   <div class="note-box">
     <textarea id="noteText" rows="2" placeholder="…or write a free-text note"></textarea>
     <button id="sendNote">leave a note</button>
@@ -215,6 +217,14 @@
   <div class="inspector-body" id="inspectorBody"></div>
 </aside>
 
+<!-- run view: one headless run — live transcript, its question, its subagents, stop/resume/reply -->
+<aside class="inspector runview" id="runview" hidden>
+  <div class="inspector-head">
+    <span id="runviewTitle">run</span>
+    <button class="x" id="runviewClose">✕</button>
+  </div>
+  <div class="inspector-body" id="runviewBody"></div>
+</aside>
 <div class="toast" id="toast" hidden></div>
 <div class="stale-veil" id="staleVeil" hidden>⟳ reconnecting to the lab — showing the last snapshot…</div>
 

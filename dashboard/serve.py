@@ -1,6 +1,6 @@
 """Vivarium — the Newts' Lab, rendered as a living terrarium. Optional, local-only.
 
-    uv run --with pyyaml python dashboard/serve.py [--port 8787]
+    uv run --with pyyaml python dashboard/serve.py [--port 8787] [--hub <another lab's hub root>]
 
 A tiny stdlib HTTP server that READS the lab's files (registry, run records, the event
 bus, slots, in-flight liveness) and serves a no-build single-page scene. It is the PI's
@@ -14,6 +14,14 @@ control surface — but it stays honest about what it can and can't do:
                           local-only, explicit-confirm, logged. GATE 3 IS NEVER OFFERED.
   RUNS (safe, read-only subprocesses, on demand):
     POST /api/tool        a whitelisted read-only tool (check_lab/show_config/status/…)
+  LAUNCHES (headless agent sessions via tools/executor — PI-owned opt-in, OFF by default):
+    POST /api/run                  queue a whitelisted procedure (/propose x, /experiment p, …)
+    POST /api/run/answer|reply     answer a run's question / send it a follow-up (resumes the session)
+    POST /api/run/stop|resume|cancel
+    POST /api/run/permission       decide a pending permission request (permission_wait_seconds > 0)
+    POST /api/attention/ack        dismiss a "needs you" item
+    POST /api/executor/enable      flip agents.programmatic.enabled (explicit confirm, logged)
+    GET  /api/run?run_id= · /api/run/tail?run_id=&offset= · /api/run/log · /api/executor/health
   READS (safe, read-only file views, on demand):
     POST /api/read        a small whitelisted text view (lab knowledge; a gate's proposal/
                           claims/envelope) from fixed roots + a sanitized slug. Never writes.
@@ -23,8 +31,11 @@ control surface — but it stays honest about what it can and can't do:
                           extension whitelist — never a free path)
     GET  /api/libfile     an image a document references (same containment) → inline figures
 
-It cannot run an agent skill (that's the Claude session) and it never signs Gate 3 or
-fakes a result. Binds 127.0.0.1 only. Delete the dashboard/ folder and the lab is unchanged.
+It launches procedures only through the executor (the unmodified agent CLI, as the logged-in user,
+in a detached supervisor that outlives this server) and only when the PI has enabled programmatic
+launching; every gate and hard rule binds a launched run exactly as in a session. It never signs
+Gate 3, never launches /finalize, and never fakes a result. Binds 127.0.0.1 only. Delete the
+dashboard/ folder and the lab is unchanged (the executor has its own CLI: tools/executor_cli.py).
 """
 
 from __future__ import annotations
@@ -50,6 +61,8 @@ STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 
 import sources  # noqa: E402
+
+executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
 
 # Structured command actions the dashboard may issue (the agent executes them in-protocol).
 COMMAND_ACTIONS = {
@@ -91,10 +104,20 @@ def _next_id(directives_path: Path) -> str:
     return f"d-{hi + 1:03d}"
 
 
+def _pdir(slug: str | None) -> Path | None:
+    """A registered idea's project dir — the registry's Project column first (an /adopt-ed repo can
+    live anywhere), then projects_root/<slug>. Only an existing directory counts."""
+    if not slug:
+        return None
+    row = next((r for r in sources.parse_registry() if r.get("id") == slug), None) or {"id": slug, "project": ""}
+    pdir = sources._project_path(row)
+    return pdir if (pdir and pdir.is_dir()) else None
+
+
 def _bus_dir(target: str) -> Path:
     if target in ("hub", "", None):
         return LAB / ".bus"
-    pdir = sources._project_path({"id": target, "project": ""})
+    pdir = _pdir(target)
     return (pdir / ".bus") if pdir else (LAB / ".bus")
 
 
@@ -255,12 +278,22 @@ def approve_gate(idea: str, gate: int) -> dict:
                        "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
         _emit_hub("gate_resolved", idea=idea, detail="Gate 1 approved (PI via dashboard)")
         _pi_log({"action": "approve_gate", "gate": 1, "idea": idea})
-        return {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
-                "note": "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint."}
+        exec_on = executor is not None and bool(
+            ((sources._load_yaml(LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}).get("enabled"))
+        res = {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
+               "note": (f"Proposal signed — launch /spawn-project {idea} from the Activity tab when you're ready."
+                        if exec_on else
+                        "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint.")}
+        if (sources._load_yaml(LAB / "config.yaml").get("dashboard") or {}).get("auto_spawn_on_gate1"):
+            out, code = launch_run({"skill": "spawn-project", "target": idea, "confirm": True}, by="gate1-auto")
+            res["launch"] = out
+            if code == 200:
+                res["note"] = f"Proposal signed; /spawn-project {idea} queued ({out.get('run_id')})."
+        return res
     # gate 2 — sign the project's control.yaml gate2_envelope (the canonical machine-readable
     # signature). READ via YAML to VALIDATE the envelope; WRITE via a targeted regex so the
     # file's comments/formatting survive.
-    pdir = sources._project_path({"id": idea, "project": ""})
+    pdir = _pdir(idea)
     control = (pdir / "control.yaml") if pdir else None
     if not control or not control.exists():
         return {"error": f"no control.yaml for {idea} (spawn the project first)"}
@@ -294,13 +327,340 @@ def approve_gate(idea: str, gate: int) -> dict:
             "note": "gate2_envelope.pi_signed set true (signed_via: dashboard). FULL runs within the envelope are now authorized."}
 
 
+# ── executor: launching / answering / steering headless runs ─────────────────
+#
+# Pure functions returning (body, http_code) so tests call them without a socket. Every state change
+# is logged to lab/.bus/pi-actions.jsonl; the executor records its own transitions in runs.jsonl.
+
+# dashboard command → the procedure that consumes it (the directive is still written first, so a
+# session already running there sees it too; the launched run's inbox checkpoint acts on it)
+COMMAND_TO_RUN = {"start_loop": "research-loop", "run_smoke": "experiment", "request_run": "experiment",
+                  "analyze": "analyze", "ideate": "ideate"}
+_KICK = threading.Event()        # wakes the scheduler thread right after a launch/answer
+
+
+def _xlab():
+    return executor.Lab(HUB)
+
+
+def _no_executor():
+    return {"error": "the executor (tools/executor) is not available in this checkout"}, 503
+
+
+def _run_ref(body: dict) -> str | None:
+    rid = body.get("run_id") or body.get("id")
+    return rid if (isinstance(rid, str) and _ID_OK.match(rid.strip()) and ".." not in rid) else None
+
+
+def launch_run(body: dict, by: str = "dashboard") -> tuple[dict, int]:
+    """Queue one whitelisted procedure run. The scheduler thread starts it within ~2 s (or at once)."""
+    if executor is None:
+        return _no_executor()
+    if not body.get("confirm"):
+        return {"error": "launching needs explicit confirm"}, 400
+    try:
+        max_minutes = float(body["max_minutes"]) if body.get("max_minutes") not in (None, "") else None
+        repeat = float(body["repeat_minutes"]) if body.get("repeat_minutes") not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"error": "max_minutes / repeat_minutes must be numbers"}, 400
+    spec = executor.RunSpec(
+        skill=str(body.get("skill") or ""), target=str(body.get("target") or "hub"),
+        args=str(body.get("args") or ""), backend=body.get("backend") or None,
+        model=body.get("model") or None, effort=body.get("effort") or None, max_minutes=max_minutes,
+        chain=str(body.get("chain") or "off"), repeat_minutes=repeat, created_by=by)
+    try:
+        m = executor.enqueue(_xlab(), spec)
+    except executor.SpecError as e:
+        return {"error": str(e)}, 400
+    _pi_log({"action": "run.launch", "run_id": m["run_id"], "skill": m.get("skill"), "target": m.get("target"),
+             "args": m.get("args"), "backend": m.get("backend"), "by": by})
+    _KICK.set()
+    return {"ok": True, "run_id": m["run_id"], "position": m.get("position"), "status": m["status"],
+            "command": m.get("command"),
+            "note": f"queued (#{m.get('position')}) — it starts as soon as a slot is free"}, 200
+
+
+def _run_op(kind: str, body: dict) -> tuple[dict, int]:
+    if executor is None:
+        return _no_executor()
+    rid = _run_ref(body)
+    if not rid:
+        return {"error": "invalid run id"}, 400
+    lab = _xlab()
+    try:
+        if kind == "answer":
+            answers = body.get("answers")
+            m = executor.answer(lab, rid, answers if isinstance(answers, dict) and answers else None,
+                                str(body.get("text") or body.get("response") or "") or None)
+        elif kind == "reply":
+            m = executor.reply(lab, rid, str(body.get("text") or ""))
+        elif kind == "stop":
+            if not body.get("confirm"):
+                return {"error": "stopping a run needs explicit confirm"}, 400
+            m = executor.stop(lab, rid)
+        elif kind == "resume":
+            m = executor.resume(lab, rid)
+        elif kind == "cancel":
+            m = executor.cancel(lab, rid)
+        else:
+            return {"error": "unknown operation"}, 400
+    except executor.SpecError as e:
+        return {"error": str(e)}, 400
+    _pi_log({"action": f"run.{kind}", "run_id": rid})
+    _KICK.set()
+    notes = {"answer": "answered — the run resumes in a moment", "reply": "sent — the session resumes with it",
+             "stop": "stopping (POSIX: graceful, then killed; Windows: killed at once — the session stays resumable)",
+             "resume": "queued to resume", "cancel": "cancelled"}
+    return {"ok": True, "run_id": rid, "status": m.get("status"), "note": notes[kind]}, 200
+
+
+def permission_run(body: dict) -> tuple[dict, int]:
+    if executor is None:
+        return _no_executor()
+    rid = _run_ref(body)
+    if not rid:
+        return {"error": "invalid run id"}, 400
+    try:
+        n = int(body.get("n"))
+    except (TypeError, ValueError):
+        return {"error": "n must be the request number"}, 400
+    try:
+        executor.permission_decision(_xlab(), rid, n, bool(body.get("allow")), str(body.get("message") or ""))
+    except executor.SpecError as e:
+        return {"error": str(e)}, 400
+    _pi_log({"action": "run.permission", "run_id": rid, "n": n, "allow": bool(body.get("allow"))})
+    return {"ok": True}, 200
+
+
+def ack_attention(body: dict) -> tuple[dict, int]:
+    if executor is None:
+        return _no_executor()
+    try:
+        rec = executor.attention.ack(_xlab(), str(body.get("id") or ""), str(body.get("action") or "dismiss"))
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    return {"ok": True, "ack": rec}, 200
+
+
+def resolve_escalation(body: dict) -> tuple[dict, int]:
+    """'Mark handled' on an escalation: emit escalation_resolved on the bus that raised it."""
+    ref = str(body.get("ref") or "")
+    if not re.match(r"^e-[0-9a-f]{6,32}$", ref):
+        return {"error": "invalid escalation id"}, 400
+    src = str(body.get("source") or "hub")
+    bus = LAB / ".bus" if src in ("hub", "") else ((_pdir(src) / ".bus") if (_safe_id(src) and _pdir(src)) else None)
+    if bus is None:
+        return {"error": f"unknown source '{src}'"}, 400
+    bus.mkdir(parents=True, exist_ok=True)
+    with (bus / "events.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": src or "hub",
+                            "kind": "escalation_resolved", "detail": "handled by the PI (dashboard)",
+                            "data": {"ref": ref}}) + "\n")
+    _pi_log({"action": "escalation.resolve", "ref": ref, "source": src})
+    return {"ok": True}, 200
+
+
+def set_programmatic(body: dict) -> tuple[dict, int]:
+    """Flip agents.programmatic.enabled in lab/config.yaml (comment-preserving, via the same stamp
+    /configure uses). It widens autonomy, so it needs an explicit confirm and is logged."""
+    if not body.get("confirm"):
+        return {"error": "changing the master switch needs explicit confirm"}, 400
+    enabled = bool(body.get("enabled"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    import profiles   # noqa: E402 — tools/profiles.stamp (the /configure writer)
+    cfg = LAB / "config.yaml"
+    try:
+        text = cfg.read_text(encoding="utf-8-sig")
+    except OSError:
+        return {"error": "no lab/config.yaml"}, 400
+    new, changed = profiles.stamp(text, ["agents", "programmatic", "enabled"], enabled)
+    if not changed:
+        return {"error": "lab/config.yaml has no agents.programmatic.enabled key — add it (see the template) first"}, 400
+    cfg.write_text(new, encoding="utf-8", newline="")
+    _pi_log({"action": "executor.enable", "enabled": enabled})
+    _KICK.set()
+    return {"ok": True, "enabled": enabled,
+            "note": ("programmatic launching ON — the dashboard can now start headless sessions"
+                     if enabled else "programmatic launching OFF — nothing new starts; running runs finish")}, 200
+
+
+def run_detail(run_id: str) -> tuple[dict, int]:
+    if executor is None:
+        return _no_executor()
+    hit = executor.find_run(_xlab(), run_id or "")
+    if not hit:
+        return {"error": "no such run"}, 404
+    target, workdir, path, m = hit
+    out = sources._compact_run(m)
+    out.update(qa=m.get("qa") or [], attempts=m.get("attempts") or [], args=m.get("args"),
+               transcript=str(path.parent / (m.get("stream") or f"{run_id}.stream.jsonl")), cwd=m.get("cwd"))
+    return {"ok": True, "run": out}, 200
+
+
+def _tail_entry(backend: str, obj: dict, labels: dict) -> list[dict]:
+    if "_attempt" in obj:
+        r = obj.get("resume")
+        return [{"k": "attempt", "t": f"— attempt {obj['_attempt']}" + (f" ({r})" if r else "") + " —",
+                 "ts": obj.get("ts")}]
+    if "_truncated" in obj:
+        return [{"k": "raw", "t": obj["_truncated"]}]
+    out = []
+    for ev in executor.backends.parse_events(backend, obj):
+        who = labels.get(ev.get("parent")) if ev.get("parent") else None
+        e = ev.get("event")
+        if e == "text":
+            out.append({"k": "text", "t": ev["text"][:4000], "who": who})
+        elif e == "action":
+            out.append({"k": "tool", "tool": ev.get("tool"), "t": ev.get("summary") or "", "who": who})
+        elif e == "tool_result":
+            if ev.get("tool_use_id") in labels:
+                out.append({"k": "sub", "t": (ev.get("text") or "")[:2000], "who": labels[ev["tool_use_id"]]})
+            elif ev.get("is_error"):
+                out.append({"k": "err", "t": (ev.get("text") or "")[:600], "who": who})
+        elif e == "result":
+            stop = ev.get("stop_reason")
+            out.append({"k": "end", "t": (ev.get("last_message") or "")[:4000], "stop": stop,
+                        "cost": ev.get("cost_usd")})
+        elif e == "start":
+            out.append({"k": "start", "t": f"session {str(ev.get('session_id') or '')[:8]} started"})
+        elif e == "denied":
+            out.append({"k": "err", "t": f"denied: {ev.get('tool')}"})
+    return out
+
+
+def run_tail(run_id: str, offset: int = 0) -> tuple[dict, int]:
+    """New transcript lines since byte `offset`, compacted for display. Whole lines only; a first
+    call on a big transcript starts near the end. The raw transcript never leaves this machine."""
+    if executor is None:
+        return _no_executor()
+    hit = executor.find_run(_xlab(), run_id or "")
+    if not hit:
+        return {"error": "no such run"}, 404
+    target, workdir, path, m = hit
+    stream = path.parent / (m.get("stream") or f"{run_id}.stream.jsonl")
+    cap = int((sources._load_yaml(LAB / "config.yaml").get("dashboard") or {}).get("tail_max_kb") or 64) * 1024
+    try:
+        size = stream.stat().st_size
+    except OSError:
+        return {"ok": True, "offset": 0, "eof": True, "status": m.get("status"), "lines": []}, 200
+    skipped = 0
+    if offset <= 0 and size > cap * 4:
+        offset = skipped = size - cap * 4
+    offset = max(0, min(int(offset), size))
+    with stream.open("rb") as f:
+        f.seek(offset)
+        chunk = f.read(cap)
+    if skipped:   # align to the next full line
+        nl = chunk.find(b"\n")
+        chunk, offset = (chunk[nl + 1:], offset + nl + 1) if nl >= 0 else (b"", offset)
+    end = chunk.rfind(b"\n")
+    chunk = chunk[:end + 1] if end >= 0 else b""
+    new_offset = offset + len(chunk)
+    labels = {k: f"{v.get('type')}" + (f" · {v['description'][:40]}" if v.get("description") else "")
+              for k, v in (m.get("subagents") or {}).items()}
+    lines = []
+    for raw in chunk.decode("utf-8", "replace").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            lines.append({"k": "raw", "t": raw[:600]})
+            continue
+        if isinstance(obj, dict):
+            lines += _tail_entry(m.get("backend") or "claude", obj, labels)
+    return {"ok": True, "offset": new_offset, "eof": new_offset >= size, "status": m.get("status"),
+            "skipped": skipped or None, "lines": lines}, 200
+
+
+def run_log(run_id: str) -> tuple[dict, int]:
+    if executor is None:
+        return _no_executor()
+    hit = executor.find_run(_xlab(), run_id or "")
+    if not hit:
+        return {"error": "no such run"}, 404
+    _t, _w, path, m = hit
+    log = path.parent / f"{m.get('run_id') or run_id}.d" / "supervisor.log"
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace")[-8000:]
+    except OSError:
+        text = ""
+    return {"ok": True, "text": text}, 200
+
+
+def executor_health() -> tuple[dict, int]:
+    if executor is None:
+        return {"available": False, "enabled": False}, 200
+    h = executor.health(_xlab())
+    h["available"] = True
+    h["thread_alive"] = bool(_SCHED.get("thread") and _SCHED["thread"].is_alive())
+    return h, 200
+
+
+def command_launch(target: str, action: str, args: dict, text: str) -> dict | None:
+    """The run a dashboard command should start when the executor is on (None = directive only)."""
+    skill = COMMAND_TO_RUN.get(action)
+    if not skill or executor is None:
+        return None
+    body = {"skill": skill, "target": target or "hub", "confirm": True}
+    if action == "ideate":
+        if target not in ("hub", "", None) and _pdir(target):
+            body["args"] = f"--in-project {target}"
+        else:
+            body["target"], body["args"] = "hub", str((args or {}).get("direction") or "")
+    out, code = launch_run(body, by=f"command:{action}")
+    return out
+
+
+def command_stop_loop(target: str) -> list[str]:
+    """stop_loop also stops any live /research-loop run on that project (the directive still goes out)."""
+    if executor is None:
+        return []
+    stopped = []
+    lab = _xlab()
+    for m in executor.list_runs(lab):
+        if m.get("skill") == "research-loop" and m.get("target") == target and m.get("status") in executor.ACTIVE:
+            try:
+                executor.stop(lab, m["run_id"], by="command:stop_loop")
+                stopped.append(m["run_id"])
+            except executor.SpecError:
+                pass
+    return stopped
+
+
+_SCHED: dict = {"thread": None, "stop": None}
+
+
+def start_scheduler() -> bool:
+    """The executor's scheduler loop, in a daemon thread. Runs never depend on it (each has its own
+    supervisor); it only starts queued runs, reconciles, and post-processes finished ones."""
+    if executor is None or (_SCHED["thread"] and _SCHED["thread"].is_alive()):
+        return False
+    stop = threading.Event()
+
+    def loop():
+        while not stop.is_set():
+            try:
+                executor.tick(executor.Lab(HUB))
+            except Exception:  # noqa: BLE001 — one bad pass must never kill the loop
+                pass
+            _KICK.wait(2.0)
+            _KICK.clear()
+
+    t = threading.Thread(target=loop, name="executor-scheduler", daemon=True)
+    _SCHED.update(thread=t, stop=stop)
+    t.start()
+    return True
+
+
 # ── safe tool runner (read-only subprocesses) ────────────────────────────────
 
 def run_tool(name: str, idea: str | None = None) -> dict:
     if name not in SAFE_TOOLS:
         return {"error": f"tool '{name}' is not in the read-only whitelist"}
     py = sys.executable
-    pdir = sources._project_path({"id": idea, "project": ""}) if idea else None
+    pdir = _pdir(idea) if idea else None
     cmd, cwd = None, HUB
     if name == "check_lab":
         cmd = [py, str(HUB / "tools" / "check_lab.py")]
@@ -473,7 +833,7 @@ def _gate2_accounting(pdir: Path | None, env: dict | None) -> dict:
 
 
 def _gate2_bundle(slug: str) -> dict:
-    pdir = sources._project_path({"id": slug, "project": ""})
+    pdir = _pdir(slug)
     ctrl = (pdir / "control.yaml") if pdir else None
     env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
     secs = [_gate2_accounting(pdir, env),
@@ -561,7 +921,7 @@ def _claim_project_dir(c: dict, slug: str) -> Path | None:
     if pp:
         p = Path(pp)
         return p if p.is_absolute() else (HUB / p).resolve()
-    return sources._project_path({"id": c.get("project") or slug, "project": ""})
+    return _pdir(c.get("project") or slug)
 
 
 def claims_map(idea: str | None = None) -> dict:
@@ -617,7 +977,7 @@ def read_doc(what: str, idea: str | None = None, gate: int | None = None, run: s
         slug, rid = _slug(idea or ""), _slug(run or "")
         if not slug or not rid:
             return {"error": "need a project + run id"}
-        pdir = sources._project_path({"id": slug, "project": ""})
+        pdir = _pdir(slug)
         if not pdir:
             return {"error": f"no project dir for {slug}"}
         rdir = pdir / "runs" / rid
@@ -691,7 +1051,7 @@ def _lib_root(scope: str, slug: str | None) -> Path | None:
         d = HUB / "studies" / s
         return d if d.is_dir() else None
     if scope == "project":
-        return sources._project_path({"id": s, "project": ""})
+        return _pdir(s)
     return None
 
 
@@ -915,18 +1275,27 @@ def figure_file(idea: str, name: str) -> Path | None:
 # (never staler than one tick), while N concurrent clients + the index seed share one read instead of N.
 _SNAP_LOCK = threading.Lock()
 _SNAP_TTL = 1.0
-_snap_cache = {"ts": 0.0, "value": None}
+_snap_cache = {"ts": 0.0, "value": None, "sig": None}
 
 
-def _snapshot_cached() -> dict:
+def _sig(snap: dict) -> str:
+    """A change signature that ignores the wall clock (`now`), so SSE pushes a new snapshot only when
+    the lab actually changed — the client stops re-rendering every 1.5 s."""
+    import hashlib
+    body = {k: v for k, v in snap.items() if k != "now"}
+    return hashlib.sha1(json.dumps(body, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _snapshot_cached(with_sig: bool = False):
     now = time.time()
     with _SNAP_LOCK:
         if _snap_cache["value"] is not None and (now - _snap_cache["ts"]) < _SNAP_TTL:
-            return _snap_cache["value"]
+            return (_snap_cache["value"], _snap_cache["sig"]) if with_sig else _snap_cache["value"]
     snap = sources.snapshot()   # compute OUTSIDE the lock — never serialize the file reads
+    sig = _sig(snap)
     with _SNAP_LOCK:
-        _snap_cache["ts"], _snap_cache["value"] = now, snap
-    return snap
+        _snap_cache["ts"], _snap_cache["value"], _snap_cache["sig"] = now, snap, sig
+    return (snap, sig) if with_sig else snap
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1001,6 +1370,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
         if self.path.startswith("/api/events"):
             return self._serve_sse()
+        route = self.path.split("?", 1)[0]
+        if route in ("/api/run", "/api/run/tail", "/api/run/log", "/api/executor/health"):
+            q = self._query()
+            try:
+                if route == "/api/run":
+                    body, code = run_detail(q.get("run_id", ""))
+                elif route == "/api/run/tail":
+                    try:
+                        off = int(q.get("offset", "0") or 0)
+                    except ValueError:
+                        off = 0
+                    body, code = run_tail(q.get("run_id", ""), off)
+                elif route == "/api/run/log":
+                    body, code = run_log(q.get("run_id", ""))
+                else:
+                    body, code = executor_health()
+            except Exception as e:  # noqa: BLE001
+                body, code = {"error": str(e)}, 500
+            return self._json(body, code)
         if self.path.startswith("/api/paper"):
             return self._serve_paper()
         if self.path.startswith("/api/figs"):
@@ -1087,18 +1475,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             while True:
                 try:
-                    payload = json.dumps(_snapshot_cached())
+                    snap, sig = _snapshot_cached(with_sig=True)
+                    payload = None if sig == last else json.dumps(snap)
                 except Exception:  # noqa: BLE001
-                    payload = json.dumps({"error": "snapshot failed"})
-                if payload != last:
+                    snap, sig, payload = {}, "error", json.dumps({"error": "snapshot failed"})
+                if payload is not None:
                     self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
-                    self.wfile.flush()
-                    last = payload
-                else:
-                    self.wfile.write(b": ping\n\n")
-                    self.wfile.flush()
+                    last = sig
+                else:   # nothing changed: just move the clock (no re-render on the client)
+                    self.wfile.write(f"event: tick\ndata: {json.dumps({'now': snap.get('now')})}\n\n".encode("utf-8"))
+                self.wfile.flush()
                 time.sleep(1.5)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             return
 
     def do_POST(self):
@@ -1109,9 +1497,28 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 — a handler bug / dirty input must never kill the thread
             return self._json({"error": f"internal error: {e}"}, 500)
 
+    _EXACT_POST = {
+        "/api/run": lambda b: launch_run(b),
+        "/api/run/answer": lambda b: _run_op("answer", b),
+        "/api/run/reply": lambda b: _run_op("reply", b),
+        "/api/run/stop": lambda b: _run_op("stop", b),
+        "/api/run/resume": lambda b: _run_op("resume", b),
+        "/api/run/cancel": lambda b: _run_op("cancel", b),
+        "/api/run/permission": lambda b: permission_run(b),
+        "/api/attention/ack": lambda b: ack_attention(b),
+        "/api/escalation/resolve": lambda b: resolve_escalation(b),
+        "/api/executor/enable": lambda b: set_programmatic(b),
+    }
+
     def _dispatch_post(self):
         body = self._body()
+        if not isinstance(body, dict):
+            return self._json({"error": "body must be a JSON object"}, 400)
         p = self.path
+        exact = self._EXACT_POST.get(p.split("?", 1)[0])
+        if exact:   # checked first: startswith routing below would let /api/run swallow /api/run/answer
+            out, code = exact(body)
+            return self._json(out, code)
         if p.startswith("/api/directive"):
             text = (body.get("text") or "").strip()
             if not text:
@@ -1128,7 +1535,14 @@ class Handler(BaseHTTPRequestHandler):
                 rec = append_command(body.get("target", "hub"), action, body.get("args") or {}, body.get("text") or "")
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
-            return self._json({"ok": True, "command": rec})
+            out = {"ok": True, "command": rec}
+            if body.get("launch"):   # also START the procedure that consumes it (executor on)
+                if action == "stop_loop":
+                    out["stopped"] = command_stop_loop(rec.get("target") or "hub")
+                else:
+                    out["launch"] = command_launch(rec.get("target") or "hub", action, body.get("args") or {},
+                                                   body.get("text") or "")
+            return self._json(out)
         if p.startswith("/api/gate"):
             if not body.get("confirm"):
                 return self._json({"error": "gate approval needs explicit confirm"}, 400)
@@ -1157,9 +1571,25 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, b"not found", "text/plain")
 
 
+def _use_hub(path: str) -> None:
+    """Point the dashboard (and its sources / executor) at another lab's hub root."""
+    global HUB, LAB
+    hub = Path(path).resolve()
+    if not (hub / "lab").is_dir():
+        raise SystemExit(f"--hub {hub}: no lab/ directory there")
+    HUB, LAB = hub, hub / "lab"
+    sources.HUB, sources.LAB = HUB, LAB
+
+
 def main() -> int:
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--hub", default=None)
+    known, _ = pre.parse_known_args()
+    if known.hub:
+        _use_hub(known.hub)
     cfg = sources._load_yaml(LAB / "config.yaml").get("dashboard") or {}
     parser = argparse.ArgumentParser()
+    parser.add_argument("--hub", default=None, help="serve another lab (its hub root); default: this repo")
     parser.add_argument("--port", type=int, default=int(cfg.get("port", 8787)))
     parser.add_argument("--demo", action="store_true",
                         help="enable the synthetic demo world (debugging/showcase; visit /?demo). "
@@ -1168,6 +1598,15 @@ def main() -> int:
     Handler.demo = bool(args.demo) or os.environ.get("VIVARIUM_DEMO", "").lower() in ("1", "true", "yes")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
+    if executor is None:
+        print("  executor: not available (tools/executor missing) — observe-and-sign only")
+    elif cfg.get("executor", True) is False:
+        print("  executor: disabled for this dashboard (dashboard.executor: false) — observe-and-sign only")
+    else:
+        start_scheduler()
+        on = bool((sources._load_yaml(LAB / "config.yaml").get("agents") or {}).get("programmatic", {}).get("enabled"))
+        print("  executor: scheduler running · programmatic launching is "
+              + ("ON" if on else "OFF (enable it in the dashboard settings, or /configure)"))
     if Handler.demo:
         print(f"  demo mode ENABLED (debugging) · synthetic world at http://127.0.0.1:{args.port}/?demo")
     try:

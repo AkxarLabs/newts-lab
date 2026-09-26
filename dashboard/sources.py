@@ -182,8 +182,8 @@ def _compact_run(m: dict) -> dict:
         prior = sum(float(a.get("wall_seconds") or 0) for a in (m.get("attempts") or [])[:-1])
         cur = _epoch(((m.get("attempts") or [{}])[-1] or {}).get("started")) or started
         out["elapsed_s"] = _r10(prior + max(0.0, now - cur))
-    else:
-        out["elapsed_s"] = _r10(float(m.get("wall_seconds") or 0)) if m.get("wall_seconds") is not None else None
+    else:   # a finished run's wall time never changes → exact (only LIVE numbers are rounded for SSE)
+        out["elapsed_s"] = round(float(m.get("wall_seconds") or 0)) if m.get("wall_seconds") is not None else None
     hb = _epoch(m.get("heartbeat"))
     out["heartbeat_age_s"] = _r10(now - hb) if (hb and st in ("starting", "running", "resuming")) else None
     subs = m.get("subagents") or {}
