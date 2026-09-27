@@ -7,14 +7,25 @@ description: Ground an idea in the literature — search log, per-paper notes, n
 
 Input: an idea in state `triaged`. Output: `studies/<slug>/lit-review.md` (from `templates/idea/lit-review.md`) and a novelty verdict that gates progression.
 
+This file is the procedure's **contract**: its records, rules and routing always bind. *How* to search, read and judge is the stage's **method**, which step 0 loads (the default `METHOD.md` beside this file, or the PI's replacement, plus the PI's own instructions for this stage).
+
 ## Procedure
 
+0. **Load this stage's brief:** `uv run --with pyyaml python tools/workflow.py brief lit-review --study <slug>`. Skip this if a `NEWTS STAGE BRIEF /lit-review` block is already in your context. Follow its method and instructions within this contract.
 1. Read `studies/<slug>/IDEA.md`. Set state → `lit-review` (frontmatter + registry).
-2. **Search iteratively** — `tools/s2.py search "<query>" [--year 2022:]` for replayable, logged Semantic Scholar queries (OpenAlex fallback built in), plus web search/fetch for arXiv/Scholar coverage. Start from the hypothesis's key terms, then expand: synonyms, the methods cited by the first good hits, "cited by" chains of the closest works. Log EVERY query in the search log table. Stop when two consecutive searches surface nothing new and relevant (loop-until-dry), typically 8–15 queries — **or when the live search phase hits `litreview.max_minutes` (`lab/config.yaml`; 0 = unbounded), whichever comes first; if the cap stops you, log what was NOT covered** in the search log. **A query that errors or exits 3 (both backends unreachable — see s2.py) does NOT count toward loop-until-dry**, and an empty result from it is not evidence of absence; if the APIs are down and web search can't compensate, record the review as *blocked* in the search log and stop — never issue a `novel` verdict from an empty/failed search (under `/autopilot` that would self-approve a proposal on a blind search).
-3. **Read and note** the relevant papers (typically 5–15). For each: fetch the actual abstract/paper — record what it *actually shows* (scale, conditions, numbers), not what its title implies. These notes become the only permitted citation source later; sloppy notes now = hallucinated citations later. For the 1–3 load-bearing papers the novelty verdict hinges on, run `/critique-paper <link>` (external mode — adversarial lens ensemble) and store the output under `studies/<slug>/critiques/`; a "SOTA" that doesn't survive critique changes your baseline obligations. The deep notes stay in this `lit-review.md`; also promote a **one-line pointer** for each keeper to the shared `lab/knowledge/REFERENCES.md` (`| bibkey | Authors, "Title", venue year — link | one-line what-it-shows | <slug> |`) — skip any bibkey already in the index (add this `<slug>` to its `seen-for` instead) — so the next idea's ideation reuses the reading instead of re-fetching it.
-4. **Novelty verdict** — be adversarial with yourself: the default assumption is that someone has done this. State the closest prior work and the precise delta. Verdicts:
+2. **Search** as the method describes. The rules:
+   - Use `tools/s2.py search "<query>" [--year 2022:]` for replayable, logged Semantic Scholar queries (OpenAlex fallback built in).
+   - Log EVERY query in the search log table.
+   - The live search phase stops at `litreview.max_minutes` (`lab/config.yaml`; 0 = unbounded) even if the method's own stopping rule hasn't fired. If the cap stops you, **log what was NOT covered** in the search log.
+   - **A query that errors or exits 3 (both backends unreachable — see s2.py) does not count** toward any "nothing new" stopping rule. An empty result from it is not evidence of absence.
+   - If the APIs are down and web search can't compensate, record the review as *blocked* in the search log and stop. Never issue a `novel` verdict from an empty or failed search (under `/autopilot` that would self-approve a proposal on a blind search).
+3. **Read and note** the relevant papers as the method describes. The rules:
+   - Each note records what the paper *actually shows*. These notes are the only permitted citation source later.
+   - For the load-bearing papers the verdict hinges on, run `/critique-paper <link>` (external mode) and store the output under `studies/<slug>/critiques/`.
+   - The deep notes stay in this `lit-review.md`. Also promote a **one-line pointer** for each keeper to the shared `lab/knowledge/REFERENCES.md` (`| bibkey | Authors, "Title", venue year — link | one-line what-it-shows | <slug> |`). Skip any bibkey already in the index (add this `<slug>` to its `seen-for` instead), so the next idea's ideation reuses the reading instead of re-fetching it.
+4. **Novelty verdict**: record the closest prior work and the delta, then one of:
    - `not novel` → recommend kill/park; record the reason in IDEA.md and update the registry. Harvest any surviving variant into `OPEN-QUESTIONS.md`. (`FAILURES.md` is for things *tried* that failed — not for ideas killed before any experiment.)
    - `incremental` → flag to PI: proceed only if the increment is cheap and useful.
    - `novel` → proceed.
-5. **Positioning**: list the baselines the field will demand, expected metrics/benchmarks, and pitfalls reported by the closest works (these feed the proposal's risks section).
+5. **Positioning** (the lit-review's positioning section, which the proposal's baselines and risks are built from): the baselines the field will demand, the expected metrics/benchmarks, and the closest works' reported pitfalls.
 6. Update IDEA.md state log and `lab/REGISTRY.md` (next action = "/scope" or the kill/park outcome). Report the verdict + the 3 most load-bearing papers to the user.

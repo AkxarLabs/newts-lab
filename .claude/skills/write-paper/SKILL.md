@@ -9,8 +9,16 @@ Input: idea in state `writing` with a completed analysis. Output: `studies/<slug
 with compiling LaTeX, complete `claims.yaml`, verified bibliography. Knobs:
 `writing.*` in `lab/config.yaml`.
 
-The ordering below is evidence-first: whole-paper single passes degrade the Method section,
-numbers passing through prose get transcribed wrong, and Related Work written early gets invented.
+This file is the procedure's **contract**: the evidence and citation rules, the audits, the bibliography
+verification and the hand-off always bind. *How* to draft (the section order, the narrative, the craft of
+the reflection rounds) is the stage's **method**, which step 0 loads (the default `METHOD.md` beside this
+file, or the PI's replacement, plus the PI's own instructions for this stage).
+
+## 0. Load this stage's brief
+
+`uv run --with pyyaml python tools/workflow.py brief write-paper --study <slug>`. Skip this if a
+`NEWTS STAGE BRIEF /write-paper` block is already in your context. Follow its method and instructions
+within this contract.
 
 ## 1. Evidence before words
 
@@ -37,47 +45,34 @@ numbers passing through prose get transcribed wrong, and Related Work written ea
    works without any API key. **Never hand-type a BibTeX entry.** Sparse bibliographies tell
    of AI-written papers; the lit review should yield 20+ candidates.
 
-## 2. Draft — in this order
+## 2. Draft
 
-*Optional author-interrogation first:* `/discuss paper <slug>` shapes the narrative with the PI —
-the single headline claim, 2–3 load-bearing results, positioning vs the closest work, the weakest
-result and why. Its session doc in `studies/<slug>/sessions/` seeds the outline (step 2) and the
-contributions. Framing only; adds no result, crosses no gate. Skip in autonomous runs.
+Draft in the order and style the method describes. Whatever the method, these rules hold:
 
-1. **Method** (first — it degrades when written late): from `decisions.md` and the
-   project's actual code. Precise enough to reimplement.
-2. **Outline** the full paper: per section, the points to make and which figure/table/
-   claim id supports each. Contributions = numbered claims, each with its evidence.
-3. **Experimental Setup** (must match the frozen proposal; deviations disclosed) →
-   **Results** → **Ablations** — these sections narrate the already-made tables and
-   figures; they assert nothing the artifacts don't show.
-4. **Citations as placeholders while drafting**: where a source is needed, write
-   `[cite: short description]` inline; afterwards resolve each mechanically —
-   lit-review note → `s2.py bibtex <id> --append references.bib` → `\cite{<returned cite-key>}`.
-   If the note has no usable id, or the resolver can't find the paper, the fallback is
-   **agentic**: web-search the title for its **DOI**, then
-   `s2.py bibtex DOI:<doi> --append references.bib` (still mechanical — you supply the DOI,
-   the script fills the entry and returns the key). Need a source not in the lit review? Add
-   it to the lit review (with a note) first, or cut the sentence.
-5. **Related Work last** (it's the most hallucination-prone section): from lit-review
-   notes only, positioning against the closest works by what they *actually showed*.
-6. **Introduction** (contributions-first, each pointing at its claim id), **Limitations**
-   (include the analysis's interpretation risks — honest limitations score better than
-   their absence), **Abstract**.
-7. **Interpretation discipline**: interpretive statements ("this suggests X because Y")
-   are markedly more error-prone than data statements in audited AI-written papers. Every
-   discussion claim either points at evidence or is explicitly hedged as conjecture.
+- **Method** is precise enough to reimplement, and matches the project's actual code.
+- **Experimental Setup** matches the frozen proposal; deviations are disclosed.
+- **Results / Ablations** assert nothing the artifacts don't show.
+- **Citations as placeholders while drafting**: where a source is needed, write
+  `[cite: short description]` inline; afterwards resolve each mechanically —
+  lit-review note → `s2.py bibtex <id> --append references.bib` → `\cite{<returned cite-key>}`.
+  If the note has no usable id, or the resolver can't find the paper, the fallback is
+  **agentic**: web-search the title for its **DOI**, then
+  `s2.py bibtex DOI:<doi> --append references.bib` (still mechanical — you supply the DOI,
+  the script fills the entry and returns the key). Need a source not in the lit review? Add
+  it to the lit review (with a note) first, or cut the sentence.
+- **Related Work** comes from lit-review notes only.
+- **Interpretation**: every discussion claim either points at evidence or is explicitly hedged as
+  conjecture.
+- An optional `/discuss paper <slug>` author interview (framing only) adds no result and crosses no gate.
 
 ## 3. Verifier-gated reflection (max `writing.max_reflection_rounds`)
 
-Each round, in order — and stop early when a round changes nothing substantive
-(quality regresses past ~3 rounds):
+Run reflection rounds as the method describes. Each round, in order:
 
 1. **Mechanical checks**: every `\cite` key exists in references.bib; every
    `\includegraphics` file exists; no placeholder text; compile
    (`latexmk -pdf main.tex`) + `chktex -q -n2 -n24 -n13 -n1`; page count vs
-   `writing.page_limit` — over-length is trimmed **gradually** (one pass of tightening
-   per round, never a single slash-cut). **No LaTeX toolchain on this machine?** Record
+   `writing.page_limit`. **No LaTeX toolchain on this machine?** Record
    it, run every non-compile check, and flag the paper as *not-compiled* — Gate 3 cannot
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
 2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
@@ -95,8 +90,7 @@ Each round, in order — and stop early when a round changes nothing substantive
    (each on `studies/<slug>/paper`) — a headline result thin on seeds, a dropped ablation, or a
    validation-selected number gets fixed now, not at the gate. Mark load-bearing claims
    `headline: true` and add `split: test`/`multi_seed_waiver:` to `claims.yaml` as needed.
-3. **Read the PDF** (you can see it): figures render and are legible, tables aligned,
-   no orphaned floats, section flow reads.
+3. **Read the PDF** per the method.
 
 ## 4. Bibliography verification (blocking)
 

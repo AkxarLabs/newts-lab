@@ -109,7 +109,7 @@ tracks:
 #              mode headless|interactive; args "" | slug | slug? | text? | campaign | "slug text?")
 # launchable:  a dashboard click / chain / campaign may start it (finalize: never — only Gate 3)
 # replaceable: the PI may REPLACE its method (METHOD.md); every procedure accepts added instructions
-# anchors:     method sections other procedures rely on — a replacement method should keep a heading for each
+# anchors:     parts of the contract other procedures rely on — any method must work with them
 # outputs:     what it must still produce (files/sections other tools and procedures read)
 procedures:
   lab-status:
@@ -127,6 +127,7 @@ procedures:
     title: Explore a new direction
     does: "Researches the direction, generates and critiques ideas, and files the best 1–3 as studies."
     stops: when the ideas are filed
+    anchors: [reflect]
     outputs: ["studies/<slug>/IDEA.md per surviving idea (frontmatter: state, scores)", "registry rows (state seed → triaged)", "lab/ideation/<run>/ record"]
   lit-review:
     kind: stage
@@ -183,6 +184,7 @@ procedures:
     title: Run experiments
     does: "Smoke → pilot → full runs from the plan, logged and committed."
     stops: before FULL runs outside a signed envelope
+    anchors: [parallel path]
     outputs: ["configs/experiments/<exp>.yaml per attempt", "EXPERIMENT_LOG.md entry + one commit `exp-NNN: …` per attempt", "PLAN.md experiment table updated", "NOTES.md lessons at exit"]
   improve:
     kind: stage

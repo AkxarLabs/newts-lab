@@ -8,6 +8,17 @@ description: Adversarial multi-lens critique of any paper — an external paper 
 Ensemble sizes, anchors, and cycle caps come from `lab/config.yaml` (`critique.*`).
 Lens definitions + the calibration block live in `templates/review/critique-lenses.md`.
 
+This file is the procedure's **contract**: the fresh-context invariant, the ensemble, the aggregation,
+the veto and the oversight checks always bind. *How* to weigh and synthesize the reviews is the stage's
+**method**, which step 0 loads (the default `METHOD.md` beside this file, or the PI's replacement, plus
+the PI's own instructions for this stage).
+
+## 0. Load this stage's brief
+
+`uv run --with pyyaml python tools/workflow.py brief critique-paper --study <slug>` (external mode with no
+idea context: omit `--study`). Skip this if a `NEWTS STAGE BRIEF /critique-paper` block is already in
+your context. The brief is for YOU, the meta-reviewer — never paste it into a reviewer prompt (step 2).
+
 ## 1. Detect mode & materialize the paper to a file
 
 - **Own-draft mode** (argument is an idea slug with `studies/<slug>/paper/`): the paper file is
@@ -42,9 +53,8 @@ Lens definitions + the calibration block live in `templates/review/critique-lens
 
 Fill `templates/review/meta-review.md` yourself from the reviewers' files:
 - Scores aggregate as **median (min–max)** per dimension — never mean.
-- Grade every weakness against the **taste rubric** (`critique-lenses.md`): GENERIC and
-  MISDIRECTED points are noted but carry no action items; only LOAD-BEARING points
-  drive decisions.
+- Grade every weakness against the **taste rubric** (`critique-lenses.md`) as the method
+  describes; only LOAD-BEARING points drive decisions.
 - Collect every `FATAL FLAW:` line into the veto table. **Any unrefuted fatal flaw
   blocks accept**; an override requires a written refutation with specific evidence.
 - **Oversight** (own-draft mode): a fatal-flaw refutation is written by the same session
@@ -53,7 +63,7 @@ Fill `templates/review/meta-review.md` yourself from the reviewers' files:
   refuted** (statement = the refutation; evidence = the cited artifact paths). At `strict`,
   additionally grade each fatal flaw itself with an `overseer` `critique-taste` check. An
   overseer-rejected refutation does not override the veto.
-- Synthesize agreements/conflicts; produce numbered action items (own-draft mode).
+- Synthesize per the method; produce numbered action items (own-draft mode).
 - Write the meta-review file beside the reviewer files.
 
 ## 4. Route by mode
@@ -61,6 +71,5 @@ Fill `templates/review/meta-review.md` yourself from the reviewers' files:
 - **Own draft**: report median Overall, decision, fatal flaws, and action items. The
   caller (`/review-paper`) handles routing.
 - **External**: distill into the idea's `lit-review.md` paper notes (the critique file
-  is the deep record; the note gets the verdict + what it means for our positioning —
-  e.g., "claimed SOTA is unsupported at our scale; weaker baseline than it appears").
-  Report the verdict and the one most decision-relevant finding to the user.
+  is the deep record; the note gets the verdict + what it means for our positioning, per the
+  method). Report the verdict and the most decision-relevant finding to the user.

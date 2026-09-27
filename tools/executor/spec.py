@@ -244,9 +244,24 @@ def ask_label(text: str) -> str:
     return (first[:57] + "…") if len(first) > 58 else first
 
 
+def stage_brief(lab: Lab, v: dict) -> tuple[str | None, str | None]:
+    """The procedure's stage brief (tools/workflow.py): its method + the PI's instructions for it, lab-wide
+    and for the run's study. None when there is nothing beyond SKILL.md (no method, no instructions) —
+    and never for a free-form run."""
+    skill = v.get("skill")
+    if not skill or skill == ASK or _workflow.procedure(skill, lab.hub) is None:
+        return None, None
+    try:
+        text, h = _workflow.brief(skill, lab.hub, study=v.get("subject"))
+    except (KeyError, ValueError, OSError):
+        return None, None
+    return (text, h) if "\n## " in text else (None, None)
+
+
 def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
     """The executor's standing instructions for a headless run (claude: --append-system-prompt-file;
-    other backends: appended to the prompt). Skill bodies stay untouched."""
+    other backends: appended to the prompt), then the procedure's stage brief (its method + the PI's
+    instructions) so a headless run can't skip it. Skill bodies stay untouched."""
     bus = (lab.hub / "tools" / "lab_bus.py") if v["level"] == "hub" else (Path(v["workdir"]) / "scripts" / "lab_bus.py")
     bus = bus.as_posix()
     interactive = v["cfg"].get("mode") == "interactive"
@@ -286,4 +301,8 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
         "kill_criteria|null_result|spawn_type|other> --data summary=\"<≤200 chars: what you did and "
         "what the PI should look at>\"",
     ]
+    brief, _h = stage_brief(lab, v)
+    if brief:
+        lines += ["", "--- The stage brief for this procedure (its method and the PI's instructions; it is "
+                  "already loaded, so skip the procedure's own step that prints it) ---", brief]
     return "\n".join(lines)

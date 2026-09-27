@@ -12,17 +12,26 @@ are consistent. Add `matplotlib` to the project's pyproject if absent. (For a no
 project the artifacts may be regression tables / sim summaries — the *artifact-not-hand-made*
 rule still binds; `theory` figures are illustrative, where the project's `TYPE.md` relaxes it.)
 
+This file is the procedure's **contract**: the evidence rules, provenance, registration and syncing
+always bind. *Which* figures to make, how to design them and how to review them is the stage's
+**method**, which step 0 loads (the default `METHOD.md` beside this file, or the PI's replacement, plus
+the PI's own instructions for this stage).
+
+## 0. Load this stage's brief
+
+`uv run --with pyyaml python tools/workflow.py brief make-figures --study <slug>`. Skip this if a
+`NEWTS STAGE BRIEF /make-figures` block is already in your context. Follow its method and instructions
+within this contract.
+
 ## 1. Inventory
 
-From the analysis file and (if started) `claims.yaml`: list every figure and table the
-paper needs — each entry = the claim it supports + the run ids that evidence it.
-A figure with no claim is decoration; cut it now. Typical set: one overview/main-result
-figure, one training-curve or scaling figure, the ablation table, the comparison table.
+From the analysis file and (if started) `claims.yaml`, list the figures and tables the paper needs as the
+method describes. Each entry = the claim it supports + the run ids that evidence it.
 
 ## 2. One script per figure/table (the aggregator pattern)
 
-In the project repo's `scripts/figures/` (`<projects_root>/<slug>/scripts/figures/`, path
-in the registry row), one script per artifact (`fig_main_result.py`, `tab_ablations.py`):
+In the project repo's `scripts/figures/` (`<projects_root>/<slug>/scripts/figures/`, path in the
+registry row), one script per artifact (`fig_main_result.py`, `tab_ablations.py`):
 
 - **Inputs only from artifacts**: `figures.load_registry()` / `figures.metric_curve()`
   / `runs/<id>/metrics.json`. Hard-coding a number in a figure script is fabrication.
@@ -32,8 +41,7 @@ in the registry row), one script per artifact (`fig_main_result.py`, `tab_ablati
 - **Tables**: cells formatted by `figures.format_measurement()` (sig-fig discipline),
   laid out by `figures.emit_table()` (booktabs, no vertical rules), written as `.tex`
   files that the paper `\input`s — **numbers never pass through prose generation**.
-- ≤3 panels per figure; ≤7 series per panel (Okabe-Ito palette limit); vary
-  linestyle/marker as well as color.
+- Design per the method.
 - `figures.save_fig(..., consumed_runs=[...])` so every artifact prints its provenance
   for `claims.yaml`.
 
@@ -50,21 +58,8 @@ into `studies/<slug>/paper/figures/` and records a manifest (sha256 + project co
 `tools/sync_figures.py <slug> --check` catches a stale (project regenerated) or hand-edited hub
 figure. Never hand-copy figures.
 
-## 3. Self-review (multimodal — you can see)
+## 3. Self-review
 
-Read each generated `.png` and check, per figure:
-
-1. **Trend supports the claim** it's attached to — if the picture doesn't show what the
-   text will say, fix the text's expectation or the figure choice, never the data.
-2. **Legible at print size**: the PNG renders at final width — if you have to squint at
-   tick labels, the reader can't read them.
-3. **Complete**: legend present, axes labeled with units, error-band semantics in the
-   caption draft.
-4. **Informative**: a panel where all series overlap into one line, or all bars are
-   equal, earns its space only if "no difference" IS the finding — say so in the
-   caption or cut it.
-5. **Consistent** with the other figures (same fonts/palette — automatic if every
-   script used the library; investigate any visible drift).
-
-Record the review (one line per figure, issues fixed) — `/write-paper` and the
-critique ensemble will re-check against the final PDF.
+Review every generated figure as the method describes; a fix never changes the data. Record the review
+(one line per figure, issues fixed) — `/write-paper` and the critique ensemble will re-check against the
+final PDF.

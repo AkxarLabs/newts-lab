@@ -150,3 +150,36 @@ def test_agent_proposals_need_the_pi(lab, wf):
     assert "Declined idea." not in wf.brief("experiment", lab)[0]
     with pytest.raises(ValueError):
         wf.resolve_proposal(rec2["id"], True, lab)
+
+
+# ── the split: SKILL.md = contract, METHOD.md = method ───────────────────────────────────────────
+def test_splitting_the_skills_lost_no_system_rule(wf):
+    """Every tool call, gate, footer, hard rule and state transition the original SKILL.md carried is still
+    in the contract; no default METHOD.md carries one (so replacing a method can never remove a rule)."""
+    import json
+    base = json.loads((REPO / "tests" / "fixtures" / "skill_system_tokens.json").read_text(encoding="utf-8"))
+    procs = wf.load()["procedures"]
+    assert set(base) == {n for n, p in procs.items() if p.get("replaceable")}
+    for name, tokens in base.items():
+        skill = (REPO / ".claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        method = (REPO / ".claude" / "skills" / name / "METHOD.md").read_text(encoding="utf-8")
+        assert set(tokens) <= wf.system_tokens(skill), (name, set(tokens) - wf.system_tokens(skill))
+        assert wf.system_tokens(method) == set(), (name, wf.system_tokens(method))
+        assert skill.count("workflow.py brief") >= 1, name
+        assert f"NEWTS STAGE BRIEF /{name}" in skill, name
+
+
+def test_headless_runs_carry_the_brief_and_record_its_sha(tmp_path, wf):
+    import sys
+    sys.path.insert(0, str(REPO / "tools"))
+    from executor import spec
+    from executor.lab import Lab
+    lab = Lab(REPO)
+    v = {"skill": "propose", "subject": None, "target": "hub", "workdir": REPO, "level": "hub",
+         "cfg": {"mode": "headless", "args": "slug"}, "args": ""}
+    pre = spec.preamble(lab, "r1", v, "claude")
+    assert "NEWTS STAGE BRIEF /propose" in pre and "Proposal: the method" in pre
+    text, h = spec.stage_brief(lab, v)
+    assert h and h in text
+    ask = {**v, "skill": "ask", "cfg": {"mode": "headless", "kind": "ask"}}
+    assert spec.stage_brief(lab, ask) == (None, None)

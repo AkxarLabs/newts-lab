@@ -51,6 +51,12 @@ clear a stale `.bus/.loop-active`); act on what it reports, then confirm:
 
 ## Cycle (repeat until a stop condition)
 
+**The stage's method and the PI's instructions.** Each cycle's work is `/experiment` and `/improve`
+work, so it follows their stage briefs: once at loop start, load both (`uv run --with pyyaml python
+<hub>/tools/workflow.py brief experiment --study <slug>` and the same with `improve`), and follow them
+within this loop's contract. Reload them if the loop runs for more than a day, because the PI may have
+added instructions since.
+
 1. **Read memory:** `EXPERIMENT_LOG.md` tail, `NOTES.md` in full (distilled gotchas +
    tried-and-abandoned), `runs/registry.jsonl`, `git log -20`, the Loop Log (+ `SYSTEM.md`
    once at loop start, if present — machine constraints bind every cycle), and the directive

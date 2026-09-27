@@ -5,12 +5,22 @@ description: Operator-driven iteration on a project after initial implementation
 
 # Improve (operator loop)
 
-Iterates on the project repo at `<projects_root>/<slug>` to push the primary metric,
-AIDE/AIRA-style: the quality lives in the **operators**. Defaults from the project's
+Iterates on the project repo at `<projects_root>/<slug>` to push the primary metric. Defaults from the project's
 `control.yaml` (`parallelism.*`, `seeds.*`), falling back to `lab/config.yaml`
 (`experiment.*`): `max_debug_depth`, `num_drafts`, `max_parallel_subagents`,
 `multi_seed_n`. If the project has a `SYSTEM.md`, its machine constraints bind every
 variant (and are passed to runner subagents' context packets).
+
+This file is the procedure's **contract**: the shared journal, the explore-mode operators, parallel
+execution, the gates, the exit and selection discipline always bind. *Which* operator to apply next and
+how to brief it is the stage's **method**, which step 0 loads (the default `METHOD.md` beside this file,
+or the PI's replacement, plus the PI's own instructions for this stage and this study).
+
+## 0. Load this stage's brief
+
+`uv run --with pyyaml python <hub>/tools/workflow.py brief improve --study <slug>` (`<hub>` = this
+project's `control.yaml` `hub_path`). Skip this if a `NEWTS STAGE BRIEF /improve` block is already in your
+context. Follow its method and instructions within this contract.
 
 ## The journal is the tree
 
@@ -26,30 +36,19 @@ a reusable fix, add the one-line lesson to `NOTES.md`.
 
 ## Operator selection (per cycle)
 
-1. **debug** — if the most promising line's latest attempt failed AND its consecutive
-   debug count < `max_debug_depth`. Context packet = that experiment's **ancestral chain
-   only** (its ledger entries, `error.txt`, resolved config) — nothing else. Hitting the
-   depth cap → record the failure with diagnosis, abandon the line.
-2. **draft** — if fewer than `num_drafts` mechanism-distinct lines exist (lines differing
-   only in parameters count as one). Context packet = the **sibling table**: one row per
-   existing line (config delta, best metric, one-line outcome) with the instruction
-   "propose something on a different mechanism — do not repeat any row".
-3. **improve** — otherwise: mutate the best node of the most promising line. Context
-   packet = sibling table of that line's prior attempts (diversity pressure) + the
-   node's config and metrics.
-4. **crossover** (optional) — only when ≥2 lines each beat the baseline: combine their
-   kept components into one variant. The combination **immediately enters PLAN.md's
-   ablation plan** — stacked, un-ablated changes are banned (hard rule).
+Pick and brief the next attempt with the method's operators (by default: debug, draft, improve,
+crossover). The rules, whatever the method:
 
-**Complexity-adaptive prompting:** every packet states `children_explored: N` for the
-node being extended. N ≥ 3 → "simple variants are exhausted; propose structurally
-different / more advanced approaches." Low N → "prefer the minimal change that tests
-the mechanism."
+- A failing experiment gets at most `max_debug_depth` consecutive fix attempts; then record the failure
+  with its diagnosis and abandon the line.
+- A **crossover**-style combination of kept components **immediately enters PLAN.md's ablation plan** —
+  stacked, un-ablated changes are banned (hard rule).
+- Every attempt is a journal node with its `Parent:`/operator fields.
 
 ## Explore-mode operators (expand / revisit)
 
 These two operators **change the plan itself** rather than extend it, so they are gated:
-available only in **explore** mode — either a PI ran `/improve <slug> [focus] explore` (the
+**part of this contract** (other procedures rely on them), and available only in **explore** mode — either a PI ran `/improve <slug> [focus] explore` (the
 `explore` mode token, default `execute`), or `/research-loop` is sequencing them under a
 LOOP_BRIEF whose `Mode: explore` (see that skill). In `execute` mode they are off and the four
 operators above are all that run. The **manual `/improve <slug> explore` path honors the same
@@ -62,9 +61,9 @@ identically, and a `Headline: yes` reopen escalates the same way (below).
    rows, and the `num_drafts` lines are all exhausted but budget remains. Context packet =
    a **results digest** (each line's best node + metric + one-line outcome from
    `EXPERIMENT_LOG.md`, the hub's `FINDINGS.md`/`FAILURES.md` for this idea, and the
-   **headline hypothesis** verbatim from PLAN.md) + the instruction "propose up to
-   `loop.explore_max_new_lines_per_round` *mechanism-distinct* lines that the results so far
-   make promising, each WITHIN the headline hypothesis — do not repeat any prior line."
+   **headline hypothesis** verbatim from PLAN.md). Propose up to
+   `loop.explore_max_new_lines_per_round` *mechanism-distinct* lines, each WITHIN the headline
+   hypothesis and repeating no prior line (how to find promising ones: the method).
    Each proposed line is appended to PLAN.md tagged `(expand Rn)` **with a pre-written
    promotion criterion** (no criterion → not a valid row), then runs through the four
    operators above like any planned work. Emit `frontier_expand`; then run

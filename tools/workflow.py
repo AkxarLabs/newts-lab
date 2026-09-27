@@ -199,6 +199,32 @@ def check(hub=None) -> list[str]:
     return probs
 
 
+# ── system rules: what a method (or the PI's text) must never carry ──────────────────────────────
+# Tool invocations, gates, the run footer, hard rules and the executor's env contract belong to a
+# procedure's SKILL.md contract. A default METHOD.md contains none of these (a test enforces it), so
+# replacing a method can never remove a system rule; the dashboard warns when PI text restates them.
+SYSTEM_PATTERNS = [
+    r"(?:tools|scripts)/[\w.-]+\.py(?: (?!-)[a-z][\w-]*)?",
+    r"\bguard\.py [a-z][\w-]*",
+    r"\blab_bus\.py (?:emit|inbox|escalate|ack)(?: [a-z_]+)?",
+    r"\bneeds_pi=\w+",
+    r"\brun_report\b",
+    r"\bGate[ -]?[123]\b",
+    r"\bhard rule \d+",
+    r"\b(?:AUTOSCIENTIST|NEWTS)_[A-Z_]+\b",
+    r"\bAskUserQuestion\b",
+    r"\bclaims\.yaml\b",
+    r"\bHUB-WRITEBACK\b",
+    r"\bstate\s*(?:→|->)\s*`?[a-z][\w-]*`?",
+    r"\blab/REGISTRY\.md\b",
+]
+_SYS = re.compile("|".join(f"(?:{p})" for p in SYSTEM_PATTERNS))
+
+
+def system_tokens(text: str) -> set[str]:
+    return {m.group(0) for m in _SYS.finditer(text or "")}
+
+
 # ── the PI's customisations ──────────────────────────────────────────────────────────────────────
 def _safe(name: str) -> bool:
     return bool(name) and bool(_SLUG.match(name))
@@ -386,8 +412,8 @@ def brief(proc: str, hub=None, study: str | None = None) -> tuple[str, str]:
         req = ["## What this procedure must still produce"]
         req += [f"- {o}" for o in p.get("outputs", [])]
         if p.get("anchors"):
-            req.append("- keep these method sections, other procedures rely on them: "
-                       + ", ".join(p["anchors"]))
+            req.append("- other procedures rely on these parts of the contract, so any method must work "
+                       "with them: " + ", ".join(p["anchors"]))
         parts.append("\n".join(req))
     if method.strip():
         parts.append(f"## Method ({method_src})\n\n" + method.strip())

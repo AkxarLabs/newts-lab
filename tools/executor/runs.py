@@ -22,7 +22,8 @@ from .lab import HUB_TARGET, Lab, pos_float, pos_int
 from .manifest import (ACTIVE, PAUSED, RESUMABLE, SCHEMA, TERMINAL, all_runs, emit, find_run,
                        new_run_id, now, parse_ts, run_dir, safe_id, scheduler_lock, transition)
 from .procs import is_locked, kill_tree
-from .spec import ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, preamble, render_prompt, slash_command, validate
+from .spec import (ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, preamble, render_prompt, slash_command,
+                   stage_brief, validate)
 
 MAX_ANSWER_BYTES = 4096
 MAX_REPLY_CHARS = 4000
@@ -89,6 +90,7 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
         "started": None, "finished": None, "wall_seconds": None, "exit_code": None,
         "last_message": None, "last_action": None, "n_actions": 0, "pending_question": None,
         "answers_given": 0, "denials": 0, "report": None, "usage": {}, "subagents": {},
+        "brief_sha": stage_brief(lab, v)[1],   # which instructions governed this run (provenance)
     }
     transition(lab, mpath, m, "queued", by=spec.created_by or "cli")
     return {**m, "position": queue_position(lab, run_id)}

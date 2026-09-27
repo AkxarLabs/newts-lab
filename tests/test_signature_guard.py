@@ -267,3 +267,22 @@ console.log(JSON.stringify({{ denied }}))
     r = subprocess.run([NODE, "--input-type=module", "-e", js], capture_output=True, text=True, timeout=60, env=env)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout.strip().splitlines()[-1]) == {"denied": True}
+
+
+# ── procedures, roles and the PI's stage instructions ─────────────────────────
+
+@pytest.mark.parametrize("rel", [".claude/skills/experiment/SKILL.md", ".claude/skills/experiment/METHOD.md",
+                                 "agent-roles/overseer.md", ".claude/agents/overseer.md", "workflow/stages.yaml",
+                                 "lab/workflow/experiment.add.md", "studies/idea-a/workflow/propose.method.md"])
+def test_agents_cannot_edit_procedures_or_their_own_instructions(g, hub, rel):
+    p = hub.root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    why = g.decide(write(p, "be sloppier"))
+    assert why and "workflow.py propose" in why
+    assert g.decide(bash(f"echo x > {rel}", hub.root))
+
+
+def test_proposing_an_instruction_change_is_allowed(g, hub):
+    assert g.decide(bash("uv run --with pyyaml python tools/workflow.py propose --proc experiment --mode add "
+                         "--file /tmp/draft.md", hub.root)) is None
+    assert g.decide(write(hub.root / "studies" / "idea-a" / "notes.md", "fine")) is None

@@ -1,0 +1,106 @@
+{
+ "ideate": [
+  "Gate 1",
+  "Gate 3",
+  "Gate-1",
+  "Gate-2",
+  "lab/REGISTRY.md",
+  "tools/lab_bus.py emit",
+  "tools/lab_bus.py escalate",
+  "tools/role_sync.py",
+  "tools/role_sync.py resolve"
+ ],
+ "lit-review": [
+  "lab/REGISTRY.md",
+  "state → `lit-review`",
+  "tools/s2.py search"
+ ],
+ "scope": [
+  "Gate 1",
+  "state → `scoping`",
+  "tools/guard.py decisions",
+  "tools/role_sync.py",
+  "tools/role_sync.py resolve"
+ ],
+ "propose": [
+  "AskUserQuestion",
+  "Gate 1",
+  "Gate 2",
+  "NEWTS_RUN_ID",
+  "lab_bus.py emit gate_waiting",
+  "needs_pi=gate1",
+  "state → `proposal`"
+ ],
+ "experiment": [
+  "AUTOSCIENTIST_SLOT_HELD",
+  "Gate 2",
+  "hard rule 13",
+  "needs_pi=kill_criteria",
+  "scripts/lab_bus.py emit",
+  "scripts/lab_bus.py inbox",
+  "scripts/run.py",
+  "scripts/sweep.py",
+  "tools/guard.py append-only",
+  "tools/guard.py frozen",
+  "tools/guard.py full-run",
+  "tools/run_slots.py status"
+ ],
+ "improve": [
+  "Gate 1",
+  "Gate 2",
+  "Gate-1",
+  "Gate-2",
+  "guard.py decisions",
+  "hard rule 13",
+  "hard rule 5",
+  "scripts/lab_bus.py escalate",
+  "scripts/sweep.py",
+  "tools/guard.py plan-trace"
+ ],
+ "analyze": [
+  "AskUserQuestion",
+  "needs_pi=null_result",
+  "state → `writing`",
+  "state → active`",
+  "tools/guard.py evolve",
+  "tools/lab_bus.py emit"
+ ],
+ "make-figures": [
+  "claims.yaml",
+  "tools/audit_claims.py",
+  "tools/sync_figures.py"
+ ],
+ "write-paper": [
+  "Gate 3",
+  "claims.yaml",
+  "state → `internal-review`",
+  "tools/audit_ablation_coverage.py",
+  "tools/audit_claims.py studies",
+  "tools/audit_eval_discipline.py",
+  "tools/audit_multiseed.py",
+  "tools/lab_bus.py emit",
+  "tools/s2.py bibtex",
+  "tools/s2.py verify",
+  "tools/sync_figures.py"
+ ],
+ "critique-paper": [],
+ "review-paper": [
+  "Gate 3",
+  "Gate-3",
+  "guard.py finalization",
+  "hard rule 5",
+  "hard rule 6",
+  "needs_pi=gate3",
+  "state → `writing`",
+  "state → active`",
+  "tools/audit_ablation_coverage.py studies",
+  "tools/audit_claims.py",
+  "tools/audit_claims.py studies",
+  "tools/audit_eval_discipline.py studies",
+  "tools/audit_multiseed.py studies",
+  "tools/lab_bus.py emit",
+  "tools/s2.py citecheck",
+  "tools/s2.py verify",
+  "tools/sync_figures.py"
+ ]
+}

@@ -130,6 +130,21 @@ def _spec(name: str) -> tuple[dict, str]:
     return meta, body
 
 
+def _with_pi(name: str, body: str) -> str:
+    """The role body plus the PI's lab-wide instructions for this role (lab/workflow/roles/<role>.add.md,
+    edited in the dashboard's Workflow page). Hub and spawned-project copies carry them; the shipped
+    template copies never do."""
+    try:
+        sys.path.insert(0, str(HUB / "tools"))
+        import workflow  # noqa: PLC0415
+        add = workflow.role_addon(name, HUB)
+    except Exception:  # noqa: BLE001 — no manifest / unreadable: the role as shipped
+        add = ""
+    if not add:
+        return body
+    return body.rstrip("\n") + "\n\n## The PI's instructions for this role\n\n" + _norm(add).rstrip("\n") + "\n"
+
+
 def _render_claude(meta: dict, body: str, agents_cfg: dict) -> str:
     effort = _effort_for(meta, agents_cfg)
     effort_line = f"effort: {effort}\n" if effort else ""   # '' = model default -> emit no effort line
@@ -197,7 +212,7 @@ def _plan() -> list[tuple[Path, str]]:
     for name in _role_names():
         meta, body = _spec(name)
         for rel, kind in _rel_targets(name):
-            out.append((HUB / rel, _content(kind, meta, body, live)))                       # hub: resolved
+            out.append((HUB / rel, _content(kind, meta, _with_pi(name, body), live)))       # hub: resolved + PI
             out.append((HUB / "templates" / "project" / rel, _content(kind, meta, body, {})))  # template: neutral
     return out
 
@@ -217,7 +232,7 @@ def render_project(project_dir) -> int:
         meta, body = _spec(name)
         for rel, kind in _rel_targets(name):
             path = project_dir / rel
-            expected = _content(kind, meta, body, live)
+            expected = _content(kind, meta, _with_pi(name, body), live)
             current = _norm(path.read_text(encoding="utf-8")) if path.exists() else None
             if current != expected:
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +251,7 @@ def project_stale(project_dir) -> list[Path]:
         for rel, kind in _rel_targets(name):
             path = project_dir / rel
             current = _norm(path.read_text(encoding="utf-8")) if path.exists() else None
-            if current != _content(kind, meta, body, live):
+            if current != _content(kind, meta, _with_pi(name, body), live):
                 stale.append(path)
     return stale
 

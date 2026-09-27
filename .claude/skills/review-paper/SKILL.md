@@ -8,6 +8,17 @@ description: Internal review of a paper — mechanical claims audit (tools/audit
 Input: idea in state `internal-review`. Output: `studies/<slug>/paper/reviews/review-N.md`
 consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_cycles`.
 
+This file is the procedure's **contract**: the blocking audits, the fresh-context ensemble, the oversight
+checks, the routing and the Gate 3 stop always bind. *How* to run the phantom sweep and triage the
+reviewers' items is the stage's **method**, which step 0 loads (the default `METHOD.md` beside this file,
+or the PI's replacement, plus the PI's own instructions for this stage).
+
+## 0. Load this stage's brief
+
+`uv run --with pyyaml python tools/workflow.py brief review-paper --study <slug>`. Skip this if a
+`NEWTS STAGE BRIEF /review-paper` block is already in your context. Follow its method and instructions
+within this contract.
+
 ## Part A — Claims audit (mechanical, blocking)
 
 1. **Figures in sync:** `uv run --with pyyaml python tools/sync_figures.py <slug> --check` —
@@ -48,9 +59,7 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
    - Multi-seed coverage + val/test discipline are now mechanized (the audits in step 2 above) —
      here just spot-confirm variance is *reported* for headline numbers and the narrative doesn't
      quietly lean on a test-set-selected choice.
-   - **Phantom-experiment sweep**: AI-written papers hide fabricated experiments in
-     ablation/analysis subsections (not main results), especially after revision
-     rounds — walk those subsections claim by claim against the project's ledger. At
+   - **Phantom-experiment sweep** of the ablation/analysis subsections, as the method describes. At
      `oversight.level` ≠ off, spawn an `overseer` `support` check per ablation/analysis
      experimental claim (statement = the claim; evidence = `EXPERIMENT_LOG.md` +
      `runs/registry.jsonl` paths) — the judgment check most exposed to author
@@ -69,10 +78,8 @@ written; that's exactly the bias the ensemble exists to remove.
 1. Write `studies/<slug>/paper/reviews/review-N.md`: pointer to the critique directory, the
    meta-review's score table, decision, veto table, and its action items verbatim.
 2. **Author-response triage** (`templates/review/response.md` → `reviews/response-N.md`):
-   every action item gets ACCEPT / REBUT / NEEDS-EXPERIMENT **with evidence**. Feedback
-   is validated, never obeyed — reviewers confabulate too, and revising to satisfy a
-   wrong critique (or inventing support for a demanded ablation) is the documented
-   failure mode of review-driven revision. Apply the taste rubric
+   every action item gets ACCEPT / REBUT / NEEDS-EXPERIMENT **with evidence**, triaged as the
+   method describes (feedback is validated, never just obeyed). Apply the taste rubric
    (`critique-lenses.md`): GENERIC and MISDIRECTED items earn no action. Rebuttals
    without evidence don't count; items rebutted twice but re-raised, and anything
    touching frozen settings, escalate to the PI.
@@ -97,11 +104,14 @@ written; that's exactly the bias the ensemble exists to remove.
      `studies/<slug>/paper/gate3-approval.md` — this is the recorded marker
      `guard.py finalization` accepts, so a **later PI session's** mechanical `/finalize`
      proceeds on the recorded approval without re-prompting for `--pi-approved`. This does
-     **not** let a headless/launched agent finalize: Gate 3 is never delegated
-     (`AUTOSCIENTIST_NO_GATE3` hard-stops those agents at `internal-review` regardless of any
-     marker) — the marker only records a PI approval that already happened in a session.
+     **not** let a headless/launched agent finalize (`AUTOSCIENTIST_NO_GATE3` hard-stops those
+     agents at `internal-review` regardless of any marker) — the marker only records a PI approval
+     that already happened in a session. A headless agent never writes `gate3-approval.md`: the PI
+     signs Gate 3 in the dashboard, or — only when the PI's signed campaign brief delegates Gate 3 —
+     the executor's campaign keeper records it after re-running the paper audits itself.
    - After `critique.max_review_cycles` cycles, escalate to the PI with the residual gaps.
 5. Update registry + notebook with scores, the triage tally, and the route. Emit a bus
    event: `tools/lab_bus.py emit review_verdict --idea <slug> --detail "median <X>, <route>"`
    (and `gate_waiting --detail "Gate 3"` if the route is the Gate-3 stop). Headless: end with the
-   run footer `needs_pi=gate3` — Gate 3 is never signed from the dashboard; the PI finalizes in a session.
+   run footer `needs_pi=gate3` (with `study=<slug>`) — the PI signs Gate 3 in the dashboard (or a
+   campaign that delegates Gate 3 records it), which launches `/finalize`.

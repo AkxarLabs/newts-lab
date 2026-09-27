@@ -13,6 +13,9 @@ that would create or change a PI signature:
   * a registry row moved to `final` without a dashboard-signed gate3-approval.md
   * PI-owned keys of lab/config.yaml changing (tools/configure.py's owner table; `agents.programmatic.*`
     and `dashboard.*` always), and any write to lab/.bus/pi-actions.jsonl
+  * the lab's procedures and roles (.claude/skills, agent-roles, the rendered role files), the workflow
+    definition (workflow/) and the PI's stage instructions (lab/workflow/, studies/*/workflow/) — an agent
+    proposes a change instead (`tools/workflow.py propose`), the PI accepts it in the dashboard
   * shell commands that do any of the above (best effort: signature tokens or protected files together
     with a write, plus the escape hatches AUTOSCIENTIST_GATE2_OK / --pi-approved / --skip-guard and
     clearing AUTOSCIENTIST_NO_GATE3)
@@ -60,7 +63,9 @@ SHELL_ALWAYS = [
 ]
 SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_approved|gate ?3 approved|"
                         r"PI Gate 3|gate3_approved|\[x\]\s*Authorized", re.I)
-PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl", re.I)
+PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.claude/(?:skills|agents)/|agent-roles/|"
+                             r"\.(?:codex|opencode)/agents/|"
+                             r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/stages\.yaml", re.I)
 WRITE_HINT = re.compile(r"(?<![0-9&])>(?!&)|\btee\b|sed\s+-i|perl\s+-\w*i|Set-Content|Add-Content|Out-File|"
                         r"\.write\(|write_text|write_bytes|open\([^)]*['\"][wa+]|\bcp\s|\bmv\s|\brm\s|"
                         r"Copy-Item|Move-Item|Remove-Item|New-Item|yaml\.(safe_)?dump", re.I)
@@ -284,7 +289,21 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
     return None
 
 
-RULES = [_rule_proposal, _rule_control, _rule_gate3, _rule_loop_brief, _rule_campaign, _rule_registry, _rule_config]
+PROCEDURE_PATHS = re.compile(r"^(?:\.claude/skills/|\.claude/agents/|\.codex/agents/|\.opencode/agents/|"
+                             r"agent-roles/|workflow/|lab/workflow/|studies/[^/]+/workflow/)")
+
+
+def _rule_procedures(path: Path, old: str | None, new: str) -> str | None:
+    """The lab's procedures, roles, workflow definition and the PI's stage instructions are not a run's to
+    change — an agent that wants them different files a proposal the PI accepts in the dashboard."""
+    if PROCEDURE_PATHS.match(_rel(path)):
+        return ("procedures, roles and the PI's stage instructions are PI-owned — suggest a change with "
+                "`python tools/workflow.py propose --proc <procedure> --mode add|replace --file <draft.md>`")
+    return None
+
+
+RULES = [_rule_proposal, _rule_control, _rule_gate3, _rule_loop_brief, _rule_campaign, _rule_registry, _rule_config,
+         _rule_procedures]
 
 
 def check_write(path: Path, old: str | None, new: str) -> str | None:
