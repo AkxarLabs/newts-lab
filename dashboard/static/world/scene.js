@@ -76,7 +76,8 @@ const STATE_STATION = {
 // worker role → station (within its anchor's room; room-specific overrides below)
 const ROLE_STATION = { 'ideation-critic': 'reflect', 'scoping-advocate': 'decisions', 'fresh-context-reviewer': 'review', 'experiment-runner': 'experiments', 'overseer': 'quality' };
 const ROOM_ROLE_STATION = { study: { 'fresh-context-reviewer': 'stacks', 'overseer': 'novelty' }, writing: { 'overseer': 'audit' }, incubator: { 'ideation-critic': 'reflect' } };
-function roomOfState(st) { return STATE_ROOM[st] || 'incubator'; }
+// the workflow manifest (NL.WF) wins; the tables above are the painted art's defaults
+function roomOfState(st) { const w = window.NL && NL.wfStateRoom ? NL.wfStateRoom()[st] : null; return (w && ROOM_BOX[w] ? w : null) || STATE_ROOM[st] || 'incubator'; }
 function stationOf(room, key) { const s = STATIONS[room]; return (s && s[key]) || (s && s[Object.keys(s)[0]]) || { x: 0.5, y: 0.6 }; }
 // the painted trail through each room (normalised, ordered) — creatures stroll ALONG these paths
 const PATHS = {
@@ -238,7 +239,8 @@ function createWorld(canvas, opts) {
     if (e.kind === 'item') {
       const o = e.o, room = roomOfState(o.state);
       const dim = view.level === 'PROJECT' && view.proj && o.id !== view.proj;
-      const st = stationOf(room, STATE_STATION[o.state]); return { vis: true, dim, room, sx: st.x, sy: st.y };
+      const wst = window.NL && NL.wfStation ? NL.wfStation(o.state) : null;
+      const st = stationOf(room, (wst && STATIONS[room] && STATIONS[room][wst]) ? wst : STATE_STATION[o.state]); return { vis: true, dim, room, sx: st.x, sy: st.y };
     }
     const w = e.w;
     const anchor = w.project ? items.find(x => x.id === w.project) : (w.idea ? items.find(x => x.id === w.idea) : null);

@@ -1,0 +1,152 @@
+"""The research workflow (workflow/stages.yaml + tools/workflow.py): one definition that the guard, the
+executor and the dashboard read, and the PI's per-stage instructions layered onto each procedure."""
+
+from __future__ import annotations
+
+import re
+import shutil
+
+import pytest
+
+from conftest import REPO, load
+
+OLD_LIFECYCLE = ["seed", "triaged", "lit-review", "scoping", "proposal", "active",
+                 "analysis", "writing", "internal-review", "final"]
+OLD_BACK = {("analysis", "active"), ("writing", "active"), ("internal-review", "active"),
+            ("writing", "analysis"), ("internal-review", "writing"), ("analysis", "writing")}
+
+
+@pytest.fixture
+def wf():
+    return load("workflow")
+
+
+@pytest.fixture
+def lab(tmp_path, wf):
+    """A throwaway hub: this repo's manifest + a replaceable procedure with a small default method."""
+    root = tmp_path / "hub"
+    (root / "workflow").mkdir(parents=True)
+    shutil.copy(REPO / "workflow" / "stages.yaml", root / "workflow" / "stages.yaml")
+    for proc in ("experiment", "propose"):
+        d = root / ".claude" / "skills" / proc
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"# {proc}\n1. Load this stage's brief: `tools/workflow.py brief {proc}`\n", encoding="utf-8")
+        (d / "METHOD.md").write_text(f"Default method for {proc}.\n", encoding="utf-8")
+    (root / "studies" / "alpha").mkdir(parents=True)
+    (root / "studies" / "alpha" / "IDEA.md").write_text("---\nstate: active\n---\n# Alpha\n", encoding="utf-8")
+    (root / "lab").mkdir()
+    return root
+
+
+# ── the definition ───────────────────────────────────────────────────────────────────────────────
+def test_the_manifest_is_consistent(wf):
+    assert wf.check() == [] or all("METHOD.md" in p or "brief" in p for p in wf.check()), wf.check()
+
+
+def test_lifecycle_and_transitions_are_unchanged(wf):
+    assert wf.lifecycle() == OLD_LIFECYCLE
+    assert wf.back_edges() == OLD_BACK
+    assert set(wf.side_states()) == {"parked", "killed"}
+    assert wf.terminal_states() == {"final", "parked", "killed"}
+    guard = load("guard")
+    for a in OLD_LIFECYCLE + ["parked", "killed"]:
+        for b in OLD_LIFECYCLE + ["parked", "killed"]:
+            legacy = b in ("parked", "killed") or a == b or (
+                a in OLD_LIFECYCLE and b in OLD_LIFECYCLE
+                and (OLD_LIFECYCLE.index(b) == OLD_LIFECYCLE.index(a) + 1 or (a, b) in OLD_BACK))
+            assert guard.legal_transition(a, b) == legacy, (a, b)
+
+
+def test_the_launch_allowlist_comes_from_the_manifest_and_never_holds_finalize(wf):
+    import sys
+    sys.path.insert(0, str(REPO / "tools"))
+    import executor
+    reg = wf.launch_registry()
+    assert executor.SKILL_REGISTRY == reg
+    assert "finalize" not in reg and "finalize" in executor.NEVER
+    for name, cfg in reg.items():
+        assert cfg["level"] in ("hub", "project") and cfg["mode"] in ("headless", "interactive"), name
+
+
+def test_a_manifest_that_makes_finalize_launchable_is_rejected(lab, wf):
+    p = lab / "workflow" / "stages.yaml"
+    txt = p.read_text(encoding="utf-8")
+    p.write_text(re.sub(r"(  finalize:\n    kind: stage\n    level: hub\n    mode: headless\n    args: slug\n    launchable: )false",
+                        r"\1true", txt), encoding="utf-8")
+    assert any("finalize must never be launchable" in x for x in wf.check(lab))
+    assert "finalize" not in wf.launch_registry(lab)
+
+
+def test_gates_are_fixed(lab, wf):
+    p = lab / "workflow" / "stages.yaml"
+    txt = p.read_text(encoding="utf-8")
+    p.write_text(txt.replace("  - {n: 2, at: active,", "  - {n: 4, at: active,"), encoding="utf-8")
+    assert any("gates must be exactly" in x for x in wf.check(lab))
+
+
+def test_ui_view_and_generated_default_are_current(wf):
+    view = wf.ui_view()
+    assert [s["id"] for s in view["states"]] == OLD_LIFECYCLE
+    assert {r["id"] for r in view["rooms"]} == {"incubator", "study", "lab", "writing", "archive", "margins"}
+    assert wf.render_docs(check_only=True) == [], "run `tools/workflow.py render-docs`"
+
+
+def test_no_stage_vocabulary_is_hard_coded_in_the_ui():
+    core = (REPO / "dashboard" / "static" / "ui" / "core.js").read_text(encoding="utf-8")
+    studies = (REPO / "dashboard" / "static" / "ui" / "studies.js").read_text(encoding="utf-8")
+    assert "'internal-review': 'Internal review'" not in core and "lit-review': 'scope'" not in studies
+    assert "applyWorkflow" in core
+
+
+# ── the PI's instructions ────────────────────────────────────────────────────────────────────────
+def test_brief_layers_method_lab_and_study_instructions(lab, wf):
+    text, h = wf.brief("experiment", lab)
+    assert "Default method for experiment." in text and "NEWTS STAGE BRIEF /experiment" in text and h
+    wf.write_custom("add", "experiment", "Always log GPU hours.", lab)
+    wf.write_custom("stage", "experiments", "Prefer small models first.", lab)
+    wf.write_custom("add", "experiment", "Use dataset Y for this study.", lab, study="alpha")
+    text2, h2 = wf.brief("experiment", lab, study="alpha")
+    assert h2 != h
+    i_meth, i_lab, i_study = (text2.index("Default method"), text2.index("Always log GPU hours"),
+                              text2.index("Use dataset Y"))
+    assert i_meth < i_lab < i_study          # reading order: method, then lab, then study
+    assert "Prefer small models first." in text2
+    assert "Use dataset Y" not in wf.brief("experiment", lab)[0]   # study instructions stay with the study
+
+
+def test_a_replacement_method_wins_and_flags_a_changed_default(lab, wf):
+    wf.write_custom("method", "experiment", "My own method.", lab)
+    text, _ = wf.brief("experiment", lab)
+    assert "My own method." in text and "Default method" not in text and "replaced by the PI for the lab" in text
+    wf.write_custom("method", "experiment", "This study's method.", lab, study="alpha")
+    assert "This study's method." in wf.brief("experiment", lab, study="alpha")[0]
+    (lab / ".claude" / "skills" / "experiment" / "METHOD.md").write_text("A new default.\n", encoding="utf-8")
+    assert wf.status(lab)["procedures"]["experiment"]["stale"] is True
+    assert "default method has changed" in wf.brief("experiment", lab)[0]
+    wf.write_custom("method", "experiment", "", lab)                  # empty = reset to the default
+    assert "A new default." in wf.brief("experiment", lab)[0]
+
+
+def test_only_replaceable_procedures_take_a_method_and_sizes_are_capped(lab, wf):
+    with pytest.raises(ValueError):
+        wf.propose("advance", "replace", "x", lab)
+    with pytest.raises(ValueError):
+        wf.write_custom("add", "experiment", "x" * (wf.MAX_CUSTOM + 1), lab)
+    with pytest.raises(ValueError):
+        wf.custom_file("add", "../etc", lab)
+    with pytest.raises(ValueError):
+        wf.custom_dir(lab, study="../x")
+
+
+def test_agent_proposals_need_the_pi(lab, wf):
+    rec = wf.propose("experiment", "add", "Also report wall-clock.", lab, study="alpha", why="it was missing")
+    assert [p["id"] for p in wf.proposals(lab)] == [rec["id"]]
+    assert "wall-clock" not in wf.brief("experiment", lab, study="alpha")[0]      # nothing changes until accepted
+    wf.resolve_proposal(rec["id"], True, lab)
+    assert "Also report wall-clock." in wf.brief("experiment", lab, study="alpha")[0]
+    assert wf.proposals(lab) == []
+    rec2 = wf.propose("experiment", "add", "Declined idea.", lab)
+    wf.resolve_proposal(rec2["id"], False, lab)
+    assert "Declined idea." not in wf.brief("experiment", lab)[0]
+    with pytest.raises(ValueError):
+        wf.resolve_proposal(rec2["id"], True, lab)

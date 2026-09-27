@@ -1,0 +1,304 @@
+# The research workflow — the ONE definition of the lab's stages, states, gates and procedures.
+#
+# Code-owned: ships with the template and changes with it (git), like the skills. It is NOT where you
+# customise the workflow — the PI's own instructions per procedure/stage live in lab/workflow/ (lab-wide)
+# and studies/<slug>/workflow/ (one study), edited from the dashboard (Workflow page / a study's
+# Instructions tab) and layered onto each procedure by `tools/workflow.py brief`.
+#
+# Read by: tools/guard.py (legal state transitions), tools/executor/spec.py (which procedures a click
+# can launch), dashboard/sources.py (sent to the UI: labels, board columns, the world's rooms, the next
+# step per state), tools/check_lab.py (consistency), docs (`tools/workflow.py render-docs`).
+# `uv run --with pyyaml python tools/workflow.py check` validates it.
+
+version: 1
+
+# ── registry states, in lifecycle order ──────────────────────────────────────────────────────────
+# stage: which stage (below) the state belongs to · room/station: where it stands in the dashboard's world
+states:
+  - {id: seed,            label: Seed,              stage: ideation,     room: incubator, station: seed,        revivable: true}
+  - {id: triaged,         label: Triaged,           stage: ideation,     room: incubator, station: triage,      revivable: true}
+  - {id: lit-review,      label: Literature review, stage: literature,   room: study,     station: stacks,      revivable: true}
+  - {id: scoping,         label: Scoping,           stage: scoping,      room: study,     station: scoping,     revivable: true}
+  - {id: proposal,        label: Proposal,          stage: proposal,     room: study,     station: proposal,    revivable: true}
+  - {id: active,          label: Experiments,       stage: experiments,  room: lab,       station: experiments, revivable: true}
+  - {id: analysis,        label: Analysis,          stage: analysis,     room: lab,       station: analysis}
+  - {id: writing,         label: Writing,           stage: writing,      room: writing,   station: drafting}
+  - {id: internal-review, label: Internal review,   stage: review,       room: writing,   station: review}
+  - {id: final,           label: Final,             stage: finalization, room: archive,   station: rest,        terminal: true}
+
+# reachable from ANY state (whichever procedure finds the evidence records it); terminal
+side_states:
+  - {id: parked, label: Parked, room: margins, station: parked, terminal: true}
+  - {id: killed, label: Killed, room: margins, station: killed, terminal: true}
+
+# documented back-edges (the paper-phase round trip); every other move is one step forward
+back_edges:
+  - [analysis, active]
+  - [writing, active]
+  - [internal-review, active]
+  - [writing, analysis]
+  - [internal-review, writing]
+  - [analysis, writing]
+
+# the PI's gates. Fixed: a customisation can never add, remove or move one.
+gates:
+  - {n: 1, at: proposal,        before: active, title: "Gate 1 — approve the proposal",
+     means: "the plan, its budget and its kill criteria; optionally the Gate-2 envelope with it"}
+  - {n: 2, at: active,          scope: FULL,    title: "Gate 2 — approve FULL runs",
+     means: "the compute envelope for FULL-scale runs (per run, not a state change)"}
+  - {n: 3, at: internal-review, before: final,  title: "Gate 3 — finalize",
+     means: "the reviewed paper is final: reproducibility pass, artifacts locked, knowledge written back"}
+
+# ── stages: what the PI sees as the steps of the workflow ────────────────────────────────────────
+# procedures: the procedures that do this stage's work (first = primary) · substages: inside the stage
+stages:
+  - {id: ideation,     title: Ideas,             states: [seed, triaged],   procedures: [ideate]}
+  - {id: literature,   title: Literature review, states: [lit-review],      procedures: [lit-review, critique-paper]}
+  - {id: scoping,      title: Scoping,           states: [scoping],         procedures: [scope]}
+  - {id: proposal,     title: Proposal,          states: [proposal],        procedures: [propose, spawn-project], gate: 1}
+  - {id: experiments,  title: Experiments,       states: [active],          procedures: [experiment, improve, research-loop],
+     substages: [SMOKE, PILOT, FULL], gate: 2}
+  - {id: analysis,     title: Analysis,          states: [analysis],        procedures: [analyze]}
+  - {id: writing,      title: Writing,           states: [writing],         procedures: [write-paper, make-figures]}
+  - {id: review,       title: Internal review,   states: [internal-review], procedures: [review-paper, critique-paper], gate: 3}
+  - {id: finalization, title: Finalization,      states: [final],           procedures: [finalize]}
+
+# the rooms of the dashboard's building = the Studies board's columns
+rooms:
+  - {id: incubator, label: Ideas,   title: Incubator,        states: [seed, triaged]}
+  - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], gate: 1}
+  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis], gate: 2}
+  - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review], gate: 3}
+  - {id: archive,   label: Done,    title: The Archive,      states: [final]}
+  - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed]}
+
+# the one next step for a study in a state, when no run is live and no gate waits.
+# `proposal` depends on Gate 1: unsigned → propose (finish/present it), signed → spawn-project.
+next_for_state:
+  seed: advance                  # /advance on a seed = the /ideate reflect + triage phases for it
+  triaged: lit-review
+  lit-review: scope
+  scoping: propose
+  proposal: {unsigned: propose, signed: spawn-project}
+  active: experiment
+  analysis: analyze
+  writing: write-paper
+  internal-review: review-paper
+
+# what the study page's "Work on it…" offers per state (first = default)
+offer_for_state:
+  seed: [advance, lit-review, discuss]
+  triaged: [lit-review, advance, discuss]
+  lit-review: [lit-review, scope, advance]
+  scoping: [scope, propose, advance]
+  proposal: [propose, spawn-project, advance]
+  active: [experiment, improve, research-loop, analyze]
+  analysis: [analyze, experiment, make-figures, write-paper]
+  writing: [write-paper, make-figures, critique-paper]
+  internal-review: [review-paper, critique-paper, write-paper]
+
+# a target-driven project (/compete, control.yaml target.active) skips the paper layer
+tracks:
+  paper: [seed, triaged, lit-review, scoping, proposal, active, analysis, writing, internal-review, final]
+  target: [active, final]
+
+# ── procedures ───────────────────────────────────────────────────────────────────────────────────
+# kind:        stage (does a stage's work) · driver (runs other procedures) · entry (enters the lifecycle)
+#              · utility (no stage of its own)
+# level/mode/args/hint: how the executor launches it (level hub|project = the session's cwd;
+#              mode headless|interactive; args "" | slug | slug? | text? | campaign | "slug text?")
+# launchable:  a dashboard click / chain / campaign may start it (finalize: never — only Gate 3)
+# replaceable: the PI may REPLACE its method (METHOD.md); every procedure accepts added instructions
+# anchors:     method sections other procedures rely on — a replacement method should keep a heading for each
+# outputs:     what it must still produce (files/sections other tools and procedures read)
+procedures:
+  lab-status:
+    {kind: utility, level: hub, mode: headless, args: "", launchable: true, replaceable: false,
+     hint: "orient: registry, inboxes, next action",
+     title: Check on the lab, does: "Reads the registry, inboxes and notebook and recommends the next step."}
+  ideate:
+    kind: stage
+    level: hub
+    mode: headless
+    args: "text?"
+    launchable: true
+    replaceable: true
+    hint: "research direction, or --in-project <slug>"
+    title: Explore a new direction
+    does: "Researches the direction, generates and critiques ideas, and files the best 1–3 as studies."
+    stops: when the ideas are filed
+    outputs: ["studies/<slug>/IDEA.md per surviving idea (frontmatter: state, scores)", "registry rows (state seed → triaged)", "lab/ideation/<run>/ record"]
+  lit-review:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: idea slug
+    title: Review the literature
+    does: "Searches and reads related work and gives a novelty verdict."
+    stops: with the verdict
+    outputs: ["studies/<slug>/lit-review.md: search log, per-paper notes, novelty verdict (novel|incremental|done-before|inconclusive), positioning"]
+  scope:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: idea slug
+    title: Scope the design
+    does: "Writes the design decisions (and re-checks whether it is still worth doing)."
+    outputs: ["studies/<slug>/decisions.md (ADR-style, one entry per key decision)", "value re-verification result"]
+  propose:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: "idea slug (stops at Gate 1)"
+    title: Write the proposal
+    does: "Writes the full plan — hypothesis, staged experiments, budgets, kill criteria."
+    stops: at Gate 1, for your signature
+    outputs: ["studies/<slug>/proposal.md with the template's sections: headline hypothesis, frozen eval, staged plan with pre-written criteria, budgets, kill criteria, §5 Gate-2 envelope"]
+  spawn-project:
+    {kind: stage, level: hub, mode: headless, args: slug, launchable: true, replaceable: false,
+     hint: "idea slug (needs Gate 1)", title: Create the project repo,
+     does: "Creates the project repository from the approved proposal and runs its smoke test.",
+     stops: when the smoke test is green}
+  advance:
+    {kind: driver, level: hub, mode: headless, args: "slug?", launchable: true, replaceable: false,
+     hint: optional idea slug, title: Advance one step,
+     does: "Runs exactly the next lifecycle stage for a study, then stops."}
+  experiment:
+    kind: stage
+    level: project
+    mode: headless
+    args: "slug text?"
+    launchable: true
+    replaceable: true
+    hint: optional exp-id
+    title: Run experiments
+    does: "Smoke → pilot → full runs from the plan, logged and committed."
+    stops: before FULL runs outside a signed envelope
+    outputs: ["configs/experiments/<exp>.yaml per attempt", "EXPERIMENT_LOG.md entry + one commit `exp-NNN: …` per attempt", "PLAN.md experiment table updated", "NOTES.md lessons at exit"]
+  improve:
+    kind: stage
+    level: project
+    mode: headless
+    args: "slug text?"
+    launchable: true
+    replaceable: true
+    hint: optional operator/notes
+    title: Improve the method
+    does: "Draft / debug / improve operators in parallel worktrees."
+    anchors: [revisit, expand]
+    outputs: ["EXPERIMENT_LOG.md entry + commit per attempt", "variant configs", "NOTES.md lessons"]
+  research-loop:
+    {kind: driver, level: project, mode: headless, args: slug, launchable: true, replaceable: false,
+     hint: needs a signed LOOP_BRIEF.md, title: Run the research loop,
+     does: "Unattended experiment cycles within the signed loop brief.",
+     stops: "at the brief's stop conditions", uses: [experiment, improve]}
+  analyze:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: project slug
+    title: Analyze results
+    does: "Analyzes the runs and routes the study: more experiments, writing, or stop."
+    outputs: ["an analysis entry (verified against run artifacts) in the study", "findings distilled to lab/knowledge", "a routing decision: more experiments | writing | kill"]
+  make-figures:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: project slug
+    title: Make figures
+    does: "Builds the paper figures from the run artifacts."
+    outputs: ["aggregator scripts in the project repo", "figures synced to studies/<slug>/paper/figures/"]
+  write-paper:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: study slug
+    title: Write the paper
+    does: "Drafts the paper with every claim linked to evidence."
+    outputs: ["studies/<slug>/paper/main.tex (compiled main.pdf)", "paper/claims.yaml: every quantitative claim → run id + artifact", "paper/references.bib from the lit-review notes only"]
+  critique-paper:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: study slug
+    title: Critique the paper
+    does: "A fresh-context reviewer ensemble critiques the draft."
+    outputs: ["studies/<slug>/critiques/ or paper/reviews/ report: per-lens scores, meta-review, action items"]
+  review-paper:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: true
+    replaceable: true
+    hint: "study slug (stops at Gate 3)"
+    title: Internal review
+    does: "Review cycles until the paper is accepted internally."
+    stops: at Gate 3, for your signature
+    outputs: ["paper/reviews/ round reports + meta-review with a verdict (accept|revise|reject)", "author response + revisions"]
+  finalize:
+    kind: stage
+    level: hub
+    mode: headless
+    args: slug
+    launchable: false
+    replaceable: false
+    title: Finalize
+    does: "The reproducibility pass and knowledge write-back after Gate 3."
+  adopt:
+    {kind: entry, level: hub, mode: headless, args: "text?", launchable: true, replaceable: false,
+     hint: "what exists: idea, design, or repo path", title: Bring in what I have,
+     does: "Enters the lifecycle mid-stream from an idea, a design, a repo or a draft."}
+  autopilot:
+    {kind: driver, level: hub, mode: headless, args: campaign, launchable: true, replaceable: false,
+     hint: signed campaign brief in lab/campaigns/, title: Run a campaign,
+     does: "Carries several ideas end-to-end within a signed campaign brief."}
+  discuss:
+    {kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+     hint: "purpose [target], e.g. direction", title: Talk it through,
+     does: "A one-question-at-a-time conversation with live research. Crosses no gate."}
+  compete:
+    {kind: entry, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+     hint: slug or task, title: Compete on a target,
+     does: "An interview for a fixed-target task (a benchmark, a score)."}
+  setup-lab:
+    {kind: utility, level: hub, mode: interactive, args: "", launchable: true, replaceable: false,
+     hint: first-run interview, title: Set up the lab,
+     does: "The first-run interview: research areas, budgets, compute, venue, models."}
+  configure:
+    {kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+     hint: "e.g. <slug> or set key=value", title: Change lab settings,
+     does: "Views or edits the lab configuration with you."}
+  domain-modeling:
+    {kind: utility, launchable: false, replaceable: false, title: Domain model,
+     does: "Pins down a project's domain language and records decisions."}
+  grilling:
+    {kind: utility, launchable: false, replaceable: false, title: Grill a plan,
+     does: "Stress-tests a plan or design, one question at a time."}
+  grill-with-docs:
+    {kind: utility, launchable: false, replaceable: false, title: Grill a plan (with docs),
+     does: "Stress-tests a plan and writes ADRs and a glossary as it goes."}
+
+# the subagent roles (agent-roles/<role>.md) — the PI may ADD instructions to each (lab-wide)
+roles: [ideation-critic, scoping-advocate, fresh-context-reviewer, experiment-runner, overseer]

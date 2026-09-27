@@ -32,25 +32,43 @@
   };
   NL.ls = ls;
 
-  /* ── lifecycle vocabulary (one place) ──────────────────────────────────── */
-  NL.LIFECYCLE = ['seed', 'triaged', 'lit-review', 'scoping', 'proposal', 'active', 'analysis', 'writing', 'internal-review', 'final'];
-  NL.STATE_LABEL = {
-    seed: 'Seed', triaged: 'Triaged', 'lit-review': 'Literature review', scoping: 'Scoping', proposal: 'Proposal',
-    active: 'Experiments', analysis: 'Analysis', writing: 'Writing', 'internal-review': 'Internal review',
-    final: 'Final', parked: 'Parked', killed: 'Killed',
+  /* ── the workflow vocabulary: states, rooms, gates, procedures — all from workflow/stages.yaml ──
+     (the live snapshot's `workflow`; the generated workflow-default.js serves demo/static pages).
+     applyWorkflow() refills these in place whenever the lab's workflow changes. */
+  NL.LIFECYCLE = []; NL.STATE_LABEL = {}; NL.ROOMS = []; NL.GATE_AT = {}; NL.PROC = {}; NL.PROCS_FOR_STATE = {};
+  NL.NEXT_FOR_STATE = {}; NL.STAGES = []; NL.GATES = []; NL.WF = {};
+  let wfSig = '';
+  NL.applyWorkflow = wf => {
+    if (!wf || wf.error || !Array.isArray(wf.states)) return false;
+    const sig = JSON.stringify([wf.states, wf.side_states, wf.rooms, wf.gates, wf.stages, wf.procedures, wf.next_for_state, wf.offer_for_state]);
+    NL.WF = wf;
+    if (sig === wfSig) return false;
+    wfSig = sig;
+    const all = wf.states.concat(wf.side_states || []);
+    NL.LIFECYCLE.splice(0, NL.LIFECYCLE.length, ...wf.states.map(x => x.id));
+    for (const k of Object.keys(NL.STATE_LABEL)) delete NL.STATE_LABEL[k];
+    all.forEach(x => { NL.STATE_LABEL[x.id] = x.label || x.id; });
+    NL.ROOMS.splice(0, NL.ROOMS.length, ...(wf.rooms || []).map(r => ({ key: r.id, label: r.label, title: r.title, states: r.states || [], gate: r.gate })));
+    for (const k of Object.keys(NL.GATE_AT)) delete NL.GATE_AT[k];
+    (wf.gates || []).forEach(g => { if (g.at) NL.GATE_AT[g.at] = g.n; });
+    NL.GATES.splice(0, NL.GATES.length, ...(wf.gates || []));
+    NL.STAGES.splice(0, NL.STAGES.length, ...(wf.stages || []));
+    for (const k of Object.keys(NL.PROC)) delete NL.PROC[k];
+    Object.entries(wf.procedures || {}).forEach(([k, v]) => { NL.PROC[k] = v; });
+    for (const k of Object.keys(NL.PROCS_FOR_STATE)) delete NL.PROCS_FOR_STATE[k];
+    all.forEach(x => { NL.PROCS_FOR_STATE[x.id] = (wf.offer_for_state || {})[x.id] || []; });
+    for (const k of Object.keys(NL.NEXT_FOR_STATE)) delete NL.NEXT_FOR_STATE[k];
+    Object.assign(NL.NEXT_FOR_STATE, wf.next_for_state || {});
+    return true;
   };
-  // the rooms of the building = the Studies board columns
-  NL.ROOMS = [
-    { key: 'incubator', label: 'Ideas', states: ['seed', 'triaged'] },
-    { key: 'study', label: 'Study', states: ['lit-review', 'scoping', 'proposal'] },
-    { key: 'lab', label: 'Lab', states: ['active', 'analysis'] },
-    { key: 'writing', label: 'Writing', states: ['writing', 'internal-review'] },
-    { key: 'archive', label: 'Done', states: ['final'] },
-    { key: 'margins', label: 'Margins', states: ['parked', 'killed'] },
-  ];
-  NL.roomOf = st => (NL.ROOMS.find(r => r.states.includes(st)) || NL.ROOMS[0]).key;
-  // the gate each step waits on (a door between rooms)
-  NL.GATE_AT = { proposal: 1, active: 2, 'internal-review': 3 };
+  NL.applyWorkflow(window.__WORKFLOW_DEFAULT__);
+  NL.roomOf = st => (NL.ROOMS.find(r => r.states.includes(st)) || NL.ROOMS[0] || { key: 'incubator' }).key;
+  NL.stageOf = st => { const x = (NL.WF.states || []).find(y => y.id === st); return x ? NL.STAGES.find(g => g.id === x.stage) : null; };
+  // where a state stands in the world (room + station), for the painted and the diorama worlds
+  NL.wfStateRoom = () => { const o = {}; (NL.WF.states || []).concat(NL.WF.side_states || []).forEach(x => { if (x.room) o[x.id] = x.room; }); return o; };
+  NL.wfStation = st => { const x = (NL.WF.states || []).concat(NL.WF.side_states || []).find(y => y.id === st); return x && x.station; };
+  // the procedure a study in `state` should run next (the proposal step depends on Gate 1)
+  NL.nextSkill = (state, gateSigned) => { const v = NL.NEXT_FOR_STATE[state]; return v && typeof v === 'object' ? (gateSigned ? v.signed : v.unsigned) : v; };
 
   // run status → what the PI reads (one vocabulary everywhere)
   NL.RUN_WORD = {
@@ -73,47 +91,15 @@
   };
   NL.roleOf = r => NL.ROLE[r] || { label: r || 'Agent', color: 'var(--ink-soft)' };
 
-  // procedures in plain words (what the composer and the study page offer)
-  NL.PROC = {
-    'lab-status': { title: 'Check on the lab', does: 'Reads the registry, inboxes and notebook and recommends the next step.' },
-    ideate: { title: 'Explore a new direction', does: 'Researches the direction, generates and critiques ideas, and files the best 1–3 as studies.', stops: 'when the ideas are filed' },
-    'lit-review': { title: 'Review the literature', does: 'Searches and reads related work and gives a novelty verdict.', stops: 'with the verdict' },
-    scope: { title: 'Scope the design', does: 'Writes the design decisions (and re-checks whether it is still worth doing).' },
-    propose: { title: 'Write the proposal', does: 'Writes the full plan — hypothesis, staged experiments, budgets, kill criteria.', stops: 'at Gate 1, for your signature' },
-    'spawn-project': { title: 'Create the project repo', does: 'Creates the project repository from the approved proposal and runs its smoke test.', stops: 'when the smoke test is green' },
-    advance: { title: 'Advance one step', does: 'Runs exactly the next lifecycle stage for a study, then stops.' },
-    experiment: { title: 'Run experiments', does: 'Smoke → pilot → full runs from the plan, logged and committed.', stops: 'before FULL runs outside a signed envelope' },
-    improve: { title: 'Improve the method', does: 'Draft / debug / improve operators in parallel worktrees.' },
-    'research-loop': { title: 'Run the research loop', does: 'Unattended experiment cycles within the signed loop brief.', stops: 'at the brief\'s stop conditions' },
-    analyze: { title: 'Analyze results', does: 'Analyzes the runs and routes the study: more experiments, writing, or stop.' },
-    'make-figures': { title: 'Make figures', does: 'Builds the paper figures from the run artifacts.' },
-    'write-paper': { title: 'Write the paper', does: 'Drafts the paper with every claim linked to evidence.' },
-    'critique-paper': { title: 'Critique the paper', does: 'A fresh-context reviewer ensemble critiques the draft.' },
-    'review-paper': { title: 'Internal review', does: 'Review cycles until the paper is accepted internally.', stops: 'at Gate 3, for your signature' },
-    adopt: { title: 'Bring in what I have', does: 'Enters the lifecycle mid-stream from an idea, a design, a repo or a draft.' },
-    autopilot: { title: 'Run a campaign', does: 'Carries several ideas end-to-end within a signed campaign brief.' },
-    discuss: { title: 'Talk it through', does: 'A one-question-at-a-time conversation with live research. Crosses no gate.' },
-    compete: { title: 'Compete on a target', does: 'An interview for a fixed-target task (a benchmark, a score).' },
-    'setup-lab': { title: 'Set up the lab', does: 'The first-run interview: research areas, budgets, compute, venue, models.' },
-    configure: { title: 'Change lab settings', does: 'Views or edits the lab configuration with you.' },
-    finalize: { title: 'Finalize', does: 'The reproducibility pass and knowledge write-back after Gate 3.' },
-  };
   NL.procTitle = s => (NL.PROC[s] && NL.PROC[s].title) || ('/' + s);
-  // which procedures fit a study in a given state (the study page's "work on it" list; first = the default)
-  NL.PROCS_FOR_STATE = {
-    seed: ['advance', 'lit-review', 'discuss'], triaged: ['lit-review', 'advance', 'discuss'],
-    'lit-review': ['lit-review', 'scope', 'advance'], scoping: ['scope', 'propose', 'advance'],
-    proposal: ['propose', 'spawn-project', 'advance'], active: ['experiment', 'improve', 'research-loop', 'analyze'],
-    analysis: ['analyze', 'experiment', 'make-figures', 'write-paper'], writing: ['write-paper', 'make-figures', 'critique-paper'],
-    'internal-review': ['review-paper', 'critique-paper', 'write-paper'], final: [], parked: [], killed: [],
-  };
 
   /* ── the live lab store ────────────────────────────────────────────────── */
   const store = { state: window.__STATE__ || null, live: true, listeners: new Set(), conn: 'connecting' };
   NL.store = store;
+  if (store.state && store.state.workflow) NL.applyWorkflow(store.state.workflow);
   NL.getState = () => store.state;
   function emit() { for (const f of store.listeners) { try { f(store.state); } catch (e) { console.error(e); } } }
-  NL.setState = s => { const prev = store.state; store.state = s; NL.onSnapshot && NL.onSnapshot(prev, s); emit(); };
+  NL.setState = s => { const prev = store.state; store.state = s; if (s && s.workflow) NL.applyWorkflow(s.workflow); NL.onSnapshot && NL.onSnapshot(prev, s); emit(); };
   /** Subscribe a component to the lab snapshot (re-renders on every change). */
   NL.useLab = () => {
     const [, force] = H.useReducer(x => x + 1, 0);

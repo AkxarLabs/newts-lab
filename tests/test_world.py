@@ -15,6 +15,7 @@ import shutil
 import subprocess
 
 import pytest
+import yaml
 
 from conftest import REPO
 
@@ -23,8 +24,10 @@ STATIC = REPO / "dashboard" / "static"
 WORLD = STATIC / "world"
 CORE = ["noise.js", "tokens.js", "paper.js", "components.js", "building.js"]
 ROOM_FILES = sorted(p.name for p in (WORLD / "rooms").glob("*.js"))
-LIFECYCLE = ["seed", "triaged", "lit-review", "scoping", "proposal", "active", "analysis", "writing",
-             "internal-review", "final", "parked", "killed"]
+_WF = yaml.safe_load((REPO / "workflow" / "stages.yaml").read_text(encoding="utf-8"))
+LIFECYCLE = [s["id"] for s in _WF["states"] + _WF["side_states"]]    # the workflow manifest's states
+WF_ROOM = {s["id"]: s["room"] for s in _WF["states"] + _WF["side_states"]}
+WF_STATION = {s["id"]: s["station"] for s in _WF["states"] + _WF["side_states"]}
 
 
 def _world() -> dict:
@@ -61,6 +64,10 @@ def test_every_lifecycle_state_lives_in_exactly_one_room(world):
             owners[st] = key
     assert set(LIFECYCLE) <= set(owners), set(LIFECYCLE) - set(owners)
     assert world["stateRoom"] == owners
+    # the art agrees with the workflow manifest (which the engine follows at runtime)
+    assert {st: owners[st] for st in LIFECYCLE} == WF_ROOM
+    for st, room in WF_ROOM.items():
+        assert WF_STATION[st] in world["rooms"][room]["stations"], (st, room, WF_STATION[st])
 
 
 def test_rooms_keep_the_station_contract(world):

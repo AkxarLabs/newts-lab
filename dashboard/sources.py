@@ -33,7 +33,9 @@ try:
     import executor  # noqa: E402
 except Exception:  # noqa: BLE001 — a broken/missing executor must never blank the dashboard
     executor = None
-TERMINAL_STATES = {"final", "killed", "parked"}
+import workflow  # noqa: E402 — the lab's stages/states/procedures (workflow/stages.yaml)
+
+TERMINAL_STATES = workflow.terminal_states()
 _REGISTRY_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 
 
@@ -844,7 +846,15 @@ def snapshot() -> dict:
         "attention": _attention(items, all_events, workers, runs),
         "executor": executor_status(),
         "skills": (executor.SKILL_REGISTRY if executor else {}),
+        "workflow": _workflow_view(),
     }
+
+
+def _workflow_view() -> dict:
+    try:
+        return workflow.ui_view(HUB)
+    except Exception as e:  # noqa: BLE001 — a broken manifest shows as a problem, never a blank dashboard
+        return {"error": str(e)}
 
 
 def _join_runs(workers: list[dict], runs: list[dict]) -> None:

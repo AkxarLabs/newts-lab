@@ -594,7 +594,8 @@ def campaign_create(body: dict) -> tuple[dict, int]:
 
 # ── revive ───────────────────────────────────────────────────────────────────
 
-REVIVE_TO = ("seed", "triaged", "lit-review", "scoping", "proposal", "active")
+def _revive_to() -> tuple:
+    return tuple(S.sources.workflow.revivable_states(_hub()))   # workflow/stages.yaml `revivable: true`
 
 
 def revive(body: dict) -> tuple[dict, int]:
@@ -607,8 +608,8 @@ def revive(body: dict) -> tuple[dict, int]:
     if not reason:
         return {"error": "say why it comes back (it is recorded)"}, 400
     to = str(body.get("to") or "triaged")
-    if to not in REVIVE_TO:
-        return {"error": f"revive into one of {', '.join(REVIVE_TO)}"}, 400
+    if to not in _revive_to():
+        return {"error": f"revive into one of {', '.join(_revive_to())}"}, 400
     reg = _lab() / "REGISTRY.md"
     text = _read(reg)
     if text is None:

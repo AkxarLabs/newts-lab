@@ -14,6 +14,7 @@ procedure: skill "ask", the same preamble, the same hooks (tracing + the signatu
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -24,30 +25,17 @@ from .manifest import safe_id
 # mode:  "headless"    — runs to completion; PI decisions arrive as AskUserQuestion / needs_pi footer
 #        "interactive" — an interview; works through the question card + reply box, one turn at a time
 # args:  "" (none) · "slug" · "slug?" · "text?" · "campaign" · "slug text?"
-SKILL_REGISTRY: dict[str, dict] = {
-    "lab-status":     {"level": "hub", "mode": "headless", "args": "", "hint": "orient: registry, inboxes, next action"},
-    "ideate":         {"level": "hub", "mode": "headless", "args": "text?", "hint": "research direction, or --in-project <slug>"},
-    "lit-review":     {"level": "hub", "mode": "headless", "args": "slug", "hint": "idea slug"},
-    "scope":          {"level": "hub", "mode": "headless", "args": "slug", "hint": "idea slug"},
-    "propose":        {"level": "hub", "mode": "headless", "args": "slug", "hint": "idea slug (stops at Gate 1)"},
-    "spawn-project":  {"level": "hub", "mode": "headless", "args": "slug", "hint": "idea slug (needs Gate 1)"},
-    "advance":        {"level": "hub", "mode": "headless", "args": "slug?", "hint": "optional idea slug"},
-    "analyze":        {"level": "hub", "mode": "headless", "args": "slug", "hint": "project slug"},
-    "make-figures":   {"level": "hub", "mode": "headless", "args": "slug", "hint": "project slug"},
-    "write-paper":    {"level": "hub", "mode": "headless", "args": "slug", "hint": "study slug"},
-    "critique-paper": {"level": "hub", "mode": "headless", "args": "slug", "hint": "study slug"},
-    "review-paper":   {"level": "hub", "mode": "headless", "args": "slug", "hint": "study slug (stops at Gate 3)"},
-    "adopt":          {"level": "hub", "mode": "headless", "args": "text?", "hint": "what exists: idea, design, or repo path"},
-    "autopilot":      {"level": "hub", "mode": "headless", "args": "campaign", "hint": "signed campaign brief in lab/campaigns/"},
-    "experiment":     {"level": "project", "mode": "headless", "args": "slug text?", "hint": "optional exp-id"},
-    "improve":        {"level": "project", "mode": "headless", "args": "slug text?", "hint": "optional operator/notes"},
-    "research-loop":  {"level": "project", "mode": "headless", "args": "slug", "hint": "needs a signed LOOP_BRIEF.md"},
-    "discuss":        {"level": "hub", "mode": "interactive", "args": "text?", "hint": "purpose [target], e.g. direction"},
-    "compete":        {"level": "hub", "mode": "interactive", "args": "text?", "hint": "slug or task"},
-    "setup-lab":      {"level": "hub", "mode": "interactive", "args": "", "hint": "first-run interview"},
-    "configure":      {"level": "hub", "mode": "interactive", "args": "text?", "hint": "e.g. <slug> or set key=value"},
-}
-NEVER = {"finalize"}   # never from a click / chain / campaign — only the PI's signed Gate 3 launches it
+# The allowlist is DERIVED from the workflow manifest (workflow/stages.yaml, `launchable: true`) — the one
+# definition of the lab's procedures; NEVER below is still enforced here regardless of what it says.
+_TOOLS = Path(__file__).resolve().parents[1]
+if str(_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TOOLS))
+import workflow as _workflow  # noqa: E402
+
+SKILL_REGISTRY: dict[str, dict] = _workflow.launch_registry(_TOOLS.parent)
+NEVER = {"finalize"}   # never from a click / chain / campaign — only a Gate 3 signature launches it
+for _n in NEVER:
+    SKILL_REGISTRY.pop(_n, None)
 ASK = "ask"            # the free-form run's pseudo-skill
 MAX_PROMPT = 8000
 

@@ -32,7 +32,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-TERMINAL_STATES = {"final", "killed", "parked"}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workflow  # noqa: E402
+
+TERMINAL_STATES = workflow.terminal_states(HUB)
 
 
 def parse_registry() -> list[dict]:
@@ -115,7 +118,14 @@ def main() -> int:
         except ValueError:
             stale.append(f"{slug}: unparseable Updated date '{row['updated']}'")
 
-    # 4. Executor hygiene (review-level: configuration and orphans, never a hard inconsistency).
+    # 4. The workflow definition (workflow/stages.yaml) is consistent; registry states are ones it knows.
+    problems.extend(f"workflow: {x}" for x in workflow.check(HUB))
+    known = set(workflow.lifecycle(HUB)) | set(workflow.side_states(HUB))
+    for slug, row in rows.items():
+        if row["state"] not in known:
+            problems.append(f"{slug}: registry state '{row['state']}' is not a workflow state")
+
+    # 5. Executor hygiene (review-level: configuration and orphans, never a hard inconsistency).
     stale.extend(executor_checks(config, rows, projects_root))
 
     print(f"## Lab check — {len(rows)} registry rows, {len(study_dirs)} study dirs\n")

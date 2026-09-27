@@ -15,11 +15,7 @@
     if (it.state === 'internal-review' && it.gate === 3 && it.gate_signed) return { label: 'Finalize', icon: '▸', run: async () => {
       if (!await NL.confirm({ title: `Finalize “${it.title || it.id}”?`, ok: 'Start /finalize', body: 'The reproducibility pass, artifact locking and knowledge write-back — under your Gate 3 signature.' })) return;
       const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); } };
-    const map = {
-      seed: 'lit-review', triaged: 'lit-review', 'lit-review': 'scope', scoping: 'propose', proposal: it.gate_signed ? 'spawn-project' : 'propose',
-      active: 'experiment', analysis: 'analyze', writing: 'write-paper', 'internal-review': 'review-paper',
-    };
-    const skill = map[it.state];
+    const skill = NL.nextSkill(it.state, it.gate_signed);   // workflow/stages.yaml next_for_state
     if (!skill) return it.state === 'final' ? null : (it.state === 'parked' || it.state === 'killed') ? { label: 'Revive it', icon: '↺', run: () => NL.revive(it) } : null;
     if (((s.skills || {})[skill] || {}).level === 'project' && !it.has_project) return null;
     return { label: NL.procTitle(skill), icon: '▸', skill, run: () => NL.launch({ skill, target: it.id }) };

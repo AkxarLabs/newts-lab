@@ -40,7 +40,8 @@
     const LAYOUT = W.layoutBuilding(), BOX = LAYOUT.boxes;
     const ROOMS = Object.values(W.rooms).sort((a, b) => (b.floor - a.floor) || (a.order - b.order));
     const ROOM_KEYS = ROOMS.map(r => r.key);
-    const STATE_ROOM = Object.assign({}, D.STATE_ROOM || {}, W.stateRoom());
+    // the workflow manifest decides where each state stands; the rooms' own `states` are the art's defaults
+    const STATE_ROOM = Object.assign({}, D.STATE_ROOM || {}, W.stateRoom(), (window.NL && NL.wfStateRoom) ? NL.wfStateRoom() : {});
     const roomOfState = st => (STATE_ROOM[st] && W.rooms[STATE_ROOM[st]] ? STATE_ROOM[st] : ROOM_KEYS[0]);
     const BUDDY_WH = 132, PROP_SCALE = 1.3;   // furniture reads a touch larger than life next to the axolotls
 
@@ -429,7 +430,8 @@
       if (e.kind === 'item') {
         const o = e.o, room = roomOfState(o.state), spec = W.rooms[room];
         const dim = view.level === 'PROJECT' && view.proj && o.id !== view.proj;
-        const key = spec.stateStation[o.state] || (D.STATE_STATION || {})[o.state];
+        const wfSt = window.NL && NL.wfStation ? NL.wfStation(o.state) : null;
+        const key = (wfSt && spec.stations && spec.stations[wfSt] ? wfSt : null) || spec.stateStation[o.state] || (D.STATE_STATION || {})[o.state];
         const st = stationOf(room, key); return { vis: true, dim, room, sx: st.x, sy: st.y };
       }
       const w = e.w, anchor = w.project ? items.find(x => x.id === w.project) : (w.idea ? items.find(x => x.id === w.idea) : null);

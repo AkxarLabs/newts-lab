@@ -41,11 +41,13 @@ if hasattr(sys.stdout, "reconfigure"):
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
 _COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
-LIFECYCLE = ["seed", "triaged", "lit-review", "scoping", "proposal", "active",
-             "analysis", "writing", "internal-review", "final"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workflow  # noqa: E402 — the one definition of the lifecycle (workflow/stages.yaml)
+
+LIFECYCLE = workflow.lifecycle(HUB)
 # documented back-edges (the paper-phase round-trip) + forward steps are legal; park/kill anytime.
-BACK_EDGES = {("analysis", "active"), ("writing", "active"), ("internal-review", "active"),
-              ("writing", "analysis"), ("internal-review", "writing"), ("analysis", "writing")}
+BACK_EDGES = workflow.back_edges(HUB)
+SIDE_STATES = tuple(workflow.side_states(HUB))   # parked, killed
 
 
 def legal_transition(frm: str, to: str) -> bool:
@@ -55,7 +57,7 @@ def legal_transition(frm: str, to: str) -> bool:
     documented BACK_EDGE. Pure (no I/O), so the write-back tools import and reuse it instead of
     re-encoding the table. (Un-parking a `parked`/`killed` row is a deliberate PI-manual action — the
     oracle refuses it here so it can't happen silently in an automated write-back.)"""
-    if to in ("parked", "killed") or frm == to:
+    if to in SIDE_STATES or frm == to:
         return True
     return (frm in LIFECYCLE and to in LIFECYCLE
             and (LIFECYCLE.index(to) == LIFECYCLE.index(frm) + 1 or (frm, to) in BACK_EDGES))
