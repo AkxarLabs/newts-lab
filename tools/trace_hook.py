@@ -31,7 +31,7 @@ from pathlib import Path
 
 MAX_SUMMARY = 400
 MAX_RESULT = 2000                 # a subagent's result packet / final message, as returned
-WORKER_RETENTION_S = 48 * 3600   # SessionStart prunes worker logs untouched longer than this
+WORKER_RETENTION_S = 7 * 86400   # SessionStart prunes worker logs untouched longer than this
 SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 IDEA_RE = re.compile(r"studies/([a-z0-9][a-z0-9._-]*)", re.I)
 # a hub session touching a project's artifacts (analyze/write/finalize) → attribute it to that
@@ -260,6 +260,15 @@ def main() -> None:
            "event": "action", "session_id": session_id}
     if tuid:
         rec["tool_use_id"] = tuid
+    # which executor run this session belongs to (headless runs export these), so the dashboard joins
+    # the trace to its run even before the CLI reports a session id — and nests by study
+    if os.environ.get("NEWTS_RUN_ID"):
+        rec["run_id"] = os.environ["NEWTS_RUN_ID"]
+        if os.environ.get("NEWTS_RUN_SUBJECT"):
+            rec["subject"] = os.environ["NEWTS_RUN_SUBJECT"]
+    if os.environ.get("AUTOSCIENTIST_AGENT_DEPTH"):
+        rec["depth"] = os.environ["AUTOSCIENTIST_AGENT_DEPTH"]
+    background = isinstance(ti, dict) and bool(ti.get("run_in_background"))
 
     if event == "SessionStart":
         rec.update(event="start", status="working")
@@ -286,6 +295,8 @@ def main() -> None:
         rec.update(event="spawn", tool=tool, kind="spawn", summary=_summary(tool, ti))
         if child:
             rec["spawns"] = child
+        if background:
+            rec["background"] = True
     elif event == "PreToolUse":
         # "in <tool> since <ts>": a worker inside a 40-minute training call stays visibly busy
         rec.update(event="begin", tool=tool, kind=_kind(tool, ti), summary=_summary(tool, ti))
@@ -293,6 +304,13 @@ def main() -> None:
         # codex: spawn_agent returns at once with the child's id ({agent_id, nickname}); the child
         # runs on and its result arrives with its own SubagentStop
         rec.update(event="action", tool=tool, kind="spawn", summary=_summary(tool, ti))
+        child = _child_of(data.get("tool_response"))
+        if child:
+            rec["child"] = child
+    elif event == "PostToolUse" and tool in ("Task", "Agent") and background:
+        # a background subagent: the call returns at once with a launch acknowledgement — the child is
+        # still working; its own SubagentStop carries the result
+        rec.update(event="action", tool=tool, kind="spawn", summary=_summary(tool, ti) + " (in the background)")
         child = _child_of(data.get("tool_response"))
         if child:
             rec["child"] = child

@@ -6,6 +6,7 @@ keeper records, only when the brief delegates it and the audits are clean, and w
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
@@ -412,3 +413,59 @@ def test_keep_awake_follows_the_work(camp, monkeypatch):
                                          .replace('lab:\n', 'lab:\n  keep_awake: off\n', 1), encoding="utf-8")
     awake.update(lab)
     assert held[-1] is None
+
+
+def test_the_spawned_scheduler_takes_over_its_spawners_lease(camp):
+    """ensure_ticker writes a lease as it spawns `serve --until-idle`; that process must not mistake it for
+    another live ticker and exit (it did, once)."""
+    import subprocess as sp
+    lab, _make = camp
+    scheduler.write_lease(lab, "spawned serve --until-idle")
+    r = sp.run([sys.executable, str(REPO / "tools" / "executor_cli.py"), "--hub", str(lab.hub), "serve", "--until-idle",
+                "--interval", "0.2", "--idle-seconds", "1"], capture_output=True, text=True, timeout=120,
+               env={**__import__("os").environ, "NEWTS_NO_AUTOTICKER": "1"})
+    assert "another scheduler is ticking" not in r.stdout, r.stdout
+    scheduler.write_lease(lab, "dashboard")
+    r = sp.run([sys.executable, str(REPO / "tools" / "executor_cli.py"), "--hub", str(lab.hub), "serve", "--until-idle"],
+               capture_output=True, text=True, timeout=60)
+    assert "another scheduler is ticking" in r.stdout
+
+
+def test_detached_processes_get_a_durable_python(monkeypatch, tmp_path):
+    """Under `uv run --with …` the interpreter lives in a throwaway env uv deletes on exit: supervisors,
+    schedulers and hooks started from it must use the durable ~/.newts/py instead (found live: a campaign
+    cycle died with 'No pyvenv.cfg file' after the dashboard that started its scheduler exited)."""
+    from executor import procs
+    tmp = "/home/u/.cache/uv/builds-v0/.tmpAbC/bin/python" if os.name != "nt" else r"C:\u\uv\cache\builds-v0\.tmpAbC\Scripts\python.exe"
+    assert procs._ephemeral(tmp) and not procs._ephemeral(sys.executable if not procs._ephemeral(sys.executable) else "/usr/bin/python3")
+    monkeypatch.setattr(procs.sys, "executable", tmp)
+    monkeypatch.setenv("NEWTS_KEEP_PYTHON", "1")
+    assert procs.python_exe() == tmp                        # the suite's own opt-out
+    monkeypatch.delenv("NEWTS_KEEP_PYTHON")
+    monkeypatch.setenv("NEWTS_HOME", str(tmp_path))
+    procs._STABLE.clear()
+    stable = tmp_path / "py" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    stable.parent.mkdir(parents=True)
+    stable.write_text("", encoding="utf-8")
+    monkeypatch.setattr(procs.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())
+    assert procs.python_exe() == str(stable)
+    procs._STABLE.clear()
+
+
+def test_needs_you_shows_the_campaign_not_its_retried_runs(camp, monkeypatch):
+    from executor import attention
+    lab, make = camp
+    make(max_failures=1)
+    executor.tick(lab, spawn=Spawns())
+    c1 = _cycles(lab)[0]
+    _finish(lab, c1["run_id"], "failed", failure_kind="logic", reason="exit 1")
+    runs = [(p, m) for *_x, p, m in executor.all_runs(lab)]
+    assert not [i for i in attention.run_items(lab, runs) if i["kind"] == "crashed"]   # the keeper handles it
+    executor.tick(lab, spawn=Spawns())
+    assert campaigns.load(lab, "2026-09-27-test")["status"] == "stalled"
+    from conftest import load
+    sources = load("dashboard/sources")
+    monkeypatch.setattr(sources, "HUB", lab.hub)
+    monkeypatch.setattr(sources, "LAB", lab.lab)
+    items = sources._attention([], [], [], [])
+    assert any(i["kind"] == "campaign" and i["sev"] == "block" for i in items)

@@ -181,16 +181,28 @@ class _State:
             self._last = time.time()
 
 
+TRACE_HOOK = Path(__file__).resolve().parents[1] / "trace_hook.py"
+TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
+
+
 def _claude_sidecars(rd: Path, env_extra: dict) -> tuple[Path, Path]:
-    """Per-run settings (the AskUserQuestion hook + the signature guard — never permissions) + the MCP
-    host config."""
+    """Per-run settings (the AskUserQuestion hook, the signature guard and the tracer — never permissions)
+    + the MCP host config. The tracer runs here with this interpreter's absolute path; the repo's own
+    `.claude/settings.json` hooks (`--from-repo`) stand down for the run (NEWTS_TRACE_FLAGS=1), so a
+    machine with only `python3` — or a repo whose tracing files are stale — is still traced, once."""
     py = python_exe()
     pre = [{"matcher": "AskUserQuestion", "hooks": [
         {"type": "command", "command": f'"{py}" "{ASK_HOOK}"', "timeout": 15}]}]
     if SIGNATURE_GUARD.is_file():
         pre.append({"matcher": GUARD_MATCHER, "hooks": [
             {"type": "command", "command": f'"{py}" "{SIGNATURE_GUARD}"', "timeout": 15}]})
-    settings = {"hooks": {"PreToolUse": pre}}
+    hooks = {"PreToolUse": pre}
+    if TRACE_HOOK.is_file():
+        trace = {"type": "command", "command": f'"{py}" "{TRACE_HOOK}"', "timeout": 10}
+        for ev in TRACE_EVENTS:
+            entry = {"matcher": "*", "hooks": [trace]} if ev in ("PreToolUse", "PostToolUse") else {"hooks": [trace]}
+            hooks.setdefault(ev, []).append(entry)
+    settings = {"hooks": hooks}
     sp = rd / "settings.json"
     sp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     mcp = {"mcpServers": {"newts": {"command": py, "args": [str(PERMISSION_HOST)], "env": env_extra}}}
@@ -313,6 +325,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     depth = pos_int(m.get("depth"), 0, 0)
     env_extra = {"NEWTS_RUN_ID": run_id, "NEWTS_RUN_DIR": str(rd), "NEWTS_HUB": str(lab.hub),
                  "NEWTS_RUN_TARGET": str(m.get("target")), "NEWTS_ATTEMPT": str(attempt),
+                 "NEWTS_RUN_SUBJECT": str(m.get("subject") or ""),
                  "NEWTS_RUN_SKILL": str(m.get("skill") or ""),
                  "NEWTS_PERMISSION_WAIT": str(pos_float(prog.get("permission_wait_seconds"), 0.0))}
     env.update(env_extra)
@@ -338,6 +351,8 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     settings_path = mcp_path = sys_prompt = None
     if backend == "claude":
         settings_path, mcp_path = _claude_sidecars(rd, env_extra)
+        if TRACE_HOOK.is_file():
+            env["NEWTS_TRACE_FLAGS"] = "1"   # the repo's own trace hooks (--from-repo) stand down: one line per event
         if preamble_text:
             sys_prompt = rd / "preamble.md"
     add_dirs = [lab.hub] if (backend == "claude" and m.get("level") == "project") else []
@@ -398,7 +413,8 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
              data={"backend": backend, "role": role, "pid": pid, "run_id": run_id, "attempt": attempt,
                    "skill": m.get("skill")})
         if wlog:
-            worker_line(wlog, worker_id=run_id, role=role, event="start", status="working", idea=idea)
+            worker_line(wlog, worker_id=run_id, role=role, event="start", status="working", idea=idea,
+                        run_id=run_id, session_id=m.get("session_id") or run_id, subject=m.get("subject"))
 
     def on_event(ev):
         with st.lock:   # the heartbeat thread serializes `m` concurrently
@@ -428,21 +444,26 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
                 subagents[tu] = {
                     "type": ev["spawn"]["subagent_type"], "description": ev["spawn"]["description"],
                     "status": "working", "started": now(), "finished": None, "n_actions": 0,
-                    "last_action": None, "result": None, "parent": parent}
+                    "last_action": None, "result": None, "parent": parent,
+                    "background": bool(ev["spawn"].get("background"))}
                 if ev["spawn"].get("child_session"):   # codex thread id / opencode child session id
                     subagents[tu]["session"] = ev["spawn"]["child_session"]
             if wlog:
                 worker_line(wlog, worker_id=run_id, role=role, event="action", tool=ev.get("tool"),
-                            kind=ev.get("kind"), summary=ev.get("summary"), idea=idea)
+                            kind=ev.get("kind"), summary=ev.get("summary"), idea=idea, run_id=run_id,
+                            session_id=m.get("session_id") or run_id)
         elif e == "begin":
             m["in_tool"] = {"ts": now(), "tool": ev.get("tool"), "summary": ev.get("summary")}
         elif e == "tool_result":
             tu = ev.get("tool_use_id")
             if tu and tu in subagents:
                 sa = subagents[tu]
-                sa["status"] = "failed" if ev.get("is_error") else "done"
-                sa["finished"] = now()
-                sa["result"] = (ev.get("text") or "")[:1200]
+                if sa.get("background") and not ev.get("is_error"):
+                    sa["launched"] = (ev.get("text") or "")[:300]   # the launch ack — it's still working
+                else:
+                    sa["status"] = "failed" if ev.get("is_error") else "done"
+                    sa["finished"] = now()
+                    sa["result"] = (ev.get("text") or "")[:1200]
             m.pop("in_tool", None)
         elif e == "text" and not ev.get("parent"):
             m["last_text"] = (ev.get("text") or "")[:800]
@@ -486,7 +507,11 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     m.pop("in_tool", None)
     for sa in subagents.values():   # anything still "working" when the session ended didn't report back
         if sa.get("status") == "working":
-            sa["status"] = "unfinished"
+            # a background subagent is waited for before `claude -p` exits (no wait ceiling): it finished
+            ok_bg = sa.get("background") and backend == "claude" and status == "completed"
+            sa["status"] = "done" if ok_bg else "unfinished"
+            if ok_bg:
+                sa["finished"] = now()
     if res.session_id and backend != "claude" and not m.get("session_id"):
         m["session_id"] = res.session_id
     if res.last_message:

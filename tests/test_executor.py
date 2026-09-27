@@ -194,7 +194,7 @@ def test_parse_events_claude_tree_and_defer():
         {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"subagent_type": "overseer", "description": "check"}},
         {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "ls"}}]}})
     assert [e["event"] for e in evs] == ["text", "action", "action"]           # every block, not just the first
-    assert evs[1]["spawn"] == {"subagent_type": "overseer", "description": "check"}
+    assert evs[1]["spawn"] == {"subagent_type": "overseer", "description": "check", "background": False}
     sub = backends.parse_events("claude", {"type": "assistant", "parent_tool_use_id": "t1", "message": {
         "content": [{"type": "tool_use", "id": "t3", "name": "Read", "input": {"file_path": "a.md"}}]}})
     assert sub[0]["parent"] == "t1" and sub[0]["summary"] == "a.md"

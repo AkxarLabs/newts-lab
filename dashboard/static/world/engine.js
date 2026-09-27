@@ -422,7 +422,7 @@
     function reconcile() {
       const seen = new Set();
       items.forEach(o => { const k = 'it:' + o.id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'item', o, jx: D.hash01(o.id + 'a') - 0.5, jy: D.hash01(o.id + 'b') - 0.5 }); ents.set(k, e); } e.o = o; });
-      workforce.forEach(w => { if (w.role === 'orchestrator' && !w.run_id) return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: D.hash01(w.worker_id + 'a') - 0.5, jy: D.hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; });
+      workforce.forEach(w => { if (w.role === 'orchestrator' && !w.run_id && !(w.interactive && w.status === 'working')) return; const k = 'wk:' + w.worker_id; seen.add(k); let e = ents.get(k); if (!e) { e = Object.assign(newEnt(), { kind: 'worker', w, jx: D.hash01(w.worker_id + 'a') - 0.5, jy: D.hash01(w.worker_id + 'b') - 0.5 }); ents.set(k, e); } e.w = w; });
       for (const [k, e] of ents) if (!seen.has(k)) { if (e.kind === 'worker' && !e.dying) { e.dying = true; e.dieT = 0; } else if (e.kind === 'item') { if (e.view) e.view.c.destroy({ children: true }); ents.delete(k); } }
     }
     function stationOf(room, key) { const st = W.rooms[room].stations; return st[key] || st[Object.keys(st)[0]]; }

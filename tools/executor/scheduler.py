@@ -299,10 +299,13 @@ def spawn_supervisor(lab: Lab, target: str, run_id: str, log_path: Path) -> int:
     # Carry our import path: under `uv run --with pyyaml` the overlay that provides pyyaml may not
     # be visible to a bare child of sys.executable — the supervisor must import exactly what we can.
     env = dict(os.environ)
-    paths = [p for p in sys.path if p and os.path.isdir(p)]
-    if env.get("PYTHONPATH"):
-        paths.append(env["PYTHONPATH"])
-    env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(paths))
+    if python_exe() == sys.executable:   # the same interpreter: carry exactly what we can import
+        paths = [p for p in sys.path if p and os.path.isdir(p)]
+        if env.get("PYTHONPATH"):
+            paths.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(dict.fromkeys(paths))
+    else:                                # a durable interpreter with its own pyyaml — never another's paths
+        env.pop("PYTHONPATH", None)
     with open(log_path, "ab") as log:
         p = subprocess.Popen([python_exe(), str(CLI), "--hub", str(lab.hub), "supervise",
                               "--run", run_id, "--target", target],
@@ -461,7 +464,7 @@ def ensure_ticker(lab: Lab) -> bool:
 
 
 def tick_loop(lab_factory, stop: threading.Event, interval: float = 2.0, reconcile_every: float = 30.0,
-              until_idle: bool = False) -> None:
+              until_idle: bool = False, idle_seconds: float = 120.0) -> None:
     """Run tick() until `stop` is set (or, with `until_idle`, until there is no work left for two minutes).
     `lab_factory()` builds a fresh Lab each pass (so a moved or monkeypatched hub root is honoured). Keeps
     the machine awake while there is work. Never raises."""
@@ -482,7 +485,7 @@ def tick_loop(lab_factory, stop: threading.Event, interval: float = 2.0, reconci
                 except Exception:  # noqa: BLE001
                     busy = True
                 idle_since = None if busy else (idle_since or time.time())
-                if idle_since and time.time() - idle_since > 120:
+                if idle_since and time.time() - idle_since > idle_seconds:
                     break
             stop.wait(interval)
     finally:

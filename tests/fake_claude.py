@@ -79,6 +79,29 @@ def run_hook(settings_path: str | None, payload: dict) -> dict | None:
     return None
 
 
+def fire(settings_path: str | None, payload: dict) -> None:
+    """Run every hook Claude Code would for this event: the run's --settings file AND the repo's own
+    .claude/settings.json (with ${CLAUDE_PROJECT_DIR} = cwd), matchers honoured — the trace path end to end."""
+    event, tool = payload.get("hook_event_name"), payload.get("tool_name")
+    sources = [Path(settings_path)] if settings_path else []
+    repo = Path(os.getcwd()) / ".claude" / "settings.json"
+    if repo.is_file():
+        sources.append(repo)
+    for src in sources:
+        try:
+            s = json.loads(src.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for entry in (s.get("hooks") or {}).get(event) or []:
+            m = entry.get("matcher")
+            if m and m != "*" and m != tool and tool not in m.split("|"):
+                continue
+            for h in entry.get("hooks") or []:
+                cmd = h["command"].replace("${CLAUDE_PROJECT_DIR}", os.getcwd())
+                subprocess.run(cmd, shell=True, input=json.dumps(payload), capture_output=True, text=True,
+                               timeout=30, cwd=os.getcwd())
+
+
 def ask_host(mcp_path: str, tool_name: str, tool_input: dict) -> dict:
     cfg = json.loads(Path(mcp_path).read_text(encoding="utf-8"))["mcpServers"]["newts"]
     env = {**os.environ, **(cfg.get("env") or {})}
@@ -236,6 +259,43 @@ def main() -> int:
         out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
             {"type": "text", "text": f"campaign pass {n}: reading the portfolio"}]}})
         return finish("morning report written" if final else f"pass {n} done")
+    if mode == "traced":   # a session with a subagent that spawns its own, every hook fired (FAKE_BG=1: background)
+        cwd = os.getcwd()
+        bg = os.environ.get("FAKE_BG") == "1"
+
+        def ev(name, **kw):
+            fire(settings, {"session_id": sid, "hook_event_name": name, "cwd": cwd, **kw})
+        ev("SessionStart", source="startup")
+        spawn = {"subagent_type": "experiment-runner", "description": "variant exp-007", "prompt": "...",
+                 **({"run_in_background": True} if bg else {})}
+        out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
+            {"type": "tool_use", "id": "tu_agent", "name": "Agent", "input": spawn}]}})
+        ev("PreToolUse", tool_name="Agent", tool_input=spawn, tool_use_id="tu_agent")
+        if bg:
+            ev("PostToolUse", tool_name="Agent", tool_input=spawn, tool_use_id="tu_agent",
+               tool_response={"status": "async_launched", "agentId": "sub-1"})
+            out({"type": "user", "parent_tool_use_id": None, "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "tu_agent", "content": "launched in the background"}]}})
+        ev("SubagentStart", agent_id="sub-1", agent_type="experiment-runner")
+        ev("PreToolUse", tool_name="Bash", tool_input={"command": "uv run scripts/run.py"}, tool_use_id="tu_b",
+           agent_id="sub-1", agent_type="experiment-runner")
+        ev("PostToolUse", tool_name="Bash", tool_input={"command": "uv run scripts/run.py"}, tool_use_id="tu_b",
+           agent_id="sub-1", agent_type="experiment-runner")
+        nested = {"subagent_type": "overseer", "description": "support check", "prompt": "..."}
+        ev("PreToolUse", tool_name="Agent", tool_input=nested, tool_use_id="tu_nested", agent_id="sub-1",
+           agent_type="experiment-runner")
+        ev("SubagentStart", agent_id="sub-2", agent_type="overseer")
+        ev("SubagentStop", agent_id="sub-2", agent_type="overseer", last_assistant_message="SUPPORTED")
+        ev("PostToolUse", tool_name="Agent", tool_input=nested, tool_use_id="tu_nested", agent_id="sub-1",
+           agent_type="experiment-runner", tool_response={"content": [{"type": "text", "text": "SUPPORTED"}]})
+        ev("SubagentStop", agent_id="sub-1", agent_type="experiment-runner", last_assistant_message="RESULT PACKET ok")
+        if not bg:
+            ev("PostToolUse", tool_name="Agent", tool_input=spawn, tool_use_id="tu_agent",
+               tool_response={"content": [{"type": "text", "text": "RESULT PACKET ok"}]})
+            out({"type": "user", "parent_tool_use_id": None, "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "tu_agent", "content": "RESULT PACKET ok"}]}})
+        ev("SessionEnd")
+        return finish("traced session done")
     if mode == "mcp":
         mcp = (opts.get("--mcp-config") or [None])[0]
         tool = (opts.get("--permission-prompt-tool") or [None])[0]

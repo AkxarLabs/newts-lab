@@ -570,7 +570,8 @@ def parse_events(backend: str, obj: dict) -> list[dict]:
                           "summary": summarize_input(name, inp)[:200], "parent": parent}
                     if name in ("Agent", "Task") and isinstance(inp, dict):
                         ev["spawn"] = {"subagent_type": inp.get("subagent_type") or "general-purpose",
-                                       "description": str(inp.get("description") or "")[:200]}
+                                       "description": str(inp.get("description") or "")[:200],
+                                       "background": bool(inp.get("run_in_background"))}
                     if name == "AskUserQuestion":
                         ev["question"] = inp
                     out.append(ev)

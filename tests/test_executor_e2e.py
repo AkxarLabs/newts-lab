@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, load
 
 sys.path.insert(0, str(REPO / "tools"))
 import executor  # noqa: E402
@@ -296,3 +296,67 @@ def test_expired_login_gets_an_actionable_reason(hub, monkeypatch):
     assert m["status"] == "failed" and "not logged in" in m["reason"] and "/login" in m["reason"]
     it = next(i for i in executor.attention.collect(lab) if i["run_id"] == m["run_id"])
     assert it["kind"] == "crashed" and "/login" in it["body"]
+
+
+# ── tracing end to end: the executor's hooks + the repo's own, a nested subagent, joined to the run ──
+
+def _traced(hub, monkeypatch, bg=False):
+    import shutil as _sh
+    monkeypatch.setenv("FAKE_MODE", "traced")
+    monkeypatch.setenv("FAKE_BG", "1" if bg else "0")
+    # the repo's own settings + tracer, as in a real lab: they must stand down (one line per event)
+    (hub.root / ".claude").mkdir(exist_ok=True)
+    _sh.copy(REPO / ".claude" / "settings.json", hub.root / ".claude" / "settings.json")
+    (hub.root / "tools").mkdir(exist_ok=True)
+    _sh.copy(REPO / "tools" / "trace_hook.py", hub.root / "tools" / "trace_hook.py")
+    lab = setup(hub)
+    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"], timeout=90)
+    assert m["status"] == "completed", m
+    return lab, m
+
+
+def _worker_lines(hub, wid):
+    f = hub.lab / ".bus" / "workers" / f"{wid}.jsonl"
+    return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def test_the_trace_is_recorded_once_joined_to_its_run_and_nested(hub, monkeypatch):
+    lab, m = _traced(hub, monkeypatch)
+    root = _worker_lines(hub, m["session_id"])
+    assert root[0]["event"] == "start" and root[-1]["event"] == "stop"
+    assert all(ln.get("run_id") == m["run_id"] for ln in root)
+    assert len([ln for ln in root if ln["event"] == "start"]) == 1          # the repo's hooks stood down
+    sub1, sub2 = _worker_lines(hub, "sub-1"), _worker_lines(hub, "sub-2")
+    assert sub1[0]["session_id"] == m["session_id"] and sub2[0]["role"] == "overseer"
+    sources = load("dashboard/sources")
+    monkeypatch.setattr(sources, "HUB", hub.root)
+    monkeypatch.setattr(sources, "LAB", hub.lab)
+    snap = sources.snapshot()
+    ws = {w["worker_id"]: w for w in snap["workers"]}
+    assert ws[m["session_id"]]["run_id"] == m["run_id"]
+    assert ws["sub-1"]["parent"] == m["session_id"] and ws["sub-1"]["run_id"] == m["run_id"]
+    assert ws["sub-2"]["parent"] == "sub-1" and ws["sub-2"]["depth_in_session"] == 2   # nested, not flattened
+    assert "sub-2" in ws["sub-1"]["children"] and ws["sub-2"]["result"] == "SUPPORTED"
+    run = next(r for r in snap["runs"] if r["run_id"] == m["run_id"])
+    assert run["subagents"] and run["subagents"][0]["type"] == "experiment-runner"
+
+
+def test_a_background_subagent_is_not_done_at_launch(hub, monkeypatch):
+    lab, m = _traced(hub, monkeypatch, bg=True)
+    sa = m["subagents"]["tu_agent"]
+    assert sa["background"] and sa["status"] == "done" and sa.get("launched")   # waited for, then finished
+    root = _worker_lines(hub, m["session_id"])
+    post = [ln for ln in root if ln.get("tool_use_id") == "tu_agent" and ln["event"] != "spawn"]
+    assert post and post[0]["event"] == "action" and "background" in post[0]["summary"]
+
+
+def test_a_backend_without_hooks_still_joins_its_run(hub, monkeypatch):
+    """The supervisor's fallback log (no hooks fired) names its run, so the roster joins it."""
+    sources = load("dashboard/sources")
+    wdir = hub.lab / ".bus" / "workers"
+    wdir.mkdir(parents=True, exist_ok=True)
+    (wdir / "hub-x-1.jsonl").write_text(json.dumps({"ts": "2026-09-27T10:00:00", "worker_id": "hub-x-1", "event": "start",
+                                                     "run_id": "hub-x-1", "session_id": "hub-x-1"}) + "\n", encoding="utf-8")
+    ws = sources._workers(hub.lab / ".bus")
+    sources._join_runs(ws, [{"run_id": "hub-x-1", "session_id": None, "status": "running", "command": "/lab-status"}])
+    assert ws[0]["run_id"] == "hub-x-1" and ws[0]["label"] == "/lab-status" and not ws[0].get("interactive")

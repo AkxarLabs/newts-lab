@@ -28,6 +28,9 @@ REPO = Path(__file__).resolve().parents[1]
 # a supervisor that exits with work left starts its own scheduler when none is running (the dashboard
 # was closed) — never inside the test suite, where each test drives the scheduler itself
 os.environ.setdefault("NEWTS_NO_AUTOTICKER", "1")
+# the suite runs under `uv run --with …` (a throwaway env) but lives shorter than it: keep this interpreter
+# for the processes it starts instead of building the durable ~/.newts/py one
+os.environ.setdefault("NEWTS_KEEP_PYTHON", "1")
 
 
 def load(name: str):

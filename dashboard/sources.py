@@ -167,7 +167,9 @@ _RUN_KEYS = ("agent_id", "run_id", "backend", "role", "status", "started", "fini
              "attempt", "reason", "status_ts", "pending_question", "report", "usage", "chain", "chain_child",
              "parent", "created_by", "created", "max_minutes", "n_actions", "denials", "mode", "label",
              "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema",
-             "kind", "gate3_signed", "args", "model", "effort", "max_repeats", "repeat_index", "campaign")
+             "kind", "gate3_signed", "args", "model", "effort", "max_repeats", "repeat_index", "campaign",
+             "repeat_child", "campaign_cycle", "campaign_final", "failure_kind", "limit_reset", "campaign_retries",
+             "brief_sha", "chain_step")
 
 
 def _r10(x) -> int | None:
@@ -200,7 +202,8 @@ def _compact_run(m: dict) -> dict:
                          "status": v.get("status"), "n_actions": v.get("n_actions"),
                          "last_action": (v.get("last_action") or {}).get("summary"),
                          "result": (v.get("result") or "")[:600] or None,
-                         "started": v.get("started"), "finished": v.get("finished")}
+                         "started": v.get("started"), "finished": v.get("finished"),
+                         "parent": v.get("parent"), "session": v.get("session"), "background": v.get("background")}
                         for k, v in list(subs.items())[-40:]]
     out["n_qa"] = len(m.get("qa") or [])
     return out
@@ -528,6 +531,8 @@ _MAX_RECENT = 40
 _KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
                 "overseer", "ideation-critic", "scoping-advocate"}
 _WORKER_CACHE: dict[str, tuple] = {}
+_WORKER_IN_TOOL_MAX_S = 3 * 86400   # inside one tool call (a long training run, a SLURM queue wait) this long
+_LIVE_IDS: set = set()               # session / run ids of runs that were live at the last snapshot
 
 
 def _epoch(ts) -> float | None:
@@ -542,6 +547,7 @@ def _epoch(ts) -> float | None:
 def _fold_worker(lines: list[dict]) -> dict:
     """One worker file's lines → its roster facts (pure; cached by file mtime+size)."""
     role, idea, proj, variant, sid = "orchestrator", None, None, None, None
+    run_id = subject = depth = None
     stop_i, start_i = -1, -1
     actions, spawns, returns = [], [], {}
     open_tool, result, n_actions = None, None, 0
@@ -554,6 +560,8 @@ def _fold_worker(lines: list[dict]) -> dict:
             proj, variant = ln["project"], ln.get("variant") or variant
         if ln.get("session_id") and not sid:
             sid = ln["session_id"]
+        if ln.get("run_id") and not run_id:
+            run_id, subject, depth = ln["run_id"], ln.get("subject") or subject, ln.get("depth", depth)
         ev = ln.get("event")
         if ev == "start":
             start_i = i
@@ -567,7 +575,7 @@ def _fold_worker(lines: list[dict]) -> dict:
         elif ev in ("action", "spawn", "return"):
             if ev == "spawn":
                 spawns.append({"tool_use_id": ln.get("tool_use_id"), "type": ln.get("spawns") or "general-purpose",
-                               "summary": ln.get("summary"), "ts": ln.get("ts")})
+                               "summary": ln.get("summary"), "ts": ln.get("ts"), "background": ln.get("background")})
             if ev == "return" and ln.get("tool_use_id"):
                 returns[ln["tool_use_id"]] = ln.get("result")
             if ln.get("child") and ln.get("tool_use_id"):   # codex / opencode name the child exactly
@@ -582,6 +590,7 @@ def _fold_worker(lines: list[dict]) -> dict:
                             "kind": ln.get("kind") or ev, "event": ev})
     done = stop_i >= 0 and stop_i >= start_i    # a later 'start' (a resumed session) reopens it
     return {"role": role, "idea": idea, "project_hint": proj, "variant": variant, "session_id": sid,
+            "run_id": run_id, "subject": subject, "depth": depth,
             "done": done, "open_tool": None if done else open_tool, "result": result,
             "spawns": spawns, "returns": returns, "n_actions": n_actions,
             "recent_actions": actions[-_MAX_RECENT:], "started": lines[0].get("ts"),
@@ -600,10 +609,11 @@ def _workers(bus_dir: Path, project: str | None = None, projects: set | None = N
         except OSError:
             continue
         age = now - st.st_mtime
-        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S):
-            continue   # never parsed: roster cost stays O(recent) before trace_hook's retention sweep
         key = str(f)
         hit = _WORKER_CACHE.get(key)
+        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S) and f.stem not in _LIVE_IDS and \
+                not (hit and hit[2].get("open_tool") and age < _WORKER_IN_TOOL_MAX_S):
+            continue   # never parsed: roster cost stays O(recent) before trace_hook's retention sweep
         if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
             fold = hit[2]
         else:
@@ -656,6 +666,9 @@ def _workers(bus_dir: Path, project: str | None = None, projects: set | None = N
             "result": fold["result"],
             "n_actions": fold["n_actions"],
             "recent_actions": fold["recent_actions"],
+            "run_id": fold.get("run_id"),
+            "subject": fold.get("subject"),
+            "depth": fold.get("depth"),
             "_returns": fold["returns"],
         })
     return out
@@ -670,26 +683,39 @@ def _link_workers(workers: list[dict]) -> list[dict]:
     for w in workers:
         if w["is_subagent"]:
             kids.setdefault(w["parent"], []).append(w)
-    for pid, children in kids.items():
-        parent = by_id.get(pid)
+    for root_id, children in kids.items():
+        root = by_id.get(root_id)
         children.sort(key=lambda c: c.get("started") or "")
-        if parent is None:
+        if root is None:
             continue
-        parent["children"] = [c["worker_id"] for c in children]
-        free = list(parent.get("spawned") or [])
+        # every spawn in this session — the root's and its subagents' own (a subagent of a subagent)
+        owners = [root] + children
+        free = [(o, s) for o in owners for s in (o.get("spawned") or [])]
         for c in children:
-            match = next((s for s in free if s.get("child") == c["worker_id"]), None) or \
-                next((s for s in free if s["type"] == c["role"] and not s.get("child")), None) or \
-                (next((s for s in free if s["type"] == "general-purpose"), None) if c["role"] == "general-purpose" else None)
+            before = [(o, s) for (o, s) in free if o is not c and (s.get("ts") or "") <= (c.get("started") or "~")]
+            match = next(((o, s) for (o, s) in free if s.get("child") == c["worker_id"]), None) or \
+                next(((o, s) for (o, s) in before if s["type"] == c["role"] and not s.get("child")), None) or \
+                (next(((o, s) for (o, s) in before if s["type"] == "general-purpose"), None)
+                 if c["role"] == "general-purpose" else None)
+            owner = root
             if match:
                 free.remove(match)
-                desc = (match.get("summary") or "").split(": ", 2)[-1]
+                owner, sp = match
+                desc = (sp.get("summary") or "").split(": ", 2)[-1]
                 c["label"] = desc[:160] or None
-                c["spawn_id"] = match.get("tool_use_id")
-                if not c.get("result") and match.get("tool_use_id"):
-                    c["result"] = (parent.get("_returns") or {}).get(match["tool_use_id"])
-            if not c.get("project") and parent.get("project"):
-                c["project"] = parent["project"]
+                c["spawn_id"] = sp.get("tool_use_id")
+                c["background"] = bool(sp.get("background"))
+                if not c.get("result") and sp.get("tool_use_id"):
+                    c["result"] = (owner.get("_returns") or {}).get(sp["tool_use_id"])
+            c["parent"] = owner["worker_id"]
+            c["depth_in_session"] = 1 if owner is root else 2
+            owner.setdefault("children", [])
+            if c["worker_id"] not in owner["children"]:
+                owner["children"].append(c["worker_id"])
+            if not c.get("project") and root.get("project"):
+                c["project"] = root["project"]
+            if not c.get("run_id") and root.get("run_id"):
+                c["run_id"] = root["run_id"]
     for w in workers:
         w.pop("_returns", None)
         w.pop("spawned", None)
@@ -818,6 +844,9 @@ def snapshot() -> dict:
     for item in items:
         item["n_workers"] = sum(1 for w in workers if w["project"] == item["id"] and w["status"] != "done")
     runs = hub_runs + [a for it in items for a in (it.get("agents") or [])]
+    _LIVE_IDS.clear()
+    _LIVE_IDS.update(x for r in runs if r.get("status") in ("starting", "running", "resuming", "waiting_input")
+                     for x in (r.get("run_id"), r.get("session_id")) if x)
     _join_runs(workers, runs)
     _link_workers(workers)
     workers.sort(key=lambda w: w.get("last_ts") or "")
@@ -875,11 +904,18 @@ def _join_runs(workers: list[dict], runs: list[dict]) -> None:
     """A headless run's orchestrator IS a worker (its session id names the trace file): tag it with
     the run so the roster nests run → session → subagents, and give it the run's role/label."""
     by_sid = {r["session_id"]: r for r in runs if r.get("session_id")}
+    by_run = {r["run_id"]: r for r in runs if r.get("run_id")}
     for w in workers:
-        r = by_sid.get(w["worker_id"]) or (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
+        r = by_run.get(w.get("run_id")) or by_run.get(w["worker_id"]) or by_sid.get(w["worker_id"]) or \
+            (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
         if not r:
+            w["interactive"] = not w.get("is_subagent")   # a session the PI (or an agent_runner) started by hand
+            if w["interactive"] and not w.get("label"):
+                w["label"] = "Terminal session (started outside the dashboard)"
             continue
         w["run_id"] = r["run_id"]
+        if r.get("subject") and not w.get("idea") and not w.get("project"):
+            w["idea"] = r["subject"]
         if not w.get("is_subagent"):
             w["label"] = r.get("command") or r.get("prompt_summary")
             if r.get("status") in ("completed", "failed", "timeout", "killed", "waiting_input") and w["status"] != "done":
@@ -934,8 +970,37 @@ def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -
     return out
 
 
+_HEARTBEAT_STALE_S = 120
+
+
 def _attention(items, events, workers, runs) -> list[dict]:
     extra = _lab_attention(items, events, workers)
+    try:   # a campaign that stopped and needs the PI (stalled, paused on a sign-in problem) — one item for it
+        from executor import campaigns as _camps  # noqa: PLC0415
+        for c in _camps.all_states(executor.Lab(HUB)) if executor else []:
+            if c.get("status") in ("stalled", "paused") and c.get("paused_reason") and c.get("paused_reason") != "paused by the PI":
+                extra.append({"id": f"campaign:{c['name']}:{c.get('status')}:{len(c.get('cycles') or [])}", "kind": "campaign",
+                              "sev": "block", "ts": (c.get("events") or [{}])[-1].get("ts"), "target": "hub", "idea": None,
+                              "run_id": None, "skill": "autopilot", "title": f"Campaign {c['name']} stopped — it needs you",
+                              "body": c.get("paused_reason") or "", "detail": {"campaign": c["name"]},
+                              "actions": [{"id": "campaign", "label": "open the campaign"}]})
+            for q in (c.get("questions") or [])[-3:]:
+                extra.append({"id": f"cq:{c['name']}:{q.get('ts')}", "kind": "question", "sev": "warn", "ts": q.get("ts"),
+                              "target": "hub", "idea": None, "run_id": None, "skill": "autopilot",
+                              "title": q.get("question") or "A campaign pass asked a question",
+                              "body": f"left by campaign {c['name']} — it moved on; answer with a note and the next pass reads it",
+                              "detail": {"campaign": c["name"]}, "actions": [{"id": "campaign", "label": "open the campaign"}]})
+    except Exception:  # noqa: BLE001
+        pass
+    for r in runs or []:   # a live run whose supervisor stopped reporting (the next tick reconciles it)
+        age = r.get("heartbeat_age_s")
+        if r.get("schema") == 2 and age is not None and age > _HEARTBEAT_STALE_S:
+            extra.append({"id": f"stale:{r['run_id']}", "kind": "stalled", "sev": "warn", "ts": r.get("status_ts"),
+                          "target": r.get("subject") or "hub", "idea": r.get("subject"), "run_id": r["run_id"],
+                          "skill": r.get("skill"), "title": f"{r.get('command') or r['run_id']} has gone quiet",
+                          "body": f"no heartbeat from its supervisor for {int(age // 60)} min — the scheduler checks "
+                                  "whether it is still alive", "detail": {"heartbeat_age_s": age},
+                          "actions": [{"id": "tail", "label": "open"}, {"id": "stop", "label": "stop"}]})
     if executor is None:
         return extra
     try:

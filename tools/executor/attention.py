@@ -86,7 +86,9 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
                              "The permission mode is PI-owned config (agents.programmatic.permission_mode).",
                              detail={"count": den, "recent": denied[-5:]},
                              actions=[{"id": "dismiss", "label": "dismiss"}]))
-        if st in ("failed", "timeout", "killed") and m.get("reason") != "cancelled":
+        kept = bool(m.get("campaign")) and str(m.get("created_by") or "").startswith("campaign")
+        if st in ("failed", "timeout", "killed") and m.get("reason") != "cancelled" and not kept:
+            # (a campaign's own runs are retried by its keeper; a campaign that needs you says so itself)
             can = bool(m.get("session_id"))
             out.append(_item("crashed", "warn", f"crashed:{rid}:{att}", m,
                              f"{label} {st}", body=m.get("reason") or (m.get("last_message") or "")[:300],

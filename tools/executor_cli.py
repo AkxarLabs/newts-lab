@@ -147,8 +147,10 @@ def cmd_tick(lab: Lab, a) -> int:
 
 def cmd_serve(lab: Lab, a) -> int:
     if a.until_idle:
-        age = executor.scheduler.lease(lab).get("age")
-        if age is not None and age < 10:
+        ls = executor.scheduler.lease(lab)
+        age = ls.get("age")
+        # a lease written by whoever spawned us is ours to take over; any other fresh one means a live ticker
+        if age is not None and age < 10 and not str(ls.get("by") or "").startswith("spawned"):
             print("[executor] another scheduler is ticking — nothing to do", flush=True)
             return 0
         os.environ["NEWTS_TICKER"] = "serve --until-idle"
@@ -157,7 +159,8 @@ def cmd_serve(lab: Lab, a) -> int:
           "their own supervisors)", flush=True)
     stop = threading.Event()
     try:
-        executor.tick_loop(lambda: Lab(lab.hub), stop, interval=a.interval, until_idle=a.until_idle)
+        executor.tick_loop(lambda: Lab(lab.hub), stop, interval=a.interval, until_idle=a.until_idle,
+                           idle_seconds=a.idle_seconds)
     except KeyboardInterrupt:
         stop.set()
         print("\n[executor] scheduler stopped")
@@ -222,6 +225,7 @@ def main(argv=None) -> int:
     s.add_argument("--until-idle", action="store_true", dest="until_idle",
                    help="exit once nothing is queued, running or being kept (started by a supervisor when "
                         "the dashboard is closed)")
+    s.add_argument("--idle-seconds", type=float, default=120.0, dest="idle_seconds", help=argparse.SUPPRESS)
     s.set_defaults(fn=cmd_serve)
 
     sub.add_parser("tick").set_defaults(fn=cmd_tick)

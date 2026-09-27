@@ -201,6 +201,7 @@
         ${r.status === 'queued' ? html`<span>${r.not_before ? 'scheduled for ' + NL.hhmm(r.not_before) : 'starts as soon as a slot is free'}</span>` : null}
       </div>
       ${r.reason && !active && !['completed', 'waiting_input', 'queued'].includes(r.status) ? html`<div class="note note-warn">${r.reason}</div>` : null}
+      <${Lineage} r=${r} />
       <${Subagents} r=${r} />
       <div class="convo" ref=${scroller} onScroll=${onScroll}>
         ${skipped ? html`<div class="msg-div"><span>earlier output skipped (${Math.round(skipped / 1024)} KB)</span></div>` : null}
@@ -216,15 +217,45 @@
       ${!stick ? html`<button class="jump" onClick=${() => setStick(true)}>↓ latest</button>` : null}
     </${NL.Sheet}>`;
   };
+  /* where this run came from and what it started: the PI, a chain, a repeat, a campaign pass */
+  const Lineage = ({ r }) => {
+    const s = NL.useLab();
+    const all = s.runs || [];
+    const parent = r.parent && all.find(x => x.run_id === r.parent);
+    const kids = all.filter(x => x.parent === r.run_id);
+    const by = { chain: 'the previous step', repeat: 'a repeat', campaign: 'a campaign', 'campaign-gate3': 'the campaign (Gate 3 by delegation)',
+      dashboard: 'you', cli: 'the command line', gate3: 'your Gate 3 signature' }[r.created_by] || r.created_by;
+    if (!parent && !kids.length && !r.campaign) return null;
+    return html`<div class="lineage">
+      <span class="muted">Started by</span> ${parent ? html`<button type="button" class="chip click" onClick=${() => NL.openRun(parent.run_id)}>${NL.clip(NL.runTitle(parent), 48)}</button>` : html`<span>${by || 'you'}</span>`}
+      ${r.campaign ? html`<button type="button" class="chip click" onClick=${() => NL.openCampaign(r.campaign)}>⟳ ${NL.clip(r.campaign.replace(/^\d{4}-\d{2}-\d{2}-/, ''), 32)}${r.campaign_cycle ? ' · pass ' + r.campaign_cycle : ''}</button>` : null}
+      ${kids.length ? html`<span class="muted">→ started</span>${kids.slice(0, 8).map(k => html`<button type="button" class="chip click" onClick=${() => NL.openRun(k.run_id)}>${NL.clip(NL.runTitle(k), 36)} <${NL.RunPill} r=${k} /></button>`)}${kids.length > 8 ? html`<span class="muted">+${kids.length - 8}</span>` : null}` : null}
+      ${r.campaign_retries ? html`<span class="muted">· retried ${r.campaign_retries}× after ${r.failure_kind || 'a failure'}</span>` : null}
+    </div>`;
+  };
+
+  /* subagents as a tree (a subagent may spawn its own), each linked to its own trace */
   const Subagents = ({ r }) => {
+    const s = NL.useLab();
     const subs = r.subagents || [];
     if (!subs.length) return null;
     const live = subs.filter(x => x.status === 'working').length;
-    return html`<details class="subs" open=${live > 0}><summary>${NL.plural(subs.length, 'subagent')}${live ? html` · <b>${live} working</b>` : null}</summary>
-      ${subs.slice().reverse().map(sa => html`<div class=${cls('sub-row', sa.status === 'working' && 'on')}>
-        <${NL.RoleDot} role=${sa.type} /><b>${NL.roleOf(sa.type).label}</b><span class="grow clip">${sa.description || ''}</span><span class="muted">${sa.status || ''}</span>
+    const ids = new Set(subs.map(x => x.id));
+    const kidsOf = pid => subs.filter(x => (x.parent && ids.has(x.parent) ? x.parent : null) === pid);
+    const traceOf = sa => (s.workers || []).find(w => (w.spawn_id && w.spawn_id === sa.id) || (sa.session && w.worker_id === sa.session));
+    const Row = ({ sa, depth }) => {
+      const w = traceOf(sa);
+      return html`<div class=${cls('sub-row', sa.status === 'working' && 'on')} style=${{ marginLeft: (depth * 18) + 'px' }}>
+        ${depth ? html`<span class="muted">↳</span>` : null}<${NL.RoleDot} role=${sa.type} /><b>${NL.roleOf(sa.type).label}</b><span class="grow clip">${sa.description || ''}</span>
+        ${sa.background ? html`<span class="muted small" title="started in the background">bg</span>` : null}
+        <span class="muted">${sa.status || ''}${sa.n_actions ? ' · ' + sa.n_actions + ' actions' : ''}</span>
+        ${w ? html`<button type="button" class="link small" onClick=${() => NL.openWorker(w.worker_id)}>trace</button>` : null}
         ${sa.status === 'working' && sa.last_action ? html`<div class="sub-last">▸ ${NL.clip(sa.last_action, 140)}</div>` : null}
-        ${sa.result ? html`<details class="sub-res"><summary>result</summary><div>${sa.result}</div></details>` : null}</div>`)}</details>`;
+        ${sa.result ? html`<details class="sub-res"><summary>result</summary><div>${sa.result}</div></details>` : null}</div>
+        ${kidsOf(sa.id).map(k => html`<${Row} key=${k.id} sa=${k} depth=${depth + 1} />`)}`;
+    };
+    return html`<details class="subs" open=${live > 0}><summary>${NL.plural(subs.length, 'subagent')}${live ? html` · <b>${live} working</b>` : null}</summary>
+      ${kidsOf(null).slice().reverse().map(sa => html`<${Row} key=${sa.id} sa=${sa} depth=${0} />`)}</details>`;
   };
   NL.openRun = id => { if (id) NL.open(NL.RunSheet, { id }, { key: 'run:' + id }); };
 
@@ -271,6 +302,10 @@
       </div>
       ${working.length ? html`<${NL.Section} title="Agents at work now" count=${working.length}><div class="agents-strip">${working.slice(0, 24).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
         <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.label || NL.roleOf(w.role).label, 34)}</span>${w.in_tool ? html`<span class="muted small">▸ ${w.in_tool.tool}</span>` : null}</button>`)}</div></${NL.Section}>` : null}
+      ${(s.workers || []).some(w => w.interactive && w.status !== 'done') ? html`<${NL.Section} title="Sessions started outside the dashboard" count=${(s.workers || []).filter(w => w.interactive && w.status !== 'done').length}>
+        <p class="muted small">Claude Code, Codex or opencode sessions opened in a terminal or an editor in this lab. The lab's hooks trace them; they aren't runs, so their questions stay in that session.</p>
+        <div class="agents-strip">${(s.workers || []).filter(w => w.interactive && w.status !== 'done').slice(0, 12).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
+          <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.idea || w.project || 'the lab', 26)}</span><span class="muted small">${w.status}${(w.children || []).length ? ' · ' + w.children.length + ' subagents' : ''}</span></button>`)}</div></${NL.Section}>` : null}
       <div class="toolbar"><${NL.Tabs} tabs=${FILTERS.map(x2 => ({ id: x2.id, label: x2.label, count: x2.id === 'all' ? null : all.filter(x2.f).length || null }))} value=${f} onChange=${setF} />
         <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></div>
       ${list.length ? html`<div class="runlist">${list.slice(0, 200).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} />`)}</div>`
@@ -289,13 +324,14 @@
     const parent = w.parent && byId(w.parent);
     const kids = (w.children || []).map(byId).filter(Boolean);
     const acts = (w.recent_actions || []).slice().reverse();
-    const run = (s.runs || []).find(r => r.session_id && (r.session_id === w.session_id || r.session_id === w.worker_id));
+    const run = (s.runs || []).find(r => (w.run_id && r.run_id === w.run_id) || (r.session_id && (r.session_id === w.session_id || r.session_id === w.worker_id)));
     const toggle = () => { if (!NL.Scene) return; if (NL.Scene.following() === id) { NL.Scene.stopFollow(); setFollow(false); } else { NL.go(''); NL.Scene.followWorker(id); setFollow(true); } };
     return html`<${NL.Sheet} title=${NL.clip(w.label || NL.roleOf(w.role).label, 70)} onClose=${() => { NL.Scene && NL.Scene.stopFollow(); onClose(); }}
       sub=${html`<span class="row-wrap"><${NL.RoleDot} role=${w.role} /> ${NL.roleOf(w.role).label} · <span class=${w.status === 'working' ? 'live' : 'muted'}>${w.status}</span> · ${anchor ? html`<a class="link" href=${'#/study/' + anchor.id}>${NL.clip(anchor.title || anchor.id, 30)}</a>` : 'the lab'}</span>`}>
       <div class="row"><${NL.Btn} small kind=${follow ? 'primary' : ''} onClick=${toggle}>${follow ? '◉ Following in the world' : '⊙ Follow in the world'}</${NL.Btn}>
         ${run ? html`<${NL.Btn} small onClick=${() => NL.openRun(run.run_id)}>Open its run</${NL.Btn}>` : null}
         ${parent ? html`<${NL.Btn} small onClick=${() => NL.openWorker(parent.worker_id)}>↑ Started by ${NL.clip(parent.label || NL.roleOf(parent.role).label, 30)}</${NL.Btn}>` : null}</div>
+      ${w.interactive ? html`<div class="note small">A session started outside the dashboard (a terminal or an editor) — traced here by the lab's hooks; its questions stay in that session.</div>` : null}
       <div class="runmeta"><span><b>${w.n_actions || 0}</b> actions</span>${w.started ? html`<span>started ${NL.hhmm(w.started)}</span>` : null}${w.last_ts ? html`<span>last ${NL.hhmm(w.last_ts)}</span>` : null}${w.variant ? html`<span>variant ${w.variant}</span>` : null}</div>
       ${w.in_tool ? html`<div class="now"><i class="dot-live"></i> inside <b>${w.in_tool.tool || 'a tool'}</b> since ${NL.hhmm(w.in_tool.since)} — ${NL.clip(w.in_tool.summary, 200)}</div>` : null}
       ${w.result ? html`<div class="subres"><div class="subres-h">↩ handed back</div><div class="subres-t">${w.result}</div></div>` : null}
