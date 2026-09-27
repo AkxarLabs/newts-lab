@@ -2,8 +2,9 @@
 
 `ssh [options] host [command…]`: the "remote" command runs HERE, under bash, with HOME=$FAKE_SSH_HOME; `-L
 lport:127.0.0.1:rport` is a real TCP relay; `-N` blocks until killed. `uv run --with pyyaml python` and
-`python3` in a command become this interpreter (so the remote dashboard really starts, offline). Behaviour
-by env: FAKE_SSH_AUTH=fail → the "Permission denied" an MFA/password host gives a BatchMode client.
+`python3` in a command become this interpreter (so the remote dashboard really starts, offline) unless
+FAKE_SSH_REAL_TOOLS is set (then the "remote" — e.g. WSL's bash — uses its own uv). Behaviour
+by env: FAKE_SSH_BASH='["wsl.exe","-d","Ubuntu-24.04","--","bash"]' picks the "remote" shell; FAKE_SSH_AUTH=fail → the "Permission denied" an MFA/password host gives a BatchMode client.
 Every invocation is appended to $FAKE_SSH_LOG (JSON lines) when set.
 """
 
@@ -86,12 +87,14 @@ def main() -> int:
     rc = 0
     if command:
         py = sys.executable.replace("\\", "/")
-        cmd = command.replace("uv run --with pyyaml python", f'"{py}"').replace("python3 ", f'"{py}" ')
+        cmd = command
+        if not os.environ.get("FAKE_SSH_REAL_TOOLS"):
+            cmd = cmd.replace("uv run --with pyyaml python", f'"{py}"').replace("python3 ", f'"{py}" ')
         env = {**os.environ}
         if os.environ.get("FAKE_SSH_HOME"):
             env["HOME"] = os.environ["FAKE_SSH_HOME"]
-        bash = shutil.which("bash") or "bash"
-        rc = subprocess.run([bash, "-c", cmd], env=env, stdin=sys.stdin.buffer if not sys.stdin.isatty() else None).returncode
+        shell = json.loads(os.environ["FAKE_SSH_BASH"]) if os.environ.get("FAKE_SSH_BASH") else [shutil.which("bash") or "bash"]
+        rc = subprocess.run([*shell, "-c", cmd], env=env, stdin=sys.stdin.buffer if not sys.stdin.isatty() else None).returncode
     if "N" in flags:
         while True:
             time.sleep(3600)

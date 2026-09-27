@@ -156,3 +156,19 @@ def test_create_a_lab_on_a_remote_machine(env):
     assert code == 200, res
     assert (tmp_path / "remote-home" / "labs" / "new-one" / "lab" / "config.yaml").exists()
     assert any(l["path"] == dest for l in m.machines._get("box")["labs"])
+
+
+def test_detached_processes_never_run_on_uvs_throwaway_python():
+    """`uv run --with …` runs in builds-v0/.tmpXXXX, deleted when uv exits — a detached server (and the agent
+    supervisors it spawns) must re-exec on a stable interpreter first. The venv's python is a symlink out of
+    that directory, so detection must not resolve it."""
+    newts = load("newts.py")
+    if os.name == "nt":
+        assert newts._ephemeral(r"C:\Users\u\AppData\Local\uv\cache\builds-v0\.tmpAb12\Scripts\python.exe")
+        assert not newts._ephemeral(r"C:\Users\u\lab\.venv\Scripts\python.exe")
+    else:
+        assert newts._ephemeral("/home/u/.cache/uv/builds-v0/.tmpQy7eFf/bin/python")
+        assert not newts._ephemeral("/usr/bin/python3")
+        assert not newts._ephemeral("/home/u/lab/.venv/bin/python")
+    if not newts._ephemeral(sys.executable):
+        assert newts.stable_python() == sys.executable

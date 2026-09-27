@@ -22,6 +22,7 @@ import getpass
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -48,6 +49,38 @@ def lab_key(hub: Path) -> str:
 
 def state_file(hub: Path) -> Path:
     return home() / "servers" / f"{lab_key(hub)}.json"
+
+
+def _ephemeral(exe: str) -> bool:
+    """True for `uv run --with …`'s throwaway environment (…/builds-v0/.tmpXXXX/…) — uv deletes it when
+    that command exits, which would strand a detached server and every agent run it spawns."""
+    places = [exe, sys.prefix] if exe == sys.executable else [exe]
+    for where in places:                     # unresolved: the venv's python is a symlink out of it
+        parts = Path(os.path.abspath(where)).parts
+        if "builds-v0" in parts or any(x.startswith(".tmp") for x in parts[-4:]):
+            return True
+    return False
+
+
+def stable_python() -> str:
+    """A Python that outlives this launcher: this one if it's already stable, else ~/.newts/py (a small
+    venv with pyyaml, created once by uv). The dashboard, its detached agent-run supervisors and their
+    hooks all run on it."""
+    if not _ephemeral(sys.executable):
+        return sys.executable
+    venv = home() / "py"
+    py = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    ok = py.exists() and subprocess.run([str(py), "-c", "import yaml"], capture_output=True).returncode == 0
+    if not ok:
+        uv = shutil.which("uv")
+        if not uv:
+            return sys.executable
+        home().mkdir(parents=True, exist_ok=True)
+        subprocess.run([uv, "venv", "--quiet", "--allow-existing", str(venv)], capture_output=True)
+        r = subprocess.run([uv, "pip", "install", "--quiet", "--python", str(py), "pyyaml"], capture_output=True, text=True)
+        if r.returncode != 0 or not py.exists():
+            return sys.executable
+    return str(py)
 
 
 def ping(port: int, timeout: float = 0.6) -> dict | None:
@@ -183,6 +216,11 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="machine-readable output (used by remote connections)")
     ap.add_argument("--demo", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
+    py = stable_python()
+    if py != sys.executable and not os.environ.get("NEWTS_REEXEC"):
+        # move onto the stable interpreter first (see stable_python), same arguments
+        return subprocess.run([py, str(Path(__file__).resolve()), *sys.argv[1:]],
+                              env={**os.environ, "NEWTS_REEXEC": "1"}).returncode
     hub = Path(a.hub).expanduser().resolve()
     say = (lambda d: print(json.dumps(d))) if a.json else None
     if not (hub / "lab" / "config.yaml").exists():
