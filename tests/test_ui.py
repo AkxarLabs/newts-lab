@@ -19,7 +19,7 @@ from conftest import REPO
 STATIC = REPO / "dashboard" / "static"
 UI = STATIC / "ui"
 NODE = shutil.which("node")
-UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "gates", "library", "studies", "home", "settings", "setup", "machines", "demo", "app"]
+UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "gates", "library", "studies", "workflow", "home", "settings", "setup", "machines", "demo", "app"]
 
 
 def _js():

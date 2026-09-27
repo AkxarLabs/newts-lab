@@ -86,7 +86,9 @@
     const setTab = t => NL.go(`study/${it.id}/${t}`);
     const tabs = [{ id: 'overview', label: 'Overview' }, { id: 'docs', label: 'Documents' }, { id: 'runs', label: 'Runs', count: runs.length || null },
       ...(it.has_project ? [{ id: 'experiments', label: 'Experiments', count: (it.inflight || []).length || null }] : []),
-      ...(it.has_paper || it.paper ? [{ id: 'paper', label: 'Paper' }] : []), { id: 'controls', label: 'Controls' }];
+      ...(it.has_paper || it.paper ? [{ id: 'paper', label: 'Paper' }] : []),
+      { id: 'instructions', label: 'Instructions', count: Object.keys(((((s.workflow || {}).study_custom || {})[it.id]) || {}).procedures || {}).length || null },
+      { id: 'controls', label: 'Controls' }];
     return html`<div class="page page-wide">
       <header class="page-head study-head"><div class="grow"><div class="crumbs"><a class="link" href="#/studies">Studies</a> › <span class="mono">${it.id}</span></div>
         <h1>${it.title || it.id}</h1><${Stepper} it=${it} /></div>
@@ -100,6 +102,7 @@
         ${tab === 'runs' ? html`<div class="runlist">${runs.length ? runs.slice().sort((a, b) => (b.created || '').localeCompare(a.created || '')).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} />`) : html`<${NL.Empty} icon="▸">No runs on this study yet.</${NL.Empty}>`}</div>` : null}
         ${tab === 'experiments' ? html`<${Experiments} it=${it} />` : null}
         ${tab === 'paper' ? html`<${PaperPane} it=${it} />` : null}
+        ${tab === 'instructions' ? html`<${NL.StudyInstructions} it=${it} />` : null}
         ${tab === 'controls' ? html`<${Controls} it=${it} />` : null}
       </div></div>`;
   };

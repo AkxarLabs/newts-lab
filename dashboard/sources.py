@@ -893,6 +893,17 @@ def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -
                             "ts": None, "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
                             "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}",
                             "detail": r, "actions": [{"id": "dismiss", "label": "dismiss"}]})
+    try:
+        for pr in workflow.proposals(HUB):
+            what = ("replace the method of /" if pr.get("kind") == "method" else "add instructions to "
+                    + ("stage " if pr.get("kind") == "stage" else "role " if pr.get("kind") == "role" else "/"))
+            out.append({"id": f"proposal:{pr['id']}", "kind": "proposal", "sev": "warn", "ts": pr.get("ts"),
+                        "target": pr.get("study") or "hub", "idea": pr.get("study"), "run_id": None, "skill": None,
+                        "title": "An agent suggests: " + what + str(pr.get("name")) + (f" ({pr['study']})" if pr.get("study") else ""),
+                        "body": pr.get("why") or pr.get("text", "")[:200], "detail": {"proposal": pr["id"]},
+                        "actions": [{"id": "proposal", "label": "review"}]})
+    except Exception:  # noqa: BLE001 — never blank the dashboard
+        pass
     for e in _escalations(events):
         out.append({"id": f"esc:{e['id']}", "kind": "escalation", "sev": "warn" if e.get("severity") != "high" else "block",
                     "ts": e.get("ts"), "target": e.get("source"), "idea": e.get("source"), "run_id": None,

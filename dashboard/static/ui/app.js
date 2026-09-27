@@ -80,7 +80,7 @@
     const li = s.lab_info || {};
     const x = NL.exec(s);
     const slots = s.slots || {};
-    const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library']];
+    const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library'], ['workflow', 'workflow', 'Workflow']];
     const running = x.active || 0;
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
@@ -98,14 +98,16 @@
   /* ── routing ───────────────────────────────────────────────────────────── */
   const PAGES = {
     home: () => null, studies: () => NL.StudiesPage, study: () => NL.StudyPage, runs: () => NL.RunsPage, run: () => NL.RunsPage,
-    library: () => NL.LibraryPage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
+    library: () => NL.LibraryPage, workflow: () => NL.WorkflowPage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
   };
   const App = () => {
     const route = NL.useRoute();
     NL.useLab();
     const page = PAGES[route.page] ? route.page : 'home';
     const P = PAGES[page]();
+    const prevPage = useRef(page);
     useEffect(() => {
+      if (prevPage.current !== page) { NL.closeSheets(); prevPage.current = page; }
       document.body.dataset.page = page;
       if (page === 'run' && route.args[0]) NL.openRun(route.args[0]);
       // shareable deep links into a sheet: #/study/<slug>?gate=3 · #/?start=<intent> · #/runs?run=<id>

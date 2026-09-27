@@ -7,12 +7,13 @@
   const { html, useState, useEffect, cls } = NL;
 
   /* ── the inbox: one list, typed actions ─────────────────────────────────── */
-  const ICON = { question: '?', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸' };
-  const PRIMARY = new Set(['answer', 'sign', 'allow', 'next']);
+  const ICON = { question: '?', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎' };
+  const PRIMARY = new Set(['answer', 'sign', 'allow', 'next', 'proposal']);
   NL.attAct = async (it, a) => {
     const run = it.run_id, d = it.detail || {};
     switch (a.id) {
       case 'answer': case 'tail': return NL.openRun(run);
+      case 'proposal': return NL.open(NL.ProposalSheet, { id: d.proposal });
       case 'reply': return run ? NL.openRun(run) : NL.go(it.idea && it.idea !== 'hub' ? `study/${it.idea}` : '');
       case 'stop': if (await NL.confirm({ title: 'Stop this run?', body: 'It stays resumable.', ok: 'Stop', danger: true })) return NL.act('/api/run/stop', { run_id: run, confirm: true }, 'Stopping'); return;
       case 'resume': return NL.act('/api/run/resume', { run_id: run }, 'Resuming');
@@ -27,7 +28,7 @@
   };
   const InboxRow = ({ it, compact }) => {
     const acts = (it.actions || []).filter(a => !(it.kind === 'gate' && a.id === 'bundle')).slice(0, compact ? 2 : 4);
-    const open = () => it.run_id ? NL.openRun(it.run_id) : it.kind === 'gate' ? NL.openGate(it.idea, (it.detail || {}).gate) : it.idea ? NL.go('study/' + it.idea) : null;
+    const open = () => it.kind === 'proposal' ? NL.open(NL.ProposalSheet, { id: (it.detail || {}).proposal }) : it.run_id ? NL.openRun(it.run_id) : it.kind === 'gate' ? NL.openGate(it.idea, (it.detail || {}).gate) : it.idea ? NL.go('study/' + it.idea) : null;
     return html`<div class=${cls('inrow', 'sev-' + it.sev, 'k-' + it.kind)}>
       <button type="button" class="inrow-main" onClick=${open}><span class="inrow-ico" aria-hidden="true">${ICON[it.kind] || '•'}</span>
         <span class="inrow-t"><b>${it.title}</b>${it.body ? html`<small>${NL.clip(it.body, compact ? 110 : 260)}</small>` : null}</span></button>

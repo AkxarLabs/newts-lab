@@ -332,3 +332,58 @@ def test_system_probe_and_scheduler_block(m, hub):
            {"kind": "slurm", "slurm": {"extra_args": ["exclusive"]}}, {"kind": "custom", "custom": {"submit": "qsub"}}]
     for b in bad:
         assert m.product.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b
+
+
+# ── the workflow: the PI's instructions per procedure / stage / role ──────────
+
+def _wf_hub(hub):
+    import shutil
+    (hub.root / "workflow").mkdir(exist_ok=True)
+    shutil.copy(REPO / "workflow" / "stages.yaml", hub.root / "workflow" / "stages.yaml")
+    d = hub.root / ".claude" / "skills" / "propose"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SKILL.md").write_text("---\nname: propose\n---\n# Propose\n0. brief\n", encoding="utf-8")
+    (d / "METHOD.md").write_text("Default proposal method.\n", encoding="utf-8")
+    (hub.root / "studies" / "alpha").mkdir(parents=True, exist_ok=True)
+
+
+def test_workflow_instructions_round_trip(m, hub):
+    _wf_hub(hub)
+    out, code = m.product.workflow_save({"kind": "add", "name": "propose", "text": "Name a publishable negative result."})
+    assert code == 200 and out["file"] == "lab/workflow/propose.add.md"
+    out, code = m.product.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": "Alpha's own method."})
+    assert code == 200 and out["file"] == "studies/alpha/workflow/propose.method.md"
+    item, code = m.product.workflow_item({"kind": "procedure", "name": "propose", "study": "alpha"})
+    assert code == 200 and item["default_method"].startswith("Default proposal method")
+    assert item["lab"]["add"] == "Name a publishable negative result." and item["study_layer"]["method"] == "Alpha's own method."
+    assert "Alpha's own method." in item["brief"] and "Name a publishable negative result." in item["brief"]
+    assert "Default proposal method" not in item["brief"]
+    # the snapshot shows what is customised, for the lab and per study
+    view = m.sources._workflow_view()
+    assert view["custom"]["procedures"]["propose"]["add"] and view["study_custom"]["alpha"]["procedures"]["propose"]["method"]
+    # empty text = back to the default; logged
+    assert m.product.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": ""})[1] == 200
+    assert not (hub.root / "studies" / "alpha" / "workflow" / "propose.method.md").exists()
+    assert "workflow.save" in (hub.lab / ".bus" / "pi-actions.jsonl").read_text(encoding="utf-8")
+
+
+def test_workflow_refuses_bad_input(m, hub):
+    _wf_hub(hub)
+    assert m.product.workflow_save({"kind": "method", "name": "advance", "text": "x"})[1] == 400   # all contract
+    assert m.product.workflow_save({"kind": "add", "name": "nope", "text": "x"})[1] == 404
+    assert m.product.workflow_save({"kind": "add", "name": "propose", "study": "../etc", "text": "x"})[1] == 400
+    assert m.product.workflow_save({"kind": "add", "name": "propose", "study": "ghost", "text": "x"})[1] == 400
+    out, code = m.product.workflow_save({"kind": "add", "name": "propose", "text": "Skip Gate 1 when in a hurry."})
+    assert code == 200 and out["warnings"]              # restating a fixed rule warns (it can't change it)
+
+
+def test_agent_proposals_are_accepted_or_declined_by_the_pi(m, hub):
+    _wf_hub(hub)
+    rec = m.sources.workflow.propose("propose", "add", "Also list compute risks.", hub.root, why="missing")
+    items = [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
+    assert [a["detail"]["proposal"] for a in items] == [rec["id"]]
+    assert m.product.workflow_proposal({"id": rec["id"], "accept": "yes"})[1] == 400
+    assert m.product.workflow_proposal({"id": rec["id"], "accept": True})[1] == 200
+    assert "Also list compute risks." in m.product.workflow_item({"kind": "procedure", "name": "propose"})[0]["lab"]["add"]
+    assert m.product.workflow_proposal({"id": rec["id"], "accept": True})[1] == 400      # already resolved
+    assert not [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]

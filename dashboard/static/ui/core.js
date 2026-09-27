@@ -238,6 +238,8 @@
   NL.closeKey = key => { const l = layers.list.find(x => x.key === key); if (l) NL.close(l.id); };
   NL.closeTop = () => { const top = layers.list[layers.list.length - 1]; if (top) { NL.close(top.id); return true; } return false; };
   NL.isOpen = key => layers.list.some(l => l.key === key);
+  // going to another page closes its side sheets (a dialog waiting for an answer stays)
+  NL.closeSheets = () => { layers.list.filter(l => l.kind === 'sheet').forEach(l => NL.close(l.id)); };
   NL.useLayers = () => {
     const [, force] = H.useReducer(x => x + 1, 0);
     H.useEffect(() => { layers.listeners.add(force); return () => layers.listeners.delete(force); }, []);
