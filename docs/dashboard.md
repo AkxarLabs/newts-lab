@@ -16,9 +16,9 @@ you **drive** them.
 <figcaption>The <strong>World</strong> view — the whole lab as one continuous scene. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and sub-newts currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
 </figure>
 
-The scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
-dependencies, fully offline (see [Tech notes](#tech-notes)). The same renderer produces a still
-frame for `prefers-reduced-motion` and `?static`.
+The scene is a paper diorama drawn with a vendored **PixiJS** (WebGL). It needs no build and works
+fully offline (see [Tech notes](#tech-notes)). Without WebGL, or with ⚙ Settings → *World: Classic*,
+it falls back to the original painted Canvas-2D world. `prefers-reduced-motion` stops the animation.
 
 ```bash
 uv run --with pyyaml python dashboard/serve.py            # http://127.0.0.1:8787
@@ -435,9 +435,9 @@ skipped, a non-UTF-8 byte is replaced not raised, a moved project is reported un
 crash) and aggregates the per-worker logs into `workers[]`.
 
 The frontend (`static/index.html`, `terrarium.css`, `app.js`) is **vanilla JavaScript — no build,
-fully offline**. The world renders entirely on a single **Canvas-2D** surface; there is no WebGL.
-The only third-party code is the Library reader's **pinned, vendored** renderers (`static/vendor/`:
-marked, DOMPurify, KaTeX + woff2 fonts — provenance and licenses in `static/vendor/README.md`);
+fully offline**. The world renders with a vendored **PixiJS** (WebGL), falling back to the classic
+Canvas-2D world. The other third-party code is the Library reader's **pinned, vendored** renderers
+(`static/vendor/`: marked, DOMPurify, KaTeX + woff2 fonts — provenance and licenses in `static/vendor/README.md`);
 everything still works with zero network. It honors `prefers-reduced-motion` and `?static` by drawing
 a single **still frame** of the same scene instead of animating, so the dashboard always works
 offline with zero assets to fetch. Two handy deep links: `?open=<idea|hub>` opens the command
