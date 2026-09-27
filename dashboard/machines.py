@@ -503,10 +503,11 @@ def disconnect(body: dict) -> tuple[dict, int]:
     c = CONNS.get(f"{body.get('id')}::{body.get('path')}")
     if not c:
         return {"ok": True}, 200
-    if getattr(S, "REMOTE", None) is c:
-        S.set_remote(None)
+    current = getattr(S, "REMOTE", None) is c
+    if current:
+        S.set_remote(None)          # the dashboard falls back to this computer's lab
     c.disconnect(stop_remote=bool(body.get("stop_remote")))
-    return {"ok": True, "note": "disconnected — agents on that machine keep running"}, 200
+    return {"ok": True, "was_current": current, "note": "disconnected — agents on that machine keep running"}, 200
 
 
 def local(body: dict) -> tuple[dict, int]:

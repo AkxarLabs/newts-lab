@@ -60,7 +60,7 @@
         ${lab.exists === false ? html` <${NL.Pill} tone="warn">no lab there yet</${NL.Pill}>` : null}
         <div class="mono small muted">${lab.path}</div>${lab.error ? html`<div class="small warn">${lab.error}</div>` : null}</div>
       <div class="row">${lab.state === 'waiting' ? html`<${NL.Spinner} /><span class="small muted">sign in in the terminal window…</span>` : html`<${NL.Btn} small kind="primary" busy=${busy} onClick=${() => open(false)}>Open</${NL.Btn}>`}
-        ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); reload(); }}>disconnect</button>` : null}</div></div>`;
+        ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { const r = await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); if (r.was_current) { NL.go('labs'); location.reload(); } else reload(); }}>disconnect</button>` : null}</div></div>`;
   }
 
   function MachineCard({ m, reload }) {

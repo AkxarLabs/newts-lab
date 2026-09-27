@@ -143,6 +143,10 @@ def test_connect_proxy_and_lose_the_tunnel(env):
         m.machines.local({})
         st, raw = _req(port, cookie, "GET", "/api/state")
         assert st == 200 and "remote" not in json.loads(raw)
+        # disconnecting the lab on screen falls back to this computer (and says so, for the page to reload)
+        m.set_remote(conn)
+        res, _ = m.machines.disconnect({"id": "box", "path": hub.root.as_posix()})
+        assert res["was_current"] and m.REMOTE is None
     finally:
         srv.shutdown()
 
