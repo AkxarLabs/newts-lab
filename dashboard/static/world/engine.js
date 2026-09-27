@@ -694,7 +694,11 @@
     let lastW = 0, lastH = 0, fadeIn = 0;
     function frame(dt) {
       if (fadeIn > 0) { fadeIn = Math.max(0, fadeIn - dt * 2.5); world.alpha = 1 - fadeIn; }
-      if (SW() !== lastW || SH() !== lastH) { lastW = SW(); lastH = SH(); paintBg(); }
+      if (SW() !== lastW || SH() !== lastH) {
+        const first = !lastW; lastW = SW(); lastH = SH(); paintBg();
+        // the screen changed size without a resize event reaching us first: re-frame an untouched overview
+        if (!first && view.level === 'WORLD' && followId === null) { measureInsets(); const f = worldFit(); cam.x = f.x; cam.y = f.y; cam.zoom = f.zoom; }
+      }
       t += dt; camUpdate(dt);
       parX = lerp(parX, parTX, Math.min(1, dt * 4)); parY = lerp(parY, parTY, Math.min(1, dt * 4));
       if (followId && !cam.q.length) {
@@ -748,7 +752,9 @@
       down = null; panned = false;
     });
     canvas.addEventListener('wheel', ev => { ev.preventDefault(); const p = toCanvas(ev), before = s2w(p.x, p.y); const k = ev.deltaY < 0 ? 1.14 : 1 / 1.14; cam.q = []; camFrom = null; cam.zoom = clamp(cam.zoom * k, 0.04, 2.6); const after = s2w(p.x, p.y); cam.x += before.x - after.x; cam.y += before.y - after.y; clampCam(); userT = t; if (followId !== null) { followId = null; fireFollow(); } kick(); }, { passive: false });
-    window.addEventListener('resize', () => { measureInsets(); paintBg(); if (view.level === 'WORLD') { const f = worldFit(); cam.x = f.x; cam.y = f.y; cam.zoom = f.zoom; } kick(); });
+    // re-frame AFTER Pixi has resized its screen (its own resize listener may run after this one)
+    const refit = () => { try { app.resize && app.resize(); } catch (e) { /* not resizable */ } measureInsets(); paintBg(); if (view.level === 'WORLD') { const f = worldFit(); cam.x = f.x; cam.y = f.y; cam.zoom = f.zoom; } kick(); };
+    window.addEventListener('resize', () => { refit(); setTimeout(refit, 80); });
     document.addEventListener('visibilitychange', () => { if (reduced) return; if (document.hidden) app.ticker.stop(); else app.ticker.start(); });
 
     // ── build ────────────────────────────────────────────────────────────────

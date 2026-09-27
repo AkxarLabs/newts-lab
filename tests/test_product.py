@@ -288,3 +288,23 @@ def test_session_cookie_and_json_only(server):
     assert _req(port, "POST", "/api/directive", body, {"Cookie": cookie, "Content-Type": "application/json",
                                                        "Origin": "null"})[0] == 403
     assert _req(port, "POST", "/api/directive", body, {"Cookie": cookie, "Content-Type": "application/json"})[0] == 200
+
+
+# ── terminal (sign-in / install) — fixed commands only ────────────────────────
+
+def test_terminal_opens_only_fixed_commands(m, hub, monkeypatch):
+    sys.path.insert(0, str(REPO / "tools"))
+    import terminal
+    calls = []
+    monkeypatch.setattr(terminal.subprocess, "Popen", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(terminal.shutil, "which", lambda exe: exe if exe == "xterm" else None)
+    out, code = m.product.terminal_open({"purpose": "login", "backend": "claude"})
+    assert code == 200, out
+    argv = calls[-1][0][0]
+    flat = " ".join(map(str, argv))
+    assert "auth login" in flat and "fake_claude.py" in flat          # the configured CLI, its own login
+    assert m.product.terminal_open({"purpose": "login", "backend": "rm -rf /"})[1] == 400
+    assert m.product.terminal_open({"purpose": "exec", "backend": "claude"})[1] == 400
+    out, code = m.product.terminal_open({"purpose": "install", "backend": "codex"})
+    assert code == 200 and "@openai/codex" in " ".join(map(str, calls[-1][0][0]))
+    assert _pi(hub)[-1]["action"] == "terminal.install"

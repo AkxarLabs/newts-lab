@@ -155,7 +155,8 @@
       ${rep.summary ? html`<${NL.Markdown} text=${rep.summary} />` : null}
       <div class="row">
         ${rep.needs_pi && /^gate[123]$/.test(rep.needs_pi) && r.subject ? html`<${NL.Btn} kind="primary" onClick=${() => NL.openGate(r.subject, +rep.needs_pi.slice(-1))}>Review and sign</${NL.Btn}>` : null}
-        ${rep.next ? html`<${NL.Btn} kind=${rep.needs_pi ? '' : 'primary'} onClick=${() => NL.launchCommand(rep.next, r.subject)}>▸ ${rep.next}</${NL.Btn}>` : null}
+        ${rep.next ? html`<${NL.Btn} small=${!!rep.needs_pi} kind=${rep.needs_pi ? '' : 'primary'} onClick=${() => NL.launchCommand(rep.next, r.subject)}
+          title=${rep.needs_pi ? 'the step after your decision' : ''}>${rep.needs_pi ? 'then ▸ ' : '▸ '}${rep.next}</${NL.Btn}>` : null}
       </div></div>`;
   };
 
@@ -199,7 +200,7 @@
         ${r.usage && r.usage.cost_usd != null ? html`<span>≈ $${(+r.usage.cost_usd).toFixed(2)}</span>` : null}
         ${r.status === 'queued' ? html`<span>${r.not_before ? 'scheduled for ' + NL.hhmm(r.not_before) : 'starts as soon as a slot is free'}</span>` : null}
       </div>
-      ${r.reason && !active && r.status !== 'completed' ? html`<div class="note note-warn">${r.reason}</div>` : null}
+      ${r.reason && !active && !['completed', 'waiting_input', 'queued'].includes(r.status) ? html`<div class="note note-warn">${r.reason}</div>` : null}
       <${Subagents} r=${r} />
       <div class="convo" ref=${scroller} onScroll=${onScroll}>
         ${skipped ? html`<div class="msg-div"><span>earlier output skipped (${Math.round(skipped / 1024)} KB)</span></div>` : null}

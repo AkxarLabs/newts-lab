@@ -51,6 +51,7 @@
       if (i.gate && !i.gate_signed) add(`Sign Gate ${i.gate} — ${i.title || i.id}`, 'review and sign', () => NL.openGate(i.id, i.gate), 'approve');
     });
     (s.runs || []).filter(r => r.status === 'waiting_input' || NL.RUN_ACTIVE.has(r.status)).forEach(r => add(NL.runTitle(r), NL.RUN_WORD[r.status], () => NL.openRun(r.run_id), r.run_id));
+    NL.needsYou(s).forEach(a => add(a.title, 'needs you', () => a.run_id ? NL.openRun(a.run_id) : a.kind === 'gate' ? NL.openGate(a.idea, (a.detail || {}).gate) : NL.open(NL.InboxSheet, {}, { key: 'inbox' }), 'sign answer ' + (a.kind || '')));
     add('Toggle day / night', 'theme', () => NL.setPref('theme', NL.themeNow() === 'day' ? 'night' : 'day'), 'dark light');
     return A;
   }
