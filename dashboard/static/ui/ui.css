@@ -388,3 +388,20 @@ iframe.pdf { width: 100%; height: calc(100vh - 280px); min-height: 520px; border
 }
 
 @media (prefers-reduced-motion: reduce) { .sheet, .dialog, .scrim, .toast, .palette { animation: none !important; } .btn, .scard { transition: none; } }
+
+/* ── the in-browser terminal ─────────────────────────────────────────── */
+.xterm-host { height: calc(100vh - 210px); min-height: 320px; border-radius: 12px; overflow: hidden; border: 1px solid var(--edge-2); background: #081a1f; padding: 8px; }
+html[data-lamp="day"] .xterm-host { background: #fbf6ea; }
+
+/* ── labs & machines ─────────────────────────────────────────────────── */
+.brand-machine { font: 600 11.5px var(--sans); padding: 1px 8px; border-radius: 999px; background: var(--accent-wash); color: var(--accent); white-space: nowrap; }
+.brand-machine.off { background: var(--warm-wash); color: var(--warm); }
+.machine { border: 1px solid var(--edge); border-radius: var(--r-l); background: var(--paper); padding: 14px 16px; margin: 12px 0; }
+.machine-local { background: color-mix(in srgb, var(--accent) 4%, var(--paper)); }
+.machine-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; } .machine-head h3 { font-family: var(--hand); font-size: 19px; display: inline; margin-right: 8px; }
+.facts-line { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-soft); margin: 4px 0 10px; }
+.fact-tool { font: 11.5px var(--mono); } .fact-tool.on { color: var(--ok); } .fact-tool.off { color: var(--ink-faint); }
+.labrow { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 11px; border: 1px solid var(--edge); background: var(--paper-2); margin: 6px 0; flex-wrap: wrap; }
+.labrow.on { border-color: var(--accent); } .labrow.gone { opacity: .6; }
+.more { margin-top: 10px; } .more summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-soft); } .more .form { margin-top: 10px; }
+.chip.click { cursor: pointer; border: 0; } .chip.click:hover { background: var(--accent-wash); }

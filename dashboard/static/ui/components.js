@@ -152,6 +152,8 @@
     if (!abs || ed === 'none') return null;
     const scheme = /^[a-z][a-z0-9+.-]*$/.test(ed) ? ed : 'vscode';
     let p = String(abs).replace(/\\/g, '/'); if (!p.startsWith('/')) p = '/' + p;
+    // a lab on another machine: VS Code (and its forks) open it through Remote-SSH
+    if (s && s.remote && s.remote.host) return `${scheme}://vscode-remote/ssh-remote+${encodeURIComponent(s.remote.host)}${p}${line ? ':' + line : ''}`;
     return `${scheme}://file${p}${line ? ':' + line : ''}`;
   };
   NL.EditorLink = ({ path, children }) => { const u = NL.editorUri(path); return u ? html`<a class="link small" href=${u}>${children || 'open in editor ↗'}</a>` : null; };

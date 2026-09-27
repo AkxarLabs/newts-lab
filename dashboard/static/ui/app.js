@@ -43,7 +43,7 @@
     add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
     add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
-    [['', 'Home'], ['studies', 'Studies'], ['runs', 'Runs'], ['library', 'Library'], ['history', 'History'], ['labs', 'Labs — switch or create'], ['setup', 'Setup wizard']]
+    [['', 'Home'], ['studies', 'Studies'], ['runs', 'Runs'], ['library', 'Library'], ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']]
       .forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
     ['agents', 'autonomy', 'lab', 'keys', 'appearance', 'notifications', 'about'].forEach(x => add('Settings: ' + x, 'go', () => NL.go('settings/' + x)));
     (s.items || []).forEach(i => {
@@ -83,7 +83,8 @@
     const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library']];
     const running = x.active || 0;
     return html`<header class="topbar">
-      <a class="brand" href="#/labs" title="switch or create a lab"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span><span class="brand-caret">▾</span></a>
+      <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
+        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret">▾</span></a>
       <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>

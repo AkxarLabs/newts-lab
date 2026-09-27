@@ -26,14 +26,14 @@
         if (n > 40) { clearInterval(t); setWatch(null); } }, 6000);
       return () => clearInterval(t);
     }, [watch]);
-    const term = async (purpose, backend) => { const r = await NL.act('/api/terminal', { purpose, backend }); if (r.ok) setWatch(purpose === 'login' ? backend : null); };
+    const term = async (purpose, backend) => { const how = await NL.runOnLabMachine(purpose, backend); if (how) setWatch(purpose === 'login' ? backend : null); };
     return html`<div class=${cls('clis', compact && 'compact')}>${['claude', 'codex', 'opencode'].map(b => {
       const c = clis[b] || {};
       const st = !c.found ? 'missing' : c.logged_in === true ? 'ok' : c.logged_in === false ? 'out' : 'unknown';
       return html`<div class=${cls('cli', 'cli-' + st)}>
         <div class="cli-top"><b>${b}</b><${NL.Pill} tone=${st === 'ok' ? 'ok' : st === 'missing' ? 'muted' : 'warn'}>${st === 'ok' ? 'signed in' : st === 'missing' ? 'not installed' : st === 'out' ? 'not signed in' : 'sign-in unknown'}</${NL.Pill}></div>
         <div class="muted small">${WHAT[b]}${c.version ? ' · v' + c.version : ''}</div>
-        ${watch === b ? html`<div class="note small"><${NL.Spinner} /> Finish signing in in the window that opened — this updates by itself.</div>` : null}
+        ${watch === b ? html`<div class="note small"><${NL.Spinner} /> Finish signing in in the terminal that opened — this updates by itself.</div>` : null}
         <div class="row">${!c.found ? html`<${NL.Btn} small onClick=${() => term('install', b)}>Install…</${NL.Btn}>`
           : st !== 'ok' ? html`<${NL.Btn} small kind="primary" onClick=${() => term('login', b)} title=${LOGIN[b]}>Sign in…</${NL.Btn}>` : null}
           <button class="link small" onClick=${check} disabled=${busy}>${busy ? 'checking…' : 'check again'}</button></div>
@@ -159,7 +159,7 @@
     const li = s.lab_info || {};
     return html`<div class="form">
       <div class="facts"><div><span>Lab</span><b>${li.name || '—'}</b></div><div><span>Folder</span><b class="mono small">${li.path || ''}</b></div><div><span>Dashboard</span><b>v${window.__NL_VERSION__ || '2'}</b></div></div>
-      <div class="row"><${NL.Btn} onClick=${() => NL.go('labs')}>Switch or create a lab</${NL.Btn}><${NL.Btn} onClick=${() => NL.act('/api/terminal', { purpose: 'shell' })}>Open a terminal here</${NL.Btn}>
+      <div class="row"><${NL.Btn} onClick=${() => NL.go('labs')}>Switch or create a lab</${NL.Btn}><${NL.Btn} onClick=${async () => { if (await NL.confirm({ title: 'Open a terminal in the lab folder?', ok: 'Open', body: 'A shell on the machine the lab runs on, as you. Anything you type runs there.' })) NL.runOnLabMachine('shell'); }}>Open a terminal here</${NL.Btn}>
         <${NL.Btn} onClick=${() => NL.go('setup')}>Run the setup again</${NL.Btn}><${NL.Btn} onClick=${() => NL.go('history')}>History</${NL.Btn}></div>
       <${NL.Section} title="Server"><p class="muted small">Stopping the server closes this dashboard. Agents already running keep going; start it again with <span class="mono">Start Newts Lab</span>.</p>
         <${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop the dashboard server?', ok: 'Stop it', danger: true, body: 'Running agents keep going. You can start it again any time.' })) { const r = await NL.api('/api/server/stop', { confirm: true }); NL.toast(r.note || r.error, r.ok ? 'ok' : 'bad'); } }}>Stop the server</${NL.Btn}></${NL.Section}></div>`;

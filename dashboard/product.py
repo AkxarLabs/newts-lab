@@ -154,6 +154,7 @@ def labs_open(body: dict) -> tuple[dict, int]:
         return {"error": f"can't read {raw}"}, 400
     if not (hub / "lab").is_dir() or not (hub / "lab" / "config.yaml").exists():
         return {"error": f"{hub} is not a Newts' Lab (no lab/config.yaml there)"}, 400
+    S.set_remote(None)
     S.switch_hub(hub)
     remember_lab(hub)
     S._pi_log({"action": "lab.open", "path": str(hub)})
@@ -176,6 +177,7 @@ def labs_create(body: dict) -> tuple[dict, int]:
     hub = Path(res["path"])
     remember_lab(hub)
     if body.get("open", True):
+        S.set_remote(None)
         S.switch_hub(hub)
     S._pi_log({"action": "lab.create", "path": str(hub), "name": name})
     return {"ok": True, "lab": _lab_summary(hub), "git": res.get("git"),

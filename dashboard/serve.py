@@ -51,6 +51,7 @@ dashboard/ folder and the lab is unchanged (the executor has its own CLI: tools/
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -74,12 +75,43 @@ sys.path.insert(0, str(HERE))
 
 import sources  # noqa: E402
 import product  # noqa: E402
+import term  # noqa: E402
+import machines  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
 TOKEN = secrets.token_urlsafe(24)    # this server process's session secret (the cookie below)
 SERVER = None                        # the running HTTP server (product.server_stop shuts it down)
 VERSION = "2.0"
 product.bind(sys.modules[__name__])   # product's PI actions read this module's CURRENT hub + writers
+term.bind(sys.modules[__name__])      # in-browser terminal sessions (fixed commands; PTY on POSIX)
+machines.bind(sys.modules[__name__])  # remote machines: SSH tunnels to their own dashboards
+
+# The lab this dashboard shows: a local hub (HUB), or a lab on another machine reached through an SSH tunnel
+# (machines.Conn) — then every /api/* call except the local-only ones is proxied to that machine's server.
+REMOTE = None
+LOCAL_ONLY_PREFIXES = ("/api/ping", "/api/labs", "/api/machines", "/api/server/stop")
+LOCAL_ONLY_EXACT = {"/api/terminal"}
+
+
+def set_remote(conn) -> None:
+    global REMOTE
+    REMOTE = conn
+    with _SNAP_LOCK:
+        _snap_cache.update(ts=0.0, value=None, sig=None)
+
+
+def _is_local_route(route: str) -> bool:
+    return route in LOCAL_ONLY_EXACT or route.startswith(LOCAL_ONLY_PREFIXES)
+
+
+def _inject_remote(raw: bytes, conn) -> bytes:
+    try:
+        obj = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return raw
+    if isinstance(obj, dict):
+        obj["remote"] = conn.info()
+    return json.dumps(obj).encode("utf-8")
 
 # Structured command actions the dashboard may issue (the agent executes them in-protocol).
 COMMAND_ACTIONS = {
@@ -1460,7 +1492,8 @@ def _snapshot_cached(with_sig: bool = False):
             return (_snap_cache["value"], _snap_cache["sig"]) if with_sig else _snap_cache["value"]
     snap = sources.snapshot()   # compute OUTSIDE the lock — never serialize the file reads
     try:
-        snap["lab_info"] = {"name": product.lab_name(HUB), "path": str(HUB), "setup": product.setup_status()}
+        snap["lab_info"] = {"name": product.lab_name(HUB), "path": str(HUB), "setup": product.setup_status(),
+                            "desktop": term.desktop(), "pty": term.has_pty(), "platform": sys.platform}
     except Exception:  # noqa: BLE001
         snap["lab_info"] = {"name": HUB.name, "path": str(HUB)}
     sig = _sig(snap)
@@ -1555,6 +1588,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/") and not self._has_session():
             return self._json({"error": "no dashboard session — reload the page"}, 403)
         route0 = self.path.split("?", 1)[0]
+        if route0.startswith("/api/machines"):
+            try:
+                body, code = machines.list_machines()
+            except Exception as e:  # noqa: BLE001
+                body, code = {"error": str(e)}, 500
+            return self._json(body, code)
+        if REMOTE is not None and route0.startswith("/api/") and not _is_local_route(route0):
+            return self._proxy("GET")
         if route0 in self._PRODUCT_GET:
             try:
                 body, code = self._PRODUCT_GET[route0](self._query())
@@ -1638,6 +1679,81 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, b"no such figure", "text/plain")
         self._serve_bytes(f, _FIG_CTYPE.get(f.suffix.lower(), "application/octet-stream"))
 
+    def _proxy(self, method: str):
+        """Forward this request to the remote lab's own dashboard through its tunnel."""
+        conn = REMOTE
+        route = self.path.split("?", 1)[0]
+        raw = None
+        if method == "POST":
+            try:
+                n = max(0, min(int(self.headers.get("Content-Length") or 0), 1 << 20))
+            except ValueError:
+                n = 0
+            raw = self.rfile.read(n)
+        streaming = route == "/api/events"
+        r = hc = None
+        for attempt in (0, 1):
+            try:
+                hc = http.client.HTTPConnection("127.0.0.1", conn.lport, timeout=None if streaming else 120)
+                headers = {"Host": f"127.0.0.1:{conn.lport}", "Cookie": conn.cookie or ""}
+                if raw is not None:
+                    headers["Content-Type"] = "application/json"
+                hc.request(method, self.path, body=raw, headers=headers)
+                r = hc.getresponse()
+            except (OSError, http.client.HTTPException):
+                if conn.state == "connected":
+                    conn.state = "reconnecting"
+                name = conn.info()["name"]
+                return self._json({"error": f"lost the connection to {name} — reconnecting", "remote": conn.info()}, 502)
+            if r.status == 403 and attempt == 0:
+                body = r.read()
+                if b"session" in body:        # the remote server restarted: new session token
+                    conn.refresh_cookie()
+                    continue
+                return self._send(403, body, r.getheader("Content-Type") or "application/json")
+            break
+        ctype = r.getheader("Content-Type") or "application/octet-stream"
+        if streaming and r.status == 200:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            try:
+                while True:
+                    line = r.fp.readline()
+                    if not line:
+                        break
+                    if line.startswith(b"data: "):
+                        line = b"data: " + _inject_remote(line[6:].strip(), conn) + b"\n"
+                    self.wfile.write(line)
+                    if line in (b"\n", b"\r\n"):
+                        self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
+            finally:
+                hc.close()
+            return None
+        data = r.read()
+        hc.close()
+        if route == "/api/state" and ctype.startswith("application/json"):
+            data = _inject_remote(data, conn)
+        return self._send(r.status, data, ctype)
+
+    def _remote_seed(self) -> str:
+        conn = REMOTE
+        try:
+            hc = http.client.HTTPConnection("127.0.0.1", conn.lport, timeout=30)
+            hc.request("GET", "/api/state", headers={"Host": f"127.0.0.1:{conn.lport}", "Cookie": conn.cookie or ""})
+            r = hc.getresponse()
+            data = r.read()
+            if r.status == 403:
+                conn.refresh_cookie()
+                return "null"
+            return _inject_remote(data, conn).decode("utf-8")
+        except (OSError, http.client.HTTPException):
+            return "null"
+
     def _serve_index(self) -> None:
         try:
             html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -1648,7 +1764,7 @@ class Handler(BaseHTTPRequestHandler):
             # title, a directive, a worker-trace summary — any of which can carry text an agent copied
             # from an untrusted source) can't break out of this inline <script> and inject live HTML.
             # json.dumps does NOT escape `<` or `/`, so this one replace is the whole XSS defense here.
-            seed = json.dumps(_snapshot_cached()).replace("</", "<\\/")
+            seed = (self._remote_seed() if REMOTE is not None else json.dumps(_snapshot_cached())).replace("</", "<\\/")
         except Exception:  # noqa: BLE001
             seed = "null"
         demo = "true" if self.demo else "false"
@@ -1713,6 +1829,9 @@ class Handler(BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if ctype != "application/json":
             return self._json({"error": "requests must be JSON (Content-Type: application/json)"}, 415)
+        route = self.path.split("?", 1)[0]
+        if REMOTE is not None and not _is_local_route(route):
+            return self._proxy("POST")
         try:
             return self._dispatch_post()
         except Exception as e:  # noqa: BLE001 — a handler bug / dirty input must never kill the thread
@@ -1745,6 +1864,20 @@ class Handler(BaseHTTPRequestHandler):
         "/api/keys": lambda b: product.keys_set(b),
         "/api/setup/complete": lambda b: product.setup_complete(b),
         "/api/server/stop": lambda b: product.server_stop(b),
+        "/api/machines/add": lambda b: machines.add_machine(b),
+        "/api/machines/remove": lambda b: machines.remove_machine(b),
+        "/api/machines/probe": lambda b: machines.probe(b),
+        "/api/machines/add-lab": lambda b: machines.add_lab(b),
+        "/api/machines/create-lab": lambda b: machines.create_lab(b),
+        "/api/machines/open": lambda b: machines.open_lab(b),
+        "/api/machines/use": lambda b: machines.use_lab(b),
+        "/api/machines/disconnect": lambda b: machines.disconnect(b),
+        "/api/machines/local": lambda b: machines.local(b),
+        "/api/machines/install-uv": lambda b: machines.install_uv(b),
+        "/api/term/open": lambda b: term.open_session(b),
+        "/api/term/write": lambda b: term.write(b),
+        "/api/term/resize": lambda b: term.resize(b),
+        "/api/term/close": lambda b: term.close(b),
     }
 
     _PRODUCT_GET = {
@@ -1754,6 +1887,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/lab/config": lambda q: product.lab_config_get(),
         "/api/keys": lambda q: product.keys_status(),
         "/api/setup": lambda q: ({"ok": True, **product.setup_status()}, 200),
+        "/api/term/read": lambda q: term.read(q),
     }
 
     def _dispatch_post(self):
@@ -1850,6 +1984,11 @@ class LabServer(ThreadingHTTPServer):
     """On Windows SO_REUSEADDR lets a second server silently share the port; bind exclusively instead."""
     daemon_threads = True
     allow_reuse_address = sys.platform != "win32"
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+            return   # a client (a tab, a tunnel) went away mid-request — routine, not an error
+        super().handle_error(request, client_address)
 
     def server_bind(self):
         if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):

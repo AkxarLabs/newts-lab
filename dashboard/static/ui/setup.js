@@ -1,45 +1,11 @@
-/* Newts' Lab — getting started: the lab picker (#/labs: open a lab, create one from the template,
-   switch) and the first-run setup wizard (#/setup/<step>): welcome → agents → autonomy → the
+/* Newts' Lab — getting started: the first-run setup wizard (#/setup/<step>): welcome → agents → autonomy → the
    /setup-lab interview as a conversation → the first step. Resumable, skippable. */
 (function () {
   'use strict';
   const NL = window.NL;
   const { html, useState, useEffect, cls } = NL;
 
-  /* ── the lab picker ─────────────────────────────────────────────────────── */
-  NL.LabsPage = () => {
-    const [d, setD] = useState(null);
-    const [path, setPath] = useState('');
-    const [nm, setNm] = useState('');
-    const [where, setWhere] = useState('');
-    const load = () => NL.get('/api/labs').then(x => { setD(x); if (x.current && !where) { const parent = x.current.replace(/[\\/][^\\/]+$/, ''); setWhere(parent); } });
-    useEffect(() => { load(); }, []);
-    const slug = (nm || 'my-lab').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'my-lab';
-    const sep = (where || '').includes('\\') ? '\\' : '/';
-    const dest = where ? where.replace(/[\\/]$/, '') + sep + slug : '';
-    const open = async p => { const r = await NL.act('/api/labs/open', { path: p }, 'Opened'); if (r.ok) { NL.go(''); setTimeout(() => location.reload(), 300); } };
-    const create = async () => {
-      if (!nm.trim() || !dest) return NL.toast('Give the lab a name and a place', 'warn');
-      if (!await NL.confirm({ title: `Create “${nm.trim()}”?`, ok: 'Create the lab', body: html`<p>A new, empty lab at <span class="mono">${dest}</span> — this template's procedures and tools, an empty registry and knowledge base, its own git repository. Its projects will live next to it in <span class="mono">${slug}-projects</span>.</p>` })) return;
-      const r = await NL.act('/api/labs/create', { confirm: true, name: nm.trim(), path: dest, open: true }, 'Lab created');
-      if (r.ok) { NL.go('setup'); setTimeout(() => location.reload(), 300); }
-    };
-    return html`<div class="page page-narrow">
-      <header class="page-head"><div><h1>Labs</h1><p class="lede">A lab is one folder: its ideas, studies, papers and knowledge. Projects it spawns live next to it.</p></div></header>
-      ${!d ? html`<${NL.Spinner} />` : html`<div class="labs">${(d.labs || []).map(l => html`<div class=${cls('labcard', l.current && 'on', !l.exists && 'gone')}>
-        <div class="grow"><b>${l.name}</b>${l.current ? html` <${NL.Pill} tone="ok">open</${NL.Pill}>` : null}<div class="mono small muted">${l.path}</div>
-          ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') + ' · ' + Object.entries(l.counts || {}).map(([k, v]) => `${v} ${NL.STATE_LABEL[k] || k}`).join(', ') : 'no studies yet'}${l.opened ? ' · opened ' + NL.ago(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}</div>
-        <div class="row">${l.current ? html`<${NL.Btn} small onClick=${() => NL.go('')}>Go to it</${NL.Btn}>` : l.exists ? html`<${NL.Btn} small kind="primary" onClick=${() => open(l.path)}>Open</${NL.Btn}>` : null}
-          ${!l.current ? html`<button class="link small" onClick=${async () => { await NL.api('/api/labs/forget', { path: l.path }); load(); }}>forget</button>` : null}</div></div>`)}</div>`}
-      <${NL.Section} title="Create a new lab"><div class="form">
-        <div class="grid2"><${NL.Field} label="Name"><${NL.Input} value=${nm} onInput=${setNm} placeholder="e.g. Sparse models lab" /></${NL.Field}>
-          <${NL.Field} label="Inside this folder"><${NL.Input} value=${where} onInput=${setWhere} mono /></${NL.Field}></div>
-        ${dest ? html`<div class="muted small">It will be created at <span class="mono">${dest}</span></div>` : null}
-        <div class="row end"><${NL.Btn} kind="primary" onClick=${create}>Create the lab</${NL.Btn}></div></div></${NL.Section}>
-      <${NL.Section} title="Open an existing lab"><div class="row"><${NL.Input} value=${path} onInput=${setPath} placeholder="the lab's folder (it contains lab/config.yaml)" mono onEnter=${() => open(path)} />
-        <${NL.Btn} onClick=${() => open(path)} disabled=${!path.trim()}>Open</${NL.Btn}></div></${NL.Section}>
-    </div>`;
-  };
+  /* the lab picker (#/labs) lives in machines.js — this computer's labs and every machine you reach over SSH */
 
   /* ── the setup wizard ───────────────────────────────────────────────────── */
   const STEPS = [{ id: 'welcome', label: 'Welcome' }, { id: 'agents', label: 'Agents' }, { id: 'autonomy', label: 'Autonomy' }, { id: 'interview', label: 'Your research' }, { id: 'start', label: 'First step' }];
