@@ -10,6 +10,10 @@ template-owned plumbing, never research content:
   .codex/hooks.json                                 (codex tracer hooks, used once the repo is trusted)
   .opencode/plugins/newts-trace.js · .opencode/.gitignore   (opencode tracer plugin)
   .claude/agents · .codex/agents · .opencode/agents (role files, resolved from the hub tiers)
+  the RUNNER (scripts/run.py · _scheduler.py · _runner_guards.py · status.py · reconcile.py ·
+  src/project_pkg/tracking.py) — job-scheduler support; a file is replaced only while it still equals
+  SOME past version of the template's (git history), so a project's own edits are never overwritten —
+  a customized file is reported to merge by hand
 
     uv run --with pyyaml python tools/upgrade_project.py --all            # every registered project
     uv run --with pyyaml python tools/upgrade_project.py <slug> [<slug>…]
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,6 +46,32 @@ VERBATIM = ("scripts/trace_hook.py", "scripts/lab_bus.py", ".codex/hooks.json",
 
 def _norm(b: bytes) -> bytes:
     return b.replace(b"\r\n", b"\n")
+
+
+RUNNER = ("scripts/run.py", "scripts/_scheduler.py", "scripts/_runner_guards.py", "scripts/status.py",
+          "scripts/reconcile.py", "src/project_pkg/tracking.py")
+_HISTORY: dict[str, set[bytes]] = {}
+CUSTOMIZED: list[str] = []
+
+
+def _template_history(rel: str) -> set[bytes]:
+    """Every committed version of templates/project/<rel> (normalized) — the versions a project could
+    have been spawned with. A project file equal to one of them is untouched template code."""
+    if rel in _HISTORY:
+        return _HISTORY[rel]
+    path = f"templates/project/{rel}"
+    seen: set[bytes] = set()
+    try:
+        revs = subprocess.run(["git", "-C", str(HUB), "rev-list", "HEAD", "--", path], capture_output=True,
+                              text=True, timeout=60).stdout.split()
+        for rev in revs[:200]:
+            r = subprocess.run(["git", "-C", str(HUB), "show", f"{rev}:{path}"], capture_output=True, timeout=60)
+            if r.returncode == 0:
+                seen.add(_norm(r.stdout))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    _HISTORY[rel] = seen
+    return seen
 
 
 def _settings_with_template_hooks(current: str | None) -> str:
@@ -62,6 +93,20 @@ def plan(project: Path) -> list[tuple[Path, bytes]]:
         want = src.read_bytes()
         if not dst.exists() or _norm(dst.read_bytes()) != _norm(want):
             out.append((dst, want))
+    for rel in RUNNER:
+        src, dst = TEMPLATE / rel, project / rel
+        if not src.exists():
+            continue
+        want = src.read_bytes()
+        if dst.exists() and _norm(dst.read_bytes()) == _norm(want):
+            continue
+        if not dst.exists() and rel.startswith("src/"):
+            continue                       # an adopted repo with its own package: not ours to add
+        if dst.exists() and _norm(dst.read_bytes()) not in _template_history(rel):
+            if f"{project.name}/{rel}" not in CUSTOMIZED:
+                CUSTOMIZED.append(f"{project.name}/{rel}")
+            continue                       # the project changed it: never overwrite its own edits
+        out.append((dst, want))
     sp = project / ".claude" / "settings.json"
     cur = sp.read_text(encoding="utf-8") if sp.exists() else None
     try:
@@ -122,6 +167,10 @@ def main() -> int:
         stale += n
         if not n:
             print("  up to date")
+    if CUSTOMIZED:
+        print("[upgrade_project] customized in the project, left alone (merge the template's changes by hand):")
+        for c in CUSTOMIZED:
+            print(f"  - {c}  ← templates/project/{c.split('/', 1)[1]}")
     if a.check:
         print(f"[upgrade_project] {stale} stale file(s)" if stale else "[upgrade_project] all projects up to date")
         return 1 if stale else 0

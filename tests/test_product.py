@@ -308,3 +308,27 @@ def test_terminal_opens_only_fixed_commands(m, hub, monkeypatch):
     out, code = m.product.terminal_open({"purpose": "install", "backend": "codex"})
     assert code == 200 and "@openai/codex" in " ".join(map(str, calls[-1][0][0]))
     assert _pi(hub)[-1]["action"] == "terminal.install"
+
+
+# ── System & compute ──────────────────────────────────────────────────────────
+
+def test_system_probe_and_scheduler_block(m, hub):
+    out, code = m.product.system_info({"fresh": "1"})
+    assert code == 200 and out["facts"]["cpus"] and "suggested_scheduler" in out["facts"]
+    assert out["scheduler"]["kind"] == "local"
+    sc = {"kind": "slurm", "stages": ["PILOT", "FULL"], "slurm": {"partition": "gpu", "gpus_per_run": 2, "mem": "32G",
+                                                                   "setup": ["module load cuda/12.4"], "extra_args": ["--exclusive"]}}
+    out, code = m.product.system_scheduler_set({"scheduler": sc, "confirm": True})
+    assert code == 200, out
+    cfg = m.sources._load_yaml(hub.lab / "config.yaml")
+    got = cfg["compute"]["scheduler"]
+    assert got["kind"] == "slurm" and got["slurm"]["gpus_per_run"] == 2 and got["slurm"]["setup"] == ["module load cuda/12.4"]
+    assert cfg["compute"]["max_concurrent_runs"] == 1 and cfg["agents"]["programmatic"]["enabled"] is True   # the rest kept
+    # a second save replaces the block in place (no duplicate key)
+    assert m.product.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
+    text = (hub.lab / "config.yaml").read_text(encoding="utf-8")
+    assert text.count("scheduler:") == 1 and m.sources._load_yaml(hub.lab / "config.yaml")["compute"]["scheduler"]["kind"] == "local"
+    bad = [{"kind": "pbs"}, {"kind": "slurm", "slurm": {"partition": "gpu; rm -rf /"}},
+           {"kind": "slurm", "slurm": {"extra_args": ["exclusive"]}}, {"kind": "custom", "custom": {"submit": "qsub"}}]
+    for b in bad:
+        assert m.product.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b

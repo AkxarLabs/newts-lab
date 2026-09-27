@@ -194,9 +194,22 @@ Credentials are typed into the CLI's own login and never pass through the lab.
 uv run --with pyyaml python newts.py [--hub <lab>] [--port N] [--no-browser]
 ```
 
-It starts `dashboard/serve.py` for the lab and opens the browser. If the dashboard is already running
+It starts `dashboard/serve.py` for the lab and opens the browser. On a machine you reached over SSH
+(or with no display) it prints the `ssh -N -L …` line to use from your own computer instead.
+`--background` detaches it, so it outlives your SSH session; `--status` and `--stop` manage it, and
+`--json` makes the output machine-readable. If the dashboard is already running
 for that lab it just opens the browser, and if 8787 is busy it picks the next free port. The
 double-click launchers (`Start Newts Lab.cmd`, `start-newts.command`, `start-newts.sh`) run it.
+
+### `system_probe.py` — what this machine offers
+
+```bash
+uv run --with pyyaml python tools/system_probe.py [--hub <lab>]
+```
+
+It prints JSON: CPUs, memory, GPUs, disk, schedulers (SLURM with its partitions and accounts, PBS, LSF),
+environment modules and tools, plus a suggested `compute.scheduler`. The dashboard's Settings → System &
+compute runs it on the lab's machine. See [Machines & compute](compute.md).
 
 ### `agent_runner.py` — launch + capture headless top-level agents
 

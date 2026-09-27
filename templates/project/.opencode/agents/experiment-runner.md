@@ -19,7 +19,8 @@ On start:
    would run the main checkout's runner and append to the main `runs/registry.jsonl`,
    violating the parent-only-ledger rule below).
 2. Read `PLAN.md` (frozen eval protocol, budgets, kill criteria), `SYSTEM.md` if present
-   (the PI's machine constraints — binding; never edit it), and the context packet
+   (the PI's machine constraints — binding; never edit it; on a scheduler `run.py` submits the job
+   and waits for it — never call `sbatch`/`qsub` yourself), and the context packet
    in your prompt (goal, operator type, sibling table or ancestral chain; a **debug**
    operator's packet states your remaining attempt budget — stop when it is reached).
 

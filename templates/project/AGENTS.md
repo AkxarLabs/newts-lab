@@ -21,6 +21,8 @@ and follow it step by step.
 3. `SYSTEM.md` — **if present**: the PI's description of the machine/cluster you are
    working on (hardware, data locations, scheduling rules, forbidden actions). Its
    constraints bind exactly like control.yaml. PI-owned: read and obey, never edit.
+   If the hub's `compute.scheduler` sends runs to a job scheduler (SLURM or a site-described one),
+   `scripts/run.py` submits and waits for you — never call `sbatch`/`qsub` yourself.
 4. `NOTES.md` — **read it in full** (it's short by design): the *distilled* memory of this
    project — environment gotchas + their fixes, approaches already tried and abandoned (don't
    re-try blindly), and what's settled here. It is the index over `EXPERIMENT_LOG.md` that

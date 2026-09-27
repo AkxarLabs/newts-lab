@@ -24,13 +24,23 @@ If 8787 is taken it picks the next free port. If the dashboard is already runnin
 just opens the browser. Options: `--hub <another lab>`, `--port`, `--no-browser`. The server binds
 `127.0.0.1` only. The only prerequisite is [uv](https://docs.astral.sh/uv/).
 
-**Labs.** Click the lab's name at the top left to reach the lab picker (`#/labs`). From there you can:
+**On a remote machine.** Run `newts.py --background` there: it keeps running after you log out, and on a
+box with no desktop it prints the `ssh -L` line to use from your computer. Or skip that entirely and add
+the machine to your local dashboard (below). See [Machines & compute](compute.md).
+
+**Labs & machines.** Click the lab's name at the top left to reach **Labs & machines** (`#/labs`). From
+there you can:
 
 - **Open** a recent lab, or any folder that contains `lab/config.yaml`.
 - **Create a new lab**: a name and a place. The dashboard copies this template's committed files,
   empties the registry and knowledge base, points the new lab's projects at a sibling
   `<name>-projects` folder, and makes the first git commit (`tools/new_lab.py`).
 - **Switch** labs live. Agents that are running keep running, and the old lab's queue keeps moving.
+- **Add a machine** you reach over SSH (your `~/.ssh/config` hosts are suggested) and open its labs.
+  - The dashboard starts that lab's own server there and tunnels to it. Everything then runs on that
+    machine while you use it from here, and the top bar says *on &lt;machine&gt;*.
+  - Password or MFA hosts connect through a terminal window you sign in to.
+  - You can also create a lab on the remote, or install uv there.
 
 ## First run: the setup wizard
 
@@ -42,8 +52,9 @@ Settings → About.
 2. **Agents.** One card per agent CLI (Claude Code, Codex, opencode), showing whether it is
    installed, which version, and whether it is signed in.
    - **Install…** opens a terminal window that runs the installer, so you watch it.
-   - **Sign in…** opens a terminal window running the CLI's *own* login (`claude auth login`,
-     `codex login`, `opencode auth login`). Your credentials go to the CLI, never to the page. The
+   - **Sign in…** opens a terminal running the CLI's *own* login (`claude auth login`, `codex login`,
+     `opencode auth login`): a window on this computer, or an in-browser terminal when the lab is on a
+     remote machine or one without a desktop. Your credentials go to the CLI, never to the page. The
      card updates by itself when you finish.
 3. **Autonomy.** Plain-language choices:
    - starting agents from the dashboard (on or off);
@@ -299,6 +310,7 @@ Gate 3 safe to offer.
   | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
   | Appearance | theme day / night / system, density, world diorama / classic, motion, narration |
   | Notifications | desktop notifications |
+  | System & compute | what the lab's machine offers (CPUs, memory, GPUs, disk, schedulers, SLURM partitions), where training runs (here / SLURM / another scheduler, with `compute.scheduler` prefilled from what was detected), SYSTEM.md |
   | About & server | the lab, a terminal in the lab folder, the setup wizard, **stop the server** |
 
 The **command palette** (<kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd>) jumps to any study, run, page

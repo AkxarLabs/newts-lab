@@ -125,3 +125,12 @@ def release_slot(control: dict, slot_id, *, runner=subprocess.run) -> None:
     if not hub:
         return
     runner(_slots_cmd(hub) + ["release", str(slot_id)], capture_output=True, text=True)
+
+
+def touch_slot(control: dict, slot_id, *, runner=subprocess.run) -> None:
+    """Heartbeat a held slot (a run waiting in a job scheduler's queue must not look crashed)."""
+    if not slot_id:
+        return
+    hub = _hub(control)
+    if hub:
+        runner(_slots_cmd(hub) + ["touch", str(slot_id)], capture_output=True, text=True)

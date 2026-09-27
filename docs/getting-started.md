@@ -16,6 +16,12 @@ After that you work from the dashboard: **Start something** (or just ask Newt), 
 conversations, answer the agents when they ask, and sign the gates when they wait for you. The rest
 of this page is the same lab from a terminal. See [The dashboard](dashboard.md) for the full tour.
 
+!!! tip "On a server, a GPU box or a cluster"
+    Run `uv run --with pyyaml python newts.py --background` there. It keeps running after you log out
+    and prints the one `ssh -L` line to use from your own computer. Or add the machine in your local
+    dashboard (Labs & machines → Add a machine) and it connects for you. On a cluster, set how training
+    runs (SLURM or another scheduler) in Settings → System & compute. See [Machines & compute](compute.md).
+
 ## Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) — the first-class agent driver

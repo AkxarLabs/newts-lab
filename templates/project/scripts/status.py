@@ -59,6 +59,12 @@ def probe(run_id: str | None, log_interval: float) -> int:
     budget = meta.get("budget") or {}
     budget_str = f"{budget['max_minutes']}m" if budget.get("max_minutes") else "none"
 
+    if meta.get("status") == "queued":   # waiting in the machine's job scheduler — never "stalled"
+        sch = meta.get("scheduler") or {}
+        print(f"{run_dir.name} status=queued · {sch.get('kind', 'scheduler')} job {sch.get('job') or '?'} · "
+              f"since {meta.get('queued') or '?'} · budget={budget_str}")
+        return 0
+
     if meta.get("status") != "running":
         metrics_path = run_dir / "metrics.json"
         final = ""
@@ -109,7 +115,7 @@ def watch(run_id: str | None, log_interval: float, poll: float) -> int:
                 meta = json.loads(mp.read_text(encoding="utf-8")) if mp.exists() else {}
             except (OSError, json.JSONDecodeError):
                 meta = {}   # a sweep's next run dir mid-creation — keep polling, never crash the monitor
-        if meta.get("status") not in (None, "running"):
+        if meta.get("status") not in (None, "running", "queued"):
             return 0
         consecutive_stalls = consecutive_stalls + 1 if rc == 3 else 0
         if consecutive_stalls >= 2:

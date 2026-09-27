@@ -3,6 +3,10 @@
     uv run python scripts/run.py --config configs/experiments/exp-001-smoke.yaml [--seed N] [-o key=value ...]
 
 Loads config, seeds, creates the run artifact dir, executes, records — success or failure.
+
+If this machine runs training through a job scheduler (compute.scheduler in the hub's lab/config.yaml —
+see scripts/_scheduler.py), a PILOT/FULL run is SUBMITTED and this command WAITS for it: same artifacts,
+same exit codes, same synchronous run for agents and sweep.py. Never call sbatch yourself.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ — for the sibling _runner_guards
 
 import _runner_guards as guards  # noqa: E402 — Gate-2 + compute-slot enforcement (stdlib-only)
+import _scheduler as scheduler  # noqa: E402 — local vs the machine's job scheduler (slurm | custom)
 
 
 def _control() -> dict:
@@ -68,7 +73,8 @@ import importlib  # noqa: E402 — after sys.path is set up
 _PKG = _resolve_pkg()
 load_config = importlib.import_module(f"{_PKG}.config").load_config
 set_seed = importlib.import_module(f"{_PKG}.seeding").set_seed
-RunContext = importlib.import_module(f"{_PKG}.tracking").RunContext
+_tracking = importlib.import_module(f"{_PKG}.tracking")
+RunContext = _tracking.RunContext
 # NOTE: <pkg>.experiment is imported LAZILY (only for runner: python-import) so a non-Python
 # project TYPE (runner: shell-command) needs no experiment.py at all.
 
@@ -142,6 +148,8 @@ def main() -> int:
     parser.add_argument("--config", required=True, help="experiment yaml under configs/experiments/")
     parser.add_argument("--seed", type=int, default=None, help="override config seed")
     parser.add_argument("-o", "--override", action="append", default=[], help="dotted override, e.g. toy.n_samples=200")
+    parser.add_argument("--in-job", action="store_true", help=argparse.SUPPRESS)   # set by job.sh on a compute node
+    parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     overrides = list(args.override)
@@ -158,13 +166,36 @@ def main() -> int:
     #   Compute slot (hard rule 13): a direct PILOT/FULL run must hold a cross-project slot.
     # SMOKE is exempt from both; a child of sweep.py inherits the campaign's gate/slot via env markers.
     control = _control()
-    guards.gate2_preflight(control, args.config, cfg)
-    slot_id = None
-    if guards.stage_of(cfg) in ("PILOT", "FULL") and not os.environ.get("AUTOSCIENTIST_SLOT_HELD"):
-        slot_id = guards.acquire_slot(control, cfg.get("experiment_name") or Path(args.config).stem)
+    in_job_dir = None
+    if args.in_job:
+        # a scheduler job running a run its submitter already gated, slotted and queued (scripts/_scheduler.py)
+        in_job_dir = Path(args.run_dir or "")
+        try:
+            import json
+            qmeta = json.loads((in_job_dir / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            qmeta = {}
+        sch = qmeta.get("scheduler") or {}
+        if qmeta.get("status") != "queued" or not sch.get("job") or                 (sch.get("kind") == "slurm" and not os.environ.get("SLURM_JOB_ID")):
+            raise SystemExit("[run] --in-job is only for a queued scheduler job (see scripts/_scheduler.py)")
+        slot_id = None
+    else:
+        guards.gate2_preflight(control, args.config, cfg)
+        slot_id = None
+        if guards.stage_of(cfg) in ("PILOT", "FULL") and not os.environ.get("AUTOSCIENTIST_SLOT_HELD"):
+            slot_id = guards.acquire_slot(control, cfg.get("experiment_name") or Path(args.config).stem)
+        sc = scheduler.config(control)
+        if scheduler.wants(sc, guards.stage_of(cfg)):
+            passthrough = ["--config", args.config, *(["--seed", str(args.seed)] if args.seed is not None else []),
+                           *[x for o in args.override for x in ("-o", o)]]
+            try:
+                return scheduler.submit_and_wait(cfg, passthrough, sc, control, guards, slot_id,
+                                                 _tracking.allocate_run_dir, _tracking._bus_emit)
+            finally:
+                guards.release_slot(control, slot_id)
 
     set_seed(int(cfg.get("seed", 0)))
-    ctx = RunContext(cfg)
+    ctx = RunContext(cfg, run_dir=in_job_dir)
     print(f"[run] {ctx.run_id} -> {ctx.run_dir}", flush=True)
 
     # Budget watchdog: budget.max_minutes is ENFORCED, not advisory. Daemon thread +

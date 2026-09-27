@@ -89,6 +89,7 @@ clear a stale `.bus/.loop-active`); act on what it reports, then confirm:
    acquires the compute slot (hard rule 13) and enforces PI Gate 2 for FULL before
    starting — a DENIED slot or an out-of-envelope FULL is refused *at launch*, not idleness:
    log it, do CPU-light work (analysis, planning, ledger hygiene), and retry next cycle.
+   On a machine with a job scheduler (the hub's `compute.scheduler`, set in the dashboard → Settings → System), `run.py` **submits** PILOT/FULL runs and **waits** for them — same run dir, artifacts, exit codes and slot; the run shows `status=queued` while it waits (never "stalled"). **Never call `sbatch`/`qsub` yourself**, and follow `SYSTEM.md`'s site rules. A queued run counts as alive for monitoring; queue time is not budget time.
 4. **Monitor at zero tokens:** while the run is alive, the ONLY check is
    `python scripts/status.py <run_id> --watch --log-interval <monitoring.log_interval_seconds>
    --poll <loop.monitor_poll_seconds>` (for a sweep, omit `<run_id>` — `--watch` follows the

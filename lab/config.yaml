@@ -20,6 +20,29 @@ compute:                        # ── CROSS-project run coordination · PI-ow
                                 # Raise it to the number of GPUs/slots your machine can run in parallel.
                                 # (one slot = one run.py run or one sweep; tools/run_slots.py)
   stale_slot_minutes: 360       # slots older than this are presumed crashed and reclaimed
+  scheduler:                    # HOW training runs on this machine — Settings → System detects what it offers
+    kind: local                 # local (run here) | slurm (sbatch; waits for the job) | custom (describe any other)
+    stages: [PILOT, FULL]       # stages sent to the scheduler; SMOKE always runs where it's launched
+    poll_seconds: 30            # how often a waiting run checks its job
+    max_queue_hours: 48         # cancel a job that never started
+    slurm:                      # used when kind: slurm (see docs/compute.md)
+      partition: null
+      account: null
+      qos: null
+      gpus_per_run: null        # → --gres=gpu:N  (or set gres: "gpu:a100:1")
+      gres: null
+      cpus_per_task: null
+      mem: null                 # e.g. 32G
+      constraint: null
+      time_grace_minutes: 10    # --time = the stage budget + this
+      extra_args: []            # more sbatch flags, verbatim: ["--exclusive"]
+      setup: []                 # shell lines run first in the job: ["module load cuda/12.4", "source .venv/bin/activate"]
+    custom:                     # kind: custom — any scheduler, described by commands ({script} / {job})
+      submit: null              # e.g. "qsub {script}"  (prints the job id)
+      state: null               # e.g. "qstat {job}"    (PEND/QUEUE → queued, RUN → running, nothing → left)
+      cancel: null              # e.g. "qdel {job}"
+      header: []                # lines at the top of the job script, e.g. ["#PBS -l walltime=04:00:00"]
+      setup: []
 
 agents:                         # ── subagent settings · PI-owned ──
                                 # Two layers: `tiers` is the PI's model ladder; the per-role keys

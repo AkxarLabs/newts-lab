@@ -12,6 +12,8 @@ upstream `dist` file fetched from the npm registry (via jsdelivr) at the pinned 
 | `pixi/pixi.min.js` | [PixiJS](https://pixijs.com/) — the diorama world's 2D GPU renderer (global `PIXI`) | 8.21.0 | MIT (`pixi/LICENSE-pixi`) | `npm:pixi.js@8.21.0/dist/pixi.min.js` |
 | `preact/preact.umd.js` · `preact/hooks.umd.js` | [Preact](https://preactjs.com/) — the UI's component + diffing runtime (globals `preact`, `preactHooks`) | 10.29.8 | MIT (`preact/LICENSE-preact`) | `npm:preact@10.29.8/dist/preact.umd.js`, `…/hooks/dist/hooks.umd.js` |
 | `preact/htm.umd.js` | [htm](https://github.com/developit/htm) — JSX-like tagged templates, no build (global `htm`) | 3.1.1 | Apache-2.0 (`preact/LICENSE-htm`) | `npm:htm@3.1.1/dist/htm.umd.js` |
+| `xterm/xterm.js` · `xterm/xterm.css` | [xterm.js](https://xtermjs.org/) — the in-browser terminal (sign-in / install / shell on a remote or headless machine); loaded only when a terminal opens (global `Terminal`) | 6.0.0 | MIT (`xterm/LICENSE-xterm`) | `npm:@xterm/xterm@6.0.0/lib/xterm.js`, `…/css/xterm.css` |
+| `xterm/addon-fit.js` | xterm fit addon (global `FitAddon`) | 0.11.0 | MIT (`xterm/LICENSE-addon-fit`) | `npm:@xterm/addon-fit@0.11.0/lib/addon-fit.js` |
 | `pixi/pixi-filters.js` | [pixi-filters](https://github.com/pixijs/filters) — optional effects (gallery / future use; not loaded by the dashboard) | 6.1.5 | MIT (`pixi/LICENSE-pixi-filters`) | `npm:pixi-filters@6.1.5/dist/pixi-filters.js` |
 
 Notes:

@@ -45,7 +45,7 @@
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
     [['', 'Home'], ['studies', 'Studies'], ['runs', 'Runs'], ['library', 'Library'], ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']]
       .forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
-    ['agents', 'autonomy', 'lab', 'keys', 'appearance', 'notifications', 'about'].forEach(x => add('Settings: ' + x, 'go', () => NL.go('settings/' + x)));
+    ['agents', 'autonomy', 'lab', 'system', 'keys', 'appearance', 'notifications', 'about'].forEach(x => add('Settings: ' + x, 'go', () => NL.go('settings/' + x)));
     (s.items || []).forEach(i => {
       add(i.title || i.id, NL.STATE_LABEL[i.state] + ' · study', () => NL.go('study/' + i.id), i.id);
       if (i.gate && !i.gate_signed) add(`Sign Gate ${i.gate} — ${i.title || i.id}`, 'review and sign', () => NL.openGate(i.id, i.gate), 'approve');

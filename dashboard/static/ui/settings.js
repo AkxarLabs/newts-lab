@@ -165,10 +165,67 @@
         <${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop the dashboard server?', ok: 'Stop it', danger: true, body: 'Running agents keep going. You can start it again any time.' })) { const r = await NL.api('/api/server/stop', { confirm: true }); NL.toast(r.note || r.error, r.ok ? 'ok' : 'bad'); } }}>Stop the server</${NL.Btn}></${NL.Section}></div>`;
   };
 
+  /* this machine: what it offers, and how training runs on it (compute.scheduler) */
+  const System = () => {
+    const [d, setD] = useState(null);
+    const [sc, setSc] = useState(null);
+    const load = fresh => NL.get('/api/system' + (fresh ? '?fresh=1' : '')).then(x => { setD(x); if (x.ok) setSc(JSON.parse(JSON.stringify(x.scheduler || { kind: 'local' }))); });
+    useEffect(() => { load(false); }, []);
+    if (!d) return html`<${NL.Spinner} />`;
+    if (!d.ok) return html`<div class="note note-warn">${d.error}</div>`;
+    const f = d.facts || {};
+    const s2 = NL.getState() || {};
+    const where = s2.remote ? s2.remote.name : 'this computer';
+    const set = (path, v) => setSc(o => { const n = JSON.parse(JSON.stringify(o)); let t = n; const ks = path.split('.'); ks.slice(0, -1).forEach(k => { t[k] = t[k] || {}; t = t[k]; }); t[ks[ks.length - 1]] = v; return n; });
+    const slurm = (sc && sc.slurm) || {}, custom = (sc && sc.custom) || {};
+    const stages = (sc && sc.stages) || ['PILOT', 'FULL'];
+    const lines = v => (Array.isArray(v) ? v : []).join('\n');
+    const toLines = v => v.split('\n').map(x => x.trim()).filter(Boolean);
+    const sug = f.suggested_scheduler || { kind: 'local' };
+    const suggest = () => setSc(o => ({ ...o, kind: sug.kind, stages: sug.stages || o.stages, slurm: { ...(o.slurm || {}), ...(sug.slurm || {}) } }));
+    const save = async () => {
+      if (!await NL.confirm({ title: 'Save how training runs here?', ok: 'Save',
+        body: sc.kind === 'local' ? 'PILOT and FULL runs will run directly on this machine.' : html`<p>PILOT/FULL runs will be <b>submitted to ${sc.kind}</b> and waited on — the setup lines run on the compute node before each run. Written to <span class="mono">lab/config.yaml</span> (compute.scheduler), logged.</p>` })) return;
+      const r = await NL.act('/api/system/scheduler', { scheduler: sc, confirm: true }, 'Saved');
+      if (r.ok) load(false);
+    };
+    const gpus = f.gpus || [];
+    const scheds = Object.entries(f.schedulers || {}).filter(([, v]) => v).map(([k]) => k.toUpperCase()).join(', ');
+    const parts = (f.slurm && f.slurm.partitions) || [];
+    return html`<div class="form">
+      <p class="muted">The machine the lab lives on — <b>${where}</b>. Agents read this, and every PILOT/FULL training run follows the choice below. Site rules that aren't settings (data paths, quotas, what not to touch) go in <button class="link" onClick=${() => NL.open(NL.DocEditSheet, { which: 'system' })}>SYSTEM.md</button>.</p>
+      <div class="sysfacts">
+        <div><span>Machine</span><b>${f.hostname || '?'} · ${f.os} ${f.arch}</b></div>
+        <div><span>CPUs · memory</span><b>${f.cpus || '?'} · ${f.memory_gb ? f.memory_gb + ' GB' : '?'}</b></div>
+        <div><span>GPUs</span><b>${gpus.length ? gpus.map(g => g.name + (g.memory_gb ? ' (' + g.memory_gb + ' GB)' : '')).join(', ') : 'none found'}</b></div>
+        <div><span>Disk free</span><b>${f.disk ? f.disk.free_gb + ' GB of ' + f.disk.total_gb : '?'}</b></div>
+        <div><span>Schedulers</span><b>${scheds || 'none'}${f.modules ? ' · environment modules' : ''}</b></div>
+        ${parts.length ? html`<div><span>Partitions</span><b>${parts.map(p => p.name + (p.default ? '*' : '') + (p.gres && p.gres !== '(null)' ? ' (' + p.gres + ')' : '')).join(' · ')}</b></div>` : null}
+      </div>
+      ${f.login_node_hint ? html`<div class="note">This looks like a cluster login node: the dashboard and agents run here, and training should go through SLURM.</div>` : null}
+      <div class="row"><button class="link small" onClick=${() => load(true)}>check again</button>${sug.kind !== (sc && sc.kind) ? html`<${NL.Btn} small onClick=${suggest}>Use the detected setup (${sug.kind})</${NL.Btn}>` : null}</div>
+      ${sc ? html`<${NL.Section} title="Where training runs">
+        <${NL.Seg} value=${sc.kind} onChange=${v => set('kind', v)} options=${[{ value: 'local', label: 'Right here' }, { value: 'slurm', label: 'Through SLURM' }, { value: 'custom', label: 'Another scheduler' }]} />
+        ${sc.kind !== 'local' ? html`<div class="row-wrap small">Send these stages: ${['SMOKE', 'PILOT', 'FULL'].map(st => html`<label class="check inline"><input type="checkbox" checked=${stages.includes(st)} onChange=${e => set('stages', e.target.checked ? [...stages, st] : stages.filter(x => x !== st))} /> ${st}</label>`)}</div>` : null}
+        ${sc.kind === 'slurm' ? html`<div class="grid3">
+          ${[['partition', 'Partition'], ['account', 'Account'], ['qos', 'QOS'], ['mem', 'Memory (e.g. 32G)'], ['constraint', 'Constraint'], ['gres', 'GRES (overrides GPUs)']].map(([k, l]) => html`<${NL.Field} label=${l}><${NL.Input} value=${slurm[k] || ''} onInput=${v => set('slurm.' + k, v)} mono /></${NL.Field}>`)}
+          ${[['gpus_per_run', 'GPUs per run'], ['cpus_per_task', 'CPUs per run'], ['time_grace_minutes', 'Extra minutes on --time']].map(([k, l]) => html`<${NL.Field} label=${l}><${NL.Input} type="number" min="0" value=${slurm[k] ?? ''} onInput=${v => set('slurm.' + k, v === '' ? null : +v)} /></${NL.Field}>`)}
+        </div>
+        <div class="grid2"><${NL.Field} label="Setup lines (run first in each job)" hint="module load …, source …/activate"><textarea class="input textarea mono" rows="3" value=${lines(slurm.setup)} onInput=${e => set('slurm.setup', toLines(e.target.value))}></textarea></${NL.Field}>
+          <${NL.Field} label="More sbatch flags" hint="one per line, e.g. --exclusive"><textarea class="input textarea mono" rows="3" value=${lines(slurm.extra_args)} onInput=${e => set('slurm.extra_args', toLines(e.target.value))}></textarea></${NL.Field}></div>` : null}
+        ${sc.kind === 'custom' ? html`<div class="grid3">${[['submit', 'Submit — contains {script}, prints the job id', 'qsub {script}'], ['state', 'State — {job}', 'qstat {job}'], ['cancel', 'Cancel — {job}', 'qdel {job}']].map(([k, l, ph]) => html`<${NL.Field} label=${l}><${NL.Input} value=${custom[k] || ''} onInput=${v => set('custom.' + k, v)} placeholder=${ph} mono /></${NL.Field}>`)}</div>
+          <div class="grid2"><${NL.Field} label="Job script header lines"><textarea class="input textarea mono" rows="3" value=${lines(custom.header)} onInput=${e => set('custom.header', toLines(e.target.value))}></textarea></${NL.Field}>
+            <${NL.Field} label="Setup lines"><textarea class="input textarea mono" rows="3" value=${lines(custom.setup)} onInput=${e => set('custom.setup', toLines(e.target.value))}></textarea></${NL.Field}></div>` : null}
+        <p class="muted small">${sc.kind === 'local' ? 'Runs execute on this machine, one per compute slot.' : 'run.py submits each run and waits for it — same artifacts, same logs, budgets enforced on the node; queue time never counts. Agents are told never to submit jobs themselves.'}</p>
+        <div class="row end"><${NL.Btn} kind="primary" onClick=${save}>Save…</${NL.Btn}></div></${NL.Section}>` : null}
+    </div>`;
+  };
+
   const SECTIONS = [
     { id: 'agents', label: 'Agents & sign-in', C: () => html`<p class="muted">The lab runs these command-line agents on this machine, as you. At least one needs to be installed and signed in.</p><${NL.AgentsSignIn} />` },
     { id: 'autonomy', label: 'Autonomy & limits', C: () => html`<${NL.LaunchSwitch} /><${ExecForm} />` },
     { id: 'lab', label: 'Lab', C: LabForm },
+    { id: 'system', label: 'System & compute', C: System },
     { id: 'keys', label: 'Research keys', C: Keys },
     { id: 'appearance', label: 'Appearance', C: Appearance },
     { id: 'notifications', label: 'Notifications', C: Notifications },

@@ -129,6 +129,12 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
             meta = json.loads(_read_text(meta_path))
         except json.JSONDecodeError:
             continue
+        if meta.get("status") == "queued":   # waiting in the machine's job scheduler
+            sch = meta.get("scheduler") or {}
+            out.append({"run_id": meta.get("run_id", run_dir.name), "stage": meta.get("stage"), "elapsed_s": 0,
+                        "budget_min": (meta.get("budget") or {}).get("max_minutes"), "state": "queued",
+                        "last": {}, "job": sch.get("job"), "scheduler": sch.get("kind"), "queued": meta.get("queued")})
+            continue
         if meta.get("status") != "running":
             continue
         stream = run_dir / "metrics.jsonl"

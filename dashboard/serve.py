@@ -1874,6 +1874,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/machines/disconnect": lambda b: machines.disconnect(b),
         "/api/machines/local": lambda b: machines.local(b),
         "/api/machines/install-uv": lambda b: machines.install_uv(b),
+        "/api/system/scheduler": lambda b: product.system_scheduler_set(b),
         "/api/term/open": lambda b: term.open_session(b),
         "/api/term/write": lambda b: term.write(b),
         "/api/term/resize": lambda b: term.resize(b),
@@ -1888,6 +1889,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/keys": lambda q: product.keys_status(),
         "/api/setup": lambda q: ({"ok": True, **product.setup_status()}, 200),
         "/api/term/read": lambda q: term.read(q),
+        "/api/system": lambda q: product.system_info(q),
     }
 
     def _dispatch_post(self):

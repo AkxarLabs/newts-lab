@@ -68,6 +68,11 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
+| `compute.scheduler.kind` | local | PI | how PILOT/FULL training runs execute: `local`, `slurm` (run.py submits and waits), or `custom` (described by commands). See [Machines & compute](compute.md) |
+| `compute.scheduler.stages` | [PILOT, FULL] | PI | stages sent to the scheduler (SMOKE always runs where it's launched) |
+| `compute.scheduler.slurm.*` | — | PI | `partition`, `account`, `qos`, `gpus_per_run`/`gres`, `cpus_per_task`, `mem`, `constraint`, `time_grace_minutes`, `extra_args`, `setup` (shell lines run first in each job) |
+| `compute.scheduler.custom.*` | — | PI | `submit` (`{script}`), `state` / `cancel` (`{job}`), `header`, `setup`, for PBS, LSF or site wrappers |
+| `compute.scheduler.poll_seconds` · `max_queue_hours` | 30 · 48 | PI | how often a waiting run checks its job; when to give up on a job that never started |
 | `dashboard.port` | 8787 | agent-readable | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) — a cosmetic local-only knob (no `dashboard.` prefix in `configure.py`) |
 | `dashboard.editor` | `vscode` | agent-readable | editor for the dashboard's "open in editor" deep-links: `vscode` \| `cursor` \| `vscodium` \| `windsurf` \| `none` (local-only `<scheme>://file/<abs>`) |
 | `agents.tiers.{strong,standard,fast}` | inherit | PI | the model **ladder** — each tier names a model: an alias (`sonnet` \| `opus` \| `haiku` \| `fable`), a full pinned id (e.g. `claude-haiku-4-5-20251001`), or `inherit` (the session model). The per-role keys below resolve through this at render time; all three ship `inherit` → **zero behavior change until you set a ladder** |

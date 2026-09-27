@@ -128,27 +128,37 @@ def _capture_dirty_state(repo_root: Path, run_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def allocate_run_dir(runs_dir: Path, cfg: dict[str, Any]) -> tuple[str, Path]:
+    """A fresh, unique runs/<experiment>-s<seed>-<stamp>[-N] dir (created). Concurrent runs (e.g. a
+    parallel sweep) can start within the same second — collisions get a numeric suffix."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    base = f"{cfg.get('experiment_name', 'run')}-s{cfg.get('seed', 0)}-{stamp}"
+    for suffix in ("", *(f"-{i}" for i in range(1, 100))):
+        candidate = runs_dir / (base + suffix)
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            return base + suffix, candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"could not allocate a unique run dir for {base}")
+
+
 class RunContext:
-    def __init__(self, cfg: dict[str, Any], repo_root: str | Path | None = None):
+    def __init__(self, cfg: dict[str, Any], repo_root: str | Path | None = None, run_dir: str | Path | None = None):
         self.cfg = cfg
         self.repo_root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[2]
         self.runs_dir = self.repo_root / "runs"
-
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        base = f"{cfg.get('experiment_name', 'run')}-s{cfg.get('seed', 0)}-{stamp}"
-        # Concurrent runs (e.g. a parallel sweep) can start within the same second —
-        # resolve run_id collisions with a numeric suffix instead of failing.
-        for suffix in ("", *(f"-{i}" for i in range(1, 100))):
-            candidate = self.runs_dir / (base + suffix)
+        prior: dict[str, Any] = {}
+        if run_dir is not None:
+            # a run a scheduler job picks up: the submitter already created the dir (status "queued")
+            self.run_dir = Path(run_dir)
+            self.run_id = self.run_dir.name
             try:
-                candidate.mkdir(parents=True, exist_ok=False)
-                self.run_id = base + suffix
-                self.run_dir = candidate
-                break
-            except FileExistsError:
-                continue
+                prior = json.loads((self.run_dir / "meta.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                prior = {}
         else:
-            raise RuntimeError(f"could not allocate a unique run dir for {base}")
+            self.run_id, self.run_dir = allocate_run_dir(self.runs_dir, cfg)
 
         self._t0 = time.time()
         self._lock = threading.Lock()
@@ -169,6 +179,9 @@ class RunContext:
             "env": _env_info(),
             **_git_info(self.repo_root),
         }
+        for k in ("scheduler", "queued"):   # keep where it was queued (job id, scheduler) across the hand-off
+            if k in prior:
+                self.meta[k] = prior[k]
         if self.meta.get("dirty"):
             self.meta.update(_capture_dirty_state(self.repo_root, self.run_dir))
 
