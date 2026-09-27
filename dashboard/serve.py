@@ -1571,13 +1571,15 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
 
     def _serve_static(self, rel: str) -> None:
-        rel = rel.split("?")[0].replace("static/", "")
+        rel = rel.split("?")[0].replace("static/", "", 1)   # only the route prefix, never a nested "static/"
         target = (STATIC / rel).resolve()
         if (STATIC not in target.parents and target != STATIC) or not target.exists():
             return self._send(404, b"not found", "text/plain")
         ctype = {".html": "text/html", ".css": "text/css", ".js": "application/javascript",
                  ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff",
-                 ".ttf": "font/ttf", ".png": "image/png"}.get(target.suffix, "application/octet-stream")
+                 ".ttf": "font/ttf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".webp": "image/webp", ".json": "application/json", ".map": "application/json",
+                 ".txt": "text/plain"}.get(target.suffix, "application/octet-stream")
         charset = "; charset=utf-8" if ctype.startswith(("text/", "application/j", "image/svg")) else ""
         self._send(200, target.read_bytes(), f"{ctype}{charset}")
 

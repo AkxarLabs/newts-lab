@@ -151,18 +151,25 @@ between rooms:
 Each idea/project critter's look reflects its situation: a live run makes its room and its critter
 active, a killed idea's critter sinks and greys out, a parked one rests dim.
 
-**Rooms drawn in code (beta).** The lab room is now drawn by code instead of a painting
-(`dashboard/static/rooms/`), and the other rooms follow. The same objects are drawn once and lit two
-ways: sunlight through the windows by day, and the room's own lamps, screens and glowing reactor by
-night. Objects show real state:
+**The diorama.** The world is a paper diorama drawn by code (`dashboard/static/world/`, rendered
+with PixiJS): one cutaway building, a room per lifecycle stage, floors stacked, and the Margins in the
+cellar.
 
-- the compute rack's lit slots are the compute slots actually in use;
-- the reactor bubbles harder the more compute is running;
-- the debug screens scroll only while an agent is working in the room;
-- the clock tells the real time.
-
-Hover an object to see its live status; click the rack to see the slot ledger. ⚙ Settings →
-*Rooms* switches between the drawn and painted versions.
+- **Two looks:** by day it is the parchment atelier (sepia ink, watercolour washes). By night it is the
+  cave (teal card, glowing cut-outs, mushrooms and spores).
+- **Objects are live readouts:**
+  - the compute rack's LEDs are the slots in use;
+  - the FULL reactor bubbles with load;
+  - screens scroll while agents work in the room;
+  - a gate's door glows sealed while something waits for your signature, and folds open when nothing
+    does;
+  - the clock is real time.
+- **Interaction:** hover anything for its status. Click the rack for the slot ledger, or a waiting gate's
+  door to review it.
+- **Settings:** ⚙ Settings → *World* switches between the diorama and the classic painted world, which
+  is also the automatic fallback without WebGL.
+- **Adding rooms:** new workflow rooms and furniture use the same design language; see
+  [The world's design language](world-design.md).
 
 <figure markdown>
 ![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
@@ -389,21 +396,15 @@ Two properties keep this safe and lightweight:
 
 ## Tech notes
 
-**Code-drawn rooms** (`static/rooms/kit.js` + one file per room).
+**The world** (`static/world/`: `tokens.js` (the design language), `paper.js` (the cut-paper painter),
+`components.js`, `building.js` (rooms plus the cutaway layout), `rooms/*.js` and `engine.js` (the PixiJS
+renderer)).
 
-- **Design space:** each room is drawn in a fixed 1600 × 900 space as three layers. The *albedo* layer holds
-  the surfaces: procedural stone, wood grain, glass and brass. The *light* layer is multiplied over it: ambient
-  light, lamp pools, window light projected onto the floor through the window bars, and cast and contact
-  shadows. The *emissive* layer holds screens, bulbs, glowing liquid and sky, and is added with a bloom.
-  A per-frame *live* layer adds the motion.
-- **Themes:** day and night are one albedo under two light/emissive layers.
-- **Baking:** a room is baked once per theme and resolution (about 0.3 s, off the frame) and then cached.
-- **Contract:** a room registers `CodeRooms.<key> = {bake, live, objects, stations, paths}`. Its stations and
-  walk paths replace the painted room's calibration.
-- **Preview:** `static/rooms/preview.html?room=lab&theme=day&scale=1.5&crop=x,y,w,h` renders a room at 1:1 for
-  authoring.
-- **No build step:** it is plain Canvas2D, blurring by downscaling and upscaling so it works in every browser.
-
+- **Rendering:** it uses one Pixi Application on `#scene`. Everything static is baked per theme into
+  textures, and rooms are built one per frame. The engine implements the same `Scene` contract as the
+  classic Canvas2D world (`createWorld` in `app.js`), which stays as the fallback.
+- **PixiJS** is vendored in `static/vendor/pixi/`; there is no CDN and no build step.
+- **Authoring:** `static/world/gallery.html` shows every component and room in both themes.
 
 `dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (+ pyyaml) serving a no-build single-page
 scene. Endpoints: `GET /api/state` (a snapshot rebuilt from files on every request — the lab’s

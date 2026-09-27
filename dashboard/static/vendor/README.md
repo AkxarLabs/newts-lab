@@ -1,6 +1,6 @@
 # Vendored renderer libraries (offline, pinned)
 
-The Library tab's document reader renders Markdown + LaTeX fully offline — no CDN, no
+The Library tab's document reader renders Markdown + LaTeX, and the world renders with PixiJS, fully offline — no CDN, no
 build step — so these third-party files are committed verbatim. Each is a pristine
 upstream `dist` file fetched from the npm registry (via jsdelivr) at the pinned version.
 
@@ -9,6 +9,8 @@ upstream `dist` file fetched from the npm registry (via jsdelivr) at the pinned 
 | `marked.min.js` | [marked](https://github.com/markedjs/marked) — Markdown → HTML | 15.0.12 | MIT (`LICENSE-marked.md`) | `npm:marked@15.0.12/marked.min.js` |
 | `purify.min.js` | [DOMPurify](https://github.com/cure53/DOMPurify) — HTML sanitizer | 3.2.6 | Apache-2.0 OR MPL-2.0 (`LICENSE-dompurify`) | `npm:dompurify@3.2.6/dist/purify.min.js` |
 | `katex.min.js` · `katex.min.css` · `fonts/*.woff2` | [KaTeX](https://katex.org/) — LaTeX math | 0.16.22 | MIT (`LICENSE-katex`) | `npm:katex@0.16.22/dist/…` |
+| `pixi/pixi.min.js` | [PixiJS](https://pixijs.com/) — the diorama world's 2D GPU renderer (global `PIXI`) | 8.21.0 | MIT (`pixi/LICENSE-pixi`) | `npm:pixi.js@8.21.0/dist/pixi.min.js` |
+| `pixi/pixi-filters.js` | [pixi-filters](https://github.com/pixijs/filters) — optional effects (gallery / future use; not loaded by the dashboard) | 6.1.5 | MIT (`pixi/LICENSE-pixi-filters`) | `npm:pixi-filters@6.1.5/dist/pixi-filters.js` |
 
 Notes:
 

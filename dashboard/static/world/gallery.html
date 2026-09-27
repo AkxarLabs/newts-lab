@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vivarium world gallery</title>
+<!-- Authoring gallery for the world's design language.
+     ?view=components&theme=day|night   every component, baked by the paper painter (no Pixi needed)
+     ?view=world&theme=…&room=<key>      the real Pixi engine on fake live data (room = zoom into it)
+     ?view=room&room=lab&theme=…         one room's shell + props baked flat (fast check) -->
+<style>
+  html, body { margin: 0; background: #1a1d20; color: #ddd; font: 13px system-ui, sans-serif; }
+  #bar { position: fixed; z-index: 5; top: 8px; left: 8px; background: rgba(0,0,0,.6); padding: 6px 10px; border-radius: 8px; }
+  #bar a { color: #9fe7da; margin-right: 10px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 18px; padding: 56px 18px 18px; }
+  .cell { background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px; }
+  .cell b { display: block; margin-bottom: 4px; color: #bbb; font-weight: 600; }
+  canvas#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  body.day { background: #efe6cf; color: #333; }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<script src="../vendor/pixi/pixi.min.js"></script>
+<script src="../vendor/pixi/pixi-filters.js"></script>
+<script src="noise.js"></script>
+<script src="tokens.js"></script>
+<script src="paper.js"></script>
+<script src="components.js"></script>
+<script src="building.js"></script>
+<script src="rooms/incubator.js"></script>
+<script src="rooms/study.js"></script>
+<script src="rooms/lab.js"></script>
+<script src="rooms/writing.js"></script>
+<script src="rooms/archive.js"></script>
+<script src="rooms/margins.js"></script>
+<script src="engine.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search), view = q.get('view') || 'components', themeName = q.get('theme') || 'night';
+  const TH = VivWorld.tokens.themes[themeName];
+  document.body.classList.toggle('day', themeName === 'day');
+  const link = (v, th, extra) => `<a href="?view=${v}&theme=${th}${extra || ''}">${v} · ${th}</a>`;
+  document.getElementById('bar').innerHTML = link('components', 'day') + link('components', 'night') + link('world', 'day') + link('world', 'night') + link('world', 'night', '&room=lab') + link('world', 'day', '&room=lab');
+  const SAMPLE = {
+    bench: { w: 500, items: ['flask', 'bell', 'rack', 'microscope'], label: 'Experiments' }, vessel: { kind: 'reactor', w: 120, h: 300, label: 'FULL' },
+    desk: { w: 300, monitors: 2, lamp: true, chair: true, label: 'Improve · Debug' }, console: { w: 420, label: 'Analysis' }, table: { w: 300, lamp: true },
+    board: { kind: 'white', label: 'Ideation' }, bookcase: { ladder: true, label: 'Stacks' }, rack: {}, dais: { label: 'Quality check' }, trays: { label: 'Seed' },
+    lectern: { label: 'Proposal' }, easel: { label: 'Figures' }, cabinet: { label: 'Write-back' }, press: { label: 'Finalize' }, boxes: { label: 'Reproduce' },
+    armchair: {}, shrouded: { label: 'Parked' }, jars: { label: 'Evolve' }, lantern: {}, plant: { kind: 'monstera', size: 180 }, rug: {},
+    door: { gate: 1 }, sign: { text: 'Reflect' }, clock: {},
+  };
+  if (view === 'components') {
+    const grid = document.createElement('div'); grid.className = 'grid'; document.body.appendChild(grid);
+    const t0 = performance.now();
+    for (const [name, def] of Object.entries(VivWorld.components)) {
+      if (name === 'shell') continue;
+      const props = SAMPLE[name] || {}, [w, h] = def.size(props), P = VivWorld.paper.painter(TH, w, h, 1, 7);
+      def.draw(P, props);
+      for (const part of (def.parts ? def.parts(props) || [] : [])) { const PP = VivWorld.paper.painter(TH, part.size[0], part.size[1], 1, 8); part.draw(PP, props); P.raw(x => { x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(PP.base, (P.pad + part.at[0]) - PP.pad, (P.pad + part.at[1]) - PP.pad); }); }
+      const cell = document.createElement('div'); cell.className = 'cell'; cell.innerHTML = `<b>${name}</b>`;
+      const c = document.createElement('canvas'); c.width = P.base.width; c.height = P.base.height; const x = c.getContext('2d');
+      x.fillStyle = themeName === 'day' ? TH.surface.floor : TH.surface.floor; x.fillRect(0, 0, c.width, c.height);
+      x.drawImage(P.base, 0, 0); if (P.glow) { x.globalCompositeOperation = 'lighter'; x.drawImage(P.glow, 0, 0); }
+      cell.appendChild(c); grid.appendChild(cell);
+    }
+    document.getElementById('bar').insertAdjacentHTML('beforeend', ` baked in ${Math.round(performance.now() - t0)} ms`);
+    return;
+  }
+  // the real engine, on fake live data
+  const canvas = document.createElement('canvas'); canvas.id = 'scene'; document.body.appendChild(canvas);
+  const hash01 = s => { let h = 2166136261; for (let i = 0; i < (s || '').length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 100000) / 100000; };
+  const deps = { hash01, projDeg: id => (id ? Math.floor(hash01(id + 'hue') * 12) * 30 : 0), roleHSL: () => [185, 60, 60], ROLE_ORDER: ['orchestrator', 'experiment-runner', 'fresh-context-reviewer', 'overseer', 'ideation-critic', 'scoping-advocate'],
+    POSE_PARAMS: { idle: { glow: 0.55, hue: 48 } }, getRound: () => 'system-ui, sans-serif', toast: m => console.log('toast', m), runTool: n => console.log('tool', n) };
+  const t0 = performance.now();
+  const Wd = await VivWorld.createPixiWorld(canvas, { lamp: themeName, deps });
+  document.getElementById('bar').insertAdjacentHTML('beforeend', ` engine ready in ${Math.round(performance.now() - t0)} ms`);
+  const items = [
+    { id: 'seed-1', title: 'Seed idea', state: 'seed' }, { id: 'tri-1', title: 'Triaged', state: 'triaged' },
+    { id: 'lit-1', title: 'Lit review', state: 'lit-review' }, { id: 'prop-1', title: 'A proposal', state: 'proposal', gate: 1 },
+    { id: 'moe', title: 'Sparse MoE routing', state: 'active', has_project: true, n_workers: 3, inflight: [{ state: 'running' }] },
+    { id: 'ana-1', title: 'Analysis', state: 'analysis', has_project: true },
+    { id: 'paper-1', title: 'A paper', state: 'writing', has_project: true }, { id: 'fin-1', title: 'Finished', state: 'final' },
+    { id: 'park-1', title: 'Parked', state: 'parked' }, { id: 'dead-1', title: 'Killed', state: 'killed' },
+  ];
+  const workers = [{ worker_id: 'r1', role: 'experiment-runner', project: 'moe', status: 'working' }, { worker_id: 'r2', role: 'overseer', project: 'moe', status: 'working' }];
+  Wd.sync({ items, workers, slots: { cap: 3, in_use: 2 } });
+  if (q.get('room')) setTimeout(() => Wd.goRoom(q.get('room')), 400);
+  window.__W = Wd;
+})().catch(e => { document.getElementById('bar').insertAdjacentHTML('beforeend', ' ERROR: ' + e.message); console.error(e); });
+</script>
+</body>
+</html>
