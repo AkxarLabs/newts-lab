@@ -82,7 +82,7 @@
     { id: 'paper-1', title: 'A paper', state: 'writing', has_project: true }, { id: 'fin-1', title: 'Finished', state: 'final' },
     { id: 'park-1', title: 'Parked', state: 'parked' }, { id: 'dead-1', title: 'Killed', state: 'killed' },
   ];
-  const workers = [{ worker_id: 'r1', role: 'experiment-runner', project: 'moe', status: 'working' }, { worker_id: 'r2', role: 'overseer', project: 'moe', status: 'working' }];
+  const workers = [{ worker_id: 'r1', role: 'experiment-runner', project: 'moe', status: 'working', in_tool: { tool: 'Bash', summary: 'Bash: uv run scripts/run.py --seed 3' } }, { worker_id: 'r2', role: 'overseer', project: 'moe', status: 'working', recent_actions: [{ text: 'Read: claims.yaml' }] }];
   Wd.sync({ items, workers, slots: { cap: 3, in_use: 2 } });
   if (q.get('room')) setTimeout(() => Wd.goRoom(q.get('room')), 400);
   window.__W = Wd;

@@ -4,7 +4,7 @@ VivWorld.defineRoom({
   states: ['parked', 'killed'],
   shell: { wall: 'stone', floor: 'boards', windows: [], accent: 'wash.blue', banner: 'The Margins', seed: 61 },
   stations: {
-    parked: { x: 0.26, y: 0.60 }, recorded: { x: 0.50, y: 0.61 }, killed: { x: 0.78, y: 0.66 }, revive: { x: 0.60, y: 0.87 },
+    parked: { x: 0.26, y: 0.60 }, recorded: { x: 0.50, y: 0.61 }, killed: { x: 0.78, y: 0.66 }, revive: { x: 0.74, y: 0.86 },
   },
   stateStation: { parked: 'parked', killed: 'killed' },
   roleStation: {},
@@ -12,7 +12,7 @@ VivWorld.defineRoom({
     { c: 'shrouded', at: [0.20, 0.545], props: { w: 220, h: 190, label: 'Parked' } },
     { c: 'lectern', at: [0.50, 0.535], props: { label: 'Recorded' } },
     { c: 'jars', at: [0.78, 0.585], props: { w: 260, dry: true, label: 'Killed' } },
-    { c: 'vessel', at: [0.52, 0.87], props: { kind: 'cloche', w: 110, h: 150, plant: 'sprout', hover: () => 'Revive · a killed idea can come back as a new seed' } },
+    { c: 'vessel', at: [0.68, 0.86], props: { kind: 'cloche', w: 110, h: 150, plant: 'sprout', hover: () => 'Revive · a killed idea can come back as a new seed' } },
     { c: 'lantern', at: [0.5, 0.22], props: {} },
     { c: 'plant', at: [0.08, 0.95], props: { kind: 'mushrooms', size: 90, seed: 62 } },
     { c: 'plant', at: [0.93, 0.93], props: { kind: 'mushrooms', size: 100, seed: 63 } },

@@ -512,6 +512,7 @@
   });
 
   W.defineComponent('rug', {
+    flat: true,   // lies on the floor: always beneath anything standing
     size: p => [p.w || 380, 110],
     draw(P, p) {
       const w = p.w || 380;

@@ -56,6 +56,7 @@
     const hoverG = new PIXI.Graphics(); screen.addChild(hoverG);
     const hoverT = new PIXI.Text({ text: '', style: { fontFamily: getFont(), fontSize: 13, fontWeight: '600', fill: 0xffffff } }); hoverT.anchor.set(0.5); hoverT.resolution = 2; screen.addChild(hoverT);
     const newtC = new PIXI.Container(); screen.addChild(newtC);
+    const grain = new PIXI.TilingSprite({ texture: PIXI.Texture.EMPTY, width: 16, height: 16 }); grain.blendMode = 'multiply'; screen.addChildAt(grain, 0);
     const vignette = new PIXI.Sprite(); screen.addChild(vignette);
     function getFont() { try { return D.getRound ? D.getRound() : 'system-ui, sans-serif'; } catch (e) { return 'system-ui, sans-serif'; } }
 
@@ -112,7 +113,7 @@
       const def = W.components[pr.c], props = pr.props || {};
       const b = bake(pr.c, props, `${R.spec.key}:${i}:${pr.c}`, 1.35);
       const [nx, ny] = pr.at, s = W.depthScale(ny) * (pr.scale || PROP_SCALE);
-      const c = new PIXI.Container(); c.position.set(nx * R.rw, ny * R.rh); c.scale.set(s); c.zIndex = ny * R.rh;
+      const c = new PIXI.Container(); c.position.set(nx * R.rw, ny * R.rh); c.scale.set(s); c.zIndex = def.flat ? -1e8 + ny * R.rh : ny * R.rh;
       const base = spriteAt(b.base, b.pad, b.w, b.h, b.res, b.w / 2, b.h); c.addChild(base);
       if (b.glow) { const g = spriteAt(b.glow, b.pad, b.w, b.h, b.res, b.w / 2, b.h); g.blendMode = 'add'; c.addChild(g); }
       const parts = b.parts.map(p => {
@@ -226,7 +227,7 @@
         for (const [a, b2] of [[ox + g0.x, cov.x0], [cov.x1, ox + g0.x + g0.w]]) {
           if (b2 - a < 120) continue;
           const ry = oy + g0.y - SLAB;
-          P.piece(S.poly([[a, ry], [b2, ry], [b2 - 30, ry - 150], [a + 30, ry - 150]]), { fill: 'glass.fill', lift: 3, glow: 'glow.secondary', glowAlpha: night ? 0.25 : 0.4, pattern: (x2, bb2) => { x2.strokeStyle = P.tk('metal.iron'); x2.lineWidth = 3; for (let xx = bb2.x0; xx < bb2.x1; xx += 60) { x2.beginPath(); x2.moveTo(xx, bb2.y1); x2.lineTo(xx + 10, bb2.y0); x2.stroke(); } x2.beginPath(); x2.moveTo(bb2.x0, bb2.y0 + 75); x2.lineTo(bb2.x1, bb2.y0 + 75); x2.stroke(); } });
+          P.piece(S.poly([[a, ry], [b2, ry], [b2 - 30, ry - 150], [a + 30, ry - 150]]), { fill: 'glass.fill', lift: 3, glow: 'glow.secondary', glowAlpha: night ? 0.08 : 0.3, pattern: (x2, bb2) => { x2.strokeStyle = P.tk('metal.iron'); x2.lineWidth = 3; for (let xx = bb2.x0; xx < bb2.x1; xx += 60) { x2.beginPath(); x2.moveTo(xx, bb2.y1); x2.lineTo(xx + 10, bb2.y0); x2.stroke(); } x2.beginPath(); x2.moveTo(bb2.x0, bb2.y0 + 75); x2.lineTo(bb2.x1, bb2.y0 + 75); x2.stroke(); } });
           for (let i = 0; i < 4; i++) W.drawHelpers.plantAt(P, a + 60 + i * (b2 - a - 120) / 3, ry - 150, 60, i % 2 ? 'fern' : 'monstera', i + 5);
         }
       }
@@ -263,6 +264,12 @@
       const g = vx.createRadialGradient(128, 128, 60, 128, 128, 181); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${th.grade.vignette})`); vx.fillStyle = g; vx.fillRect(0, 0, 256, 256);
       if (vignette.texture && vignette.texture !== PIXI.Texture.EMPTY) vignette.texture.destroy(true);
       vignette.texture = PIXI.Texture.from(vc); vignette.width = app.screen.width; vignette.height = app.screen.height;
+      if (!grain._tex || grain._theme !== theme) {   // near-white paper grain: multiply darkens by a few percent only
+        const gc = document.createElement('canvas'); gc.width = gc.height = 256; const gx = gc.getContext('2d'), img = gx.createImageData(256, 256), dd = img.data, amp = th.grade.grain * 255 * 1.6;
+        for (let i = 0; i < 256 * 256; i++) { const n = hash2(i % 256, (i / 256) | 0, 21) * 0.6 + W.noise.fbm((i % 256) * 0.07, ((i / 256) | 0) * 0.07, 5, 3) * 0.4; const v = 255 - n * amp; dd[i * 4] = dd[i * 4 + 1] = dd[i * 4 + 2] = v; dd[i * 4 + 3] = 255; }
+        gx.putImageData(img, 0, 0); if (grain._tex) grain._tex.destroy(true); grain._tex = PIXI.Texture.from(gc); grain.texture = grain._tex; grain._theme = theme;
+      }
+      grain.width = app.screen.width; grain.height = app.screen.height;
     }
     const timings = {};
     let buildQueue = [], buildToken = 0;
@@ -560,8 +567,28 @@
       if (tx._fill !== color) { tx.style.fill = color; tx._fill = color; }
       tx.position.set(Math.round(x), Math.round(y)); tx.alpha = alpha; tx.visible = true; tx._seen = true;
     }
+    /** A little paper tag (speech-label) with a pointer: used for what an agent is doing. */
+    const tagPool = new Map();
+    function tag(key, text, x, y, alpha) {
+      const th = TH();
+      let tg = tagPool.get(key);
+      if (!tg) {
+        tg = new PIXI.Container(); tg.g = new PIXI.Graphics();
+        tg.t = new PIXI.Text({ text, style: { fontFamily: th.label.font, fontSize: 12, fontWeight: '700', fill: T.hexNum(th.label.color) } }); tg.t.anchor.set(0.5, 1); tg.t.resolution = 2;
+        tg.addChild(tg.g, tg.t); labelsC.addChild(tg); tagPool.set(key, tg);
+      }
+      if (tg.t.text !== text || tg._theme !== theme) {
+        tg.t.text = text; tg.t.style.fill = T.hexNum(th.label.color); tg.t.style.fontFamily = th.label.font;
+        const w = tg.t.width + 14, h = tg.t.height + 4;
+        tg.g.clear().roundRect(-w / 2, -h - 6, w, h, 6).fill({ color: T.hexNum(th.label.plate), alpha: 0.94 }).stroke({ width: 1, color: T.hexNum(th.ink.line), alpha: 0.5 })
+          .moveTo(-5, -6).lineTo(0, 0).lineTo(5, -6).fill({ color: T.hexNum(th.label.plate), alpha: 0.94 });
+        tg.t.position.set(0, -8); tg._theme = theme;
+      }
+      tg.position.set(Math.round(x), Math.round(y)); tg.alpha = alpha; tg.visible = true; tg._seen = true;
+    }
     function drawScreen() {
       for (const tx of labelPool.values()) tx._seen = false;
+      for (const tg of tagPool.values()) tg._seen = false;
       hits = [];
       const zoomedIn = cam.zoom > 0.42, day = theme === 'day';
       // furniture hover targets (only once a room is big enough to point at)
@@ -582,10 +609,15 @@
           const o = e.o;
           if (!e._dim) top.push({ sx: p.x, sy: cy, r: Math.max(18, ss * 0.5), kind: 'item', id: o.id, name: o.title || o.id, ss });
           if (zoomedIn) { label('it:' + o.id, o.title || o.id, p.x, p.y + ss * 0.08, 13, day ? 0x3a2a16 : 0xf4ecd6, e._dim ? 0.6 : 0.97); if (o.hasProject && o.nWorkers && !(view.level === 'PROJECT' && view.proj === o.id)) label('in:' + o.id, `▸ ${o.nWorkers} inside`, p.x, p.y + ss * 0.08 + 17, 11, day ? 0x2f6f66 : 0xa8f0e6, e._dim ? 0.6 : 0.95); }
-        } else top.push({ sx: p.x, sy: cy, r: Math.max(16, ss * 0.5), kind: 'worker', id: e.w.worker_id, name: e.w.worker_id, ss });
+        } else {
+          top.push({ sx: p.x, sy: cy, r: Math.max(16, ss * 0.5), kind: 'worker', id: e.w.worker_id, name: e.w.worker_id, ss });
+          const act = zoomedIn && !e.dying ? actionText(e.w) : '';
+          if (act) tag('act:' + e.w.worker_id, act, p.x, p.y + (e._top) * ss - 14, e.w.status === 'working' ? 1 : 0.65);
+        }
       }
       hits = hits.concat(top);
       for (const [k, tx] of labelPool) if (!tx._seen) { tx.visible = false; if (labelPool.size > 120) { tx.destroy(); labelPool.delete(k); } }
+      for (const [k, tg] of tagPool) if (!tg._seen) { tg.visible = false; if (tagPool.size > 60) { tg.destroy({ children: true }); tagPool.delete(k); } }
       drawNewt();
       // hover visuals
       hoverG.clear(); hoverT.visible = false;
@@ -599,6 +631,15 @@
         const text = h.prop.def.hover(h.prop.props, st); if (text) pill(text, clamp((x0 + x1) / 2, 60, SW() - 60), Math.max(16, y0 - 16));
       }
       canvas.classList.toggle('is-hit', !!(h && h.kind !== 'room'));
+    }
+    /** "▸ run.py" / "edit model.py" — the worker's current tool, else its last action, short. */
+    function actionText(w) {
+      const cur = w.in_tool, last = (w.recent_actions || [])[w.recent_actions ? w.recent_actions.length - 1 : 0];
+      let txt = cur ? (cur.summary || cur.tool || '') : (w.status === 'working' && last ? (last.text || '') : '');
+      txt = String(txt).replace(/^[A-Z][a-zA-Z]+:\s*/, '').replace(/\s+/g, ' ').trim();
+      if (!txt) return '';
+      if (txt.length > 30) txt = txt.slice(0, 29) + '…';
+      return (cur ? '▸ ' : '') + txt;
     }
     function pill(text, x, y) {
       const day = theme === 'day';
@@ -627,8 +668,9 @@
     }
 
     // ── the frame ────────────────────────────────────────────────────────────
-    let lastW = 0, lastH = 0;
+    let lastW = 0, lastH = 0, fadeIn = 0;
     function frame(dt) {
+      if (fadeIn > 0) { fadeIn = Math.max(0, fadeIn - dt * 2.5); world.alpha = 1 - fadeIn; }
       if (SW() !== lastW || SH() !== lastH) { lastW = SW(); lastH = SH(); paintBg(); }
       t += dt; camUpdate(dt);
       parX = lerp(parX, parTX, Math.min(1, dt * 4)); parY = lerp(parY, parTY, Math.min(1, dt * 4));
@@ -700,7 +742,7 @@
         kick();
       },
       setPose(p) { if (p === pose) return; if (p === 'success') newt.bounce = 1; pose = p; kick(); },
-      setLamp(th) { const next = th === 'day' ? 'day' : 'night'; if (next === theme) return; theme = next; buildAll(); kick(); },
+      setLamp(th) { const next = th === 'day' ? 'day' : 'night'; if (next === theme) return; theme = next; buildAll(); if (!reduced) { world.alpha = 0; fadeIn = 1; } kick(); },
       setView(m) { setView(m); kick(); }, goRoom(k) { goRegion(k); kick(); }, focusProject(id) { focusProject(id); kick(); }, back() { back(); kick(); },
       viewInfo, highlight(r) { highlightRole = r; kick(); },
       layout() { return { boxes: ROOM_KEYS.map(k => ({ key: k, x: BOX[k].x, y: BOX[k].y, w: BOX[k].w, h: BOX[k].h, label: roomLabel(k), n: ROOM_KEYS.indexOf(k) + 1 })), bbox: LAYOUT.bbox, room: view.room, level: view.level }; },
