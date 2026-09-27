@@ -84,8 +84,8 @@ def test_rooms_keep_the_station_contract(world):
 
 
 def test_the_painted_worlds_station_keys_survive(world):
-    """Workers are placed by role → station key; the keys app.js knows must exist in the new rooms."""
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    """Workers are placed by role → station key; the keys the painted world knows must exist in the new rooms."""
+    app = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
     role_station = dict(re.findall(r"'([\w-]+)':\s*'([\w-]+)'", re.search(r"const ROLE_STATION = \{(.*?)\};", app).group(1)))
     for key, r in world["rooms"].items():
         for role, stn in r["roleStation"].items():
@@ -128,7 +128,7 @@ def test_components_declare_size_and_known_fx(world):
 
 def test_world_scripts_load_before_the_app():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    order = ["vendor/pixi/pixi.min.js"] + [f"world/{f}" for f in CORE] + ["world/engine.js", 'src="app.js"']
+    order = ["vendor/pixi/pixi.min.js"] + [f"world/{f}" for f in CORE] + ["world/engine.js", "world/scene.js", "ui/core.js", "ui/app.js"]
     pos = [html.index(o) for o in order]
     assert pos == sorted(pos), order
     for f in ROOM_FILES:   # every room spec is loaded, after the building registry and before the engine starts
@@ -136,7 +136,7 @@ def test_world_scripts_load_before_the_app():
     assert (STATIC / "vendor" / "pixi" / "LICENSE-pixi").exists()
 
 
-def test_app_falls_back_to_the_painted_world():
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "createPixiWorld" in app and "createWorld(c2, opts)" in app and "?world=classic" not in app.split("function worldMode")[0][-10:]
-    assert "function worldMode()" in app and "'classic'" in app
+def test_the_scene_falls_back_to_the_painted_world():
+    sc = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
+    assert "createPixiWorld" in sc and "createWorld(c2, o)" in sc
+    assert "const worldMode" in sc and "'classic'" in sc

@@ -1582,6 +1582,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif route == "/api/run/log":
                     body, code = run_log(q.get("run_id", ""))
                 else:
+                    if q.get("fresh") and executor is not None:   # "check again" after a sign-in
+                        executor.backends._AUTH_CACHE.clear()
+                        executor.backends._VERSION_CACHE.clear()
+                        sources._EXEC_CACHE["ts"] = 0
                     body, code = executor_health()
             except Exception as e:  # noqa: BLE001
                 body, code = {"error": str(e)}, 500
@@ -1730,6 +1734,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/labs/forget": lambda b: product.labs_forget(b),
         "/api/terminal": lambda b: product.terminal_open(b),
         "/api/gate/revoke": lambda b: product.gate_revoke(b),
+        "/api/finalize": lambda b: product.finalize_start(b),
         "/api/envelope": lambda b: product.envelope_set(b),
         "/api/loopbrief/sign": lambda b: product.loopbrief_sign(b),
         "/api/campaign": lambda b: product.campaign_create(b),

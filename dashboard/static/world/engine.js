@@ -1,6 +1,6 @@
 /* Vivarium world — the PixiJS engine ("the pop-up book laboratory").
  *
- * Implements the SAME contract as app.js `createWorld` (the Canvas2D painted world, kept as the fallback):
+ * Implements the SAME contract as `createWorld` in world/scene.js (the Canvas2D painted world, kept as the fallback):
  *   sync · setPose · setLamp · setView · goRoom · focusProject · back · viewInfo · highlight · layout ·
  *   setAmbient · followWorker/stopFollow/following · onClick/onWorker/onNewt/onView/onFollow · kind
  * so the rest of the dashboard (tabs, inspector, minimap, Key panel, demo mode) doesn't know which world
@@ -503,7 +503,7 @@
     const cam = { x: LAYOUT.bbox.cx, y: LAYOUT.bbox.cy, zoom: 0.2, q: [] };
     let camFrom = null, camT = 0, userT = -999;
     const view = { level: 'WORLD', room: null, proj: null, label: '' }, stack = [];
-    const VIEWB = { top: 64, bot: 92, side: 20 };
+    const VIEWB = { top: 64, bot: 92, side: 20, left: 0, right: 0 };
     const SW = () => app.screen.width, SH = () => app.screen.height;
     const w2s = (wx, wy) => ({ x: SW() / 2 + (wx - cam.x) * cam.zoom, y: SH() / 2 + (wy - cam.y) * cam.zoom });
     const s2w = (sx, sy) => ({ x: cam.x + (sx - SW() / 2) / cam.zoom, y: cam.y + (sy - SH() / 2) / cam.zoom });
@@ -511,9 +511,15 @@
     function flyTo(steps) { if (reduced) { const s = steps[steps.length - 1]; cam.x = s.x; cam.y = s.y; cam.zoom = s.zoom; cam.q = []; kick(); return; } cam.q = steps.slice(); camFrom = null; camT = 0; }
     function focusOn(x, y, zoom, cinematic) { if (cinematic && !reduced) flyTo([{ x: (cam.x + x) / 2, y: (cam.y + y) / 2, zoom: Math.min(cam.zoom, zoom) * 0.7, dur: 0.34 }, { x, y, zoom, dur: 0.6 }]); else flyTo([{ x, y, zoom, dur: 0.5 }]); }
     function camUpdate(dt) { if (!cam.q.length) return; const st = cam.q[0]; if (!camFrom) { camFrom = { x: cam.x, y: cam.y, zoom: cam.zoom }; camT = 0; } camT += dt / Math.max(0.0001, st.dur); const e = smoothstep(camT); cam.x = lerp(camFrom.x, st.x, e); cam.y = lerp(camFrom.y, st.y, e); cam.zoom = camFrom.zoom * Math.pow(st.zoom / camFrom.zoom, e); if (camT >= 1) { cam.x = st.x; cam.y = st.y; cam.zoom = st.zoom; cam.q.shift(); camFrom = null; camT = 0; } }
-    function measureInsets() { try { const tb = document.querySelector('.topbar'); if (tb) { const h = tb.getBoundingClientRect().height; if (h > 4) VIEWB.top = Math.round(h) + 12; } const cb = document.querySelector('#commandBar'); if (cb) { const r = cb.getBoundingClientRect(); if (r.height > 4) VIEWB.bot = clamp(Math.round(SH() - r.top) + 14, 70, 260); } } catch (e) { /* keep defaults */ } }
+    // the free part of the screen: below the top bar, above the command/ask bar, left of a side rail
+    function measureInsets() { try {
+      const tb = document.querySelector('.topbar'); if (tb) { const h = tb.getBoundingClientRect().height; if (h > 4) VIEWB.top = Math.round(h) + 12; }
+      const cb = document.querySelector('#commandBar, .askbar'); if (cb) { const r = cb.getBoundingClientRect(); if (r.height > 4) VIEWB.bot = clamp(Math.round(SH() - r.top) + 14, 70, 260); }
+      const rail = document.querySelector('[data-world-inset="right"]'); VIEWB.right = 0;
+      if (rail) { const r = rail.getBoundingClientRect(); if (r.width > 4 && r.height > SH() * 0.5 && r.left > SW() * 0.4) VIEWB.right = Math.round(SW() - r.left) + 8; }
+    } catch (e) { /* keep defaults */ } }
     const bandCenterY = () => (VIEWB.top + (SH() - VIEWB.bot)) / 2;
-    function frameBox(box, fill, maxZoom) { const bw = Math.max(160, SW() - VIEWB.side * 2), bh = Math.max(180, SH() - VIEWB.top - VIEWB.bot); const zoom = clamp(Math.min(bw / box.w, bh / box.h) * (fill || 1), 0.04, maxZoom || 2.4); return { x: box.x + box.w / 2, y: box.y + box.h / 2 + (SH() / 2 - bandCenterY()) / zoom, zoom }; }
+    function frameBox(box, fill, maxZoom) { const bw = Math.max(160, SW() - VIEWB.side * 2 - VIEWB.left - VIEWB.right), bh = Math.max(180, SH() - VIEWB.top - VIEWB.bot); const zoom = clamp(Math.min(bw / box.w, bh / box.h) * (fill || 1), 0.04, maxZoom || 2.4); return { x: box.x + box.w / 2 + ((VIEWB.right - VIEWB.left) / 2) / zoom, y: box.y + box.h / 2 + (SH() / 2 - bandCenterY()) / zoom, zoom }; }
     const worldBox = () => { const b = LAYOUT.bbox; return { x: b.x - 60, y: b.y - 420, w: b.w + 120, h: b.h + 480 }; };
     const worldFit = () => frameBox(worldBox(), 1.0, 0.6);
     function clampCam() { const b = worldBox(); cam.x = clamp(cam.x, b.x - 400, b.x + b.w + 400); cam.y = clamp(cam.y, b.y - 400, b.y + b.h + 400); }
@@ -766,6 +772,7 @@
       roomRect(k) { if (!BOX[k]) return null; const a = w2s(BOX[k].x, BOX[k].y), b = w2s(BOX[k].x + BOX[k].w, BOX[k].y + BOX[k].h); return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }; },
       band() { return { top: VIEWB.top, bot: VIEWB.bot, W: SW(), H: SH() }; },
       setAmbient(on) { ambient = !!on; buildAmbient(); kick(); },
+      insetsChanged() { measureInsets(); const f = view.level === 'WORLD' ? worldFit() : (view.room ? frameBox(BOX[view.room], 1.0) : null); if (f) focusOn(f.x, f.y, f.zoom, false); kick(); },
       followWorker(id) { followWorker(id); kick(); }, stopFollow() { stopFollow(); }, following() { return followId; },
       onClick(item, gate) { onItem = item; onGate = gate; }, onWorker(cb) { onWorker = cb; }, onNewt(cb) { onNewt = cb; }, onView(cb) { onView = cb; }, onFollow(cb) { onFollow = cb; },
       calInfo() { return CAL; },

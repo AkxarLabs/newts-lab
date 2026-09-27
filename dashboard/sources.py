@@ -158,7 +158,8 @@ _RUN_KEYS = ("agent_id", "run_id", "backend", "role", "status", "started", "fini
              "exit_code", "prompt_summary", "session_id", "skill", "command", "target", "subject", "level",
              "attempt", "reason", "status_ts", "pending_question", "report", "usage", "chain", "chain_child",
              "parent", "created_by", "created", "max_minutes", "n_actions", "denials", "mode", "label",
-             "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema")
+             "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema",
+             "kind", "gate3_signed", "args", "model", "effort", "max_repeats", "repeat_index", "campaign")
 
 
 def _r10(x) -> int | None:
@@ -865,7 +866,7 @@ def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -
                         "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
                         "title": f"Gate {g} — {it.get('title') or it['id']}",
                         "body": it.get("next") or "", "detail": {"gate": g},
-                        "actions": ([{"id": "sign", "label": f"approve Gate {g}"}] if g in (1, 2) else [])
+                        "actions": [{"id": "sign", "label": f"review & sign Gate {g}"}]
                         + [{"id": "bundle", "label": "review bundle"}]})
         for r in it.get("inflight") or []:
             if r.get("state") == "stalled":

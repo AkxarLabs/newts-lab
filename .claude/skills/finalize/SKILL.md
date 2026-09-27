@@ -15,8 +15,11 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
    (add `--pi-approved` when the PI is authorizing directly in this session). It hard-stops unless the
    state is right (`internal-review` for a paper, `active`+`target.active` for target-driven), a Gate-3
    marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`), **and**
-   `AUTOSCIENTIST_NO_GATE3` is unset — so a launched/headless agent can never finalize (it stops at
-   `internal-review`). A nonzero exit stops finalization before any file changes.
+   `AUTOSCIENTIST_NO_GATE3` is unset — so a launched/headless agent can never finalize on its own (it
+   stops at `internal-review`). The one exception is the run the PI starts right after signing Gate 3 in
+   the dashboard: the signature is `studies/<slug>/paper/gate3-approval.md` (`signed_via: dashboard:…`) and
+   that run has `AUTOSCIENTIST_NO_GATE3` unset. Never write that file yourself. A nonzero exit stops
+   finalization before any file changes.
 2. **Reproducibility pass on the project repo** (so others can build on it):
    - `uv run pytest` green; smoke config runs clean from a fresh `uv sync`.
    - README's Reproduce section accurate; every paper-cited run id present in `runs/registry.jsonl`; figure scripts regenerate the paper's figures.

@@ -308,6 +308,22 @@ def gate3_sign(body: dict) -> tuple[dict, int]:
     return out, 200
 
 
+def finalize_start(body: dict) -> tuple[dict, int]:
+    """Start /finalize for a study whose Gate 3 the PI already signed here (the signature is the
+    authority; this is the PI's click to use it). Never reachable by an agent: only this endpoint and
+    gate3_sign pass gate3=True, and the executor re-checks the signed note."""
+    slug = _need_slug(body)
+    if not slug:
+        return {"error": "invalid idea slug"}, 400
+    if not body.get("confirm"):
+        return {"error": "starting /finalize needs explicit confirm"}, 400
+    if not (_paper(slug) / "gate3-approval.md").exists():
+        return {"error": "sign Gate 3 first"}, 400
+    res, code = S.launch_run({"skill": "finalize", "target": slug, "confirm": True, "backend": body.get("backend")},
+                             by="gate3", gate3=True)
+    return res, code
+
+
 # ── revoke ───────────────────────────────────────────────────────────────────
 
 def gate_revoke(body: dict) -> tuple[dict, int]:
