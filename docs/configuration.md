@@ -50,6 +50,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | Key | Default | Owner | Effect |
 |---|---|---|---|
 | `lab.projects_root` | `../newts-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
+| `lab.keep_awake` | `auto` | PI | hold the computer awake while agents work or a campaign runs; `off` never (Settings → Lab) |
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |
@@ -222,3 +223,10 @@ Two lightweight reproducibility guards, deliberately in place of a heavyweight c
 3. **Any time**: `/configure` (or hand-edit) adjusts agent-owned values; PI-owned values need you.
 4. **Every run**: experiment yaml → base → control resolve into one artifact-dumped config; the watchdog enforces the resulting budget.
 5. **Loops**: `/research-loop` reads `gate2_envelope` + `loop.*` from control.yaml; the LOOP_BRIEF carries your signature and points here for numbers.
+
+## The workflow and your instructions
+
+The stages and procedures are defined in `workflow/stages.yaml` (code-owned, like the skills). Your own
+instructions per procedure, stage and role, lab-wide or per study, live in `lab/workflow/` and
+`studies/<slug>/workflow/`, edited on the dashboard's Workflow page. See
+[Customising the workflow](customising.md).

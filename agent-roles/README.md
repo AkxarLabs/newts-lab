@@ -15,7 +15,12 @@ Each role is two files:
 
 - `.claude/agents/<name>.md` — Claude Code Task subagents (`model:` resolved from config).
 - `.codex/agents/<name>.toml` — Codex GA subagents (hub).
-- `templates/project/.codex/agents/<name>.toml` — the copy spawned projects ship.
+- `.opencode/agents/<name>.md` — opencode subagents (hub).
+- `templates/project/…` — the neutral copies spawned projects ship (resolved at spawn).
+
+The PI's own instructions for a role (dashboard → Workflow → Subagent roles, stored in
+`lab/workflow/roles/<name>.add.md`) are appended to the hub's and spawned projects' rendered copies,
+never to the shipped template copies.
 
 ```bash
 uv run --with pyyaml python tools/role_sync.py render   # write/update the generated files
@@ -24,11 +29,10 @@ uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exi
 
 ## Backends
 
-**Claude and Codex are rendered** (their role-file schemas are known and stable). **opencode,
-Gemini CLI, and Cursor are compatibility-only** — their role-file schemas are unverified in this
-repo, so until a CLI smoke proves them, use the sequential approximation or one headless process
-per unit of work via `tools/agent_runner.py` (see `docs/autonomy.md`). Adding a backend = adding a
-render target in `role_sync.py`, not editing the generated files.
+**Claude Code, Codex and opencode are rendered.** Gemini CLI and Cursor are compatibility-only: their
+role-file schemas are unverified here, so use the sequential approximation, or one headless run per
+unit of work from the dashboard. Adding a backend means adding a render target in `role_sync.py`, not
+editing the generated files.
 
 ## Roles
 

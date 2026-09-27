@@ -917,7 +917,8 @@ LAB_CONFIG = {
     "loop_mode": (["loop", "mode"], lambda v: _enum_s(v, ("execute", "explore"))),
     "explore_rounds": (["loop", "explore_max_expansion_rounds"], _intv(0, 20)),
     "in_project_approval": (["ideation", "in_project_approval"], lambda v: _enum_s(v, ("pi", "campaign_auto"))),
-    "keep_awake": (["lab", "keep_awake"], lambda v: _enum_s("off" if v is False else v, ("auto", "off"))),
+    # "off" is stored as YAML false (a bare `off` would read back as false anyway)
+    "keep_awake": (["lab", "keep_awake"], lambda v: "auto" if _enum_s("off" if v is False else v, ("auto", "off")) == "auto" else False),
 }
 
 

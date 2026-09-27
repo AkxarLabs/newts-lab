@@ -83,6 +83,7 @@
     const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library'], ['workflow', 'workflow', 'Workflow']];
     const running = x.active || 0;
     const fl = NL.useFleet ? NL.useFleet() : null;
+    useEffect(() => { const el = document.querySelector('.mainnav .navlink.on'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [page]);
     const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span>

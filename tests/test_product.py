@@ -387,3 +387,17 @@ def test_agent_proposals_are_accepted_or_declined_by_the_pi(m, hub):
     assert "Also list compute risks." in m.product.workflow_item({"kind": "procedure", "name": "propose"})[0]["lab"]["add"]
     assert m.product.workflow_proposal({"id": rec["id"], "accept": True})[1] == 400      # already resolved
     assert not [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
+
+
+def test_autonomy_settings_round_trip(m, hub):
+    cfg = hub.lab / "config.yaml"
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "loop:\n  mode: execute\n  explore_max_expansion_rounds: 0\n"
+                   "ideation:\n  in_project_approval: pi\n", encoding="utf-8")
+    out, code = m.product.lab_config_set({"confirm": True, "changes": {"keep_awake": "off", "loop_mode": "explore",
+                                                                        "explore_rounds": 2, "in_project_approval": "campaign_auto"}})
+    assert code == 200, out
+    got = m.product.lab_config_get()[0]["config"]
+    assert (got["keep_awake"], got["loop_mode"], got["explore_rounds"], got["in_project_approval"]) == ("off", "explore", 2, "campaign_auto")
+    assert m.product.lab_config_set({"confirm": True, "changes": {"keep_awake": "auto"}})[1] == 200
+    assert m.product.lab_config_get()[0]["config"]["keep_awake"] == "auto"
+    assert m.product.lab_config_set({"confirm": True, "changes": {"loop_mode": "yolo"}})[1] == 400

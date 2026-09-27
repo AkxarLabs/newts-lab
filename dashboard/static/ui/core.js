@@ -172,7 +172,8 @@
   NL.go = (path) => { const target = '#/' + String(path || '').replace(/^#?\/?/, ''); if (location.hash !== target) location.hash = target; else window.dispatchEvent(new HashChangeEvent('hashchange')); };
   NL.useRoute = () => {
     const [r, setR] = H.useState(NL.parseRoute());
-    H.useEffect(() => { const f = () => setR(NL.parseRoute()); window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
+    // resync once listening: a redirect that fired before this effect ran (the first-run wizard) must not be missed
+    H.useEffect(() => { const f = () => setR(NL.parseRoute()); window.addEventListener('hashchange', f); f(); return () => window.removeEventListener('hashchange', f); }, []);
     return r;
   };
 

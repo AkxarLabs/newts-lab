@@ -140,10 +140,9 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
 
 **Claude Code** runs these as native parallel Task subagents. **Codex** has GA Subagents and this
 project ships the generated `.codex/agents/*.toml` role files + `.codex/config.toml`, so it can spawn
-them too. **opencode** has a subagent mechanism (Task tool / `@mention` in `opencode run`) but no
-rendered lab role file yet — it's **compatibility-only**; for heterogeneous variants the robust,
-backend-agnostic path on any backend is one headless process per variant via the hub's
-`tools/agent_runner.py`. An agent that genuinely lacks (or
+them too. **opencode** ships the rendered `.opencode/agents/*.md` role files and spawns them with its
+Task tool. On any backend, one headless run per variant (started from the dashboard, or dispatched by
+a campaign) is the robust alternative. An agent that genuinely lacks (or
 hasn't wired) a mechanism runs variants **sequentially** in this checkout — one at a time, same
 journal discipline (one config, one ledger entry, one commit per attempt); skip the worktree machinery
 rather than half-following it. Same outcome and discipline on every agent — only the parallelism differs.

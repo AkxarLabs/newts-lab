@@ -104,8 +104,61 @@ flight.
 your Gate 3 read (title, headline result with run ids, ensemble review score, open
 items), ideas killed cheaply overnight (with reasons — kills are knowledge), and any
 decisions that exceeded your delegation. Papers arrive at `internal-review`: drafted,
-claims-audited, bibliography-verified, ensemble-reviewed. **Never "final"** — Gate 3
-is constitutionally yours.
+claims-audited, bibliography-verified, ensemble-reviewed. Gate 3 stays yours unless you tick
+**Papers may finalize without me** on the brief (below).
+
+### Walk away: a campaign from the dashboard
+
+The usual way to run autopilot is the dashboard. **Start something → Plan a campaign** (or **Start a
+campaign and walk away** in the setup wizard and on a quiet lab) takes:
+
+- a direction;
+- how many ideas, and how many at once;
+- how long it may run;
+- the compute bounds (they become each project's FULL-run envelope);
+- optionally, an agent-hours budget and the Gate 3 box.
+
+A **Before you walk away** check confirms that agents may start, the CLI is installed and signed in, it
+won't stop for permissions, the projects folder is writable, and that LaTeX and keep-awake are available.
+Then you sign once.
+
+From then on the **campaign keeper**, part of the executor's scheduler rather than an agent, carries it:
+
+- **Passes.** It runs `/autopilot continue` passes. Each pass looks at every idea and *dispatches* its
+  next step (lit review, scoping, a proposal, the research loop, the paper…) as its own run. The keeper
+  checks each step before starting it: a launchable procedure, a study of this campaign that isn't
+  waiting for you, not a duplicate, within the brief's parallelism. Steps are capped, traced, and
+  linked to the pass that started them.
+- **Whatever happens to one run, the campaign goes on:**
+  - a timeout starts the next pass right away;
+  - a usage limit waits until it lifts (read from the CLI's message; that backend's queue is held too);
+  - a network error backs off (2, 5, 15, 30, 60 min);
+  - a failed step is retried up to 3 times.
+
+  It stops to ask you only when it can't go on: the CLI needs signing in, or N passes in a row failed
+  ("stalled").
+- **Only that study waits.** A step that needs you (a proposal outside your bounds, a kill decision)
+  shows in **Needs you**; the rest of the campaign carries on.
+- **It ends** at the deadline, the agent-hours budget, a pass reporting everything done, or your
+  **Stop**, with one final pass that writes the morning report.
+- **Gate 3, if you ticked the box:** once `/review-paper` accepts a paper, the keeper re-runs the four
+  paper audits itself. If they're clean, the PDF and claims exist and nothing is escalated, it records
+  Gate 3 (`signed_via: campaign:…`) and runs `/finalize`. That run makes the reproducibility pass,
+  locks the artifacts and writes knowledge back. Nothing is ever sent outside the lab.
+  - **Take Gate 3 back** on the campaign card and no paper of that campaign finalizes without you (a
+    running `/finalize` is stopped).
+  - **Hold** one study to keep just that one for yourself.
+
+**Nothing depends on a window.** The launchers start the dashboard in the background: closing the window
+doesn't stop anything, and Settings → About & server stops it. If the dashboard does stop with work
+queued, it hands the scheduling to a background `executor_cli serve --until-idle`, and a finishing run
+starts one if nobody is scheduling. While agents work or a campaign runs, the computer is kept awake
+(Settings → Lab → *Keep the computer awake*). Closing a laptop lid on battery still sleeps; that is the
+OS's decision.
+
+The campaign card (Home and Studies) shows progress against the deadline, each study (waiting for you?
+held?), what every pass did, the steps it started or refused and why, and questions a pass left. From it
+you can Pause, Resume, Stop, take Gate 3 back, or hold a study.
 
 ## The authorization model (why this is safe to sleep through)
 

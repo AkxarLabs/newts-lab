@@ -19,17 +19,22 @@ Double-click **`Start Newts Lab.cmd`** (Windows) or **`start-newts.command`** (m
 uv run --with pyyaml python newts.py
 ```
 
-It starts the server for the lab in that folder and opens your browser at `http://127.0.0.1:8787`.
-If 8787 is taken it picks the next free port. If the dashboard is already running for that lab it
-just opens the browser. Options: `--hub <another lab>`, `--port`, `--no-browser`. The server binds
+It starts the server for the lab in that folder, in the background, and opens your browser at
+`http://127.0.0.1:8787`. Closing the window stops nothing: queued runs, retries and campaigns keep going.
+Stop the server from **Settings → About & server**, or with `newts.py --stop`; `--foreground` keeps it
+in the window instead. If 8787 is taken it picks the next free port. If the dashboard is already
+running for that lab it just opens the browser. Options: `--hub <another lab>`, `--port`, `--no-browser`. The server binds
 `127.0.0.1` only. The only prerequisite is [uv](https://docs.astral.sh/uv/).
 
 **On a remote machine.** Run `newts.py --background` there: it keeps running after you log out, and on a
 box with no desktop it prints the `ssh -L` line to use from your computer. Or skip that entirely and add
 the machine to your local dashboard (below). See [Machines & compute](compute.md).
 
-**Labs & machines.** Click the lab's name at the top left to reach **Labs & machines** (`#/labs`). From
-there you can:
+**Labs & machines.** Click the lab's name at the top left to reach **Labs & machines** (`#/labs`). It
+opens with **Across your labs**: every lab on this computer and every remote lab you've opened, each with
+what needs you, what's running, and its campaigns. Click an item to go straight to it in its lab. Remote
+labs you've opened stay connected in the background (untick *keep connected*, or Disconnect, to stop),
+and the top bar shows **+N** when your other labs need you. From there you can also:
 
 - **Open** a recent lab, or any folder that contains `lab/config.yaml`.
 - **Create a new lab**: a name and a place. The dashboard copies this template's committed files,
@@ -376,6 +381,19 @@ The event kinds are listed in `tools/lab_bus.py`. The main ones:
 
 The bus lives in the git-ignored `lab/.bus/` (hub) and `<project>/.bus/` (each project).
 
+## The Workflow page
+
+**Workflow** (top nav) is how the lab does research, stage by stage, with the gates between them. You
+can add your own instructions to any procedure, or replace its method, lab-wide or for one study. Each
+procedure's sheet shows:
+- your instructions;
+- the method (default or yours, with a compare view);
+- what always applies (its contract and required outputs);
+- the exact text an agent reads.
+
+Agents' suggested changes arrive in Needs you with a diff, for you to accept or decline. A study's page
+has an **Instructions** tab for that study alone. See [Customising the workflow](customising.md).
+
 ## Traceability: one log per worker
 
 Claude Code hooks (`.claude/settings.json` → `tools/trace_hook.py`), the Codex hooks and the opencode
@@ -391,6 +409,23 @@ What gets logged:
 `dashboard/sources.py` rebuilds the run → session → subagent tree from these logs. The logs are
 written by the harness, not by the subagents. They are best-effort and never block a tool call.
 This works with or without the dashboard.
+
+Every line of a headless run carries its run id, so a session is joined to its run even before the CLI
+reports a session id. A subagent's own subagents nest under the one that spawned them, and a worker
+inside a long tool call (a training run, a scheduler queue wait) stays on the roster. The run sheet shows
+the subagent tree, each with a link to its own trace, and a lineage strip: who started the run (you, a
+chain, a repeat, a campaign pass) and what it started.
+
+| How the agent started | Traced by | Shown |
+|---|---|---|
+| A run from the dashboard (claude) | the run's own hook settings, with an absolute interpreter; the repo's hooks stand down | Runs, run sheet, world, Today |
+| A run from the dashboard (codex) | `-c hooks.*` session flags | same |
+| A run from the dashboard (opencode) | the tracer plugin | same |
+| A campaign pass and the steps it dispatched | same as their backend | same, plus the campaign card and the lineage strip |
+| A backend that fires no hooks | the supervisor's fallback log, named by the run | joined to its run |
+| Your own session in a terminal or an editor (claude, opencode) | the repo's hooks (`python`, else `python3`) | Runs → *Sessions started outside the dashboard*, the world while it works, the agent sheet |
+| Your own codex session | `.codex/hooks.json`, once you trust the repo and review its hooks in `/hooks` | same |
+| Subagents at any depth | the same hooks (`SubagentStart`/`SubagentStop`, spawn lines) | nested under their parent |
 
 ## Tech notes
 
