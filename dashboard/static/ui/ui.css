@@ -457,3 +457,11 @@ button.chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; color:
 .pf-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
 .pf-row .pf-ico { width: 1.4em; text-align: center; font-weight: 700; } .pf-row.ok .pf-ico { color: var(--ok); } .pf-row.bad .pf-ico { color: var(--bad); } .pf-row.warn .pf-ico { color: var(--warm); }
 .pf-row .pf-t { flex: 1; display: flex; flex-direction: column; } .pf-row small { color: var(--ink-soft); }
+
+/* ── across your labs ───────────────────────────────────────────────────── */
+.fleet .fleet-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--edge); border-radius: var(--r); background: var(--paper); margin: 6px 0; }
+.fleet .fleet-row.on { border-color: color-mix(in srgb, var(--accent) 50%, var(--edge)); }
+.fleet .fleet-row.needs { box-shadow: inset 3px 0 0 var(--warm); }
+.fleet-items { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 4px; }
+.brand-else { margin-left: 6px; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 9px; background: var(--warm-wash); color: var(--warm); }
+label.keep { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-soft); cursor: pointer; }

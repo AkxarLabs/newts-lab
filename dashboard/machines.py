@@ -486,8 +486,19 @@ def open_lab(body: dict) -> tuple[dict, int]:
     res = c.connect(interactive)
     if res.get("ok") and res.get("state") == "connected":
         S.set_remote(c)
+        _remember(mid, path, True)    # opened once → kept connected in the background (the overview reads it)
         S._pi_log({"action": "lab.open_remote", "machine": mid, "path": path})
     return res, 200 if (res.get("ok") or res.get("needs_interactive")) else 400
+
+
+def _remember(mid: str, path: str, keep: bool) -> None:
+    m = _get(mid)
+    if not m:
+        return
+    for lab in m.get("labs") or []:
+        if lab.get("path") == path:
+            lab["keep_connected"] = keep
+    _put(m)
 
 
 def use_lab(body: dict) -> tuple[dict, int]:
@@ -506,6 +517,7 @@ def disconnect(body: dict) -> tuple[dict, int]:
     current = getattr(S, "REMOTE", None) is c
     if current:
         S.set_remote(None)          # the dashboard falls back to this computer's lab
+    _remember(str(body.get("id") or ""), str(body.get("path") or ""), False)   # Disconnect means: stop keeping it
     c.disconnect(stop_remote=bool(body.get("stop_remote")))
     return {"ok": True, "was_current": current, "note": "disconnected — agents on that machine keep running"}, 200
 

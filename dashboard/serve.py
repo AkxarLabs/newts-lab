@@ -85,11 +85,13 @@ VERSION = "2.0"
 product.bind(sys.modules[__name__])   # product's PI actions read this module's CURRENT hub + writers
 term.bind(sys.modules[__name__])      # in-browser terminal sessions (fixed commands; PTY on POSIX)
 machines.bind(sys.modules[__name__])  # remote machines: SSH tunnels to their own dashboards
+import fleet  # noqa: E402
+fleet.bind(sys.modules[__name__])     # one overview across every lab (this computer's + remote ones)
 
 # The lab this dashboard shows: a local hub (HUB), or a lab on another machine reached through an SSH tunnel
 # (machines.Conn) — then every /api/* call except the local-only ones is proxied to that machine's server.
 REMOTE = None
-LOCAL_ONLY_PREFIXES = ("/api/ping", "/api/labs", "/api/machines", "/api/server/stop")
+LOCAL_ONLY_PREFIXES = ("/api/ping", "/api/labs", "/api/machines", "/api/server/stop", "/api/fleet")
 LOCAL_ONLY_EXACT = {"/api/terminal"}
 
 
@@ -1887,6 +1889,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/machines/open": lambda b: machines.open_lab(b),
         "/api/machines/use": lambda b: machines.use_lab(b),
         "/api/machines/disconnect": lambda b: machines.disconnect(b),
+        "/api/fleet/keep": lambda b: fleet.set_keep(b),
         "/api/machines/local": lambda b: machines.local(b),
         "/api/machines/install-uv": lambda b: machines.install_uv(b),
         "/api/system/scheduler": lambda b: product.system_scheduler_set(b),
@@ -1898,6 +1901,8 @@ class Handler(BaseHTTPRequestHandler):
 
     _PRODUCT_GET = {
         "/api/labs": lambda q: product.labs_list(),
+        "/api/fleet": lambda q: fleet.fleet(),
+        "/api/summary": lambda q: ({"ok": True, **fleet.lab_summary(HUB)}, 200),
         "/api/gate3/readiness": lambda q: (product.gate3_readiness(_safe_id(q.get("idea", "")) or "-"), 200),
         "/api/doc": lambda q: product.doc_get(q.get("which", "")),
         "/api/workflow/item": lambda q: product.workflow_item(q),
@@ -2047,6 +2052,7 @@ def main() -> int:
         print("  executor: disabled for this dashboard (dashboard.executor: false) — observe-and-sign only")
     else:
         start_scheduler()
+        fleet.start_keeper()
         on = bool((sources._load_yaml(LAB / "config.yaml").get("agents") or {}).get("programmatic", {}).get("enabled"))
         print("  executor: scheduler running · programmatic launching is "
               + ("ON" if on else "OFF (enable it in the dashboard settings, or /configure)"))

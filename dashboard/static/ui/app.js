@@ -82,9 +82,11 @@
     const slots = s.slots || {};
     const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library'], ['workflow', 'workflow', 'Workflow']];
     const running = x.active || 0;
+    const fl = NL.useFleet ? NL.useFleet() : null;
+    const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
-        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret">▾</span></a>
+        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret">▾</span>${elsewhere ? html`<span class="brand-else" title=${`${elsewhere} thing(s) need you in your other labs`}>+${elsewhere}</span>` : null}</a>
       <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>

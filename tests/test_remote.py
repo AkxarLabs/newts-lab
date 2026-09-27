@@ -176,3 +176,43 @@ def test_detached_processes_never_run_on_uvs_throwaway_python():
         assert not newts._ephemeral("/home/u/lab/.venv/bin/python")
     if not newts._ephemeral(sys.executable):
         assert newts.stable_python() == sys.executable
+
+
+@needs_bash
+def test_one_overview_across_this_computer_and_a_remote_lab(env):
+    """The fleet: every lab with what needs you — this computer's from its files, a remote one read through
+    its tunnel (/api/summary) — and opening a remote lab keeps it connected until Disconnect."""
+    m, hub, tmp_path = env
+    hub.add_registry_row("idea-g", state="proposal", next="Gate 1 — review and sign")
+    (hub.root / "studies" / "idea-g").mkdir(parents=True, exist_ok=True)
+    m.machines.add_machine({"host": "box", "name": "Box"})
+    mach = m.machines._get("box")
+    mach["launcher"] = (REPO / "newts.py").as_posix()
+    m.machines._put(mach)
+    m.machines.add_lab({"id": "box", "path": hub.root.as_posix()})
+    res, code = m.machines.open_lab({"id": "box", "path": hub.root.as_posix()})
+    assert code == 200 and res["state"] == "connected", res
+    assert m.machines._get("box")["labs"][0]["keep_connected"] is True     # opened once → kept
+    m.fleet._keep_once()                                                    # the keeper reads its summary
+    conn = m.machines.CONNS[f"box::{hub.root.as_posix()}"]
+    assert conn.summary and conn.summary["needs"] >= 1 and any(t["kind"] == "gate" for t in conn.summary["top"])
+    out, _ = m.fleet.fleet()
+    remote = next(x for x in out["labs"] if x["kind"] == "remote")
+    assert remote["current"] and remote["summary"]["needs"] >= 1 and remote["state"] == "connected"
+    assert out["needs_total"] >= 1
+    m.machines.disconnect({"id": "box", "path": hub.root.as_posix()})
+    assert m.machines._get("box")["labs"][0]["keep_connected"] is False
+    assert m.fleet.set_keep({"id": "box", "path": hub.root.as_posix(), "keep": True})[1] == 200
+    assert m.fleet.set_keep({"id": "nope", "path": "x", "keep": True})[1] == 404
+
+
+def test_a_lab_summary_counts_what_needs_you(env):
+    m, hub, tmp_path = env
+    hub.add_registry_row("idea-s", state="proposal", next="Gate 1 pending")
+    (hub.root / "studies" / "idea-s").mkdir(parents=True, exist_ok=True)
+    s = m.fleet.lab_summary(hub.root)
+    assert s["ok"] and s["needs"] == 1 and s["top"][0]["kind"] == "gate" and s["studies"] >= 1
+    (hub.root / "studies" / "idea-s" / "proposal.md").write_text("<!-- PI Gate 1 approved via Vivarium dashboard x -->",
+                                                                encoding="utf-8")
+    m.fleet._CACHE.clear()
+    assert m.fleet.lab_summary(hub.root)["needs"] == 0          # signed → no longer waiting
