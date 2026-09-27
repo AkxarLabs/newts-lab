@@ -1,6 +1,7 @@
 """Vivarium — the Newts' Lab, rendered as a living terrarium. Optional, local-only.
 
     uv run --with pyyaml python dashboard/serve.py [--port 8787] [--hub <another lab's hub root>]
+    (or just: uv run --with pyyaml python newts.py — starts this and opens the browser)
 
 A tiny stdlib HTTP server that READS the lab's files (registry, run records, the event
 bus, slots, in-flight liveness) and serves a no-build single-page scene. It is the PI's
@@ -31,6 +32,14 @@ control surface — but it stays honest about what it can and can't do:
                           extension whitelist — never a free path)
     GET  /api/libfile     an image a document references (same containment) → inline figures
 
+PRODUCT (dashboard/product.py — the rest of the PI's actions, same rules: explicit, validated, logged):
+    labs (open/create/switch) · a terminal window for a CLI's own sign-in/install · Gate 3 (typed
+    confirmation) + the one /finalize run it allows · envelope editor · LOOP_BRIEF / campaign signing ·
+    revive · revoke a signature · SYSTEM.md · Lab settings · research keys (lab/.env.local) · setup.
+  PROTECTION: 127.0.0.1 only; Host/Origin checks (DNS rebinding); a per-server SameSite=Strict session
+    cookie on every /api call (a cross-site page, a file:// page or a sandboxed frame never carries it);
+    JSON bodies only (no simple cross-site form POSTs).
+
 It launches procedures only through the executor (the unmodified agent CLI, as the logged-in user,
 in a detached supervisor that outlives this server) and only when the PI has enabled programmatic
 launching; every gate and hard rule binds a launched run exactly as in a session. It never signs
@@ -44,6 +53,8 @@ import argparse
 import json
 import os
 import re
+import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -61,8 +72,13 @@ STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 
 import sources  # noqa: E402
+import product  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
+TOKEN = secrets.token_urlsafe(24)    # this server process's session secret (the cookie below)
+SERVER = None                        # the running HTTP server (product.server_stop shuts it down)
+VERSION = "2.0"
+product.bind(sys.modules[__name__])   # product's PI actions read this module's CURRENT hub + writers
 
 # Structured command actions the dashboard may issue (the agent executes them in-protocol).
 COMMAND_ACTIONS = {
@@ -135,7 +151,7 @@ def _append(target: str, rec: dict, bus: Path | None = None) -> dict:
     target = target if (isinstance(target, str) and target) else "hub"
     bus.mkdir(parents=True, exist_ok=True)
     path = bus / "directives.jsonl"
-    with _BUS_LOCK:
+    with _BUS_LOCK, _file_lock(bus / ".directives.lock"):
         rec.setdefault("id", _next_id(path))
         rec.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S"))
         rec.setdefault("from", "PI via dashboard")
@@ -146,6 +162,29 @@ def _append(target: str, rec: dict, bus: Path | None = None) -> dict:
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
     return rec
+
+
+class _file_lock:
+    """Cross-process: two dashboards (or a dashboard + a CLI) on one lab never mint the same d-NNN."""
+
+    def __init__(self, path: Path):
+        self.path, self.lock = path, None
+
+    def __enter__(self):
+        if executor is None:
+            return self
+        self.lock = executor.procs.RunLock(self.path)
+        deadline = time.time() + 5.0
+        while not self.lock.try_acquire():
+            if time.time() > deadline:
+                self.lock = None      # best effort: never wedge a PI's click on a stuck lock
+                break
+            time.sleep(0.02)
+        return self
+
+    def __exit__(self, *exc):
+        if self.lock is not None:
+            self.lock.release()
 
 
 def append_directive(target: str, text: str) -> dict:
@@ -248,7 +287,7 @@ def _sign_gate2_block(text: str, ts: str) -> tuple[str, bool]:
     return "\n".join(lines), pi_changed
 
 
-def approve_gate(idea: str, gate: int) -> dict:
+def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
     """Record a PI gate approval. Gate 1: sign the proposal + leave the follow-through
     command for the agent. Gate 2: flip control.yaml gate2_envelope.pi_signed. Gate 3 is
     never handled here — finalization/sending outside the lab is always done in a session."""
@@ -272,12 +311,14 @@ def approve_gate(idea: str, gate: int) -> dict:
         warnings = ([] if (row and (row.get("state") or "").strip() == "proposal")
                     else ["idea is not in state 'proposal' — approving anyway, but confirm this is the "
                           "right idea before the agent spawns it"])
+        # `envelope approved`: the PI also approved the proposal's Gate-2 envelope (§5) — /spawn-project
+        # may then write it into control.yaml signed (tools/signature_guard.py checks for this marker)
         with proposal.open("a", encoding="utf-8") as f:
-            f.write(f"\n\n<!-- {_MARK} {ts} -->\n")
+            f.write(f"\n\n<!-- {_MARK} {ts}" + (" · envelope approved" if envelope else "") + " -->\n")
         append_command(idea, "gate1_approved", {"idea": idea},
                        "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
         _emit_hub("gate_resolved", idea=idea, detail="Gate 1 approved (PI via dashboard)")
-        _pi_log({"action": "approve_gate", "gate": 1, "idea": idea})
+        _pi_log({"action": "approve_gate", "gate": 1, "idea": idea, "envelope": bool(envelope)})
         exec_on = executor is not None and bool(
             ((sources._load_yaml(LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}).get("enabled"))
         res = {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
@@ -352,8 +393,10 @@ def _run_ref(body: dict) -> str | None:
     return rid if (isinstance(rid, str) and _ID_OK.match(rid.strip()) and ".." not in rid) else None
 
 
-def launch_run(body: dict, by: str = "dashboard") -> tuple[dict, int]:
-    """Queue one whitelisted procedure run. The scheduler thread starts it within ~2 s (or at once)."""
+def launch_run(body: dict, by: str = "dashboard", gate3: bool = False) -> tuple[dict, int]:
+    """Queue one whitelisted procedure run — or, with `prompt`, the PI's free-form instruction. The
+    scheduler thread starts it within ~2 s (or at once). `gate3` is never read from the request: only
+    product.gate3_sign passes it, right after the PI's typed Gate-3 signature."""
     if executor is None:
         return _no_executor()
     if not body.get("confirm"):
@@ -364,7 +407,11 @@ def launch_run(body: dict, by: str = "dashboard") -> tuple[dict, int]:
         max_rep = int(body["max_repeats"]) if body.get("max_repeats") not in (None, "") else None
     except (TypeError, ValueError):
         return {"error": "max_minutes / repeat_minutes / max_repeats must be numbers"}, 400
+    prompt = body.get("prompt")
+    if prompt is not None and not isinstance(prompt, str):
+        return {"error": "prompt must be text"}, 400
     spec = executor.RunSpec(
+        prompt=prompt, gate3=bool(gate3),
         skill=str(body.get("skill") or ""), target=str(body.get("target") or "hub"),
         args=str(body.get("args") or ""), backend=body.get("backend") or None,
         model=body.get("model") or None, effort=body.get("effort") or None, max_minutes=max_minutes,
@@ -374,10 +421,11 @@ def launch_run(body: dict, by: str = "dashboard") -> tuple[dict, int]:
     except executor.SpecError as e:
         return {"error": str(e)}, 400
     _pi_log({"action": "run.launch", "run_id": m["run_id"], "skill": m.get("skill"), "target": m.get("target"),
-             "args": m.get("args"), "backend": m.get("backend"), "by": by})
+             "args": m.get("args"), "backend": m.get("backend"), "by": by,
+             "prompt": (prompt or "")[:2000] or None})
     _KICK.set()
     return {"ok": True, "run_id": m["run_id"], "position": m.get("position"), "status": m["status"],
-            "command": m.get("command"),
+            "command": m.get("command"), "label": m.get("label"),
             "note": f"queued (#{m.get('position')}) — it starts as soon as a slot is free"}, 200
 
 
@@ -474,9 +522,9 @@ def set_programmatic(body: dict) -> tuple[dict, int]:
         text = cfg.read_text(encoding="utf-8-sig")
     except OSError:
         return {"error": "no lab/config.yaml"}, 400
-    new, changed = profiles.stamp(text, ["agents", "programmatic", "enabled"], enabled)
+    new, changed = _stamp_or_insert(profiles, text, ["agents", "programmatic", "enabled"], enabled)
     if not changed:
-        return {"error": "lab/config.yaml has no agents.programmatic.enabled key — add it (see the template) first"}, 400
+        return {"error": "lab/config.yaml has no agents.programmatic section — add it (see the template) first"}, 400
     cfg.write_text(new, encoding="utf-8", newline="")
     _pi_log({"action": "executor.enable", "enabled": enabled})
     _KICK.set()
@@ -746,6 +794,7 @@ def command_stop_loop(target: str) -> list[str]:
 
 
 _SCHED: dict = {"thread": None, "stop": None}
+_SCHED_HUBS: set = set()   # labs opened in this server session: their queues keep moving after a switch
 
 
 def start_scheduler() -> bool:
@@ -757,10 +806,11 @@ def start_scheduler() -> bool:
 
     def loop():
         while not stop.is_set():
-            try:
-                executor.tick(executor.Lab(HUB))
-            except Exception:  # noqa: BLE001 — one bad pass must never kill the loop
-                pass
+            for hub in [HUB, *[h for h in list(_SCHED_HUBS) if h != HUB]]:
+                try:
+                    executor.tick(executor.Lab(hub))
+                except Exception:  # noqa: BLE001 — one bad pass must never kill the loop
+                    pass
             _KICK.wait(2.0)
             _KICK.clear()
 
@@ -1408,6 +1458,10 @@ def _snapshot_cached(with_sig: bool = False):
         if _snap_cache["value"] is not None and (now - _snap_cache["ts"]) < _SNAP_TTL:
             return (_snap_cache["value"], _snap_cache["sig"]) if with_sig else _snap_cache["value"]
     snap = sources.snapshot()   # compute OUTSIDE the lock — never serialize the file reads
+    try:
+        snap["lab_info"] = {"name": product.lab_name(HUB), "path": str(HUB), "setup": product.setup_status()}
+    except Exception:  # noqa: BLE001
+        snap["lab_info"] = {"name": HUB.name, "path": str(HUB)}
     sig = _sig(snap)
     with _SNAP_LOCK:
         _snap_cache["ts"], _snap_cache["value"], _snap_cache["sig"] = now, snap, sig
@@ -1435,7 +1489,20 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _json(self, obj, code: int = 200) -> None:
-        self._send(code, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
+        self._send(code, json.dumps(obj, default=str).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _cookie_name(self) -> str:
+        return f"newts_{self.server.server_address[1]}" if getattr(self, "server", None) else "newts"
+
+    def _has_session(self) -> bool:
+        """The SameSite=Strict cookie set with the page: a cross-site request never carries it."""
+        raw = self.headers.get("Cookie") or ""
+        want = self._cookie_name()
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == want and secrets.compare_digest(v, TOKEN):
+                return True
+        return False
 
     def _body(self) -> dict:
         try:
@@ -1462,7 +1529,9 @@ class Handler(BaseHTTPRequestHandler):
         if host and host not in self._LOCAL_HOSTS:
             return False
         origin = self.headers.get("Origin")
-        if origin and origin != "null":
+        if origin == "null":                 # a sandboxed frame / file:// page — never the dashboard
+            return False
+        if origin:
             from urllib.parse import urlparse
             if (urlparse(origin).hostname or "") not in self._LOCAL_HOSTS:
                 return False
@@ -1479,6 +1548,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, b"refused: cross-origin/non-localhost request", "text/plain")
         if self.path == "/" or self.path.startswith("/index.html") or self.path.startswith("/?"):
             return self._serve_index()
+        if self.path.startswith("/api/ping"):   # the launcher's "is it up, and which lab?" (no session)
+            return self._json({"ok": True, "app": "newts-lab", "version": VERSION, "lab": str(HUB),
+                               "name": product.lab_name(HUB), "pid": os.getpid()})
+        if self.path.startswith("/api/") and not self._has_session():
+            return self._json({"error": "no dashboard session — reload the page"}, 403)
+        route0 = self.path.split("?", 1)[0]
+        if route0 in self._PRODUCT_GET:
+            try:
+                body, code = self._PRODUCT_GET[route0](self._query())
+            except Exception as e:  # noqa: BLE001
+                body, code = {"error": str(e)}, 500
+            return self._json(body, code)
         if self.path.startswith("/api/state"):
             try:
                 return self._json(_snapshot_cached())
@@ -1568,7 +1649,19 @@ class Handler(BaseHTTPRequestHandler):
         demo = "true" if self.demo else "false"
         html = html.replace(
             "</head>", f"<script>window.__STATE__={seed};window.__VIV_DEMO__={demo};</script></head>", 1)
-        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        # the session: HttpOnly (no script reads it), SameSite=Strict (no cross-site request carries it),
+        # per port (two dashboards on one machine don't clobber each other)
+        self.send_header("Set-Cookie", f"{self._cookie_name()}={TOKEN}; Path=/; HttpOnly; SameSite=Strict")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _serve_static(self, rel: str) -> None:
         rel = rel.split("?")[0].replace("static/", "", 1)   # only the route prefix, never a nested "static/"
@@ -1610,6 +1703,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._local_only():
             return self._json({"error": "refused: cross-origin/non-localhost POST"}, 403)
+        if not self._has_session():
+            return self._json({"error": "no dashboard session — reload the page"}, 403)
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if ctype != "application/json":
+            return self._json({"error": "requests must be JSON (Content-Type: application/json)"}, 415)
         try:
             return self._dispatch_post()
         except Exception as e:  # noqa: BLE001 — a handler bug / dirty input must never kill the thread
@@ -1627,6 +1725,29 @@ class Handler(BaseHTTPRequestHandler):
         "/api/escalation/resolve": lambda b: resolve_escalation(b),
         "/api/executor/enable": lambda b: set_programmatic(b),
         "/api/executor/config": lambda b: set_executor_config(b),
+        "/api/labs/open": lambda b: product.labs_open(b),
+        "/api/labs/create": lambda b: product.labs_create(b),
+        "/api/labs/forget": lambda b: product.labs_forget(b),
+        "/api/terminal": lambda b: product.terminal_open(b),
+        "/api/gate/revoke": lambda b: product.gate_revoke(b),
+        "/api/envelope": lambda b: product.envelope_set(b),
+        "/api/loopbrief/sign": lambda b: product.loopbrief_sign(b),
+        "/api/campaign": lambda b: product.campaign_create(b),
+        "/api/revive": lambda b: product.revive(b),
+        "/api/doc/save": lambda b: product.doc_save(b),
+        "/api/lab/config": lambda b: product.lab_config_set(b),
+        "/api/keys": lambda b: product.keys_set(b),
+        "/api/setup/complete": lambda b: product.setup_complete(b),
+        "/api/server/stop": lambda b: product.server_stop(b),
+    }
+
+    _PRODUCT_GET = {
+        "/api/labs": lambda q: product.labs_list(),
+        "/api/gate3/readiness": lambda q: (product.gate3_readiness(_safe_id(q.get("idea", "")) or "-"), 200),
+        "/api/doc": lambda q: product.doc_get(q.get("which", "")),
+        "/api/lab/config": lambda q: product.lab_config_get(),
+        "/api/keys": lambda q: product.keys_status(),
+        "/api/setup": lambda q: ({"ok": True, **product.setup_status()}, 200),
     }
 
     def _dispatch_post(self):
@@ -1669,9 +1790,12 @@ class Handler(BaseHTTPRequestHandler):
                 gate = int(body.get("gate", 0))
             except (TypeError, ValueError):
                 return self._json({"error": "gate must be 1 or 2"}, 400)
+            if gate == 3:
+                out, code = product.gate3_sign(body)
+                return self._json(out, code)
             if gate not in (1, 2):
-                return self._json({"error": "dashboard signs only Gate 1 or Gate 2"}, 400)
-            res = approve_gate(body.get("idea", ""), gate)
+                return self._json({"error": "gate must be 1, 2 or 3"}, 400)
+            res = approve_gate(body.get("idea", ""), gate, envelope=bool(body.get("envelope")))
             return self._json(res, 200 if res.get("ok") else 400)
         if p.startswith("/api/tool"):
             return self._json(run_tool(body.get("name", ""), body.get("idea")))
@@ -1692,12 +1816,39 @@ class Handler(BaseHTTPRequestHandler):
 
 def _use_hub(path: str) -> None:
     """Point the dashboard (and its sources / executor) at another lab's hub root."""
-    global HUB, LAB
     hub = Path(path).resolve()
     if not (hub / "lab").is_dir():
         raise SystemExit(f"--hub {hub}: no lab/ directory there")
-    HUB, LAB = hub, hub / "lab"
+    switch_hub(hub)
+
+
+def switch_hub(hub: Path) -> None:
+    """Re-point this server at another lab, live (the lab picker). Runs are detached supervisors, so
+    nothing running is touched; the old lab's queue keeps being scheduled (_SCHED_HUBS)."""
+    global HUB, LAB
+    _SCHED_HUBS.add(HUB)
+    HUB, LAB = Path(hub).resolve(), Path(hub).resolve() / "lab"
     sources.HUB, sources.LAB = HUB, LAB
+    _SCHED_HUBS.add(HUB)
+    with _SNAP_LOCK:
+        _snap_cache.update(ts=0.0, value=None, sig=None)
+    sources._EXEC_CACHE["ts"] = 0
+    for name in ("_LIB_CACHE", "_lib_cache"):
+        c = globals().get(name)
+        if isinstance(c, dict):
+            c.clear()
+    _KICK.set()
+
+
+class LabServer(ThreadingHTTPServer):
+    """On Windows SO_REUSEADDR lets a second server silently share the port; bind exclusively instead."""
+    daemon_threads = True
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def main() -> int:
@@ -1715,7 +1866,15 @@ def main() -> int:
                              "Off by default; also enabled by VIVARIUM_DEMO=1.")
     args = parser.parse_args()
     Handler.demo = bool(args.demo) or os.environ.get("VIVARIUM_DEMO", "").lower() in ("1", "true", "yes")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    global SERVER
+    try:
+        server = LabServer(("127.0.0.1", args.port), Handler)
+    except OSError as e:
+        print(f"port {args.port} is busy ({e}) — start with --port <another>, or use newts.py (it picks one)")
+        return 3
+    SERVER = server
+    product.remember_lab(HUB)
+    _SCHED_HUBS.add(HUB)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
     if executor is None:
         print("  executor: not available (tools/executor missing) — observe-and-sign only")

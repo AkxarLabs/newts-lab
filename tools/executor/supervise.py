@@ -29,6 +29,8 @@ from .procs import NEW_GROUP, NO_WINDOW, RunLock, graceful_stop, kill_tree, pyth
 
 PKG = Path(__file__).resolve().parent
 ASK_HOOK = PKG / "ask_hook.py"
+SIGNATURE_GUARD = PKG.parent / "signature_guard.py"   # only the PI signs — see tools/signature_guard.py
+GUARD_MATCHER = "Edit|Write|MultiEdit|NotebookEdit|Bash"
 PERMISSION_HOST = PKG / "permission_host.py"
 PERMISSION_TOOL = "mcp__newts__permission"
 MIN_ATTEMPT_SECONDS = 300          # a resumed attempt always gets at least 5 minutes
@@ -180,16 +182,40 @@ class _State:
 
 
 def _claude_sidecars(rd: Path, env_extra: dict) -> tuple[Path, Path]:
-    """Per-run settings (ONLY the AskUserQuestion hook — never permissions) + the MCP host config."""
+    """Per-run settings (the AskUserQuestion hook + the signature guard — never permissions) + the MCP
+    host config."""
     py = python_exe()
-    settings = {"hooks": {"PreToolUse": [{"matcher": "AskUserQuestion", "hooks": [
-        {"type": "command", "command": f'"{py}" "{ASK_HOOK}"', "timeout": 15}]}]}}
+    pre = [{"matcher": "AskUserQuestion", "hooks": [
+        {"type": "command", "command": f'"{py}" "{ASK_HOOK}"', "timeout": 15}]}]
+    if SIGNATURE_GUARD.is_file():
+        pre.append({"matcher": GUARD_MATCHER, "hooks": [
+            {"type": "command", "command": f'"{py}" "{SIGNATURE_GUARD}"', "timeout": 15}]})
+    settings = {"hooks": {"PreToolUse": pre}}
     sp = rd / "settings.json"
     sp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     mcp = {"mcpServers": {"newts": {"command": py, "args": [str(PERMISSION_HOST)], "env": env_extra}}}
     mp = rd / "mcp.json"
     mp.write_text(json.dumps(mcp, indent=2), encoding="utf-8")
     return sp, mp
+
+
+def _env_local(lab: Lab) -> dict:
+    """lab/.env.local (git-ignored; written by the dashboard's Research keys form): KEY=value lines a run
+    inherits (e.g. S2_API_KEY). Never overrides what the executor itself sets."""
+    out = {}
+    try:
+        text = (lab.lab / ".env.local").read_text(encoding="utf-8-sig")
+    except OSError:
+        return out
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        if k and k.replace("_", "").isalnum() and not k.startswith(("NEWTS_", "AUTOSCIENTIST_")):
+            out[k] = v.strip().strip('"').strip("'")
+    return out
 
 
 _CONTINUE = ("This session was interrupted before it finished ({why}). Check what was already done "
@@ -280,10 +306,15 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     depth = pos_int(m.get("depth"), 0, 0)
     env_extra = {"NEWTS_RUN_ID": run_id, "NEWTS_RUN_DIR": str(rd), "NEWTS_HUB": str(lab.hub),
                  "NEWTS_RUN_TARGET": str(m.get("target")), "NEWTS_ATTEMPT": str(attempt),
+                 "NEWTS_RUN_SKILL": str(m.get("skill") or ""),
                  "NEWTS_PERMISSION_WAIT": str(pos_float(prog.get("permission_wait_seconds"), 0.0))}
     env.update(env_extra)
     env["AUTOSCIENTIST_AGENT_DEPTH"] = str(depth + 1)
-    env["AUTOSCIENTIST_NO_GATE3"] = "1"   # Gate 3 is never delegated — guard.py finalization hard-stops it
+    if m.get("skill") == "finalize" and m.get("gate3_signed"):
+        env.pop("AUTOSCIENTIST_NO_GATE3", None)   # the PI signed Gate 3 in the dashboard for exactly this run
+    else:
+        env["AUTOSCIENTIST_NO_GATE3"] = "1"   # Gate 3 is never delegated — guard.py finalization hard-stops it
+    env.update(_env_local(lab))
     env["NEWTS_PYTHON"] = python_exe()   # the opencode tracer plugin shells out to trace_hook.py with it
     if backend == "claude":
         # `claude -p` waits for background SUBAGENTS before exiting, but only up to a 10-minute ceiling;
@@ -303,8 +334,13 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         if preamble_text:
             sys_prompt = rd / "preamble.md"
     add_dirs = [lab.hub] if (backend == "claude" and m.get("level") == "project") else []
-    codex_hooks = backends.codex_hook_overrides(workdir, bcfg, python_exe()) if backend == "codex" else None
-    if codex_hooks:
+    guard = SIGNATURE_GUARD if SIGNATURE_GUARD.is_file() else None
+    codex_hooks = backends.codex_hook_overrides(workdir, bcfg, python_exe(), guard=guard) if backend == "codex" else None
+    if backend == "opencode" and guard:
+        cfg_dir = backends.opencode_guard_dir(rd, guard, python_exe())
+        if cfg_dir and not env.get("OPENCODE_CONFIG_DIR"):
+            env["OPENCODE_CONFIG_DIR"] = str(cfg_dir)
+    if codex_hooks and any("trace_hook" in str(x) for x in codex_hooks):
         env["NEWTS_TRACE_FLAGS"] = "1"   # a trusted repo's own .codex/hooks.json then stands down (no double log)
     oc_traced = backend == "opencode" and backends.opencode_traced(workdir)
 

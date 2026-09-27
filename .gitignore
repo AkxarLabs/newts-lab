@@ -48,3 +48,6 @@ Thumbs.db
 
 # Machine-local Claude Code settings
 .claude/settings.local.json
+
+# Research API keys (dashboard → Settings → Research keys) — runs inherit them; never commit
+lab/.env.local

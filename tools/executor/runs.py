@@ -22,7 +22,7 @@ from .lab import HUB_TARGET, Lab, pos_float, pos_int
 from .manifest import (ACTIVE, PAUSED, RESUMABLE, SCHEMA, TERMINAL, all_runs, emit, find_run,
                        new_run_id, now, parse_ts, run_dir, safe_id, scheduler_lock, transition)
 from .procs import is_locked, kill_tree
-from .spec import RunSpec, SpecError, SKILL_REGISTRY, preamble, render_prompt, slash_command, validate
+from .spec import ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, preamble, render_prompt, slash_command, validate
 
 MAX_ANSWER_BYTES = 4096
 MAX_REPLY_CHARS = 4000
@@ -61,7 +61,8 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
     run_id, mpath = new_run_id(adir, base)
     rd = run_dir(adir, run_id)
     rd.mkdir(parents=True, exist_ok=True)
-    prompt = spec.prompt_override or render_prompt(lab, v, backend)
+    is_ask = v["skill"] == ASK
+    prompt = v["prompt"] if is_ask else (spec.prompt_override or render_prompt(lab, v, backend))
     (rd / "prompt.md").write_text(prompt, encoding="utf-8")
     (rd / "preamble.md").write_text(preamble(lab, run_id, v, backend), encoding="utf-8")
     max_minutes = pos_float(spec.max_minutes, 0.0) or pos_float(prog.get("max_minutes"), 240.0) or 240.0
@@ -70,12 +71,13 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
         "target": v["target"], "subject": v["subject"], "level": v["level"],
         "cwd": str(v["workdir"]), "project": lab.source_of(v["workdir"]),
         "skill": v["skill"], "args": v["args"], "mode": v["cfg"].get("mode"),
-        "command": slash_command(v) if v["skill"] else None,
+        "command": (None if is_ask else slash_command(v)) if v["skill"] else None,
+        "kind": "ask" if is_ask else "procedure", "gate3_signed": bool(v.get("gate3_signed")),
         "prompt_summary": prompt.strip()[:200],
         "backend": backend, "model": spec.model or None, "effort": spec.effort or None,
         "permission_mode": spec.permission_mode or None,
         "max_minutes": max_minutes, "max_turns": spec.max_turns,
-        "role": spec.role or "orchestrator", "label": spec.label or v["skill"],
+        "role": spec.role or "orchestrator", "label": spec.label or (ask_label(prompt) if is_ask else v["skill"]),
         "parent": spec.parent, "campaign": spec.campaign, "priority": int(spec.priority or 0),
         "created_by": spec.created_by, "created": now(), "depth": _depth_now(),
         "chain": spec.chain, "chain_step": int(spec.extra.get("chain_step") or 0),

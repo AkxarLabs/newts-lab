@@ -2,7 +2,13 @@
 
 `SKILL_REGISTRY` is an explicit allowlist, not "whatever is in .claude/skills": only procedures that
 are safe to launch from a click appear, each with its level (hub cwd vs project cwd), its mode, and
-an argument schema. `finalize` is absent on purpose — Gate 3 is never delegated.
+an argument schema. `finalize` is absent on purpose — Gate 3 is never delegated: the only way a
+/finalize run exists is the PI signing Gate 3 in the dashboard, which launches exactly that one run
+(`gate3=True`, checked against the signed studies/<slug>/paper/gate3-approval.md). Chains, repeats,
+campaigns and free-form runs can never produce it.
+
+A free-form run (`prompt=…`, the dashboard's "Ask Newt") is the PI's own instruction instead of a
+procedure: skill "ask", the same preamble, the same hooks (tracing + the signature guard), no chaining.
 """
 
 from __future__ import annotations
@@ -41,7 +47,9 @@ SKILL_REGISTRY: dict[str, dict] = {
     "setup-lab":      {"level": "hub", "mode": "interactive", "args": "", "hint": "first-run interview"},
     "configure":      {"level": "hub", "mode": "interactive", "args": "text?", "hint": "e.g. <slug> or set key=value"},
 }
-NEVER = {"finalize"}   # Gate 3 is never delegated to a headless run
+NEVER = {"finalize"}   # never from a click / chain / campaign — only the PI's signed Gate 3 launches it
+ASK = "ask"            # the free-form run's pseudo-skill
+MAX_PROMPT = 8000
 
 _TEXT_OK = re.compile(r"^[A-Za-z0-9 ._/=,:+#@()'\"-]*$")
 MAX_TEXT = 400
@@ -68,6 +76,8 @@ class RunSpec:
     max_repeats: int | None = None
     created_by: str = "cli"
     prompt_override: str | None = None  # a full prompt (campaign worker prompts), bypassing /skill
+    prompt: str | None = None           # the PI's free-form instruction (skill "ask")
+    gate3: bool = False                 # set only by the dashboard's Gate-3 signature for /finalize
     extra: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -104,8 +114,13 @@ def sanitize_text(text: str, *, allow_in_project: bool = False) -> str:
 def validate(lab: Lab, spec: RunSpec) -> dict:
     """Resolve and check a spec. Returns {skill_cfg, workdir, subject, level, target} or raises SpecError."""
     skill = (spec.skill or "").strip().lstrip("/")
+    if spec.prompt is not None or skill == ASK:
+        return _validate_ask(lab, spec)
     if skill in NEVER:
-        raise SpecError(f"/{skill} is Gate 3 territory — never launched headless; run it in a session")
+        if skill == "finalize" and spec.gate3:
+            return _validate_finalize(lab, spec)
+        raise SpecError(f"/{skill} is Gate 3 territory — only the PI's Gate 3 signature (the dashboard's "
+                        "Gate 3 sheet) launches it")
     cfg = SKILL_REGISTRY.get(skill)
     if not cfg and not spec.prompt_override:
         raise SpecError(f"unknown or non-launchable skill '/{skill}'")
@@ -135,6 +150,12 @@ def validate(lab: Lab, spec: RunSpec) -> dict:
         args = brief.relative_to(lab.hub).as_posix()
     if spec.chain not in ("off", "next", "loop"):
         raise SpecError("chain must be off | next | loop")
+    _common_checks(spec)
+    return {"skill": skill, "cfg": cfg, "workdir": workdir, "subject": subject, "args": args,
+            "level": cfg["level"], "target": target}
+
+
+def _common_checks(spec: RunSpec) -> None:
     if spec.model and spec.model != "inherit" and not MODEL_RE.match(spec.model):
         raise SpecError("model must be a model id/alias (letters, digits, . _ : / [ ] -), e.g. opus or "
                         "claude-opus-5-5 or openai/gpt-5.5")
@@ -142,8 +163,47 @@ def validate(lab: Lab, spec: RunSpec) -> dict:
         raise SpecError(f"effort must be one of {', '.join(EFFORTS)}")
     if spec.repeat_minutes is not None and not (spec.repeat_minutes >= MIN_REPEAT_MINUTES):
         raise SpecError(f"repeat interval must be at least {MIN_REPEAT_MINUTES} minutes")
-    return {"skill": skill, "cfg": cfg, "workdir": workdir, "subject": subject, "args": args,
-            "level": cfg["level"], "target": target}
+
+
+def _validate_ask(lab: Lab, spec: RunSpec) -> dict:
+    """The PI's free-form instruction. Where it runs: the lab (hub), or a study — inside its project repo
+    when one exists, else in the hub with the study as its subject."""
+    text = (spec.prompt or "").replace("\r\n", "\n").strip()
+    if not text:
+        raise SpecError("write what you want done")
+    if len(text) > MAX_PROMPT:
+        raise SpecError(f"the instruction is too long (max {MAX_PROMPT} characters)")
+    if "\x00" in text:
+        raise SpecError("the instruction contains a NUL byte")
+    target = (spec.target or HUB_TARGET).strip()
+    if target != HUB_TARGET and not safe_id(target):
+        raise SpecError(f"invalid target '{target}' — 'hub' or a bare idea/project slug")
+    subject = None if target == HUB_TARGET else target
+    pdir = lab.project_dir(subject) if subject else None
+    if spec.chain not in ("off", None, ""):
+        raise SpecError("a free-form run can't chain — its reported next step shows as a button instead")
+    _common_checks(spec)
+    level = "project" if pdir else "hub"
+    return {"skill": ASK, "cfg": {"level": level, "mode": "headless", "args": "text?", "kind": ASK},
+            "workdir": pdir or lab.hub, "subject": subject, "args": "", "level": level, "target": target,
+            "prompt": text}
+
+
+def _validate_finalize(lab: Lab, spec: RunSpec) -> dict:
+    target = (spec.target or "").strip()
+    if not safe_id(target) or target == HUB_TARGET:
+        raise SpecError("/finalize needs the study it finalizes")
+    note = lab.hub / "studies" / target / "paper" / "gate3-approval.md"
+    try:
+        text = note.read_text(encoding="utf-8-sig")
+    except OSError:
+        raise SpecError(f"Gate 3 is not signed for {target} (no studies/{target}/paper/gate3-approval.md)") from None
+    if not re.search(r"signed_via:\s*dashboard:", text) or not re.search(r"gate ?3 approved", text, re.I):
+        raise SpecError(f"studies/{target}/paper/gate3-approval.md is not a PI signature from the dashboard")
+    _common_checks(spec)
+    return {"skill": "finalize", "cfg": {"level": "hub", "mode": "headless", "args": "slug"},
+            "workdir": lab.hub, "subject": target, "args": "", "level": "hub", "target": target,
+            "gate3_signed": True}
 
 
 def _campaign_path(lab: Lab, arg: str) -> Path:
@@ -191,6 +251,11 @@ def render_prompt(lab: Lab, v: dict, backend: str) -> str:
             f"the PI had typed `{cmd}` in a session.")
 
 
+def ask_label(text: str) -> str:
+    first = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
+    return (first[:57] + "…") if len(first) > 58 else first
+
+
 def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
     """The executor's standing instructions for a headless run (claude: --append-system-prompt-file;
     other backends: appended to the prompt). Skill bodies stay untouched."""
@@ -209,7 +274,12 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
         f"{v['target']}, cwd {Path(v['workdir']).as_posix()}). There is no terminal: the PI watches and "
         "answers from the Vivarium dashboard.",
         "- Follow the lab protocol (AGENTS.md) exactly. Every gate and hard rule still binds you.",
-        "- Gate 3 (finalization, sending anything outside the lab) is NEVER yours: stop at it and report.",
+        ("- The PI signed Gate 3 for this study in the dashboard: this run IS the finalization. Follow "
+         "/finalize exactly; send nothing outside the lab beyond what it prescribes."
+         if v.get("gate3_signed") else
+         "- Gate 3 (finalization, sending anything outside the lab) is NEVER yours: stop at it and report."),
+        "- Only the PI signs (gate approvals, envelopes, LOOP_BRIEF and campaign authorizations, Gate 3): "
+        "a signature guard denies any attempt, so ask instead.",
         f"- When the procedure needs a PI decision, {ask}",
         "- Do everything the procedure allows without the PI; never idle waiting.",
         "- Background work dies with this session: a background shell job is killed as soon as your "
@@ -217,7 +287,10 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
         "stay in the turn and poll it (check its log / the compute slot on the procedure's cadence) "
         "until it finishes; the executor's watchdog bounds the run. Subagents cannot ask the PI: they "
         "return open questions in their result and you ask.",
-        ("- This is an interactive procedure: ask one question per turn and wait for the answer."
+        ("- This is the PI's own instruction (no procedure was named): do what it asks, using the lab's "
+         "procedures when the work is one of them, and stop when it is done or needs a PI decision."
+         if v["cfg"].get("kind") == ASK else
+         "- This is an interactive procedure: ask one question per turn and wait for the answer."
          if interactive else "- Keep going until the procedure's own stop point."),
         "- Before you end ANY turn in which the procedure finished or stopped, emit the run footer "
         f"(one line): python {bus} emit run_report --run-id {run_id} --data next=\"<the exact next "

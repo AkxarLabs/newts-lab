@@ -199,6 +199,11 @@ def post_process(lab: Lab, workdir: Path, path: Path, m: dict) -> None:
                        repeat_minutes=rmin, max_repeats=mx, campaign=m.get("campaign"),
                        extra={"repeat_index": idx + 1,
                               "not_before": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + rmin * 60))})
+        if m.get("kind") == "ask":   # the same free-form instruction again
+            try:
+                spec.prompt = (run_dir(path.parent, run_id) / "prompt.md").read_text(encoding="utf-8")
+            except OSError:
+                spec.prompt = ""
         try:
             child = enqueue(lab, spec)
             m["repeat_child"] = child["run_id"]

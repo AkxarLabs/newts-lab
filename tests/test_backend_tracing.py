@@ -87,7 +87,7 @@ def test_codex_hook_overrides_are_valid_toml_and_bypass_trust(tmp_path):
 
 
 def test_codex_argv_carries_hooks_and_resume_order(tmp_path):
-    hooks = ["--dangerously-bypass-hook-trust", "-c", "hooks.SessionStart=[]"]
+    hooks = ["--dangerously-bypass-hook-trust", "-c", 'hooks.SessionStart=[{hooks=[{command="py trace_hook.py"}]}]']
     rc = backends.build_run_command("codex", prompt="p", workdir=tmp_path, prog={}, cli=["cx"],
                                     resume_sid="thr-9", codex_hooks=hooks)
     assert rc.fires_hooks is True
@@ -294,7 +294,9 @@ def test_codex_without_hook_script_falls_back_to_synthesized_log(hub, monkeypatc
     (hub.root / "tools" / "trace_hook.py").unlink()
     m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status", backend="codex"))["run_id"])
     assert m["status"] == "completed"
-    assert "--dangerously-bypass-hook-trust" not in calls(lab, m)[0]["argv"]
+    argv = calls(lab, m)[0]["argv"]
+    assert not any("trace_hook" in a for a in argv)              # no tracer registered…
+    assert any("signature_guard" in a for a in argv)             # …but the signature guard still is
     assert m["run_id"] in _workers(hub)                        # the supervisor's own worker log
 
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BACKENDS = ("claude", "codex", "opencode")
-_VERSION_CACHE: dict[tuple, tuple | None] = {}
+_VERSION_CACHE: dict[tuple, tuple[float, tuple | None]] = {}
 
 # claude flags newer than some installs; only passed when the resolved CLI is at least this version.
 CLAUDE_MIN = {
@@ -185,12 +185,14 @@ def resolve_cli(backend: str, bcfg: dict | None = None) -> list[str] | None:
 
 
 def cli_version(prefix: list[str] | None) -> tuple | None:
-    """(major, minor, patch) from `<cli> --version`, cached per prefix. None if unknown."""
+    """(major, minor, patch) from `<cli> --version`, cached per prefix for 10 minutes (so an upgrade
+    shows without restarting the dashboard). None if unknown."""
     if not prefix:
         return None
     key = tuple(prefix)
-    if key in _VERSION_CACHE:
-        return _VERSION_CACHE[key]
+    hit = _VERSION_CACHE.get(key)
+    if hit is not None and time.time() - hit[0] < 600:
+        return hit[1]
     ver = None
     try:
         out = subprocess.run([*prefix, "--version"], capture_output=True, text=True, timeout=20,
@@ -201,7 +203,7 @@ def cli_version(prefix: list[str] | None) -> tuple | None:
             ver = tuple(int(x) for x in m.groups())
     except (OSError, subprocess.SubprocessError):
         ver = None
-    _VERSION_CACHE[key] = ver
+    _VERSION_CACHE[key] = (time.time(), ver)
     return ver
 
 
@@ -277,7 +279,8 @@ def trace_script(workdir) -> Path | None:
     return None
 
 
-def codex_hook_overrides(workdir, bcfg: dict | None = None, python: str | None = None) -> list[str] | None:
+def codex_hook_overrides(workdir, bcfg: dict | None = None, python: str | None = None,
+                         guard=None) -> list[str] | None:
     """codex exec flags that register trace_hook.py on every hook event for THIS invocation.
 
     Why flags and not the repo's .codex/hooks.json: codex loads a repo's .codex/ layer only when
@@ -287,21 +290,42 @@ def codex_hook_overrides(workdir, bcfg: dict | None = None, python: str | None =
     `--dangerously-bypass-hook-trust` ("enabled hooks may run without review for this invocation";
     it applies to the user's own ~/.codex hooks too). The payload matches Claude Code's: root
     `session_id` (= the exec thread id), `agent_id`/`agent_type` inside a subagent.
-    `backends.codex.trace_hooks: false` turns this off (subagents then show from the stream only)."""
+    `backends.codex.trace_hooks: false` turns tracing off (subagents then show from the stream only).
+    `guard` (tools/signature_guard.py) is added to PreToolUse either way: it denies a tool call that
+    would forge a PI signature (exit 2)."""
     bcfg = bcfg or {}
-    if bcfg.get("trace_hooks") is False:
-        return None
-    script = trace_script(workdir)
-    if not script:
-        return None
     import sys as _sys
-    cmd = f'"{python or _sys.executable or "python"}" "{script}"'
-    handler = "{type=\"command\",command=" + _toml_str(cmd) + ",timeout=10}"
+    py = python or _sys.executable or "python"
+    script = trace_script(workdir) if bcfg.get("trace_hooks") is not False else None
+    if not script and not guard:
+        return None
+    trace = ("{type=\"command\",command=" + _toml_str(f'"{py}" "{script}"') + ",timeout=10}") if script else None
+    guard_h = ("{type=\"command\",command=" + _toml_str(f'"{py}" "{guard}"') + ",timeout=15}") if guard else None
     out = ["--dangerously-bypass-hook-trust"]
     for ev in TRACE_EVENTS:
-        group = "{" + ('matcher="*",' if ev in ("PreToolUse", "PostToolUse") else "") + f"hooks=[{handler}]" + "}"
+        handlers = [h for h in ([trace, guard_h] if ev == "PreToolUse" else [trace]) if h]
+        if not handlers:
+            continue
+        group = "{" + ('matcher="*",' if ev in ("PreToolUse", "PostToolUse") else "") + \
+            f"hooks=[{','.join(handlers)}]" + "}"
         out += ["-c", f"hooks.{ev}=[{group}]"]
     return out
+
+
+OPENCODE_GUARD_PLUGIN = Path(__file__).resolve().parent / "opencode_guard.js"
+
+
+def opencode_guard_dir(run_dir, guard, python: str) -> Path | None:
+    """A per-run OPENCODE_CONFIG_DIR holding only the signature-guard plugin. opencode searches that dir
+    for plugins like a .opencode/ dir, in addition to the global and project config."""
+    if not OPENCODE_GUARD_PLUGIN.is_file():
+        return None
+    d = Path(run_dir) / "opencode-config"
+    (d / "plugins").mkdir(parents=True, exist_ok=True)
+    src = OPENCODE_GUARD_PLUGIN.read_text(encoding="utf-8")
+    src = src.replace("__GUARD__", json.dumps(str(guard))).replace("__PYTHON__", json.dumps(str(python)))
+    (d / "plugins" / "newts-guard.js").write_text(src, encoding="utf-8")
+    return d
 
 
 def opencode_traced(workdir) -> bool:
@@ -396,7 +420,8 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
         if resume_sid:
             argv += ["resume", resume_sid]
         argv.append("-" if via != "argv" else text)
-        return RunCommand(argv, text if via != "argv" else None, bool(codex_hooks), notes)
+        traced = any("trace_hook" in str(x) for x in (codex_hooks or []))   # the guard alone logs nothing
+        return RunCommand(argv, text if via != "argv" else None, traced, notes)
     if backend == "opencode":
         _guard_extra(backend, extra, _OPENCODE_FORBID)
         # opencode keeps the prompt on argv: with a live stdin its --format json mode can block on

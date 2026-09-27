@@ -1,0 +1,290 @@
+"""The dashboard as an end-to-end product (dashboard/product.py + the serve.py wiring).
+
+Free-form runs, Gate 3 (typed confirmation → the one /finalize run it allows; chains never finalize),
+revoke, the envelope editor, LOOP_BRIEF and campaign signing, revive, research keys, lab settings,
+labs (create / open / switch), setup state, and the HTTP protection (session cookie, JSON-only,
+Origin: null). Launches only ENQUEUE (the scheduler thread is never started).
+"""
+
+from __future__ import annotations
+
+import http.client
+import json
+import shutil
+import sys
+import threading
+
+import pytest
+
+from conftest import REPO, load
+
+FAKE = REPO / "tests" / "fake_claude.py"
+
+
+@pytest.fixture
+def m(hub, monkeypatch, tmp_path):
+    (hub.lab / "config.yaml").write_text(
+        'lab:\n  projects_root: "../projects"\n'
+        "compute:\n  max_concurrent_runs: 1\n"
+        "dashboard:\n  port: 8787\n"
+        "agents:\n  programmatic:\n    enabled: true\n    backend: claude\n    max_depth: 1\n"
+        "    backends:\n      claude:\n"
+        f"        command: {json.dumps([sys.executable, str(FAKE)])}\n", encoding="utf-8")
+    (hub.root / "templates" / "loop").mkdir(parents=True)
+    shutil.copy(REPO / "templates" / "loop" / "CAMPAIGN.md", hub.root / "templates" / "loop")
+    monkeypatch.setenv("NEWTS_HOME", str(tmp_path / "home"))
+    monkeypatch.syspath_prepend(str(REPO / "dashboard"))
+    mod = load("dashboard/serve")
+    monkeypatch.setattr(mod, "HUB", hub.root)
+    monkeypatch.setattr(mod, "LAB", hub.lab)
+    monkeypatch.setattr(mod.sources, "HUB", hub.root)
+    monkeypatch.setattr(mod.sources, "LAB", hub.lab)
+    return mod
+
+
+def _pi(hub):
+    f = hub.lab / ".bus" / "pi-actions.jsonl"
+    return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines()] if f.exists() else []
+
+
+def _manifest(m, hub, rid):
+    return m.executor.find_run(m.executor.Lab(hub.root), rid)[3]
+
+
+# ── free-form runs ────────────────────────────────────────────────────────────
+
+def test_free_form_run(m, hub):
+    out, code = m.launch_run({"prompt": "Summarize the open questions\nand suggest two ideas.", "confirm": True})
+    assert code == 200, out
+    man = _manifest(m, hub, out["run_id"])
+    assert man["skill"] == "ask" and man["kind"] == "ask" and man["command"] is None
+    assert man["label"].startswith("Summarize the open questions")
+    rd = hub.lab / ".bus" / "agents" / f"{out['run_id']}.d"
+    assert (rd / "prompt.md").read_text(encoding="utf-8").startswith("Summarize")
+    assert "PI's own instruction" in (rd / "preamble.md").read_text(encoding="utf-8")
+    assert _pi(hub)[-1]["prompt"].startswith("Summarize")
+    assert m.launch_run({"prompt": "   ", "confirm": True})[1] == 400
+    assert m.launch_run({"prompt": "x" * 9000, "confirm": True})[1] == 400
+    assert m.launch_run({"prompt": "go", "chain": "loop", "confirm": True})[1] == 400
+
+
+def test_free_form_run_inside_a_project(m, hub):
+    hub.add_registry_row("idea-p", state="active")
+    pdir = hub.make_project("idea-p")
+    out, code = m.launch_run({"prompt": "check the last pilot", "target": "idea-p", "confirm": True})
+    assert code == 200
+    assert _manifest(m, hub, out["run_id"])["cwd"] == str(pdir)
+
+
+# ── Gate 3 ────────────────────────────────────────────────────────────────────
+
+def _ready_paper(hub, slug="idea-g"):
+    hub.add_registry_row(slug, state="internal-review")
+    paper = hub.root / "studies" / slug / "paper"
+    (paper / "reviews").mkdir(parents=True)
+    (paper / "reviews" / "meta-review.md").write_text("# Meta\n\n## Decision\n\nAccept.\n", encoding="utf-8")
+    (paper / "main.pdf").write_bytes(b"%PDF-1.4 fake")
+    return paper
+
+
+def test_finalize_never_launches_without_the_signature(m, hub):
+    _ready_paper(hub)
+    out, code = m.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True})
+    assert code == 400 and "Gate 3" in out["error"]
+    out, code = m.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True}, gate3=True)
+    assert code == 400 and "not signed" in out["error"]
+
+
+def test_gate3_sign_then_finalize(m, hub):
+    paper = _ready_paper(hub)
+    r = m.product.gate3_readiness("idea-g")
+    assert r["can_sign"] and all(c["ok"] for c in r["checks"] if c["id"] in ("state", "meta", "pdf"))
+    out, code = m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-x"})
+    assert code == 400 and "type the study name" in out["error"]
+    out, code = m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g", "launch": True})
+    assert code == 200, out
+    note = (paper / "gate3-approval.md").read_text(encoding="utf-8")
+    assert "signed_via: dashboard:" in note and "Gate 3 approved" in note and "sha256" in note
+    man = _manifest(m, hub, out["launch"]["run_id"])
+    assert man["skill"] == "finalize" and man["gate3_signed"] is True
+    assert "this run IS the finalization" in (hub.lab / ".bus" / "agents" / f"{man['run_id']}.d" / "preamble.md").read_text(encoding="utf-8")
+    assert _pi(hub)[-2]["gate"] == 3
+    assert m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g"})[1] == 400   # once
+    # revoke (not yet final) removes the note
+    assert m.product.gate_revoke({"idea": "idea-g", "what": "gate3", "confirm": True})[1] == 200
+    assert not (paper / "gate3-approval.md").exists()
+
+
+def test_gate3_refuses_before_internal_review(m, hub):
+    hub.add_registry_row("idea-w", state="writing")
+    out, code = m.product.gate3_sign({"idea": "idea-w", "confirm": True, "typed": "idea-w"})
+    assert code == 400 and "not ready" in out["error"]
+
+
+def test_chains_never_reach_finalize(m):
+    from executor.scheduler import parse_next   # noqa: E402 — the executor on sys.path via sources
+    assert parse_next("/finalize idea-g") is None
+    assert parse_next("/ask do anything") is None
+
+
+# ── Gate 1 with the envelope, revoke ──────────────────────────────────────────
+
+def test_gate1_with_envelope_marker_and_revoke(m, hub):
+    hub.add_registry_row("idea-1", state="proposal")
+    (hub.root / "studies" / "idea-1").mkdir(parents=True)
+    prop = hub.root / "studies" / "idea-1" / "proposal.md"
+    prop.write_text("# P\n", encoding="utf-8")
+    assert m.approve_gate("idea-1", 1, envelope=True)["ok"]
+    assert "· envelope approved -->" in prop.read_text(encoding="utf-8")
+    out, code = m.product.gate_revoke({"idea": "idea-1", "what": "gate1", "confirm": True})
+    assert code == 200 and "Gate 1 approved" not in prop.read_text(encoding="utf-8")
+
+
+# ── envelope editor ───────────────────────────────────────────────────────────
+
+def test_envelope_edit_sign_and_resign(m, hub):
+    hub.add_registry_row("idea-e", state="active")
+    pdir = hub.make_project("idea-e")
+    out, code = m.product.envelope_set({"idea": "idea-e", "confirm": True, "sign": True,
+                                        "values": {"full_runs": 4, "per_run_max_minutes": 90, "total_max_minutes": 360,
+                                                   "expires": "2099-01-01"}})
+    assert code == 200, out
+    env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
+    assert env["full_runs"] == 4 and env["pi_signed"] is True and str(env["signed_via"]).startswith("dashboard:")
+    # changing values without re-signing withdraws the signature
+    out, code = m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": 8}})
+    env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
+    assert code == 200 and env["full_runs"] == 8 and env["pi_signed"] is False and "withdrawn" in out["note"]
+    assert m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"expires": "2001-01-01"}})[1] == 400
+    assert m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": -1}})[1] == 400
+
+
+# ── loop brief, campaign ──────────────────────────────────────────────────────
+
+def test_loop_brief_sign(m, hub):
+    hub.add_registry_row("idea-l", state="active")
+    pdir = hub.make_project("idea-l")
+    shutil.copy(REPO / "templates" / "loop" / "LOOP_BRIEF.md", pdir / "LOOP_BRIEF.md")
+    out, code = m.product.loopbrief_sign({"idea": "idea-l", "mode": "explore", "confirm": True})
+    assert code == 200, out
+    text = (pdir / "LOOP_BRIEF.md").read_text(encoding="utf-8")
+    assert "- [x] Authorized as scoped above" in text and "signed_via: dashboard:" in text and "`explore`" in text
+    assert m.product.loopbrief_sign({"idea": "idea-l", "confirm": True})[1] == 400      # already signed
+    assert m.product.gate_revoke({"idea": "idea-l", "what": "loop", "confirm": True})[1] == 200
+
+
+def test_campaign_form_writes_a_signed_brief_the_guard_accepts(m, hub, monkeypatch):
+    out, code = m.product.campaign_create({"confirm": True, "fields": {
+        "direction": "sparse routing for small MoEs", "ideas": 2, "parallel": 1, "compute_total": "8 GPU-h",
+        "full_runs": 3, "full_minutes": 60, "wall_clock": "tonight, 8h", "mode": "execute"}})
+    assert code == 200, out
+    f = hub.root / out["file"]
+    text = f.read_text(encoding="utf-8")
+    assert "sparse routing for small MoEs" in text and "carry up to 2 ideas" in text and "___" not in text.split("## Campaign Log")[0]
+    g = load("signature_guard")
+    monkeypatch.setattr(g, "HUB", hub.root.resolve())
+    assert g._campaign_signed(f.name)
+    spec_out, code = m.launch_run({"skill": "autopilot", "args": out["file"], "confirm": True})
+    assert code == 200, spec_out
+
+
+# ── revive ────────────────────────────────────────────────────────────────────
+
+def test_revive(m, hub):
+    hub.add_registry_row("idea-k", state="killed")
+    (hub.root / "studies" / "idea-k").mkdir(parents=True)
+    (hub.root / "studies" / "idea-k" / "IDEA.md").write_text("---\nstate: killed\n---\n# Idea\n", encoding="utf-8")
+    assert m.product.revive({"idea": "idea-k", "confirm": True})[1] == 400                 # a reason is required
+    out, code = m.product.revive({"idea": "idea-k", "confirm": True, "reason": "new data", "to": "triaged"})
+    assert code == 200
+    row = next(r for r in m.sources.parse_registry() if r["id"] == "idea-k")
+    assert row["state"] == "triaged"
+    assert "state: triaged" in (hub.root / "studies" / "idea-k" / "IDEA.md").read_text(encoding="utf-8")
+
+
+# ── keys, settings, setup, docs ───────────────────────────────────────────────
+
+def test_keys_are_stored_but_never_read_back(m, hub):
+    assert m.product.keys_set({"key": "S2_API_KEY", "value": "secret-123"})[1] == 200
+    assert "S2_API_KEY=secret-123" in (hub.lab / ".env.local").read_text(encoding="utf-8")
+    st, _ = m.product.keys_status()
+    assert "secret-123" not in json.dumps(st) and next(k for k in st["keys"] if k["key"] == "S2_API_KEY")["set"]
+    assert "lab/.env.local" in (hub.root / ".gitignore").read_text(encoding="utf-8")
+    assert "secret-123" not in json.dumps(_pi(hub))
+    assert m.product.keys_set({"key": "NEWTS_RUN_ID", "value": "x"})[1] == 400
+    sup = load("tools/executor/supervise.py") if False else None   # noqa: F841 — _env_local is tested below
+    from executor.supervise import _env_local
+    assert _env_local(m.executor.Lab(hub.root))["S2_API_KEY"] == "secret-123"
+
+
+def test_lab_settings_and_setup(m, hub):
+    out, code = m.product.lab_config_set({"confirm": True, "changes": {"name": "Moe lab", "max_concurrent_runs": 2,
+                                                                        "venue": "neurips"}})
+    assert code == 200, out
+    cfg = m.sources._load_yaml(hub.lab / "config.yaml")
+    assert cfg["lab"]["name"] == "Moe lab" and cfg["compute"]["max_concurrent_runs"] == 2 and cfg["writing"]["venue"] == "neurips"
+    assert m.product.lab_config_set({"confirm": True, "changes": {"agents.x": 1}})[1] == 400
+    assert not m.product.setup_status()["completed"]
+    assert m.product.setup_complete({})[1] == 200
+    assert m.product.setup_status()["completed"]
+    assert m.product.doc_save({"doc": "system", "text": "# This machine\n1 GPU\n"})[1] == 200
+    assert m.product.doc_get("system")[0]["text"].startswith("# This machine")
+    assert m.product.doc_save({"doc": "../../etc", "text": "x"})[1] == 400
+
+
+def test_programmatic_switch_inserts_a_missing_key(m, hub):
+    (hub.lab / "config.yaml").write_text("agents:\n  programmatic:\n    backend: claude\n", encoding="utf-8")
+    out, code = m.set_programmatic({"enabled": True, "confirm": True})
+    assert code == 200 and m.sources._load_yaml(hub.lab / "config.yaml")["agents"]["programmatic"]["enabled"] is True
+
+
+# ── labs ──────────────────────────────────────────────────────────────────────
+
+def test_create_open_and_switch_labs(m, hub, tmp_path):
+    dest = tmp_path / "labs" / "second"
+    out, code = m.product.labs_create({"confirm": True, "name": "Second lab", "path": str(dest), "open": False})
+    assert code == 200, out
+    assert (dest / "lab" / "config.yaml").exists() and not (dest / ".github").exists()
+    assert m.sources._load_yaml(dest / "lab" / "config.yaml")["lab"]["name"] == "Second lab"
+    listed, _ = m.product.labs_list()
+    assert any(l["path"] == str(dest) for l in listed["labs"])
+    out, code = m.product.labs_open({"path": str(dest)})
+    assert code == 200 and m.HUB == dest.resolve() and m.sources.HUB == dest.resolve()
+    assert m.product.labs_open({"path": str(tmp_path)})[1] == 400                     # not a lab
+    assert m.product.labs_create({"confirm": True, "path": str(dest)})[1] == 400      # not empty
+
+
+# ── HTTP protection ───────────────────────────────────────────────────────────
+
+@pytest.fixture
+def server(m):
+    srv = m.LabServer(("127.0.0.1", 0), m.Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield srv.server_address[1]
+    srv.shutdown()
+
+
+def _req(port, method, path, body=None, headers=None):
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    c.request(method, path, body=body, headers=headers or {})
+    r = c.getresponse()
+    data = r.read()
+    return r.status, dict(r.getheaders()), data
+
+
+def test_session_cookie_and_json_only(server):
+    port = server
+    assert _req(port, "GET", "/api/state")[0] == 403                                       # no session
+    st, hd, _ = _req(port, "GET", "/")
+    assert st == 200
+    cookie = hd.get("Set-Cookie", "").split(";", 1)[0]
+    assert cookie.startswith(f"newts_{port}=") and "SameSite=Strict" in hd["Set-Cookie"] and "HttpOnly" in hd["Set-Cookie"]
+    assert _req(port, "GET", "/api/state", headers={"Cookie": cookie})[0] == 200
+    assert _req(port, "GET", "/api/ping")[0] == 200                                        # the launcher's probe
+    body = json.dumps({"target": "hub", "text": "hi"})
+    assert _req(port, "POST", "/api/directive", body, {"Cookie": cookie, "Content-Type": "text/plain"})[0] == 415
+    assert _req(port, "POST", "/api/directive", body, {"Content-Type": "application/json"})[0] == 403
+    assert _req(port, "POST", "/api/directive", body, {"Cookie": cookie, "Content-Type": "application/json",
+                                                       "Origin": "null"})[0] == 403
+    assert _req(port, "POST", "/api/directive", body, {"Cookie": cookie, "Content-Type": "application/json"})[0] == 200
