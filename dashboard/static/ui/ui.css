@@ -441,3 +441,19 @@ html[data-lamp="day"] .xterm-host { background: #fbf6ea; }
 .chip.on { background: var(--accent-wash); box-shadow: 0 0 0 1px var(--accent) inset; }
 button.chip { border: 0; cursor: pointer; font: inherit; font-size: 12px; color: var(--ink); } button.chip:hover { background: var(--accent-wash); }
 @media (max-width: 720px) { .wf-stage { flex-basis: 112px; } .wf-procs { grid-template-columns: 1fr; } }
+
+/* ── campaigns ─────────────────────────────────────────────────────────── */
+.camp-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.camp-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r); background: var(--paper); border: 1px solid var(--edge); }
+.camp-card.st-active, .camp-card.st-finishing { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); }
+.camp-card.st-stalled, .camp-card.st-paused { border-color: color-mix(in srgb, var(--warm) 55%, var(--edge)); }
+.camp-card.compact { padding: 9px 11px; } .camp-title { font-weight: 700; text-align: left; }
+.camp-study { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--edge); }
+.camp-events { font-size: 13px; display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow: auto; }
+.camp-disp { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; } .camp-disp.refused { color: var(--ink-soft); }
+.check-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--edge); border-radius: var(--r); background: var(--paper-2); margin: 10px 0; cursor: pointer; }
+.check-row input { margin-top: 3px; } .check-row span { display: flex; flex-direction: column; gap: 2px; } .check-row small { color: var(--ink-soft); }
+.preflight { display: flex; flex-direction: column; gap: 4px; }
+.pf-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 4px 0; }
+.pf-row .pf-ico { width: 1.4em; text-align: center; font-weight: 700; } .pf-row.ok .pf-ico { color: var(--ok); } .pf-row.bad .pf-ico { color: var(--bad); } .pf-row.warn .pf-ico { color: var(--warm); }
+.pf-row .pf-t { flex: 1; display: flex; flex-direction: column; } .pf-row small { color: var(--ink-soft); }

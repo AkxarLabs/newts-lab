@@ -847,7 +847,21 @@ def snapshot() -> dict:
         "executor": executor_status(),
         "skills": (executor.SKILL_REGISTRY if executor else {}),
         "workflow": _workflow_view(),
+        **_autonomy_view(),
     }
+
+
+def _autonomy_view() -> dict:
+    """The campaigns the executor keeps, whether a scheduler is ticking, whether the machine is held awake."""
+    if executor is None:
+        return {"campaign_states": [], "scheduler": {}, "awake": {}}
+    try:
+        lab = executor.Lab(HUB)
+        from executor import awake, campaigns as _camps  # noqa: PLC0415
+        return {"campaign_states": _camps.summary(lab), "scheduler": executor.scheduler.lease(lab),
+                "awake": awake.status()}
+    except Exception as e:  # noqa: BLE001 — never blank the dashboard
+        return {"campaign_states": [], "scheduler": {"error": str(e)}, "awake": {}}
 
 
 def _workflow_view() -> dict:

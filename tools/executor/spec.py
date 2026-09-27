@@ -186,8 +186,12 @@ def _validate_finalize(lab: Lab, spec: RunSpec) -> dict:
         text = note.read_text(encoding="utf-8-sig")
     except OSError:
         raise SpecError(f"Gate 3 is not signed for {target} (no studies/{target}/paper/gate3-approval.md)") from None
-    if not re.search(r"signed_via:\s*dashboard:", text) or not re.search(r"gate ?3 approved", text, re.I):
-        raise SpecError(f"studies/{target}/paper/gate3-approval.md is not a PI signature from the dashboard")
+    if not re.search(r"gate ?3 approved", text, re.I):
+        raise SpecError(f"studies/{target}/paper/gate3-approval.md is not a Gate 3 approval")
+    import gate3 as _gate3  # noqa: PLC0415 — tools/ is on sys.path (see _TOOLS above)
+    ok, why = _gate3.delegation_valid(lab.hub, target)
+    if not ok:
+        raise SpecError(f"Gate 3 for {target} is not validly signed: {why}")
     _common_checks(spec)
     return {"skill": "finalize", "cfg": {"level": "hub", "mode": "headless", "args": "slug"},
             "workdir": lab.hub, "subject": target, "args": "", "level": "hub", "target": target,
@@ -237,6 +241,40 @@ def render_prompt(lab: Lab, v: dict, backend: str) -> str:
     return (f"Run the Newts' Lab procedure `/{v['skill']}`" + (f" with arguments: {rest}" if rest else "")
             + f". Its procedure file is {skill_file} — read it and follow it step by step, exactly as if "
             f"the PI had typed `{cmd}` in a session.")
+
+
+def campaign_block(lab: Lab, spec: RunSpec, v: dict, run_id: str) -> str:
+    """Standing instructions for a run that belongs to a campaign kept by the executor (campaigns.py)."""
+    bus = (lab.hub / "tools" / "lab_bus.py").as_posix()
+    brief = spec.args if v.get("skill") == "autopilot" else ""
+    if v.get("skill") == "autopilot":
+        final = bool((spec.extra or {}).get("campaign_final"))
+        lines = [
+            f"CAMPAIGN CYCLE {spec.extra.get('campaign_cycle') or ''} of {spec.campaign} (brief {brief}), kept by the "
+            "executor's campaign keeper. The PI is away; the keeper starts the next cycle after this one, however it ends.",
+            "- This cycle is ONE portfolio pass (the /autopilot re-entry path): rebuild state from the written record, "
+            "decide each idea's next step, and DISPATCH it — never run a long stage inline. Dispatch = run "
+            f"`python {bus} emit campaign_dispatch --run-id {run_id} --data skill=<procedure> --data target=<study slug or hub> "
+            "[--data args=\"<args>\"]`; the keeper validates and starts it as its own run (with retries). Dispatch "
+            "only procedures that fit the next step; never /finalize (Gate 3 is recorded by the keeper itself, only "
+            "if the brief delegates it) and never another campaign.",
+            "- Before dispatching work for a NEW idea, append its Campaign Log row (the log is how the keeper knows "
+            "which studies belong to this campaign).",
+            "- Never ask the PI (this overrides the question rule above; no AskUserQuestion): a study that needs a decision outside the brief's bounds is "
+            "queued for the PI (its own run reports needs_pi) and you move on to the others.",
+            "- End with the run footer, adding `--data campaign=<continue|idle|done>` (done = every target idea is "
+            "at internal-review / final / killed, or a stop condition holds).",
+        ]
+        if final:
+            lines.append("- THIS IS THE FINAL CYCLE (a stop condition holds or the PI stopped the campaign): dispatch "
+                         "nothing; write the morning report (the skill's §3) and end with `campaign=done`.")
+        return "\n".join(lines)
+    return "\n".join([
+        f"CAMPAIGN RUN for {spec.campaign}: dispatched by its keeper. The PI is away.",
+        "- Never ask the PI (this overrides the question rule above; no AskUserQuestion): if the procedure needs a PI decision, stop at it and report it "
+        "in the run footer (`needs_pi=<gate1|gate2|gate3|...>`) with `--data study=<slug>` — only this study waits.",
+        "- Everything else is exactly the procedure as usual; its gates and hard rules bind.",
+    ])
 
 
 def ask_label(text: str) -> str:

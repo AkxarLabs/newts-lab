@@ -606,7 +606,13 @@ def _gate3_marker(slug: str) -> bool:
             except OSError:
                 continue
     note = paper / "gate3-approval.md"
-    return note.exists() and bool(_GATE3_RE.search(note.read_text(encoding="utf-8-sig")))
+    if not note.exists():
+        return False
+    text = note.read_text(encoding="utf-8-sig")
+    if re.search(r"signed_via:\s*campaign:", text):   # delegated by a campaign: valid only while it still is
+        import gate3  # noqa: PLC0415
+        return gate3.delegation_valid(HUB, slug)[0]
+    return bool(_GATE3_RE.search(text))
 
 
 def c_finalization(a) -> int:

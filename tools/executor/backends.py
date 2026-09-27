@@ -447,9 +447,65 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
     raise SystemExit(f"[executor] unknown backend {backend!r} (claude | codex | opencode)")
 
 
+# ── why a run failed: the difference between "try again later" and "something is wrong" ─────────
+
+_USAGE_RE = re.compile(r"usage limit|rate limit|quota|too many requests|\b429\b|limit (?:reached|exceeded)|"
+                       r"out of (?:credits|messages)|resets? (?:at|in)", re.I)
+_TRANSIENT_RE = re.compile(r"overloaded|\b5\d\d\b|internal server error|bad gateway|service unavailable|"
+                           r"econnreset|econnrefused|etimedout|timed out|network|connection (?:reset|closed|error)|"
+                           r"temporar(?:y|ily)|try again", re.I)
+_AUTH_RE = re.compile(r"not logged in|/login|authentication_failed|failed to authenticate|oauth session expired|"
+                      r"unauthorized|\b401\b|codex login|no provider|api key", re.I)
+
+
+def failure_kind(text: str) -> str:
+    """usage_limit | auth | transient | logic — how to treat a failed attempt (a campaign retries the first
+    three with backoff; `logic` counts as a real failure)."""
+    t = str(text or "")
+    if _USAGE_RE.search(t):
+        return "usage_limit"
+    if _AUTH_RE.search(t):
+        return "auth"
+    if _TRANSIENT_RE.search(t):
+        return "transient"
+    return "logic"
+
+
+def limit_reset(text: str, now: float | None = None) -> float | None:
+    """When a usage limit lifts, as an epoch — from the CLI's own message when it says (claude:
+    `usage limit reached|<epoch>` or "resets 3pm"; codex: "try again in 2h 13m"; a Retry-After of N
+    seconds). None when the message doesn't say."""
+    import time as _t   # noqa: PLC0415
+    now = _t.time() if now is None else now
+    t = str(text or "")
+    m = re.search(r"limit reached\|(\d{9,11})", t)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"(?:try again|retry|resets?) in\s+(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?\s*"
+                  r"(?:(\d+)\s*s(?:ec(?:onds?)?)?)?", t, re.I)
+    if m and any(m.groups()):
+        h, mi, s = (int(x or 0) for x in m.groups())
+        return now + h * 3600 + mi * 60 + s
+    m = re.search(r"retry[- ]after[\"':\s]+(\d+)", t, re.I)
+    if m:
+        return now + int(m.group(1))
+    m = re.search(r"resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", t, re.I)
+    if m:
+        hh, mm, ap = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+        if ap == "pm" and hh < 12:
+            hh += 12
+        if ap == "am" and hh == 12:
+            hh = 0
+        if hh < 24 and mm < 60:
+            lt = _t.localtime(now)
+            cand = _t.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hh, mm, 0, 0, 0, -1))
+            return cand if cand > now else cand + 86400
+    return None
+
+
 # ── stream parsing ────────────────────────────────────────────────────────────
 
-_SUMMARY_KEYS = ("command", "file_path", "path", "pattern", "url", "query", "description", "skill", "prompt")
+_SUMMARY_KEYS =("command", "file_path", "path", "pattern", "url", "query", "description", "skill", "prompt")
 
 
 def summarize_input(tool: str | None, inp) -> str:

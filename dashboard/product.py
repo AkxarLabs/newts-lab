@@ -239,30 +239,13 @@ def _paper(slug: str) -> Path:
 
 
 def gate3_readiness(slug: str) -> dict:
-    """The checklist the Gate 3 sheet shows. `blocking` items must pass to sign."""
-    row = _row(slug)
-    paper = _paper(slug)
-    state = (row or {}).get("state") or ""
-    checks = []
-    checks.append({"id": "state", "label": "Internal review is complete (state: internal-review)",
-                   "ok": state == "internal-review", "blocking": True,
-                   "detail": f"state is '{state or 'unknown'}'"})
-    meta = ""
-    for f in sorted(paper.glob("reviews/**/meta-review*.md")) if paper.is_dir() else []:
-        meta = _read(f) or meta
-    verdict = S._meta_verdict(meta) if meta else ""
-    accept = bool(re.search(r"\baccept", verdict, re.I)) and not re.search(r"\breject|needs[- ]experiment", verdict, re.I)
-    checks.append({"id": "meta", "label": "The meta-review recommends accepting", "ok": accept, "blocking": False,
-                   "detail": (verdict[:300] or "no meta-review found")})
-    pdf = paper / "main.pdf"
-    checks.append({"id": "pdf", "label": "The paper compiles (main.pdf)", "ok": pdf.exists(), "blocking": False,
-                   "detail": "studies/%s/paper/main.pdf" % slug})
-    claims = paper / "claims.yaml"
-    checks.append({"id": "claims", "label": "Every claim is mapped to an artifact (claims.yaml)", "ok": claims.exists(),
-                   "blocking": False, "detail": "run the claims audit from the Paper tab" if claims.exists() else "no claims.yaml"})
-    signed = (paper / "gate3-approval.md").exists()
-    return {"ok": True, "idea": slug, "checks": checks, "signed": signed,
-            "can_sign": all(c["ok"] for c in checks if c["blocking"]) and not signed}
+    """The checklist the Gate 3 sheet shows (tools/gate3.py — the keeper uses the same one). `blocking`
+    items must pass to sign."""
+    import gate3  # noqa: PLC0415 — tools/ is on sys.path via sources
+    out = gate3.readiness(_hub(), slug)
+    if out.get("signed"):
+        out["valid"], out["valid_why"] = gate3.delegation_valid(_hub(), slug)
+    return out
 
 
 def gate3_sign(body: dict) -> tuple[dict, int]:
@@ -536,7 +519,20 @@ def campaign_create(body: dict) -> tuple[dict, int]:
         rounds, lines_per = n("explore_rounds", 0, 1), n("explore_lines", 0, 2)
     except (TypeError, ValueError):
         return {"error": "numbers must be whole numbers"}, 400
-    wall = str(f.get("wall_clock") or "").strip() or "—"
+    try:
+        hours = float(f.get("hours") if f.get("hours") not in (None, "") else 12)
+        agent_hours = float(f.get("agent_hours") if f.get("agent_hours") not in (None, "") else 0)
+        cycle_minutes = float(f.get("cycle_minutes") if f.get("cycle_minutes") not in (None, "") else 90)
+        repeat_minutes = float(f.get("repeat_minutes") if f.get("repeat_minutes") not in (None, "") else 20)
+    except (TypeError, ValueError):
+        return {"error": "hours and minutes must be numbers"}, 400
+    if not (0 < hours <= 24 * 30) or agent_hours < 0 or not (10 <= cycle_minutes <= 24 * 60) or not (5 <= repeat_minutes <= 24 * 60):
+        return {"error": "wall-clock 0–720 h; each cycle 10–1440 min; a pass every 5–1440 min"}, 400
+    gate3_auto = bool(f.get("gate3"))
+    if gate3_auto and str(body.get("gate3_typed") or "").strip().lower() != "finalize":
+        return {"error": "to let papers finalize without you, type finalize to confirm"}, 400
+    deadline = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() + hours * 3600))
+    wall = str(f.get("wall_clock") or "").strip() or f"{hours:g} h (until {deadline})"
     mode = str(f.get("mode") or "execute")
     if mode not in ("execute", "explore"):
         return {"error": "loop mode must be execute or explore"}, 400
@@ -568,7 +564,10 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     t = re.sub(r"\*\*Loop mode for spawned projects:\*\* `execute`", f"**Loop mode for spawned projects:** `{mode}`", t)
     t = t.replace("caps: ___ expansion rounds, ___ new lines/round", f"caps: {rounds} expansion rounds, {lines_per} new lines/round")
     t = re.sub(r"\*\*Total wall-clock:\*\* ___ \([^)]*\)", f"**Total wall-clock:** {wall}", t)
-    t = t.replace("**Total compute:** ___", f"**Total compute:** {budget_total}")
+    t = t.replace("**Total compute:** ___", f"**Total compute:** {budget_total}"
+                  + (f" · agent time ≤ {agent_hours:g} h" if agent_hours else ""))
+    if gate3_auto:
+        t = t.replace("- [ ] Papers may finalize without me", "- [x] Papers may finalize without me")
     t = t.replace("- [ ] Authorized as scoped above · **PI:** ______ · **Date/time:** ______",
                   f"- [x] Authorized as scoped above · **PI:** signed in the dashboard (signed_via: dashboard:{ts}) "
                   f"· **Date/time:** {ts}")
@@ -580,16 +579,94 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     rel = f"lab/campaigns/{name}"
     S._emit_hub("campaign_signed", detail=f"campaign {rel} signed (PI via dashboard)")
     S._pi_log({"action": "campaign.sign", "file": rel, "fields": f})
-    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}"}
+    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate3_auto": gate3_auto}
     if body.get("launch"):
-        rep = body.get("repeat_minutes")
-        res, code = S.launch_run({"skill": "autopilot", "args": rel, "confirm": True, "backend": body.get("backend"),
-                                  "repeat_minutes": rep or 30, "max_repeats": body.get("max_repeats") or 48},
-                                 by="campaign")
-        out["launch"] = res
-        if code == 200:
-            out["note"] = f"campaign signed and started ({rel})"
+        try:
+            from executor import campaigns  # noqa: PLC0415 — tools/ is on sys.path via sources
+            lab = S.sources.executor.Lab(_hub())
+            S.sources.executor.check_enabled(lab)
+            st = campaigns.create(lab, rel, hours=hours, agent_minutes=agent_hours * 60, cycle_minutes=cycle_minutes,
+                                  repeat_minutes=repeat_minutes, gate3_auto=gate3_auto,
+                                  backend=body.get("backend") or None)
+        except Exception as e:  # noqa: BLE001 — the brief is signed either way; say why it didn't start
+            out["note"] = f"campaign signed ({rel}) but not started: {e}"
+            out["warnings"] = [str(e)]
+            return out, 200
+        S._pi_log({"action": "campaign.start", "file": rel, "hours": hours, "agent_hours": agent_hours,
+                   "cycle_minutes": cycle_minutes, "repeat_minutes": repeat_minutes, "gate3_auto": gate3_auto})
+        out.update(campaign=st["name"], note=f"campaign signed and started — the lab keeps it going until {deadline}")
     return out, 200
+
+
+CAMPAIGN_ACTIONS = ("pause", "resume", "stop", "revoke_gate3", "hold", "unhold")
+
+
+def campaign_control(body: dict) -> tuple[dict, int]:
+    """The PI's controls on a running campaign (the campaign card)."""
+    name, action = str(body.get("name") or ""), str(body.get("action") or "")
+    if action not in CAMPAIGN_ACTIONS:
+        return {"error": f"action must be one of {', '.join(CAMPAIGN_ACTIONS)}"}, 400
+    if action in ("stop", "revoke_gate3") and not body.get("confirm"):
+        return {"error": "confirm first"}, 400
+    try:
+        from executor import campaigns  # noqa: PLC0415
+        st = campaigns.control(S.sources.executor.Lab(_hub()), name, action, study=body.get("study") or None)
+    except (ValueError, OSError) as e:
+        return {"error": str(e)}, 400
+    S._pi_log({"action": f"campaign.{action}", "campaign": name, "study": body.get("study")})
+    words = {"pause": "paused", "resume": "resumed", "stop": "stopping — it writes its final report",
+             "revoke_gate3": "Gate 3 is yours again for this campaign", "hold": "held from auto-finalizing",
+             "unhold": "released"}
+    return {"ok": True, "note": words[action], "status": st.get("status")}, 200
+
+
+def campaign_preflight(q: dict) -> tuple[dict, int]:
+    """Can the lab run on its own right now? What a walk-away start needs, checked."""
+    ex = S.sources.executor
+    if ex is None:
+        return {"ok": True, "ready": False, "checks": [{"id": "executor", "ok": False, "label": "The executor is available",
+                                                        "detail": "tools/executor is missing"}]}, 200
+    lab = ex.Lab(_hub())
+    prog = lab.prog()
+    status = S.sources.executor_status()
+    backend = prog.get("backend") or "claude"
+    cli = (status.get("clis") or {}).get(backend) or {}
+    checks = [{"id": "launch", "ok": bool(prog.get("enabled")), "label": "Agents may be started from the dashboard",
+               "detail": "Settings → Autonomy & limits → Launching agents", "fix": "settings/autonomy"},
+              {"id": "cli", "ok": bool(cli.get("found") or cli.get("path") or cli.get("version")),
+               "label": f"The {backend} CLI is installed", "detail": cli.get("version") or cli.get("error") or "",
+               "fix": "settings/agents"}]
+    li = cli.get("logged_in")
+    checks.append({"id": "auth", "ok": li is not False, "label": f"{backend} is signed in",
+                   "detail": "" if li else ("not signed in — Settings → Agents → Sign in…" if li is False else
+                                            "can't tell from here — checked on the first run"), "fix": "settings/agents"})
+    pm = str(prog.get("permission_mode") or "auto")
+    checks.append({"id": "perm", "ok": pm in ("auto", "acceptEdits", "dontAsk"),
+                   "label": "Agents won't stop to ask for tool permissions", "detail": f"permission mode: {pm}",
+                   "fix": "settings/autonomy"})
+    root = lab.projects_root()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        probe = root / ".newts-write-test"
+        probe.write_text("x", encoding="utf-8")
+        probe.unlink()
+        writable = True
+    except OSError:
+        writable = False
+    checks.append({"id": "projects", "ok": writable, "label": "The projects folder is writable", "detail": str(root),
+                   "fix": "settings/lab"})
+    import shutil as _sh  # noqa: PLC0415
+    tex = bool(_sh.which("latexmk") or _sh.which("pdflatex") or _sh.which("tectonic"))
+    checks.append({"id": "latex", "ok": tex, "warn_only": True, "label": "LaTeX is installed (papers compile to PDF)",
+                   "detail": "" if tex else "without it papers stay .tex and Gate 3 can't be delegated"})
+    try:
+        from executor import awake  # noqa: PLC0415
+        aw = awake.status()
+    except Exception:  # noqa: BLE001
+        aw = {"available": False, "detail": ""}
+    checks.append({"id": "awake", "ok": bool(aw.get("available")), "warn_only": True,
+                   "label": "The computer stays awake while agents work", "detail": aw.get("detail") or ""})
+    return {"ok": True, "checks": checks, "ready": all(c["ok"] for c in checks if not c.get("warn_only"))}, 200
 
 
 # ── revive ───────────────────────────────────────────────────────────────────
@@ -836,6 +913,10 @@ LAB_CONFIG = {
     "venue": (["writing", "venue"], _strv(40, r"^[A-Za-z0-9 ._-]+$")),
     "page_limit": (["writing", "page_limit"], _intv(1, 100)),
     "max_concurrent_projects": (["autopilot", "max_concurrent_projects"], _intv(1, 16)),
+    "loop_mode": (["loop", "mode"], lambda v: _enum_s(v, ("execute", "explore"))),
+    "explore_rounds": (["loop", "explore_max_expansion_rounds"], _intv(0, 20)),
+    "in_project_approval": (["ideation", "in_project_approval"], lambda v: _enum_s(v, ("pi", "campaign_auto"))),
+    "keep_awake": (["lab", "keep_awake"], lambda v: _enum_s("off" if v is False else v, ("auto", "off"))),
 }
 
 
@@ -861,6 +942,7 @@ def lab_config_get() -> tuple[dict, int]:
             tier = m.group(1)
     out["budget_tier"] = tier
     out["name"] = out.get("name") or _hub().name
+    out["keep_awake"] = "off" if out.get("keep_awake") is False else (out.get("keep_awake") or "auto")
     return {"ok": True, "config": out, "setup": setup_status()}, 200
 
 
@@ -1017,7 +1099,15 @@ def server_stop(body: dict) -> tuple[dict, int]:
         return {"error": "no server handle"}, 500
     S._pi_log({"action": "server.stop"})
     threading.Timer(0.5, srv.shutdown).start()
-    return {"ok": True, "note": "the dashboard server is stopping — running agents keep going"}, 200
+    note = "the dashboard server is stopping — running agents keep going"
+    try:
+        from executor import campaigns  # noqa: PLC0415
+        live = [c for c in campaigns.all_states(S.sources.executor.Lab(_hub())) if c.get("status") in ("active", "finishing")]
+        if live:
+            note += f", and a background scheduler keeps {len(live)} campaign(s) going"
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "note": note}, 200
 
 
 # ── System: what this machine offers + how training runs here (compute.scheduler) ──────────────

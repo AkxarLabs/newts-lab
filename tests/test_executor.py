@@ -254,13 +254,19 @@ def _queue(lab, n, **kw):
     return [executor.enqueue(lab, RunSpec(skill="advance", target=f"idea-{i}", **kw))["run_id"] for i in range(n)]
 
 
-def test_hub_cap_serializes_hub_sessions(hub):
-    lab = setup(hub, extra="    hub_max_concurrent: 1\n    max_concurrent_total: 5\n")
-    ids = _queue(lab, 3)
+def test_hub_cap_serializes_lab_wide_hub_sessions_but_not_per_study_ones(hub):
+    """hub_max_concurrent caps hub sessions that aren't about a study; a hub run about a study (e.g.
+    /analyze idea-x) counts against that study, so one long hub procedure doesn't block the others."""
+    lab = setup(hub, extra="    hub_max_concurrent: 1\n    max_concurrent: 1\n    max_concurrent_total: 5\n")
+    lab_wide = [executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"] for _ in range(2)]
+    per_study = _queue(lab, 2)
+    again = executor.enqueue(lab, RunSpec(skill="advance", target="idea-0"))["run_id"]
     sp = Spawns()
     rep = executor.tick(lab, spawn=sp)
-    assert rep["started"] == [ids[0]] and sp.calls == [("hub", ids[0])]
-    assert executor.find_run(lab, ids[1])[3]["status"] == "queued"
+    started = set(rep["started"])
+    assert len(started & set(lab_wide)) == 1                                 # one lab-wide hub session
+    assert len(started & {per_study[0], again}) == 1 and per_study[1] in started   # one per study
+    assert len(started) == 3
 
 
 def test_total_cap_and_priority_and_not_before(hub):

@@ -36,8 +36,10 @@
       ${it.next && it.next !== '-' ? html`<div class="scard-next muted small clip">${it.next}</div>` : null}</a>`;
   };
 
-  NL.StudiesPage = () => {
+  NL.StudiesPage = ({ query }) => {
     const s = NL.useLab();
+    useEffect(() => { if (query && query.campaign) NL.openCampaign(query.campaign); }, [query && query.campaign]);
+    const camps = NL.campaignsOf(s).filter(c => !['done', 'stopped'].includes(c.status) || (Date.now() - new Date(c.created)) < 3 * 86400e3);
     const [view, setView] = useState(NL.ls.get('nl-studies-view', 'board'));
     const [q, setQ] = useState('');
     const items = (s.items || []).filter(i => !q || (i.title + ' ' + i.id).toLowerCase().includes(q.toLowerCase()));
@@ -46,7 +48,9 @@
       <header class="page-head"><div><h1>Studies</h1><p class="lede">Every idea and project, by stage. An idea and the project it grows into are one study.</p></div>
         <div class="row"><input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} />
           <${NL.Seg} value=${view} onChange=${setV} options=${[{ value: 'board', label: 'Board' }, { value: 'table', label: 'Table' }]} />
+          <${NL.Btn} icon="⟳" onClick=${() => NL.openStart({ intent: 'campaign' })}>Campaign</${NL.Btn}>
           <${NL.Btn} kind="primary" icon="✦" onClick=${() => NL.openStart({ intent: 'ideate' })}>New direction</${NL.Btn}></div></header>
+      ${camps.length ? html`<div class="camp-row">${camps.map(c => html`<${NL.CampaignCard} key=${c.name} c=${c} />`)}</div>` : null}
       ${!(s.items || []).length ? html`<${NL.Empty} icon="🌱" title="No studies yet">Explore a direction and the lab files its best ideas here as studies.
         <div class="row center"><${NL.Btn} kind="primary" onClick=${() => NL.openStart({ intent: 'ideate' })}>Explore a new direction</${NL.Btn}><${NL.Btn} onClick=${() => NL.openStart({ intent: 'adopt' })}>Bring in what I have</${NL.Btn}></div></${NL.Empty}>`
       : view === 'board' ? html`<div class="board">${NL.ROOMS.map(room => {

@@ -15,6 +15,7 @@ Exposed:
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -23,6 +24,10 @@ import pytest
 
 # tests/ lives directly under the repo root.
 REPO = Path(__file__).resolve().parents[1]
+
+# a supervisor that exits with work left starts its own scheduler when none is running (the dashboard
+# was closed) — never inside the test suite, where each test drives the scheduler itself
+os.environ.setdefault("NEWTS_NO_AUTOTICKER", "1")
 
 
 def load(name: str):

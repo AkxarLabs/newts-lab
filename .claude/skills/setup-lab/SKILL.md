@@ -48,14 +48,10 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   them into the `.claude/agents/*.md` + `.codex/agents/*.toml` role files (a role key may also name
   a model directly). `critic_model` (ideation critics / scoping advocates) is applied on Claude Code
   via `/ideate` & `/scope`'s per-spawn Task `model`; other backends run them at the session model.
-- **Headless launch backend** (only matters once you run programmatic / multi-project autonomy):
-  the master switch `agents.programmatic.enabled` ships **false** and stays false unless the PI opts
-  in here. If they do: ask the backend (`claude` default · `codex` / `opencode` optional installs),
-  the per-backend default model + reasoning effort, and the permission posture — the ship-defaults
-  and full option list are documented in `lab/config.yaml`'s `agents.programmatic` comments (which
-  you're editing anyway); confirm each with the PI (codex/opencode model availability is
-  auth-dependent — verify the slug on the host, `opencode auth login` if chosen) → write
-  `agents.programmatic.*`.
+- **Headless launch settings** (`agents.programmatic.*`: whether the dashboard may start agents, the
+  backend, its model, the permission posture, limits) are the PI's dashboard settings — the setup
+  wizard's Agents and Autonomy steps, or Settings → Autonomy & limits. Don't write them from here (the
+  signature guard refuses it in a headless run); if the PI asks, point them there.
 - Semantic Scholar API key? (Free with an institutional email — strongly recommended;
   keyless access is saturated.) → tell them to set `S2_API_KEY`; same for
   `OPENALEX_API_KEY`.
@@ -71,12 +67,10 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   control.yaml). If no, skip — absence means "no constraints beyond the protocol".
 
 **Dashboard (optional)**
-- The lab ships a localhost dashboard — `uv run python dashboard/serve.py` (binds `dashboard.port`,
-  default `8787`) — for watching runs, the bus, and gates live. It can deep-link into your editor
-  via the `dashboard.editor` scheme, and because it drives localhost the PI can sign **Gate 1 /
-  Gate 2** from it directly; **Gate 3 is never signable from the dashboard** — finalization is
-  always done in a session. Both keys are agent-readable local cosmetics; mention it and move on if
-  unused.
+- The lab's dashboard (`Start Newts Lab`, or `uv run --with pyyaml python newts.py`) is where the PI
+  starts work, watches runs and signs gates — Gate 1, Gate 2 and Gate 3 (with a typed confirmation) —
+  and signs campaigns, which can delegate Gate 1/2 and, if the PI ticks it, Gate 3. `dashboard.*` keys
+  are the PI's dashboard settings; mention the dashboard and move on.
 
 ## 2. Apply & verify
 

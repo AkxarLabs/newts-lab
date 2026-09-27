@@ -90,7 +90,8 @@
     const load = () => NL.get('/api/lab/config').then(x => { setC(x.config || {}); setV({ ...(x.config || {}) }); });
     useEffect(() => { load(); }, []);
     if (!c) return html`<${NL.Spinner} />`;
-    const keys = ['name', 'projects_root', 'max_concurrent_runs', 'oversight', 'venue', 'page_limit', 'max_concurrent_projects'];
+    const keys = ['name', 'projects_root', 'max_concurrent_runs', 'oversight', 'venue', 'page_limit', 'max_concurrent_projects',
+      'loop_mode', 'explore_rounds', 'in_project_approval', 'keep_awake'];
     const diff = keys.filter(k => String(v[k] ?? '') !== String(c[k] ?? ''));
     const set = (k, x) => setV(o => ({ ...o, [k]: x }));
     const save = async () => {
@@ -108,6 +109,10 @@
       <${NL.Field} label="Oversight"><${NL.Seg} value=${v.oversight || 'standard'} onChange=${x => set('oversight', x)} options=${[{ value: 'standard', label: 'Standard' }, { value: 'strict', label: 'Strict' }]} /></${NL.Field}>
       <${NL.Field} label="Target venue"><${NL.Input} value=${v.venue} onInput=${x => set('venue', x)} placeholder="neurips, icml, …" /></${NL.Field}>
       <${NL.Field} label="Page limit"><${NL.Input} type="number" min="1" value=${v.page_limit} onInput=${x => set('page_limit', x)} /></${NL.Field}>
+      <${NL.Field} label="Research loops" hint="explore: a project's loop may widen its plan and reopen supporting decisions within its signed envelope"><${NL.Seg} value=${v.loop_mode || 'execute'} onChange=${x => set('loop_mode', x)} options=${[{ value: 'execute', label: 'Follow the plan' }, { value: 'explore', label: 'Explore' }]} /></${NL.Field}>
+      <${NL.Field} label="Plan-widening rounds per loop" hint="explore mode only"><${NL.Input} type="number" min="0" value=${v.explore_rounds ?? 0} onInput=${x => set('explore_rounds', x)} /></${NL.Field}>
+      <${NL.Field} label="New approaches inside a campaign" hint="a headline-changing idea found mid-project"><${NL.Seg} value=${v.in_project_approval || 'pi'} onChange=${x => set('in_project_approval', x)} options=${[{ value: 'pi', label: 'Ask me' }, { value: 'campaign_auto', label: 'Within the campaign bounds' }]} /></${NL.Field}>
+      <${NL.Field} label="Keep the computer awake" hint="while agents work or a campaign runs (the screen may still turn off)"><${NL.Seg} value=${v.keep_awake || 'auto'} onChange=${x => set('keep_awake', x)} options=${[{ value: 'auto', label: 'While working' }, { value: 'off', label: 'Never' }]} /></${NL.Field}>
       <${NL.Field} label="Budget tier" hint="how much exploration each procedure does"><div class="row">${['low', 'medium', 'high'].map(t => html`<${NL.Btn} small onClick=${() => tier(t)}>${t}</${NL.Btn}>`)}</div></${NL.Field}>
     </div><div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div>
     <div class="stack"><button class="link" onClick=${() => NL.open(NL.DocEditSheet, { which: 'system' })}>Describe this machine for the agents (SYSTEM.md) →</button>

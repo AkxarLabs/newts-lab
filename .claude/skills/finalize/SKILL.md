@@ -16,10 +16,12 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
    state is right (`internal-review` for a paper, `active`+`target.active` for target-driven), a Gate-3
    marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`), **and**
    `AUTOSCIENTIST_NO_GATE3` is unset — so a launched/headless agent can never finalize on its own (it
-   stops at `internal-review`). The one exception is the run the PI starts right after signing Gate 3 in
-   the dashboard: the signature is `studies/<slug>/paper/gate3-approval.md` (`signed_via: dashboard:…`) and
-   that run has `AUTOSCIENTIST_NO_GATE3` unset. Never write that file yourself. A nonzero exit stops
-   finalization before any file changes.
+   stops at `internal-review`). The one exception is the single run started from a Gate-3 record: the PI's
+   signature in the dashboard (`studies/<slug>/paper/gate3-approval.md`, `signed_via: dashboard:…`), or the
+   record the executor's campaign keeper writes when the PI's signed campaign brief delegates Gate 3
+   (`signed_via: campaign:lab/campaigns/<f>`, valid only while that delegation holds). That run has
+   `AUTOSCIENTIST_NO_GATE3` unset. Never write that file yourself. A nonzero exit stops finalization
+   before any file changes.
 2. **Reproducibility pass on the project repo** (so others can build on it):
    - `uv run pytest` green; smoke config runs clean from a fresh `uv sync`.
    - README's Reproduce section accurate; every paper-cited run id present in `runs/registry.jsonl`; figure scripts regenerate the paper's figures.
@@ -31,6 +33,6 @@ Input: idea in `internal-review` with PI Gate 3 approval. Output: everything clo
    - `FINDINGS.md`: final confirmed findings with evidence pointers (paper section + run ids).
    - `FAILURES.md` / `OPEN-QUESTIONS.md`: harvest everything the project learned that didn't make the paper — future-work threads are next cycle's `/ideate` fuel.
    - **Verify the write-back landed:** `uv run --with pyyaml python tools/guard.py evolve <slug>` — a WARN means the RECIPE (the reusable success recipe) wasn't distilled to `FINDINGS.md`/`NOTES.md`; fix before step 4. Then `uv run --with pyyaml python tools/guard.py writeback <slug>` — WARN-only, confirms the rule-11 write-back landed.
-   - **Procedure retrospective:** one paragraph in the lab notebook — where did the procedures (skills) fight you or fail? Propose concrete edits to the relevant SKILL.md files to the PI. This is how the lab itself improves.
+   - **Procedure retrospective:** one paragraph in the lab notebook — where did the procedures (skills) fight you or fail? Propose concrete changes to the PI as instruction proposals (`uv run --with pyyaml python tools/workflow.py propose --proc <procedure> --mode add|replace --file <draft.md> --why "<what went wrong>"`; the PI accepts them on the dashboard's Workflow page). This is how the lab itself improves.
 4. IDEA.md + registry → `final`, with pointers to paper PDF and project tag. Notebook entry. Emit `tools/lab_bus.py emit gate_resolved --idea <slug> --detail "Gate 3 → final"`.
 5. Report: deliverable paths, the findings recorded, and proposed procedure improvements. Anything beyond the lab (arXiv, submission) is the PI's action — AI involvement must be disclosed per venue policy.

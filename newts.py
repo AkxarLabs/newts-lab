@@ -188,7 +188,7 @@ def background(hub: Path, port: int | None, demo: bool) -> dict:
     logs.mkdir(parents=True, exist_ok=True)
     log = (logs / f"{lab_key(hub)}.log").open("ab")
     argv = [sys.executable, str(Path(__file__).resolve()), "--hub", str(hub), "--port", str(port), "--no-browser",
-            *(["--demo"] if demo else [])]
+            "--foreground", *(["--demo"] if demo else [])]
     procs = _procs()
     child = subprocess.Popen(argv, cwd=str(hub), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                              env={**os.environ, "NEWTS_BACKGROUND": "1"}, close_fds=True, **procs.DETACHED)
@@ -210,7 +210,10 @@ def main() -> int:
     ap.add_argument("--hub", default=str(HERE), help="the lab to open (default: this folder)")
     ap.add_argument("--port", type=int, default=None, help="default: 8787, or the next free port")
     ap.add_argument("--no-browser", action="store_true")
-    ap.add_argument("--background", action="store_true", help="detach; keeps running after this shell exits")
+    ap.add_argument("--background", action="store_true", help="detach and return (prints where it runs)")
+    ap.add_argument("--foreground", action="store_true",
+                    help="run the server in this window (closing it stops the dashboard's scheduling; by default "
+                         "the server runs detached so the lab keeps working after you close the window)")
     ap.add_argument("--status", action="store_true", help="is a dashboard running for this lab?")
     ap.add_argument("--stop", action="store_true", help="stop this lab's dashboard (agent runs keep going)")
     ap.add_argument("--json", action="store_true", help="machine-readable output (used by remote connections)")
@@ -259,6 +262,22 @@ def main() -> int:
         print(f"Newts' Lab is already running for {hit[1].get('name')} — {url}")
         if headless():
             print(tunnel_hint(hit[0]))
+        elif not a.no_browser:
+            webbrowser.open(url)
+        return 0
+
+    if not a.foreground and not os.environ.get("NEWTS_BACKGROUND"):
+        # the default: a detached server, so closing this window doesn't stop queued runs, retries and campaigns
+        res = background(hub, a.port, a.demo)
+        if not res.get("ok"):
+            print(res.get("error"))
+            return 1
+        url = f"http://127.0.0.1:{res['port']}/"
+        print(f"Newts' Lab is running for {res.get('name')} — {url}\n"
+              "It keeps working when you close this window; stop it from Settings → About & server "
+              "(or: newts.py --stop).")
+        if headless():
+            print(tunnel_hint(res["port"]))
         elif not a.no_browser:
             webbrowser.open(url)
         return 0

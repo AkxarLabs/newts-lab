@@ -5,9 +5,17 @@ description: Authorize and run an unattended end-to-end campaign — multiple id
 
 # Autopilot Campaign
 
-The full-autonomy mode: "one command before bed, drafts in the morning." The campaign
+The full-autonomy mode: "one signature before bed, papers in the morning." The campaign
 delivers papers at **`internal-review`** — fully drafted, claims-audited,
-ensemble-reviewed — for the PI's Gate 3 read. Gate 3 is never delegated.
+ensemble-reviewed — for the PI's Gate 3 read; or, **only if the PI ticked the brief's "Papers may
+finalize without me" box**, finalized by the executor's campaign keeper after its own audits (never by
+an agent — see "Under the campaign keeper" below). Nothing is ever sent outside the lab.
+
+**Started from the dashboard** (the usual way): the PI signs the brief in the campaign form and the
+executor's **campaign keeper** carries it — it starts each `/autopilot continue` cycle, restarts after
+timeouts, usage limits and transient failures, runs the steps you dispatch, and stops at the deadline
+or budget. Follow **"Under the campaign keeper"** below. The authorization conversation (§1) and the
+`launch-many` path are for campaigns started by hand in a session.
 
 ## 1. Authorization conversation (10 minutes, the only interactive part)
 
@@ -22,7 +30,7 @@ ensemble-reviewed — for the PI's Gate 3 read. Gate 3 is never delegated.
    delegated *within its bounds*; Gate 2 envelopes derive from it (written into each spawned
    project's `control.yaml` with `pi_signed: true` and `signed_via: lab/campaigns/<file>`), and
    each project's `LOOP_BRIEF` authorization line is filled "PI via campaign brief
-   `lab/campaigns/<file>`"; Gate 3 is explicitly excluded. This is how the campaign satisfies
+   `lab/campaigns/<file>`"; Gate 3 is excluded unless the PI ticks its box (in the dashboard). This is how the campaign satisfies
    `/research-loop`'s entry gate unattended. A run outside the bounds still queues for the PI; the
    agent never widens an envelope or signs beyond what the brief covers.
 3. PI signs → begin. No brief, no campaign.
@@ -108,7 +116,7 @@ Campaign rules (in addition to every standing hard rule):
   **exactly like a Gate-1 self-approval** — then routes through `/propose` → re-plan; outside bounds
   (or `in_project_approval: pi`) it queues for the PI. Emit `approach_ideate` (per round) and
   `replan` (when an approach re-plans the project, mid-campaign — not only at exit). Frozen-set
-  changes, envelope overruns, and **Gate 3 are never delegated**.
+  changes and envelope overruns are never delegated; Gate 3 only by the brief's own box, through the keeper.
 - Every lifecycle step appends a Campaign Log row **and** emits a bus event
   (`tools/lab_bus.py emit cycle --idea <slug> --detail "<step> → <outcome>"`); at the start of each
   portfolio pass, check `tools/lab_bus.py inbox` and act on any PI directive.
@@ -149,7 +157,33 @@ not a fresh start — **skip §1 entirely** (never interview an absent PI at 3am
 Campaign Log rows are appended **on each step's completion, before starting the next** —
 so the row after the last one is the resume point, and a missing row means re-verify.
 
-## Keeping it running
+## Under the campaign keeper (a dashboard-started campaign)
+
+The run's preamble says `CAMPAIGN CYCLE n of <campaign>`. Then:
+
+1. **One cycle = one portfolio pass**, the Re-entry path below (never §1): rebuild state, reconcile,
+   decide each idea's next step.
+2. **Dispatch, don't do.** Start each step as its own run:
+   `python tools/lab_bus.py emit campaign_dispatch --run-id $NEWTS_RUN_ID --data skill=<procedure> --data target=<slug or hub>`
+   (optional `--data args="<args>"`). The keeper validates it (a launchable procedure, the study belongs
+   to this campaign and isn't waiting for the PI, no duplicate, the brief's parallelism) and runs it with
+   retries; its result is in the study's files and the run's footer by your next cycle. Short CPU-light
+   bookkeeping (the Campaign Log, the notebook, a registry fix) you may do yourself.
+3. **Membership:** append the idea's Campaign Log row **before** dispatching its first step — the log is
+   how the keeper knows the study is part of this campaign.
+4. **Never ask the PI.** A step that needs a decision outside the brief (a proposal out of bounds, a
+   kill decision, a frozen-set change) is reported by that step's own run (`needs_pi`, `study=<slug>`):
+   only that study waits; carry on with the others. Read PI directives (`tools/lab_bus.py inbox`) each pass.
+5. **Gate 3:** never dispatch `/finalize`. If the brief delegates Gate 3, the keeper records it for a
+   paper whose `/review-paper` reported `needs_pi=gate3`, after re-running the paper audits itself, and
+   starts `/finalize`; otherwise the paper waits for the PI.
+6. **Footer:** end every cycle with the run footer plus `--data campaign=continue|idle|done` (`done` when
+   every target idea is at internal-review / final / killed, or a stop condition holds). A cycle marked
+   FINAL (deadline, budget, or the PI's Stop) dispatches nothing and writes the morning report (§3).
+
+The keeper is the scheduler: don't `/loop`, don't background yourself, don't `launch-many`.
+
+## Keeping it running (a campaign started by hand in a session)
 
 Within one session this skill just runs. For resilience across a long night, pair it with Claude
 Code's built-in scheduler: `/loop 30m /autopilot continue <campaign-file>` re-enters the campaign

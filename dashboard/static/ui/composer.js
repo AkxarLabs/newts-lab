@@ -147,6 +147,7 @@
       <p class="muted small">A free-form agent session, as you, with your login. It can run any lab procedure; gates, envelopes and Gate 3 still wait for your signature — it cannot sign them.</p>
       <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${go}>Send</${NL.Btn}></div></div>`;
   };
+  NL.openNote = (target, text) => NL.open(NoteDialog, { target: target || 'hub', text: text || '' }, { kind: 'dialog' });
   const NoteDialog = ({ target, text, onClose }) => {
     const [t, setT] = useState(text || '');
     const go = async () => { const r = await NL.act('/api/directive', { target, text: t.trim() }, 'Note pinned — the next agent reads it at its next checkpoint'); if (r.ok) onClose(); };
@@ -157,34 +158,61 @@
   };
 
   /* ── Plan a campaign (writes + signs lab/campaigns/<date>-<slug>.md) ───── */
+  /* what a walk-away start needs, checked live (GET /api/campaign/preflight) */
+  NL.Preflight = ({ onReady }) => {
+    const [p, setP] = useState(null);
+    const load = () => NL.get('/api/campaign/preflight').then(x => { setP(x); onReady && onReady(!!(x && x.ready)); });
+    useEffect(() => { load(); }, []);
+    if (!p) return html`<${NL.Spinner} />`;
+    return html`<div class="preflight">${(p.checks || []).map(c => html`<div class=${cls('pf-row', c.ok ? 'ok' : c.warn_only ? 'warn' : 'bad')} key=${c.id}>
+        <span class="pf-ico">${c.ok ? '✓' : c.warn_only ? '!' : '✕'}</span><span class="pf-t"><b>${c.label}</b>${c.detail ? html`<small>${c.detail}</small>` : null}</span>
+        ${!c.ok && c.fix ? html`<a class="link small" href=${'#/' + c.fix} onClick=${() => NL.closeTop && NL.closeTop()}>fix →</a>` : null}</div>`)}
+      <div class="row end"><button type="button" class="link small" onClick=${load}>check again</button></div></div>`;
+  };
+
   const CampaignForm = ({ onDone }) => {
     const [f, setF] = useState({ direction: '', name: '', ideas: 3, parallel: 1, compute_total: '', full_runs: 3, full_minutes: 60,
-      max_open_questions: 2, mode: 'execute', explore_rounds: 1, explore_lines: 2, wall_clock: 'tonight, 8h' });
-    const [every, setEvery] = useState(30);
+      max_open_questions: 2, mode: 'execute', explore_rounds: 1, explore_lines: 2, hours: 12, agent_hours: 0,
+      cycle_minutes: 90, repeat_minutes: 20, gate3: false });
+    const [ready, setReady] = useState(false);
+    const [more, setMore] = useState(false);
     const set = (k, v) => setF(o => ({ ...o, [k]: v }));
+    const until = new Date(Date.now() + (+f.hours || 0) * 3600e3);
     const sign = async (launch) => {
       if (!f.direction.trim()) return NL.toast('Describe the direction first', 'warn');
-      const ok = await NL.confirm({ title: 'Sign this campaign?', ok: launch ? 'Sign and start' : 'Sign',
-        body: html`<p>Your signature lets agents approve proposals on their own <b>within these bounds</b> and derive each project's FULL-run envelope from it. Gate 3 is never delegated — papers stop at internal review.</p>` });
+      const body = html`<div><p>Your signature lets the lab work on its own <b>within these bounds</b>: agents approve proposals that fit them (Gate 1) and derive each project's FULL-run envelope (Gate 2) from it. Anything outside the bounds waits for you, and the rest of the campaign carries on.</p>
+        <p>${f.gate3 ? html`<b>Papers may finalize without you.</b> Once a paper passes internal review, the lab itself re-runs the paper audits and, if they are clean, records Gate 3 and runs /finalize. Nothing is sent outside the lab. You can revoke this, or hold a study, from the campaign card.` : html`Papers stop at <b>internal review</b> for your Gate 3.`}</p>
+        <p class="muted">It runs until ${until.toLocaleString()}${+f.agent_hours ? ` or ${f.agent_hours} agent-hours` : ''}, restarting after timeouts, usage limits and network errors. Stop it any time.</p></div>`;
+      const ok = await NL.confirm({ title: 'Sign this campaign?', ok: launch ? 'Sign and start' : 'Sign', body,
+        typed: f.gate3 ? 'finalize' : undefined });
       if (!ok) return;
-      const r = await NL.act('/api/campaign', { confirm: true, fields: f, launch, repeat_minutes: every, max_repeats: 48 });
-      if (r.ok) { onDone && onDone(); if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id); }
+      const r = await NL.act('/api/campaign', { confirm: true, fields: f, launch, gate3_typed: f.gate3 ? 'finalize' : undefined });
+      if (r.ok) { onDone && onDone(); if (r.campaign) NL.go('studies?campaign=' + encodeURIComponent(r.campaign)); }
     };
-    return html`<div class="intent-detail"><div class="explain"><div><b>A campaign</b> carries several ideas from ideation to an internal-review draft, unattended, within bounds you sign here. It re-enters every ${every} minutes and stops at anything outside the bounds.</div></div>
+    return html`<div class="intent-detail"><div class="explain"><div><b>A campaign</b> carries several ideas from ideation to reviewed papers while you're away — within bounds you sign here. The lab keeps it going by itself: each pass looks at every idea and starts its next step.</div></div>
       <${NL.Field} label="Research direction"><${NL.Textarea} rows="2" value=${f.direction} onInput=${v => set('direction', v)} placeholder="what the campaign explores" /></${NL.Field}>
       <div class="grid3">
         <${NL.Field} label="Ideas to carry"><${NL.Input} type="number" min="1" value=${f.ideas} onInput=${v => set('ideas', v)} /></${NL.Field}>
         <${NL.Field} label="At once"><${NL.Input} type="number" min="1" value=${f.parallel} onInput=${v => set('parallel', v)} /></${NL.Field}>
-        <${NL.Field} label="Wall-clock"><${NL.Input} value=${f.wall_clock} onInput=${v => set('wall_clock', v)} /></${NL.Field}>
-        <${NL.Field} label="Total compute"><${NL.Input} value=${f.compute_total} onInput=${v => set('compute_total', v)} placeholder="e.g. 8 GPU-hours" /></${NL.Field}>
+        <${NL.Field} label="Run for (hours)" hint=${'until ' + until.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}><${NL.Input} type="number" min="1" value=${f.hours} onInput=${v => set('hours', v)} /></${NL.Field}>
+        <${NL.Field} label="Total compute" hint="written into the brief"><${NL.Input} value=${f.compute_total} onInput=${v => set('compute_total', v)} placeholder="e.g. 8 GPU-hours" /></${NL.Field}>
         <${NL.Field} label="FULL runs per project"><${NL.Input} type="number" min="0" value=${f.full_runs} onInput=${v => set('full_runs', v)} /></${NL.Field}>
         <${NL.Field} label="Minutes per FULL run"><${NL.Input} type="number" min="0" value=${f.full_minutes} onInput=${v => set('full_minutes', v)} /></${NL.Field}>
-        <${NL.Field} label="Open questions allowed at scoping"><${NL.Input} type="number" min="0" value=${f.max_open_questions} onInput=${v => set('max_open_questions', v)} /></${NL.Field}>
-        <${NL.Field} label="Loop mode"><${NL.Seg} value=${f.mode} onChange=${v => set('mode', v)} options=${[{ value: 'execute', label: 'Execute the plan' }, { value: 'explore', label: 'Explore' }]} /></${NL.Field}>
-        <${NL.Field} label="Re-enter every (min)"><${NL.Input} type="number" min="5" value=${every} onInput=${setEvery} /></${NL.Field}>
       </div>
+      <label class="check-row"><input type="checkbox" checked=${f.gate3} onChange=${e => set('gate3', e.target.checked)} />
+        <span><b>Papers may finalize without me</b><small>The lab records Gate 3 only after internal review accepts the paper and its own re-run of the paper audits (claims, seeds, ablations, eval discipline) is clean. Nothing leaves the lab.</small></span></label>
+      <button type="button" class="link small" onClick=${() => setMore(!more)}>${more ? 'Fewer options' : 'More options…'}</button>
+      ${more ? html`<div class="grid3">
+        <${NL.Field} label="Agent-hours budget" hint="0 = only the wall-clock limit"><${NL.Input} type="number" min="0" value=${f.agent_hours} onInput=${v => set('agent_hours', v)} /></${NL.Field}>
+        <${NL.Field} label="A pass every (min)"><${NL.Input} type="number" min="5" value=${f.repeat_minutes} onInput=${v => set('repeat_minutes', v)} /></${NL.Field}>
+        <${NL.Field} label="Longest pass (min)"><${NL.Input} type="number" min="10" value=${f.cycle_minutes} onInput=${v => set('cycle_minutes', v)} /></${NL.Field}>
+        <${NL.Field} label="Open questions allowed at scoping"><${NL.Input} type="number" min="0" value=${f.max_open_questions} onInput=${v => set('max_open_questions', v)} /></${NL.Field}>
+        <${NL.Field} label="Research loops"><${NL.Seg} value=${f.mode} onChange=${v => set('mode', v)} options=${[{ value: 'execute', label: 'Follow the plan' }, { value: 'explore', label: 'Explore' }]} /></${NL.Field}>
+        <${NL.Field} label="Name" hint="optional"><${NL.Input} value=${f.name} onInput=${v => set('name', v)} placeholder="e.g. routing-sprint" /></${NL.Field}>
+      </div>` : null}
       <div class="muted small">Proposals are self-approved only when all hold: within the budget above, kill criteria + frozen eval present, novelty verdict “novel”, scoping passed. Anything else waits for you.</div>
-      <div class="row end"><${NL.Btn} onClick=${() => sign(false)}>Sign only</${NL.Btn}><${NL.Btn} kind="primary" onClick=${() => sign(true)}>Sign and start</${NL.Btn}></div></div>`;
+      <${NL.Section} title="Before you walk away"><${NL.Preflight} onReady=${setReady} /></${NL.Section}>
+      <div class="row end"><${NL.Btn} onClick=${() => sign(false)}>Sign only</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!ready} title=${ready ? '' : 'fix the checks above first'} onClick=${() => sign(true)}>Sign and start</${NL.Btn}></div></div>`;
   };
   NL.CampaignForm = CampaignForm;
 })();

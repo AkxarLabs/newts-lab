@@ -23,7 +23,7 @@ from .manifest import (ACTIVE, PAUSED, RESUMABLE, SCHEMA, TERMINAL, all_runs, em
                        new_run_id, now, parse_ts, run_dir, safe_id, scheduler_lock, transition)
 from .procs import is_locked, kill_tree
 from .spec import (ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, preamble, render_prompt, slash_command,
-                   stage_brief, validate)
+                   campaign_block, stage_brief, validate)
 
 MAX_ANSWER_BYTES = 4096
 MAX_REPLY_CHARS = 4000
@@ -65,7 +65,10 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
     is_ask = v["skill"] == ASK
     prompt = v["prompt"] if is_ask else (spec.prompt_override or render_prompt(lab, v, backend))
     (rd / "prompt.md").write_text(prompt, encoding="utf-8")
-    (rd / "preamble.md").write_text(preamble(lab, run_id, v, backend), encoding="utf-8")
+    pre = preamble(lab, run_id, v, backend)
+    if spec.campaign:
+        pre += "\n\n" + campaign_block(lab, spec, v, run_id)
+    (rd / "preamble.md").write_text(pre, encoding="utf-8")
     max_minutes = pos_float(spec.max_minutes, 0.0) or pos_float(prog.get("max_minutes"), 240.0) or 240.0
     m = {
         "schema": SCHEMA, "run_id": run_id, "agent_id": run_id,
@@ -85,6 +88,7 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
         "repeat_minutes": spec.repeat_minutes, "max_repeats": spec.max_repeats,
         "repeat_index": int(spec.extra.get("repeat_index") or 0),
         "not_before": spec.extra.get("not_before"),
+        "campaign_cycle": spec.extra.get("campaign_cycle"), "campaign_final": bool(spec.extra.get("campaign_final")),
         "status": None, "attempt": 0, "attempts": [], "session_id": None,
         "stream": f"{run_id}.stream.jsonl", "pid": None, "supervisor_pid": None,
         "started": None, "finished": None, "wall_seconds": None, "exit_code": None,

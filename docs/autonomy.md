@@ -113,7 +113,7 @@ is constitutionally yours.
 |---|---|---|
 | Gate 1 (proposal) | you approve each | **delegated within signed bounds** (budget caps, kill criteria present, `novel` verdict, scoping passed) — anything outside queues for you |
 | Gate 2 (FULL runs) | you approve / envelope | envelope derived from the campaign brief into each project's `control.yaml` |
-| Gate 3 (finalize) | you approve each (in a session, or signed in the dashboard with a typed confirmation) | **never delegated** |
+| Gate 3 (finalize) | you approve each (in a session, or signed in the dashboard with a typed confirmation) | only if you tick **Papers may finalize without me**: the executor's campaign keeper (never an agent) records it once the paper passed internal review and its own run of the four paper audits is clean; you can revoke it, or hold one study, any time before /finalize |
 
 Everything else runs exactly as in interactive mode — compute slots, budget watchdogs,
 append-only ledgers, oversight checks, the author-response discipline. A campaign is

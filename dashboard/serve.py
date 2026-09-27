@@ -836,14 +836,26 @@ def start_scheduler() -> bool:
     if executor is None or (_SCHED["thread"] and _SCHED["thread"].is_alive()):
         return False
     stop = threading.Event()
+    os.environ["NEWTS_TICKER"] = "dashboard"
+    from executor import awake  # noqa: PLC0415
 
     def loop():
         while not stop.is_set():
+            busy = False
             for hub in [HUB, *[h for h in list(_SCHED_HUBS) if h != HUB]]:
                 try:
-                    executor.tick(executor.Lab(hub))
+                    lab = executor.Lab(hub)
+                    executor.tick(lab)
+                    busy = executor.scheduler.has_work(lab) or busy
                 except Exception:  # noqa: BLE001 — one bad pass must never kill the loop
                     pass
+            try:   # keep the computer awake while any lab this server schedules is working
+                if busy and awake.enabled(executor.Lab(HUB)):
+                    awake.hold("the lab is working")
+                else:
+                    awake.release()
+            except Exception:  # noqa: BLE001
+                pass
             _KICK.wait(2.0)
             _KICK.clear()
 
@@ -1858,6 +1870,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/envelope": lambda b: product.envelope_set(b),
         "/api/loopbrief/sign": lambda b: product.loopbrief_sign(b),
         "/api/campaign": lambda b: product.campaign_create(b),
+        "/api/campaign/control": lambda b: product.campaign_control(b),
         "/api/revive": lambda b: product.revive(b),
         "/api/doc/save": lambda b: product.doc_save(b),
         "/api/workflow/save": lambda b: product.workflow_save(b),
@@ -1888,6 +1901,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/gate3/readiness": lambda q: (product.gate3_readiness(_safe_id(q.get("idea", "")) or "-"), 200),
         "/api/doc": lambda q: product.doc_get(q.get("which", "")),
         "/api/workflow/item": lambda q: product.workflow_item(q),
+        "/api/campaign/preflight": lambda q: product.campaign_preflight(q),
         "/api/workflow/proposal": lambda q: product.workflow_proposal_get(q),
         "/api/lab/config": lambda q: product.lab_config_get(),
         "/api/keys": lambda q: product.keys_status(),
@@ -2042,7 +2056,24 @@ def main() -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nlights out in the vivarium.")
+    handoff_scheduler()
     return 0
+
+
+def handoff_scheduler() -> None:
+    """The dashboard is going away: if any lab it scheduled still has queued runs or a campaign to keep, hand
+    the scheduling to a detached `executor_cli serve --until-idle` so the work doesn't stall."""
+    if executor is None:
+        return
+    for hub in {HUB, *_SCHED_HUBS}:
+        try:
+            lab = executor.Lab(hub)
+            if executor.scheduler.has_work(lab):
+                (lab.lab / ".bus" / "scheduler.lease").unlink(missing_ok=True)   # our lease ends with us
+                if executor.scheduler.ensure_ticker(lab):
+                    print(f"  work is still queued for {hub.name} — a background scheduler keeps it going")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 if __name__ == "__main__":

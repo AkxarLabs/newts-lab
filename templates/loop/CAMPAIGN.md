@@ -5,7 +5,7 @@
 ## Direction & targets
 
 - **Research direction(s):** <!-- from the PI -->
-- **Target:** carry up to ___ ideas end-to-end (ideation → … → internal-review draft)
+- **Target:** carry up to ___ ideas end-to-end (ideation → … → internal-review draft, or final when Gate 3 is delegated)
 - **Parallelism:** ≤ ___ ideas in flight (compute slots still cap training runs)
 
 ## Gate 1 delegation (the PI pre-authorizes proposal approval WITHIN these bounds)
@@ -24,10 +24,21 @@ each LOOP_BRIEF). Reopening a project's **headline** decision, touching the froz
 exceeding the envelope is checked against these delegation bounds + an overseer `support` pass
 (like Gate-1 self-approval); out of bounds → queue for the PI. Never silent.
 
+## Gate 3 delegation (optional — the PI ticks it or leaves it)
+
+- [ ] Papers may finalize without me (Gate 3 delegated under the checks below)
+
+Unticked (the default): papers stop at `internal-review` with a morning report, and the PI signs
+Gate 3. Ticked: the executor's campaign keeper — never an agent — records Gate 3 for a paper of this
+campaign only when its `/review-paper` accepted it, the PDF and `claims.yaml` exist, no escalation is
+open, and the keeper's OWN run of the four paper audits (claims, multi-seed, ablation coverage, eval
+discipline) is clean; then `/finalize` runs (reproducibility pass, artifacts locked, knowledge written
+back). Nothing is ever sent outside the lab (arXiv/submission stays the PI's). The PI can revoke this,
+or hold a single study, in the dashboard at any time before `/finalize` has run.
+
 ## What is NEVER delegated
 
-- **Gate 3.** Papers end the campaign at `internal-review` — drafts with morning
-  reports, never "final", never sent anywhere.
+- Sending anything outside the lab (arXiv, a submission, email).
 - Changes to frozen settings; budgets beyond this envelope; resurrection of killed ideas.
 
 ## Campaign budget & stop conditions

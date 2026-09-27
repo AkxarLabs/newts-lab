@@ -63,7 +63,7 @@ SHELL_ALWAYS = [
 ]
 SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_approved|gate ?3 approved|"
                         r"PI Gate 3|gate3_approved|\[x\]\s*Authorized", re.I)
-PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.claude/(?:skills|agents)/|agent-roles/|"
+PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.bus/campaigns/|\.claude/(?:skills|agents)/|agent-roles/|"
                              r"\.(?:codex|opencode)/agents/|"
                              r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/stages\.yaml", re.I)
 WRITE_HINT = re.compile(r"(?<![0-9&])>(?!&)|\btee\b|sed\s+-i|perl\s+-\w*i|Set-Content|Add-Content|Out-File|"
@@ -254,6 +254,11 @@ def _rule_campaign(path: Path, old: str | None, new: str) -> str | None:
     if tail(sec_new) != tail(sec_old) and (AUTH_BOX_RE.search(tail(sec_new)) or
                                            re.search(r"\*\*PI:\*\*\s*(?!_)\S", tail(sec_new))):
         return "a campaign brief is signed by the PI only (the dashboard)"
+    g3 = re.compile(r"-\s*\[[xX]\]\s*Papers may finalize without me", re.I)
+    if _count(g3, new) > _count(g3, old):
+        return "delegating Gate 3 is the PI's choice (the dashboard's campaign form)"
+    if "signed_via: dashboard:" in new and "signed_via: dashboard:" not in (old or ""):
+        return "a campaign brief is signed by the PI only (the dashboard)"
     return None
 
 
@@ -262,9 +267,10 @@ def _rule_registry(path: Path, old: str | None, new: str) -> str | None:
         return None
     had = set(FINAL_ROW_RE.findall(old or ""))
     for slug in set(FINAL_ROW_RE.findall(new)) - had:
-        note = _read(HUB / "studies" / slug / "paper" / "gate3-approval.md") or ""
-        if not re.search(r"signed_via:\s*dashboard:", note):
-            return f"{slug} can only become 'final' after the PI signs Gate 3"
+        sys.path.insert(0, str(HERE))
+        import gate3  # noqa: PLC0415
+        if not gate3.delegation_valid(HUB, slug)[0]:
+            return f"{slug} can only become 'final' after the PI signs Gate 3 (or a campaign validly delegates it)"
     return None
 
 
@@ -272,6 +278,8 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
     rel = _rel(path)
     if rel == "lab/.bus/pi-actions.jsonl":
         return "the PI-action log is written by the dashboard only"
+    if rel.startswith("lab/.bus/campaigns/") or rel == "lab/.bus/limits.json":
+        return "campaign state is kept by the executor — the PI changes it in the dashboard"
     if rel != "lab/config.yaml":
         return None
     a, b = _flat(_yaml(old) or {}), _yaml(new)

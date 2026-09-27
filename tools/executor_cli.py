@@ -21,6 +21,7 @@ as in a session; Gate 3 is never delegated. Programmatic launching is PI-owned a
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 import threading
@@ -145,11 +146,18 @@ def cmd_tick(lab: Lab, a) -> int:
 
 
 def cmd_serve(lab: Lab, a) -> int:
-    print(f"[executor] scheduler running for {lab.hub} (every {a.interval}s; Ctrl-C to stop — "
-          "runs already started keep going in their own supervisors)", flush=True)
+    if a.until_idle:
+        age = executor.scheduler.lease(lab).get("age")
+        if age is not None and age < 10:
+            print("[executor] another scheduler is ticking — nothing to do", flush=True)
+            return 0
+        os.environ["NEWTS_TICKER"] = "serve --until-idle"
+    print(f"[executor] scheduler running for {lab.hub} (every {a.interval}s"
+          + ("; exits when idle" if a.until_idle else "; Ctrl-C to stop") + " — runs already started keep going in "
+          "their own supervisors)", flush=True)
     stop = threading.Event()
     try:
-        executor.tick_loop(lambda: Lab(lab.hub), stop, interval=a.interval)
+        executor.tick_loop(lambda: Lab(lab.hub), stop, interval=a.interval, until_idle=a.until_idle)
     except KeyboardInterrupt:
         stop.set()
         print("\n[executor] scheduler stopped")
@@ -211,6 +219,9 @@ def main(argv=None) -> int:
 
     s = sub.add_parser("serve", help="run the scheduler loop")
     s.add_argument("--interval", type=float, default=2.0)
+    s.add_argument("--until-idle", action="store_true", dest="until_idle",
+                   help="exit once nothing is queued, running or being kept (started by a supervisor when "
+                        "the dashboard is closed)")
     s.set_defaults(fn=cmd_serve)
 
     sub.add_parser("tick").set_defaults(fn=cmd_tick)

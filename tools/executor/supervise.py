@@ -259,6 +259,13 @@ def supervise(lab: Lab, run_id: str, target: str) -> int:
         return rc
     finally:
         lock.release()
+        # the dashboard may have been closed hours ago: make sure someone keeps scheduling the rest
+        try:
+            from .scheduler import ensure_ticker   # noqa: PLC0415 — scheduler imports this module's peers
+            if ensure_ticker(lab):
+                _say("no scheduler was running — started `executor_cli serve --until-idle`")
+        except Exception as e:  # noqa: BLE001 — never let this affect the run's outcome
+            _say(f"ensure_ticker: {e}")
 
 
 def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path) -> int:
@@ -507,6 +514,15 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
                      "agents.programmatic.backends.opencode.model to a provider/model you have"
         elif "rate limit" in low or "usage limit" in low:
             reason = "usage limit reached — resume later"
+    # how to treat it: a campaign waits out a usage limit, backs off a transient error, pauses on sign-in
+    fkind = lreset = None
+    if status == "timeout":
+        fkind = "timeout"
+    elif status == "failed":
+        blob = f"{res.last_message or ''} {reason or ''} {json.dumps(res.result or {})[:4000]}"
+        fkind = "cli_missing" if res.cli_missing else backends.failure_kind(blob)
+        if fkind == "usage_limit":
+            lreset = backends.limit_reset(blob)
 
     if wlog and status != "waiting_input":
         worker_line(wlog, worker_id=run_id, role=role, event="stop", status="done", idea=idea)
@@ -532,7 +548,8 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
                    "skill": m.get("skill")})
         return 0
 
-    st.transition(status, reason=reason, finished=now(), exit_code=res.rc, wall_seconds=total_wall, pid=None)
+    st.transition(status, reason=reason, finished=now(), exit_code=res.rc, wall_seconds=total_wall, pid=None,
+                  failure_kind=fkind, limit_reset=lreset)
     emit(lab, workdir, "agent_finished", detail=run_id, status=status, idea=m.get("subject"),
          data={"exit_code": res.rc, "run_id": run_id, "attempt": attempt, "skill": m.get("skill")})
     return 0 if status == "completed" else 2

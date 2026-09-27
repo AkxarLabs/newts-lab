@@ -130,7 +130,9 @@ def main() -> int:
     mode = os.environ.get("FAKE_MODE", "complete")
     if mode == "auto":
         low = prompt.lower()
-        if "/spawn-project" in low or "/discuss" in low:
+        if "/autopilot" in low:
+            mode = "campaign"
+        elif "/spawn-project" in low or "/discuss" in low:
             mode = "defer"
         elif "/experiment" in low or "/improve" in low:
             mode = "subagents"
@@ -207,6 +209,33 @@ def main() -> int:
         out({"type": "result", "subtype": "error", "is_error": True, "session_id": sid,
              "result": "Failed to authenticate: OAuth session expired and could not be refreshed"})
         return 1
+    if mode == "campaign":   # a campaign cycle under the keeper: dispatch a step, report campaign=…
+        pre = ""
+        for f in opts.get("--append-system-prompt-file") or []:
+            try:
+                pre += Path(f).read_text(encoding="utf-8")
+            except OSError:
+                pass
+        import re as _re
+        m = _re.search(r"CAMPAIGN CYCLE (\d+)", pre)
+        n = int(m.group(1)) if m else 1
+        if str(n) == os.environ.get("FAKE_CAMPAIGN_LIMIT_ON_CYCLE"):
+            out({"type": "result", "subtype": "error", "is_error": True, "session_id": sid,
+                 "result": f"Claude AI usage limit reached|{int(time.time()) + 90}"})
+            return 1
+        final = "FINAL CYCLE" in pre
+        hub = Path(os.environ.get("NEWTS_HUB", "."))
+        if not final and os.environ.get("NEWTS_RUN_ID"):
+            with (hub / "lab" / ".bus" / "events.jsonl").open("a", encoding="utf-8") as f:
+                for skill, target in ((("ideate", "hub"),) if n == 1 else (("lab-status", "hub"),)):
+                    f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S") + f".{n}{skill}", "source": "x",
+                                        "kind": "campaign_dispatch", "run_id": os.environ["NEWTS_RUN_ID"],
+                                        "data": {"skill": skill, "target": target}}) + "\n")
+        os.environ["FAKE_REPORT"] = json.dumps({"next": "", "needs_pi": "none", "campaign": "done" if final else "continue",
+                                                "summary": ("morning report written" if final else f"pass {n}: dispatched the next steps")})
+        out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
+            {"type": "text", "text": f"campaign pass {n}: reading the portfolio"}]}})
+        return finish("morning report written" if final else f"pass {n} done")
     if mode == "mcp":
         mcp = (opts.get("--mcp-config") or [None])[0]
         tool = (opts.get("--permission-prompt-tool") or [None])[0]

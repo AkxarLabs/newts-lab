@@ -25,6 +25,7 @@ from .manifest import (ACTIVE, TERMINAL, all_runs, emit, now, parse_ts, read_man
                        scheduler_lock, transition, write_manifest)
 from .procs import DETACHED, is_locked, kill_tree, pid_alive, python_exe
 from .spec import RunSpec, SpecError, SKILL_REGISTRY
+from . import campaigns
 
 CLI = Path(__file__).resolve().parents[1] / "executor_cli.py"
 STARTING_GRACE_S = 60
@@ -128,6 +129,8 @@ def read_report(lab: Lab, workdir: Path, run_id: str) -> dict | None:
     d = rep.get("data") or {}
     needs = str(d.get("needs_pi") or "").strip().lower() or None
     return {"next": (str(d.get("next") or "").strip() or None), "needs_pi": None if needs in (None, "none", "") else needs,
+            "study": (str(d.get("study") or "").strip() or None),
+            "campaign": (str(d.get("campaign") or "").strip().lower() or None),
             "summary": str(d.get("summary") or rep.get("detail") or "")[:600] or None, "ts": rep.get("ts"),
             "source": "footer"}
 
@@ -169,6 +172,8 @@ def post_process(lab: Lab, workdir: Path, path: Path, m: dict) -> None:
         rep = {"next": None, "needs_pi": None, "summary": text[:600] or None, "ts": m.get("finished"),
                "source": "last_message"}
     m["report"] = rep
+    if m.get("failure_kind") == "usage_limit":   # hold this backend's queue until the limit lifts
+        _note_limit(lab, m.get("backend") or "claude", pos_float(m.get("limit_reset"), 0.0) or time.time() + 1800)
     prog = lab.prog()
     clean = m.get("status") == "completed" and not rep.get("needs_pi")
     # chain: follow the run's own `next` command (once, or in a loop until a gate / cap)
@@ -211,6 +216,40 @@ def post_process(lab: Lab, workdir: Path, path: Path, m: dict) -> None:
             m["repeat_error"] = str(e)
     m["post_processed"] = True
     write_manifest(path, m)
+
+
+# ── usage limits: a backend that hit its limit starts nothing until it lifts ─────────────────────
+
+def _limits_path(lab: Lab) -> Path:
+    return lab.lab / ".bus" / "limits.json"
+
+
+def limits(lab: Lab) -> dict:
+    try:
+        d = json.loads(_limits_path(lab).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    t = time.time()
+    return {k: v for k, v in d.items() if isinstance(v, (int, float)) and v > t}
+
+
+def _note_limit(lab: Lab, backend: str, until: float) -> None:
+    d = limits(lab)
+    d[backend] = max(float(until), d.get(backend, 0.0))
+    p = _limits_path(lab)
+    with contextlib.suppress(OSError):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(d), encoding="utf-8")
+
+
+def cap_key(m: dict, target: str) -> str:
+    """What a run counts against: a campaign's cycles (1 at a time), a study (hub runs about a study count
+    as that study's, so a long hub procedure on one study doesn't block every other), or the hub itself."""
+    if m.get("skill") == "autopilot" and m.get("campaign"):
+        return "campaign:" + str(m["campaign"])
+    if m.get("level") == "hub":
+        return ("hub:" + str(m["subject"])) if m.get("subject") else HUB_TARGET
+    return m.get("target") or target
 
 
 # ── caps / brake ─────────────────────────────────────────────────────────────
@@ -303,7 +342,11 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
         depth = pos_int(os.environ.get("AUTOSCIENTIST_AGENT_DEPTH", "0") or 0, 0, 0)
         if not prog.get("enabled") or depth >= pos_int(prog.get("max_depth", 1), 1, 0):
             return report
-        runs = all_runs(lab)   # post-processing may have queued children
+        try:
+            report["campaigns"] = campaigns.keep(lab)
+        except Exception as e:  # noqa: BLE001 — the keeper must never stop scheduling
+            report["campaigns"] = {"error": str(e)}
+        runs = all_runs(lab)   # post-processing and the keeper may have queued runs
         manifests = [m for *_x, m in runs]
         report["brake"] = brake(lab, manifests)
         if report["brake"]:
@@ -313,8 +356,9 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
         n_total = len(active)
         per: dict[str, int] = {}
         for t, m in active:
-            key = HUB_TARGET if m.get("level") == "hub" else (m.get("target") or t)
+            key = cap_key(m, t)
             per[key] = per.get(key, 0) + 1
+        held = limits(lab)
         queued = [(t, w, p, m) for t, w, p, m in runs if m.get("status") == "queued" and m.get("schema") == 2]
         queued.sort(key=lambda x: (-int(x[3].get("priority") or 0), 0 if x[3].get("resume") else 1,
                                    x[3].get("created") or ""))
@@ -323,9 +367,11 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
             nb = parse_ts(m.get("not_before"))
             if nb and nb > tnow:
                 continue
-            key = HUB_TARGET if m.get("level") == "hub" else (m.get("target") or _t)
-            cap_key = c["hub"] if key == HUB_TARGET else c["per_project"]
-            if n_total >= c["total"] or per.get(key, 0) >= cap_key:
+            if held.get(m.get("backend") or "claude"):
+                continue   # that backend's usage limit hasn't lifted yet
+            key = cap_key(m, _t)
+            cap = 1 if key.startswith("campaign:") else c["hub"] if key == HUB_TARGET else c["per_project"]
+            if n_total >= c["total"] or per.get(key, 0) >= cap:
                 continue
             m = read_manifest(path) or m
             if m.get("status") != "queued":
@@ -352,18 +398,92 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
         cm.__exit__(None, None, None)
         _LAST_TICK[str(lab.hub)] = {"ts": report["ts"], "started": len(report["started"]),
                                     "skipped": report["skipped"], "brake": report["brake"]}
+        if not report["skipped"]:
+            write_lease(lab, os.environ.get("NEWTS_TICKER") or "tick")
 
 
 def last_tick(lab: Lab) -> dict | None:
     return _LAST_TICK.get(str(lab.hub))
 
 
-def tick_loop(lab_factory, stop: threading.Event, interval: float = 2.0, reconcile_every: float = 30.0) -> None:
-    """Run tick() until `stop` is set. `lab_factory()` builds a fresh Lab each pass (so a moved or
-    monkeypatched hub root is honoured). Never raises."""
-    while not stop.is_set():
-        try:
-            tick(lab_factory())
-        except Exception:  # noqa: BLE001 — the loop must survive any single bad pass
-            pass
-        stop.wait(interval)
+# ── the scheduler lease: someone must keep ticking while there is work ───────────────────────────
+LEASE_STALE_S = 60
+
+
+def _lease_path(lab: Lab) -> Path:
+    return lab.lab / ".bus" / "scheduler.lease"
+
+
+def write_lease(lab: Lab, by: str) -> None:
+    with contextlib.suppress(OSError):
+        p = _lease_path(lab)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"pid": os.getpid(), "ts": time.time(), "by": by}), encoding="utf-8")
+
+
+def lease(lab: Lab) -> dict:
+    try:
+        d = json.loads(_lease_path(lab).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"age": None}
+    d["age"] = round(time.time() - float(d.get("ts") or 0), 1)
+    return d
+
+
+def has_work(lab: Lab) -> bool:
+    """Queued/live runs, or a campaign still being kept."""
+    if any(m.get("status") in ACTIVE | {"queued"} for *_x, m in all_runs(lab)):
+        return True
+    return any(c.get("status") in ("active", "finishing", "stopping") for c in campaigns.all_states(lab))
+
+
+def ensure_ticker(lab: Lab) -> bool:
+    """Called when a supervisor exits: if nobody has ticked for a minute (the dashboard was closed) and there
+    is work left, start a detached `executor_cli serve --until-idle` so queued runs, retries, chains and
+    campaigns keep moving. Returns True if it started one."""
+    if os.environ.get("NEWTS_NO_AUTOTICKER"):
+        return False
+    age = lease(lab).get("age")
+    if age is not None and age < LEASE_STALE_S:
+        return False
+    if not has_work(lab):
+        return False
+    log = lab.lab / ".bus" / "scheduler-serve.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env.pop("AUTOSCIENTIST_AGENT_DEPTH", None)   # the ticker is the PI's scheduler, not an agent
+    with open(log, "ab") as fh:
+        subprocess.Popen([python_exe(), str(CLI), "--hub", str(lab.hub), "serve", "--until-idle"], cwd=str(lab.hub),
+                         stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT, env=env, close_fds=True,
+                         **DETACHED)
+    write_lease(lab, "spawned serve --until-idle")
+    return True
+
+
+def tick_loop(lab_factory, stop: threading.Event, interval: float = 2.0, reconcile_every: float = 30.0,
+              until_idle: bool = False) -> None:
+    """Run tick() until `stop` is set (or, with `until_idle`, until there is no work left for two minutes).
+    `lab_factory()` builds a fresh Lab each pass (so a moved or monkeypatched hub root is honoured). Keeps
+    the machine awake while there is work. Never raises."""
+    from . import awake   # noqa: PLC0415
+    idle_since = None
+    try:
+        while not stop.is_set():
+            lab = None
+            try:
+                lab = lab_factory()
+                tick(lab)
+                awake.update(lab)
+            except Exception:  # noqa: BLE001 — the loop must survive any single bad pass
+                pass
+            if until_idle and lab is not None:
+                try:
+                    busy = has_work(lab)
+                except Exception:  # noqa: BLE001
+                    busy = True
+                idle_since = None if busy else (idle_since or time.time())
+                if idle_since and time.time() - idle_since > 120:
+                    break
+            stop.wait(interval)
+    finally:
+        awake.release()

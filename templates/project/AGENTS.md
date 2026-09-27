@@ -112,7 +112,7 @@ subordinate to gates and hard rules; a directive is never gate approval. A direc
 **structured command** (`kind:"command"` + `action`, e.g. `start_loop`/`set_mode`/`run_smoke`/
 `request_run`/`park`/`kill`) the dashboard issued — execute it through the normal procedure,
 within the protocol, then ack. A `gate2_envelope.pi_signed: true` with `signed_via: dashboard:*`
-in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is never dashboard-signed.
+in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is the PI's (signed in the dashboard), or recorded by the executor's campaign keeper when the PI's signed campaign brief delegates it — never by an agent.
 
 **A blocked tool call is a signal, not a wall.** Routine engine commands (`uv run …`, file edits)
 run without prompting — for a Claude agent via the `.claude/settings.json` `permissions.allow`

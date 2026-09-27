@@ -82,7 +82,8 @@
 
   const OnRamps = () => html`<div class="onramps">
     <p class="lede">The lab is quiet. Where do you want to start?</p>
-    ${[['ideate', '✦', 'Explore a new direction', 'Ideas researched, critiqued and filed as studies'], ['adopt', '⇲', 'Bring in what I have', 'An idea, a repo or a draft'],
+    ${[['campaign', '⟳', 'Start a campaign and walk away', 'Ideas carried to papers on their own, within bounds you sign'],
+      ['ideate', '✦', 'Explore a new direction', 'Ideas researched, critiqued and filed as studies'], ['adopt', '⇲', 'Bring in what I have', 'An idea, a repo or a draft'],
       ['discuss', '❝', 'Talk it through', 'A conversation first, no commitment'], ['compete', '◎', 'Compete on a target', 'A benchmark or a score to beat']].map(([id, ico, t, sub]) =>
       html`<button type="button" class="onramp" onClick=${() => NL.openStart({ intent: id })}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}</div>`;
 
@@ -98,6 +99,7 @@
       <header class="rail-head"><h2>Today</h2><button class="x" title="hide" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
       <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}>
       <${SinceVisit} />
+      ${NL.liveCampaigns(s).length ? html`<${NL.Section} title="Campaigns" className="rail-sec">${NL.liveCampaigns(s).map(c => html`<${NL.CampaignCard} key=${c.name} c=${c} compact />`)}</${NL.Section}>` : null}
       ${cold ? html`<${OnRamps} />` : html`
         <${NL.Section} title="Needs you" count=${needs.length || null} className="rail-sec">${needs.length ? needs.slice(0, 6).map(it => html`<${InboxRow} key=${it.id} it=${it} compact />`)
           : html`<div class="muted small">Nothing is waiting on you.</div>`}${needs.length > 6 ? html`<button class="link small" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}>all ${needs.length} →</button>` : null}</${NL.Section}>
