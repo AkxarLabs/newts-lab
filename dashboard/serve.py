@@ -42,8 +42,9 @@ PRODUCT (dashboard/product.py — the rest of the PI's actions, same rules: expl
 
 It launches procedures only through the executor (the unmodified agent CLI, as the logged-in user,
 in a detached supervisor that outlives this server) and only when the PI has enabled programmatic
-launching; every gate and hard rule binds a launched run exactly as in a session. It never signs
-Gate 3, never launches /finalize, and never fakes a result. Binds 127.0.0.1 only. Delete the
+launching; every gate and hard rule binds a launched run exactly as in a session, and every run
+carries the signature guard (only the PI signs). Gate 3 is signed only by the PI (typed confirmation)
+and allows exactly one /finalize run; it never fakes a result. Binds 127.0.0.1 only. Delete the
 dashboard/ folder and the lab is unchanged (the executor has its own CLI: tools/executor_cli.py).
 """
 
@@ -290,9 +291,9 @@ def _sign_gate2_block(text: str, ts: str) -> tuple[str, bool]:
 def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
     """Record a PI gate approval. Gate 1: sign the proposal + leave the follow-through
     command for the agent. Gate 2: flip control.yaml gate2_envelope.pi_signed. Gate 3 is
-    never handled here — finalization/sending outside the lab is always done in a session."""
+    handled here — it is product.gate3_sign (typed confirmation; the one /finalize run it allows)."""
     if gate == 3:
-        return {"error": "Gate 3 (finalization) is never approved from the dashboard — do it in a session."}
+        return {"error": "Gate 3 is signed with product.gate3_sign (typed confirmation), not here."}
     idea = _safe_id(idea) or ""
     if not idea:
         return {"error": "invalid idea slug"}   # the raw id becomes a path under studies/ — never trust it
@@ -867,7 +868,7 @@ def run_tool(name: str, idea: str | None = None) -> dict:
 # Surfaces a few SMALL, READ-ONLY text files so the PI can read context in-dashboard
 # (the lab's learning; a proposal/claims at a gate). Reads only from fixed roots with a
 # sanitized slug — never writes, never executes. Gate 3 stays non-signable; this only
-# *shows* the draft + claims so a finalization decision can be made in a session.
+# *shows* the draft + claims so the PI can decide Gate 3 (signed via product.gate3_sign).
 
 import re as _re
 
@@ -1049,7 +1050,7 @@ def _gate3_bundle(slug: str) -> dict:
         seen.add(f)
         secs.append(_filesec(f"paper/{f.relative_to(paper).as_posix()}", f))
     return {"ok": True, "title": f"Gate 3 · {slug} · claims + review (read-only)", "sections": secs,
-            "note": "Gate 3 is never signed from the dashboard — read here (use “view paper ▸” for the PDF), then /finalize in a session."}
+            "note": "Signing Gate 3 needs the study name typed; it allows exactly one /finalize run, started by you."}
 
 
 # ── claims ↔ artifact map — hard rule 1, made visible ─────────────────────────────────────────────

@@ -469,6 +469,9 @@ def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
             if expires and expires not in ("null", "none", "~") and expires < time.strftime("%Y-%m-%d"):
                 return False
             return True
+        if gate == 3:   # the PI's dashboard signature (product.gate3_sign) or a session's gate3-approval.md
+            p = HUB / "studies" / idea / "paper" / "gate3-approval.md"
+            return p.is_file() and bool(re.search(r"gate ?3 approved", _read_text(p), re.I))
     except OSError:
         pass
     return False

@@ -12,6 +12,9 @@
     const live = NL.runsOf(s, it.id).find(r => NL.RUN_ACTIVE.has(r.status) || r.status === 'queued' || r.status === 'waiting_input');
     if (live) return { label: live.status === 'waiting_input' ? 'Answer its question' : 'Watch it work', icon: '▸', run: () => NL.openRun(live.run_id), live };
     if (it.gate && !it.gate_signed) return { label: `Review and sign Gate ${it.gate}`, icon: '✉', run: () => NL.openGate(it.id, it.gate), gate: it.gate };
+    if (it.state === 'internal-review' && it.gate === 3 && it.gate_signed) return { label: 'Finalize', icon: '▸', run: async () => {
+      if (!await NL.confirm({ title: `Finalize “${it.title || it.id}”?`, ok: 'Start /finalize', body: 'The reproducibility pass, artifact locking and knowledge write-back — under your Gate 3 signature.' })) return;
+      const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); } };
     const map = {
       seed: 'lit-review', triaged: 'lit-review', 'lit-review': 'scope', scoping: 'propose', proposal: it.gate_signed ? 'spawn-project' : 'propose',
       active: 'experiment', analysis: 'analyze', writing: 'write-paper', 'internal-review': 'review-paper',

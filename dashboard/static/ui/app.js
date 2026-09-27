@@ -103,7 +103,15 @@
     NL.useLab();
     const page = PAGES[route.page] ? route.page : 'home';
     const P = PAGES[page]();
-    useEffect(() => { document.body.dataset.page = page; if (page === 'run' && route.args[0]) NL.openRun(route.args[0]); }, [page, route.args.join('/')]);
+    useEffect(() => {
+      document.body.dataset.page = page;
+      if (page === 'run' && route.args[0]) NL.openRun(route.args[0]);
+      // shareable deep links into a sheet: #/study/<slug>?gate=3 · #/?start=<intent> · #/runs?run=<id>
+      const q = route.query || {};
+      if (page === 'study' && q.gate) NL.openGate(route.args[0], +q.gate);
+      if ('start' in q) NL.openStart(q.start ? { intent: q.start } : {});
+      if (q.run) NL.openRun(q.run);
+    }, [page, route.args.join('/'), JSON.stringify(route.query || {})]);
     return html`<${TopBar} page=${page} />
       ${page === 'home' ? html`<${NL.Home} />` : html`<main class="stage" key=${page}><${P} args=${route.args} query=${route.query} /></main>`}
       <${NL.OverlayHost} /><${NL.Toasts} />`;

@@ -146,6 +146,58 @@ resumed on the answer (same session) → completed with a `run_report` footer (`
 `summary`). PI-owned, off by default (`agents.programmatic.enabled`); every gate still binds; Gate 3 is
 never delegated. The dashboard's *Run a procedure* is this same engine. See [Autonomy](autonomy.md#headless-runs-the-executor).
 
+### `signature_guard.py` — only the PI signs (a hook, not a command)
+
+A PreToolUse hook the executor installs in every headless run: claude's per-run settings, codex
+`-c hooks` flags, and an opencode plugin via `OPENCODE_CONFIG_DIR`. It reads one hook payload on
+stdin and exits **2** (the reason on stderr) when a tool call would create or change a PI signature:
+
+- a Gate-1 marker;
+- an envelope's `pi_signed` / `signed_via`, or a signed envelope's values;
+- `gate3-approval.md`;
+- a LOOP_BRIEF or campaign authorization;
+- a registry row moved to `final` without a signed Gate 3;
+- PI-owned config;
+- `pi-actions.jsonl`;
+- the shell escape hatches.
+
+It compares before vs after, and honours delegation by a PI-signed campaign brief. Denials are
+logged to the run's `permissions.jsonl`. See [Autonomy → Headless runs](autonomy.md#headless-runs-the-executor).
+
+### `new_lab.py` — create a new lab from this template
+
+```bash
+uv run --with pyyaml python tools/new_lab.py <dest> [--name "My lab"] [--projects-root ../my-lab-projects]
+```
+
+What the dashboard's *Create a new lab* runs:
+
+- copies the template's committed files (`git archive HEAD`);
+- empties the registry, the knowledge base, the notebook and `studies/`;
+- sets `lab.name` and `lab.projects_root`;
+- runs `git init` and makes the first commit.
+
+### `terminal.py` — a terminal window for a CLI's own sign-in or install
+
+```bash
+uv run --with pyyaml python tools/terminal.py login claude     # opens a window running `claude auth login`
+uv run --with pyyaml python tools/terminal.py install codex
+```
+
+It opens a visible console (Windows Command Prompt, macOS Terminal, or a Linux terminal emulator)
+running a **fixed** command per backend. The dashboard asks for a purpose, never a command line.
+Credentials are typed into the CLI's own login and never pass through the lab.
+
+### `newts.py` (repo root) — start the dashboard
+
+```bash
+uv run --with pyyaml python newts.py [--hub <lab>] [--port N] [--no-browser]
+```
+
+It starts `dashboard/serve.py` for the lab and opens the browser. If the dashboard is already running
+for that lab it just opens the browser, and if 8787 is busy it picks the next free port. The
+double-click launchers (`Start Newts Lab.cmd`, `start-newts.command`, `start-newts.sh`) run it.
+
 ### `agent_runner.py` — launch + capture headless top-level agents
 
 ```bash

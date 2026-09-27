@@ -6,17 +6,31 @@ The repo is domain-agnostic by design: nothing here assumes a particular researc
 
 ## Quick start
 
-**Prerequisites** — install these once:
+**The dashboard (recommended).** Install [uv](https://docs.astral.sh/uv/) and git, then:
 
-- [Claude Code](https://claude.com/claude-code) — the first-class agent driver. Authenticate it **either** by signing in with a Claude Pro/Max subscription **or** with an [Anthropic API key](https://console.anthropic.com/). Any agent that reads `AGENTS.md` also works (Codex, Cursor, …) — see the note below.
-- [uv](https://docs.astral.sh/uv/) — runs the lab's Python tools and docs with zero project setup (no separate `pip install` step).
-- git.
+1. Get the template: **Use this template** on GitHub, `npx degit <this-repo> my-lab`, or `git clone`.
+2. Double-click **`Start Newts Lab.cmd`** (Windows) or **`start-newts.command`** (macOS), or run
+   `uv run --with pyyaml python newts.py`. Your browser opens the dashboard.
+3. The setup wizard does the rest:
+   - connect an agent: install [Claude Code](https://claude.com/claude-code), Codex or opencode, and
+     sign in through its own login window;
+   - choose how much the lab does on its own;
+   - run the `/setup-lab` interview as a conversation;
+   - pick where to start.
 
-**1. Create your lab from the template.** On GitHub click **Use this template**, or `npx degit <this-repo> my-lab`, or plain `git clone`. Each lab is a *living instance* — its state grows in files the template never touches.
+From then on everything happens in the dashboard:
 
-**2. Glance at `lab/config.yaml`.** The one key worth checking on day one is `lab.projects_root` (default `../newts-lab-projects` — a sibling folder where project repos are created). Everything else ships with sane defaults.
+- start work, or ask Newt anything;
+- watch every agent and subagent;
+- answer their questions;
+- sign the three gates;
+- read every document and paper;
+- create or switch labs.
 
-**3. Start your first session:**
+See [The dashboard](docs/dashboard.md).
+
+**Or from a terminal.** Authenticate Claude Code with a Pro/Max subscription or an
+[Anthropic API key](https://console.anthropic.com/), then:
 
 ```bash
 cd my-lab
@@ -25,7 +39,9 @@ claude                         # start the agent
 > /ideate <your direction>     # e.g. efficient small-LM post-training
 ```
 
-`/setup-lab` configures the lab interactively; then the agent walks the lifecycle, pausing at the PI gates for your sign-off. **New here? Read [Getting started](docs/getting-started.md)** for the full walkthrough, on-ramps for every starting point, and a "typical week."
+The agent walks the lifecycle, pausing at the PI gates for your sign-off. **New here? Read
+[Getting started](docs/getting-started.md)** for the full walkthrough, the on-ramps for every
+starting point, and a "typical week".
 
 > **Other agents (Codex, Cursor, …):** the lab is drivable by anything that reads `AGENTS.md` (the root file carries the full protocol and how to follow the `.claude/skills/` procedures manually). Claude Code gets them as native slash-command skills.
 
@@ -95,6 +111,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 
 ```
 newts-lab/
+├── newts.py             # start the dashboard and open the browser (also: Start Newts Lab.cmd / start-newts.command / start-newts.sh)
 ├── CLAUDE.md            # Lab protocol — the agent's operating manual (read every session)
 ├── docs/DESIGN.md       # Full design rationale & prior-art synthesis
 ├── .github/workflows/   # CI: docs build+deploy (Pages), lab lint, cross-platform template smoke
@@ -108,8 +125,8 @@ newts-lab/
 ├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
-├── tools/               # guard.py (lifecycle guards), executor/ + executor_cli.py (headless procedure runs), agent_runner.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
-├── dashboard/           # Vivarium — optional local living-world dashboard (rooms, critters, sub-newts + Newt; delete it and nothing changes)
+├── tools/               # guard.py (lifecycle guards), signature_guard.py (only the PI signs), executor/ + executor_cli.py (headless runs), new_lab.py, agent_runner.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
+├── dashboard/           # the dashboard — the lab's product surface (start it with newts.py); delete it and the lab works from a terminal
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
 
@@ -128,14 +145,25 @@ target-driven project that chases the metric directly — no paper pipeline.
 
 ## Docs & dashboard
 
-Both run with zero installation via `uv`:
-
 ```bash
-uv run --with properdocs --with mkdocs-material properdocs serve   # styled docs site → http://127.0.0.1:8000
-uv run --with pyyaml python dashboard/serve.py                     # optional live dashboard → http://127.0.0.1:8787
+uv run --with pyyaml python newts.py                               # the dashboard → http://127.0.0.1:8787 (opens your browser)
+uv run --with properdocs --with mkdocs-material properdocs serve   # these docs → http://127.0.0.1:8000
 ```
 
-Docs start at [docs/index.md](docs/index.md) · [Getting started](docs/getting-started.md) · [Configuration](docs/configuration.md) · [Projects](docs/projects.md). The [Vivarium dashboard](docs/dashboard.md) renders the lab as a living world for at-a-glance oversight, with a **Library** tab that renders every document the lab writes (ideation, proposals, critiques, experiment ledgers — Markdown + LaTeX, offline). Turn on **programmatic launching** (a PI-owned switch in its settings) and it becomes the lab's **central interface**: launch any procedure as a headless session, watch it and every subagent live, answer its questions when it pauses, stop or resume it — [Running procedures](docs/dashboard.md#running-procedures-headless-runs). It's optional; delete `dashboard/` and nothing else changes (the same engine has a CLI: `tools/executor_cli.py`).
+Docs start at [docs/index.md](docs/index.md): [Getting started](docs/getting-started.md) ·
+[Configuration](docs/configuration.md) · [Projects](docs/projects.md) · [The dashboard](docs/dashboard.md).
+
+The dashboard draws the lab as a living world behind the product:
+
+- **Home**: what needs you, what's running, and Ask Newt.
+- **Studies**: a pipeline board, and a page per study with its next step.
+- **Runs**: every agent session as a conversation you can answer and continue.
+- **Library**: every document, rendered.
+- **Signatures**: all three gates, the FULL-run envelope, loop briefs and campaigns. A signature
+  guard in every run makes sure only you sign.
+
+It is local-only and optional: delete `dashboard/` and the lab works from a terminal. The same run
+engine has a CLI, `tools/executor_cli.py`.
 
 ## Contributing
 

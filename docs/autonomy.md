@@ -113,7 +113,7 @@ is constitutionally yours.
 |---|---|---|
 | Gate 1 (proposal) | you approve each | **delegated within signed bounds** (budget caps, kill criteria present, `novel` verdict, scoping passed) — anything outside queues for you |
 | Gate 2 (FULL runs) | you approve / envelope | envelope derived from the campaign brief into each project's `control.yaml` |
-| Gate 3 (finalize) | you approve each | **never delegated** |
+| Gate 3 (finalize) | you approve each (in a session, or signed in the dashboard with a typed confirmation) | **never delegated** |
 
 Everything else runs exactly as in interactive mode — compute slots, budget watchdogs,
 append-only ledgers, oversight checks, the author-response discipline. A campaign is
@@ -340,9 +340,33 @@ uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
   registry), per-project `max_concurrent`, `daily_max_runs` / `daily_max_minutes`, and the master
   switch itself — all `agents.programmatic.*`, all PI-owned. Training still serializes through
   `compute.max_concurrent_runs`.
-- **Gates are untouched.** The executor never signs anything and never launches `/finalize`; a run
-  that reaches a gate reports `needs_pi` and stops. The unmodified CLI runs as the logged-in user —
-  the executor never reads or handles credentials.
+- **Gates are untouched.** The executor never signs anything. A run that reaches a gate reports
+  `needs_pi` and stops. The unmodified CLI runs as the logged-in user; the executor never reads or
+  handles credentials.
+- **Only the PI signs: the signature guard.** Every executor run carries `tools/signature_guard.py`:
+  - where it's installed: a PreToolUse hook in claude's per-run settings, the codex `-c hooks` flags,
+    and an opencode plugin loaded through a per-run `OPENCODE_CONFIG_DIR`;
+  - what it compares: every write BEFORE vs AFTER;
+  - what it denies: an agent creating or changing a Gate-1 marker, an envelope's `pi_signed` /
+    `signed_via` or a signed envelope's values, `gate3-approval.md`, a LOOP_BRIEF / campaign
+    authorization, a registry row to `final` without a signed Gate 3, PI-owned `lab/config.yaml`
+    keys (the `/setup-lab` and `/configure` interviews excepted, but never `agents.programmatic.*`),
+    or the PI-action log;
+  - what it blocks in the shell: `AUTOSCIENTIST_GATE2_OK`, `--skip-guard`, `--pi-approved`, and
+    clearing `AUTOSCIENTIST_NO_GATE3`.
+
+  Signatures delegated by a PI-signed campaign brief still pass, because they name the brief, and so
+  does an envelope the PI approved together with Gate 1 (`· envelope approved` in the proposal's
+  marker). Denials are logged to the run's `permissions.jsonl` and show under *Needs you*. The guard
+  fails open on its own crash (a bug must not wedge a run); the gates' own checks (`guard.py`)
+  remain behind it.
+- **`/finalize` has exactly one door.** It is not in the launchable whitelist. The PI signing Gate 3
+  in the dashboard (typing the study's name) writes `studies/<slug>/paper/gate3-approval.md`
+  (`signed_via: dashboard:<ts>`) and starts that one run with `AUTOSCIENTIST_NO_GATE3` unset. Chains,
+  repeats, campaigns and free-form runs can never start it.
+- **Free-form runs.** The dashboard's *Ask Newt* sends the PI's own instruction as a run (skill `ask`,
+  `enqueue --prompt`-style). It gets the same preamble and hooks, can use any procedure, doesn't
+  chain, and can't sign.
 
 **Subscriptions.** Headless `claude -p` draws from your plan's usage like any session (Anthropic
 paused a planned move of headless usage to a separate credit in June 2026; check their current terms).

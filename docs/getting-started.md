@@ -1,5 +1,21 @@
 # Getting started
 
+## The fastest way: the dashboard
+
+1. Install [uv](https://docs.astral.sh/uv/) and git, and get the template (see
+   [Instantiate your lab](#instantiate-your-lab) below).
+2. Double-click **`Start Newts Lab.cmd`** (Windows) or **`start-newts.command`** (macOS), or run
+   `uv run --with pyyaml python newts.py`. Your browser opens the dashboard.
+3. Follow the setup wizard:
+   - connect an agent (install it and sign in through its own login window);
+   - choose how much the lab does on its own;
+   - answer the `/setup-lab` interview right in the page;
+   - pick an on-ramp.
+
+After that you work from the dashboard: **Start something** (or just ask Newt), watch the runs as
+conversations, answer the agents when they ask, and sign the gates when they wait for you. The rest
+of this page is the same lab from a terminal. See [The dashboard](dashboard.md) for the full tour.
+
 ## Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) — the first-class agent driver
@@ -71,29 +87,26 @@ The agent generates and tournament-ranks candidate ideas, then walks the lifecyc
 
 You'll be stopped at the gates and otherwise left to read the notebook.
 
-## Watching it work (optional)
+## Watching it work
 
-To keep an eye on the lab while agents iterate — every lifecycle stage and every running
-project, live — launch the optional [Vivarium dashboard](dashboard.md): the lab rendered as a
-**living lab world** — each lifecycle stage is a room, each idea
-or project is a critter living in its room, and every working agent is its own **sub-newt** you
-can **click to inspect** (a legend bottom-left maps role → colour with live head-counts). A buddy
-named Newt moves through it, and you click to **command** the agents (start/stop loops, request
-runs, approve Gate 1 & 2), all from the scene.
+The [dashboard](dashboard.md) is the lab's product surface; you don't need the terminal at all:
 
-**Two ways to drive it.** Out of the box the dashboard **observes and signs — the agent executes**:
-commands and gate approvals are recorded to the lab's file bus, and a Claude session acts on them
-at its **next checkpoint** (start one: `claude` → `/lab-status`). Turn on **programmatic launching**
-(⚙ Settings → *Agents & launching* — a PI-owned switch) and the dashboard becomes the whole
-interface: *Run a procedure* launches any lab procedure as a headless session (as you, with your own
-Claude login), you watch it and its subagents live, answer its questions when it pauses, and stop or
-resume it — no terminal needed ([Running procedures](dashboard.md#running-procedures-headless-runs)).
-Against a brand-new lab (empty registry) the world is empty and there are no gates yet — launch
-`/ideate` (or `/setup-lab`, an interview) to begin.
+- **Home**: the living world with what needs you, what's running and what's next.
+- **Studies**: a pipeline board, and a page per study.
+- **Runs**: every agent session as a conversation.
+- **Library**: every document.
+- **Signatures**: the three gates, envelopes, loop briefs and campaigns.
+
+It runs the same agent CLIs as you, with your login, and every run carries the signature guard, so
+agents can never sign for you.
 
 ```bash
-uv run --with pyyaml python dashboard/serve.py        # http://127.0.0.1:8787
+uv run --with pyyaml python newts.py        # http://127.0.0.1:8787 (opens your browser)
 ```
+
+A session in a terminal and the dashboard work side by side: a command or note you leave in the
+dashboard reaches a terminal session at its next checkpoint, and a terminal session's work shows up
+live in the dashboard.
 
 ## Serving these docs
 

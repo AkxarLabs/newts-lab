@@ -11,8 +11,8 @@
 It is a *template*, not a framework: procedures are Markdown skills the agent executes with judgment, state is plain files and git, and nothing here assumes a research domain. The design distills what worked across the autonomous-research literature — Sakana's AI Scientist, Karpathy's autoresearch, Google's co-scientist, Kosmos, Meta's AIRA — and hard-codes defenses against their documented failure modes. The full reasoning lives in [Design rationale](DESIGN.md).
 
 <figure markdown>
-![The Vivarium dashboard — the whole lab as a living world](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>Optional, local-only, offline: the <a href="dashboard/">Vivarium dashboard</a> renders the whole lab as a living world — each idea or project a critter, every working agent a sub-newt, in the room of its current stage. Delete it and the lab is unchanged.</figcaption>
+![The dashboard — the whole lab as a living world, with the Today rail](assets/dashboard-home-dark.png){ .as-shot }
+<figcaption>Local-only and offline: <a href="dashboard/">the dashboard</a> is the whole product — start it with one double-click, set the lab up, start work, answer the agents and sign the gates. The lab is drawn behind it as a living world, a room per lifecycle stage.</figcaption>
 </figure>
 
 ## The shape of the lab

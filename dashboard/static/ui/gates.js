@@ -14,7 +14,8 @@
     if (!b) return html`<${NL.Spinner} />`;
     if (!b.ok) return html`<div class="note note-warn">${b.error || 'could not read the review bundle'}</div>`;
     return html`<div class="bundle">${(b.sections || []).map((s2, i) => html`<details class="bundle-sec" open=${i < 3}>
-      <summary>${s2.title}<${NL.EditorLink} path=${s2.path} /></summary><${NL.Markdown} text=${s2.text || '(empty)'} /></details>`)}
+      <summary>${s2.title}<${NL.EditorLink} path=${s2.path} /></summary>${/\.(ya?ml|json|jsonl|txt|tex|bib|csv)$/i.test(s2.path || s2.title || '') || /^\s*[{[]/.test(s2.text || '')
+        ? html`<pre class="plain">${s2.text || '(empty)'}</pre>` : html`<${NL.Markdown} text=${s2.text || '(empty)'} />`}</details>`)}
       ${b.note ? html`<p class="muted small">${b.note}</p>` : null}</div>`;
   };
 

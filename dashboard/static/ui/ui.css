@@ -386,3 +386,5 @@ iframe.pdf { width: 100%; height: calc(100vh - 280px); min-height: 520px; border
   .board { grid-template-columns: repeat(6, minmax(78vw, 1fr)); scroll-snap-type: x mandatory; } .board-col { scroll-snap-align: start; }
   .wz-body { padding: 20px 18px; } .search { width: 100%; }
 }
+
+@media (prefers-reduced-motion: reduce) { .sheet, .dialog, .scrim, .toast, .palette { animation: none !important; } .btn, .scard { transition: none; } }
