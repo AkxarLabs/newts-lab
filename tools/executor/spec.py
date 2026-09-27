@@ -188,7 +188,9 @@ def _validate_finalize(lab: Lab, spec: RunSpec) -> dict:
         raise SpecError(f"Gate 3 is not signed for {target} (no studies/{target}/paper/gate3-approval.md)") from None
     if not re.search(r"gate ?3 approved", text, re.I):
         raise SpecError(f"studies/{target}/paper/gate3-approval.md is not a Gate 3 approval")
-    import gate3 as _gate3  # noqa: PLC0415 — tools/ is on sys.path (see _TOOLS above)
+    if str(_TOOLS) not in sys.path:
+        sys.path.insert(0, str(_TOOLS))
+    import gate3 as _gate3  # noqa: PLC0415
     ok, why = _gate3.delegation_valid(lab.hub, target)
     if not ok:
         raise SpecError(f"Gate 3 for {target} is not validly signed: {why}")

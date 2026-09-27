@@ -610,6 +610,7 @@ def _gate3_marker(slug: str) -> bool:
         return False
     text = note.read_text(encoding="utf-8-sig")
     if re.search(r"signed_via:\s*campaign:", text):   # delegated by a campaign: valid only while it still is
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
         import gate3  # noqa: PLC0415
         return gate3.delegation_valid(HUB, slug)[0]
     return bool(_GATE3_RE.search(text))

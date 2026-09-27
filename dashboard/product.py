@@ -241,7 +241,8 @@ def _paper(slug: str) -> Path:
 def gate3_readiness(slug: str) -> dict:
     """The checklist the Gate 3 sheet shows (tools/gate3.py — the keeper uses the same one). `blocking`
     items must pass to sign."""
-    import gate3  # noqa: PLC0415 — tools/ is on sys.path via sources
+    _tools()
+    import gate3  # noqa: PLC0415
     out = gate3.readiness(_hub(), slug)
     if out.get("signed"):
         out["valid"], out["valid_why"] = gate3.delegation_valid(_hub(), slug)
