@@ -97,7 +97,7 @@
       <div class="signbox-h">Gate 3 · finalize</div>
       <p>The paper passed internal review. Signing lets <span class="mono">/finalize</span> run for this study — once, started by you.</p>
       ${!r ? html`<${NL.Spinner} />` : html`<ul class="checklist">${r.checks.map(c => html`<li class=${c.ok ? 'ok' : c.blocking ? 'bad' : 'warn'}><span>${c.ok ? '✓' : c.blocking ? '✕' : '!'}</span><div><b>${c.label}</b><small>${c.detail}</small></div></li>`)}</ul>`}
-      ${r && r.signed ? html`<div class="note note-ok">✓ Gate 3 is signed.</div><div class="row">${it.state !== 'final' ? html`<${NL.Btn} kind="primary" onClick=${async () => {
+      ${r && r.signed ? html`${String(r.signed_via || '').startsWith('campaign:') ? html`<div class=${cls('note', r.valid ? 'note-ok' : 'note-warn')}>${r.valid ? '✓ Gate 3 was recorded by delegation' : 'Gate 3 was recorded by delegation, but it no longer counts'} — <span class="mono">${r.signed_via.slice(9)}</span>${r.valid ? ': the lab re-ran the paper audits and they were clean. Take it back (or hold this study) on the campaign card.' : ': ' + (r.valid_why || '')}</div>` : html`<div class="note note-ok">✓ Gate 3 is signed.</div>`}<div class="row">${it.state !== 'final' ? html`<${NL.Btn} kind="primary" onClick=${async () => {
             const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); }}>Start /finalize</${NL.Btn}>` : null}
           ${it.state !== 'final' ? html`<${Revoke} slug=${it.id} what="gate3" />` : null}</div>`
         : html`<label class="check"><input type="checkbox" checked=${launch} onChange=${e => setLaunch(e.target.checked)} /> Start <span class="mono">/finalize</span> right after signing, and watch it here</label>
