@@ -51,6 +51,7 @@
     const facadeC = new PIXI.Container(); world.addChild(facadeC);
     const roomsC = new PIXI.Container(); world.addChild(roomsC);
     const ambientC = new PIXI.Container(); world.addChild(ambientC);
+    const travelC = new PIXI.Container(); world.addChild(travelC);   // creatures hopping between rooms
     const screen = new PIXI.Container(); app.stage.addChild(screen);
     const labelsC = new PIXI.Container(); screen.addChild(labelsC);
     const hoverG = new PIXI.Graphics(); screen.addChild(hoverG);
@@ -449,6 +450,9 @@
         const pl = placeOf(e); e._vis = !!pl.vis; e._dim = !!pl.dim; e._room = pl.room;
         if (!pl.vis) { if (e.view) e.view.c.visible = false; continue; }
         const P = W.rooms[pl.room].paths;
+        if (e.pathInit && e._proom && e._proom !== pl.room && e.kind === 'item' && !reduced && roomObjs[e._proom]) {
+          const b0 = BOX[e._proom]; e.travel = { x0: b0.x + e._nx * b0.w, y0: b0.y + e._ny * b0.h, u: 0 };
+        }
         if (P && P.length > 1) {
           if (!e.pathInit || e._proom !== pl.room) { e.homeT = clamp(nearestT(P, pl.sx, pl.sy) + e.jx * 1.4, 0, P.length - 1); e.pt = e.homeT; e.targetT = e.homeT; e.pathInit = true; e._proom = pl.room; }
           const restless = (e.w && e.w.status === 'working') || (e.o && e.o.live);
@@ -461,19 +465,32 @@
         e.blinkT -= dt; if (e.blinkT < 0) { e.blinkT = 2.6 + Math.random() * 3.6; e.blinkOn = 0.13; } if (e.blinkOn > 0) e.blinkOn -= dt; e.blink = !reduced && e.blinkOn > 0;
         if (e.dying) { e.dieT += reduced ? 1.0 : dt; if (e.dieT >= 1.0 && e.w) { if (e.view) e.view.c.destroy({ children: true }); ents.delete(key); continue; } }
         e.fade = lerp(e.fade, 1, dt * 3); if (!e.init) { e.fade = 1; e.init = true; }
-        drawEntity(e);
+        drawEntity(e, dt);
       }
     }
-    function drawEntity(e) {
+    function drawEntity(e, dt) {
       const R = roomObjs[e._room]; if (!R) return;
       const isItem = e.kind === 'item', o = e.o, w = e.w;
       const deg = isItem ? (o.dead ? 0 : D.projDeg(o.id)) : (() => { const a = w.project ? items.find(x => x.id === w.project) : (w.idea ? items.find(x => x.id === w.idea) : null); return D.projDeg(a ? a.id : (w.project || w.idea || w.worker_id)); })();
       if (!e.view || e.view.deg !== deg) { if (e.view) e.view.c.destroy({ children: true }); e.view = makeRig(deg); e.view.c.eventMode = 'none'; }
-      const rig = e.view; if (rig.c.parent !== R.c) R.c.addChild(rig.c);
+      const rig = e.view;
       const dieK = e.dying ? clamp(1 - e.dieT, 0, 1) : 1, depth = W.depthScale(e._ny);
       const s = BUDDY_WH * depth * (isItem ? (o.hasProject ? 1.05 : 0.9) : 0.8 * dieK);
-      rig.c.visible = true; rig.c.scale.set(s); rig.c.zIndex = e._ny * R.rh + 1;
-      rig._baseX = e._nx * R.rw; rig.c.position.set(rig._baseX + parX * pz(e._ny), e._ny * R.rh);
+      rig.c.visible = true; rig.c.scale.set(s);
+      if (e.travel) {
+        // hop along an arc from the old room to the new one, in world space, above everything
+        e.travel.u = Math.min(1, e.travel.u + (dt || 1 / 60) / 1.3);
+        const u = ease.inOut(e.travel.u), x1 = R.box.x + e._nx * R.rw, y1 = R.box.y + e._ny * R.rh;
+        const lift = Math.min(900, Math.hypot(x1 - e.travel.x0, y1 - e.travel.y0) * 0.35 + 160);
+        if (rig.c.parent !== travelC) travelC.addChild(rig.c);
+        rig.c.position.set(lerp(e.travel.x0, x1, u), lerp(e.travel.y0, y1, u) - Math.sin(Math.PI * u) * lift);
+        rig.c.rotation = Math.sin(Math.PI * u * 2) * 0.12;
+        if (e.travel.u >= 1) { e.travel = null; rig.c.rotation = 0; }
+      } else {
+        if (rig.c.parent !== R.c) R.c.addChild(rig.c);
+        rig.c.zIndex = e._ny * R.rh + 1;
+        rig._baseX = e._nx * R.rw; rig.c.position.set(rig._baseX + parX * pz(e._ny), e._ny * R.rh);
+      }
       const role = !isItem ? (D.ROLE_ORDER.includes(w.role) ? w.role : 'other') : null;
       const dimHL = (!isItem && highlightRole && highlightRole !== role) ? 0.5 : 1;
       let pip = null; if (!isItem) { const rc = D.roleHSL(role, 0); pip = hslHex(rc[0], Math.min(100, rc[1] + 16), Math.min(95, rc[2] + 8)); }
@@ -603,7 +620,7 @@
       for (const e of ents.values()) {
         if (!e._vis || !e.view || !e.view.c.visible || e.dying) continue;
         const R = roomObjs[e._room]; if (!R) continue;
-        const s = e.view.c.scale.x, wx = R.box.x + e.view.c.x, wy = R.box.y + e.view.c.y, p = w2s(wx, wy), ss = s * cam.zoom;
+        const s = e.view.c.scale.x, inRoom = e.view.c.parent === R.c, wx = (inRoom ? R.box.x : 0) + e.view.c.x, wy = (inRoom ? R.box.y : 0) + e.view.c.y, p = w2s(wx, wy), ss = s * cam.zoom;
         const cy = p.y + (e._top + 0.5) * ss;
         if (e.kind === 'item') {
           const o = e.o;
@@ -752,7 +769,7 @@
       followWorker(id) { followWorker(id); kick(); }, stopFollow() { stopFollow(); }, following() { return followId; },
       onClick(item, gate) { onItem = item; onGate = gate; }, onWorker(cb) { onWorker = cb; }, onNewt(cb) { onNewt = cb; }, onView(cb) { onView = cb; }, onFollow(cb) { onFollow = cb; },
       calInfo() { return CAL; },
-      _debug: { app, cam, roomObjs, LAYOUT, timings, rebuild: buildAll, step(dt, n) { for (let i = 0; i < (n || 1); i++) frame(dt || 0.05); app.render(); } },
+      _debug: { app, cam, roomObjs, LAYOUT, timings, ents, rebuild: buildAll, step(dt, n) { for (let i = 0; i < (n || 1); i++) frame(dt || 0.05); app.render(); } },
     };
   };
 })();
