@@ -46,6 +46,7 @@ SKILLS = Path(".claude") / "skills"
 PROC_DEFAULTS = {"kind": "utility", "level": "hub", "mode": "headless", "args": "text?", "launchable": True,
                  "replaceable": False}
 _KIND_ORDER = {"stage": 0, "driver": 1, "entry": 2, "utility": 3}
+_NOT_INHERITED = {"title", "does", "start", "brief_note", "like", "_own"}   # what a `like:` copy says for itself
 MAX_CUSTOM = 20000          # characters per customisation file
 GATES = (1, 2, 3)            # fixed: the manifest must declare exactly these
 NEVER_LAUNCH = {"finalize"}  # never from a click / chain / campaign — a Gate 3 signature is the only door
@@ -126,9 +127,21 @@ def _procedures(files: list[Path], m: dict) -> dict[str, dict]:
                 p.update(skill_meta(_read(ours)).get("newts") or {})
         p.update(legacy.get(f.parent.name) or {})
         p.update(block if isinstance(block, dict) else {})
+        p["_own"] = set(block) if isinstance(block, dict) else set()
         p.setdefault("title", fm.get("name") or f.parent.name)
         p.setdefault("does", str(fm.get("description") or "").split(". ")[0][:200])
         found[f.parent.name] = p
+    for name, p in found.items():       # `like: <procedure>` — inherit its definition, override what you list
+        base, seen = p.get("like"), {name}
+        while base in found and base not in seen:
+            seen.add(base)
+            parent = found[base]
+            for k, v in parent.items():
+                if k not in p["_own"] and k not in _NOT_INHERITED:
+                    p[k] = v
+            base = parent.get("like") if "like" in parent.get("_own", set()) else None
+    for p in found.values():
+        p.pop("_own", None)
     staged = [n for st in m.get("stages", []) for n in st.get("procedures", []) if n in found]
     first = list(dict.fromkeys(staged))
     rest = sorted((n for n in found if n not in first), key=lambda n: (_KIND_ORDER.get(found[n].get("kind"), 9), n))

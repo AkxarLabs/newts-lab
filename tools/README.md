@@ -9,6 +9,7 @@ pyyaml; run with uv's ephemeral env:
 ```bash
 uv run --with pyyaml python tools/guard.py <command|check> <slug> …   # the gates, transitions, and checks/ (--list)
 uv run --with pyyaml python tools/workflow.py check | brief <proc> | render-docs | propose …
+uv run --with pyyaml python tools/new.py skill|room|role|check|type|rule <name> --like <existing>   # add by copying
 uv run --with pyyaml python tools/check_lab.py                        # lab lint (registry, wiring, workflow)
 uv run --with pyyaml python tools/configure.py view|set|profile …     # owner-aware config edits
 uv run --with pyyaml python tools/show_config.py [<project> [exp.yaml]]  # 3-layer config with provenance
@@ -21,7 +22,7 @@ uv run --with pyyaml python tools/upgrade_project.py --all [--check]  # bring ol
 | Group | Files | What they do |
 |---|---|---|
 | **Signatures and gates** | `markers.py`, `signature_guard.py`, `guard.py`, `gate3.py` | recognise the PI's marks; refuse a headless run that would forge one; check a gate is recorded before the irreversible step (`guard.py` also dispatches `checks/`) |
-| **The lab's definition** | `workflow.py`, `labfiles.py` | read `workflow/stages.yaml`, `workflow/rules.yaml` and the skills; the brief; the PI's instruction layers; the generated docs; the lab's files read one way |
+| **The lab's definition** | `workflow.py`, `labfiles.py`, `new.py` | read `workflow/stages.yaml`, `workflow/rules.yaml` and the skills; the brief; the PI's instruction layers; the generated docs; the lab's files read one way; adding a component by copying one |
 | **Observability** | `lab_bus.py`, `trace_hook.py` | the append-only event bus and directive inbox; the per-agent action tracer (both ship into every project too) |
 | **Coordination** | `run_slots.py`, `hub_writeback.py`, `process_writebacks.py` | compute slots across projects; the project→hub write-back boundary |
 | **Agents** | `executor/`, `executor_cli.py`, `lab_profile.py`, `role_sync.py` | run procedures as live or headless sessions of claude / codex / opencode (`executor/` knows nothing about this lab; `lab_profile.py` is everything it needs to); render the roles for each CLI |

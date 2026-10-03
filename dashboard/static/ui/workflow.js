@@ -22,6 +22,17 @@
     ${f.add ? html`<${NL.Pill} tone="state" title="the PI added instructions">+ your instructions</${NL.Pill}>` : null}
     ${f.stale ? html`<${NL.Pill} tone="warn" title="the default method changed after you replaced it — review it">default changed</${NL.Pill}>` : null}`;
 
+  /* "Make a copy": a new procedure or role that starts as this one (tools/new.py); the PI then edits it */
+  const makeCopy = async (kind, like, onClose) => {
+    const name = await NL.confirm({ title: `Make a copy of ${kind === 'skill' ? '/' : ''}${like}`, ok: 'Make it',
+      body: kind === 'skill' ? 'A new procedure that starts as this one: same definition, a copy of its contract and method, in the same stage. You then edit what makes it different.'
+        : 'A new subagent role that starts as this one: same tools and model, a copy of its instructions. You then edit what makes it different.',
+      input: 'Its name — lower-case words joined by dashes (e.g. quick-scan)' });
+    if (!name) return;
+    const r = await NL.act('/api/workflow/new', { kind, like, name: String(name).trim(), confirm: true });
+    if (r.ok) { onClose && onClose(); setTimeout(() => NL.open(kind === 'skill' ? NL.ProcedureSheet : RoleSheet, { name: r.name }), 600); }
+  };
+
   /* a small line diff (for "your method vs the default") */
   function lineDiff(a, b) {
     const A = a ? a.split('\n') : [], B = b ? b.split('\n') : [];
@@ -85,7 +96,8 @@
           <div class="wf-contract"><${NL.Markdown} text=${d.contract} /></div>` : null}
         ${tab === 'brief' ? html`
           <p class="muted">Exactly what an agent running <span class="mono">/${name}</span>${study ? ' on ' + study : ''} reads for this stage (sha <span class="mono">${d.brief_sha}</span> — each run records which version it used).</p>
-          <pre class="wf-brief">${d.brief}</pre>` : null}`}
+          <pre class="wf-brief">${d.brief}</pre>` : null}
+        <div class="row end"><button class="link small" onClick=${() => makeCopy('skill', name, onClose)}>Make a copy of /${name}…</button></div>`}
     </${NL.Sheet}>`;
   };
 
@@ -200,7 +212,8 @@
       ${!d ? html`<${NL.Spinner} />` : d.error ? html`<div class="warn">${d.error}</div>` : html`
         <p class="muted">Added to this role's instructions for every backend (Claude, Codex, opencode), in the lab and in its projects' next render.</p>
         <${LayerEditor} kind="role" name=${name} value=${d.lab.add} onSaved=${() => setN(x => x + 1)} placeholder="e.g. Be especially strict about data leakage between train and test." />
-        <${NL.Section} title="The role as shipped"><div class="wf-contract"><${NL.Markdown} text=${d.contract} /></div></${NL.Section}>`}
+        <${NL.Section} title="The role as shipped"><div class="wf-contract"><${NL.Markdown} text=${d.contract} /></div></${NL.Section}>
+        <div class="row end"><button class="link small" onClick=${() => makeCopy('role', name, onClose)}>Make a copy of this role…</button></div>`}
     </${NL.Sheet}>`;
   };
 

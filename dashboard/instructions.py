@@ -118,6 +118,29 @@ def workflow_save(body: dict) -> tuple[dict, int]:
             "warnings": warnings}, 200
 
 
+def workflow_new(body: dict) -> tuple[dict, int]:
+    """Make a copy of a procedure or a role (tools/new.py) — the PI's way to add one without editing files."""
+    if not body.get("confirm"):
+        return {"error": "making a copy needs explicit confirm"}, 400
+    kind, name, like = str(body.get("kind") or ""), str(body.get("name") or "").strip(), str(body.get("like") or "")
+    new = ctx.tool("new")
+    try:
+        if kind == "skill":
+            stage = next((s["id"] for s in _wf().stages_of(like, ctx.HUB)), None)   # beside the one it copies
+            files = new.new_skill(ctx.HUB, name, like, stage=stage, title=str(body.get("title") or "") or None)
+        elif kind == "role":
+            files = new.new_role(ctx.HUB, name, like, label=str(body.get("title") or "") or None)
+        else:
+            return {"error": "kind must be skill or role"}, 400
+    except new.NewError as e:
+        return {"error": str(e)}, 400
+    _wf().render_docs(ctx.HUB)
+    rel = [f.relative_to(ctx.HUB).as_posix() for f in files if f.is_relative_to(ctx.HUB)]
+    ctx.pi_log({"action": "workflow.new", "kind": kind, "name": name, "like": like, "files": rel})
+    return {"ok": True, "note": f"made {'/' if kind == 'skill' else ''}{name} from {like} — edit it to make it its own",
+            "files": rel, "name": name}, 200
+
+
 def workflow_proposal(body: dict) -> tuple[dict, int]:
     """Accept or decline an agent's suggested instruction change."""
     wf = _wf()

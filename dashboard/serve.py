@@ -522,6 +522,7 @@ POST_ROUTES = {
     "/api/doc/save": settings.doc_save,
     "/api/workflow/save": instructions.workflow_save,
     "/api/workflow/proposal": instructions.workflow_proposal,
+    "/api/workflow/new": instructions.workflow_new,
     "/api/lab/config": settings.lab_config_set,
     "/api/keys": keys.keys_set,
     "/api/notify": keys.notify_set,

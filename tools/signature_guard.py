@@ -67,6 +67,8 @@ SHELL_ALWAYS = [
     (re.compile(r"(unset\s+AUTOSCIENTIST_NO_GATE3|AUTOSCIENTIST_NO_GATE3\s*=|Env:AUTOSCIENTIST_NO_GATE3|"
                 r"environ\s*(\.pop|\[)\s*\(?\s*['\"]AUTOSCIENTIST_NO_GATE3)"),
      "AUTOSCIENTIST_NO_GATE3 must stay set — Gate 3 is signed by the PI"),
+    (re.compile(r"(?:^|[\s/\\])new\.py\b"), "adding to the lab's definition (tools/new.py) is the PI's — propose it instead "
+     "(tools/workflow.py propose) or ask the PI"),
 ]
 SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_approved|gate ?3 approved|"
                         r"PI Gate 3|gate3_approved|\[x\]\s*Authorized", re.I)

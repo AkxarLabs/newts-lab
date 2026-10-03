@@ -87,7 +87,7 @@ def role_keys() -> dict[str, tuple[str, str]]:
     agents.<x>_model / agents.<x>_effort keys, from the role's own `model_key` (agent-roles/<role>.yaml)."""
     out = {}
     for name in _role_names():
-        mk = str(labfiles.load_yaml(_roles_dir() / f"{name}.yaml").get("model_key") or "")
+        mk = str(_meta(name).get("model_key") or "")
         if mk.endswith("_model"):
             pair = (mk, mk[: -len("_model")] + "_effort")
             out[name] = pair
@@ -123,8 +123,18 @@ def resolve_role(role: str, agents_cfg: dict | None = None) -> tuple[str, str]:
     return model, (str(effort).strip() if effort is not None else "")
 
 
-def _spec(name: str) -> tuple[dict, str]:
+def _meta(name: str, _seen=()) -> dict:
+    """A role's yaml; `like: <role>` inherits that role's settings (it says its own name, label, description)."""
     meta = labfiles.load_yaml(_roles_dir() / f"{name}.yaml")
+    base = meta.get("like")
+    if base and base not in _seen and (_roles_dir() / f"{base}.yaml").is_file():
+        parent = {k: v for k, v in _meta(base, (*_seen, name)).items() if k not in ("name", "label", "description", "like")}
+        meta = {**parent, **meta}
+    return meta
+
+
+def _spec(name: str) -> tuple[dict, str]:
+    meta = _meta(name)
     body = _norm((_roles_dir() / f"{name}.md").read_text(encoding="utf-8"))
     if not body.endswith("\n"):
         body += "\n"

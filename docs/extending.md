@@ -1,8 +1,28 @@
 # Extending the lab
 
-Every moving part is a small, named registry. Extending the lab means adding an entry to one of them,
-never editing the engine around it. The table below is the map; each section says what "adding one"
-takes.
+**Start from the closest thing the lab already has.** Copy it, then change what makes yours different — the
+copy keeps everything else, and nobody edits YAML by hand:
+
+```bash
+uv run --with pyyaml python tools/new.py skill quick-scan --like lit-review [--stage literature]
+uv run --with pyyaml python tools/new.py room  data       --like lab [--states analysis] [--plain]
+uv run --with pyyaml python tools/new.py role  data-wrangler --like experiment-runner
+uv run --with pyyaml python tools/new.py check no-tabs    --like writeback
+uv run --with pyyaml python tools/new.py type  survey     --like empirical
+uv run --with pyyaml python tools/new.py rule  no-tabs    --text "**No tabs.** Indent with spaces." [--check no-tabs]
+```
+
+The dashboard does the first and third too: **Workflow → a procedure or a role → Make a copy…**. A copied skill
+or role says `like: <the original>` and inherits its *definition* (a skill's level, mode, arguments,
+outputs, …; a role's tools, model and sandbox), overriding only what it lists. Its *contract and
+instructions* are copied, never linked: when the original's rules change, a copy doesn't silently change
+with them. The command writes only the lab's own files (`lab/rooms/`, `lab/templates/`, a new skill folder,
+a new role, a new check, a line in `workflow/`), refreshes the generated docs and runs `workflow.py check`.
+
+Dropping a file in still works on its own — a skill folder, a check, a role pair, a type folder, a room's
+art — `tools/new.py` only saves the copying, the renaming and the one registration some kinds need.
+
+Every moving part is a small, named registry; the table is the map.
 
 | To add or change | Where it lives | Checked by |
 |---|---|---|
