@@ -159,8 +159,9 @@ def _validate_answers(answers) -> dict:
 
 def answer(lab: Lab, run_id: str, answers: dict | None = None, response: str | None = None,
            by: str = "dashboard") -> dict:
-    """Answer the run's pending question and queue the resume. `response` alone = a free-form
-    reply instead of picking options (Claude receives "The user responded: …")."""
+    """Answer the run's pending question: straight to its live session, or — when the session was
+    parked — queue the resume with the answer as its next message. `response` alone = a free-form
+    reply instead of picking options."""
     with scheduler_lock(lab):
         target, workdir, path, m = _locate(lab, run_id)
         if m.get("status") not in PAUSED or not m.get("pending_question"):
@@ -176,27 +177,15 @@ def answer(lab: Lab, run_id: str, answers: dict | None = None, response: str | N
                            "response": response or None, "by": "PI"})
             emit(lab, workdir, "note", detail=f"PI answered {run_id}", data={"run_id": run_id, "kind": "answer"})
             return m
-        rd = run_dir(Path(path).parent, run_id)
-        pq = m["pending_question"]
-        rec = {"ts": now(), "tool_use_id": pq.get("tool_use_id"), "answers": clean}
-        if response:
-            rec["response"] = response
-        rd.mkdir(parents=True, exist_ok=True)
-        tmp = rd / "answer.json.tmp"
-        tmp.write_text(json.dumps(rec), encoding="utf-8")
-        os.replace(tmp, rd / "answer.json")
+        # the session was parked (nobody answered in time): the answer resumes it as its next message
         history = m.setdefault("qa", [])
-        history.append({"asked_at": pq.get("asked_at"), "question": pq.get("input"),
-                        "answers": clean, "response": response or None, "answered_at": rec["ts"]})
+        history.append({"asked_at": pq.get("asked_at"), "question": pq.get("input"), "answers": clean,
+                        "response": response or None, "answered_at": now(), "by": "PI"})
         m["qa"] = history[-20:]
-        mode = "answer"
-        text = None
-        if m.get("backend") != "claude" or pq.get("live"):   # no defer hook: the answer rides a plain reply
-            mode, text = "reply", _answers_as_text(pq, clean, response)
         _clear_stop(path, run_id)
         transition(lab, path, m, "queued", by=by, reason="answered", pending_question=None,
-                   answers_given=int(m.get("answers_given") or 0) + 1, resume={"mode": mode, "text": text},
-                   not_before=None)
+                   answers_given=int(m.get("answers_given") or 0) + 1,
+                   resume={"mode": "reply", "text": _answers_as_text(pq, clean, response)}, not_before=None)
         emit(lab, workdir, "note", detail=f"PI answered {run_id}", data={"run_id": run_id, "kind": "answer"})
         return m
 
@@ -222,7 +211,7 @@ def reply(lab: Lab, run_id: str, text: str, by: str = "dashboard") -> dict:
     if hit[3].get("status") in PAUSED and hit[3].get("pending_question"):
         return answer(lab, run_id, None, text, by=by)
     rd = _live(hit[2], hit[3])
-    if rd and hit[3].get("status") in ACTIVE:
+    if rd:   # a live session (working, or Ask Newt waiting for your next message): straight in
         live.post(rd, {"kind": "message", "text": text, "by": by})
         return hit[3]
     check_enabled(lab)
@@ -310,29 +299,15 @@ def interrupt(lab: Lab, run_id: str, by: str = "dashboard") -> dict:
 
 def permission_decision(lab: Lab, run_id: str, n, allow: bool, message: str = "",
                         by: str = "dashboard") -> dict:
-    """The PI's decision on a pending permission request: a live session's (`n` = its request id),
-    or a one-shot run's (`n` = the request number; only when permission_wait_seconds > 0)."""
+    """The PI's decision on a live session's pending permission request (`n` = its request id)."""
     target, workdir, path, m = _locate(lab, run_id)
-    if any(str(p.get("id")) == str(n) for p in m.get("pending_permissions") or []):
-        rd = _live(path, m)
-        if not rd:
-            raise SpecError("that session has ended — the request lapsed")
-        live.post(rd, {"kind": "permission", "request_id": str(n), "allow": bool(allow),
-                       "message": message[:500] or None, "by": "PI"})
-        return {"ok": True}
-    try:
-        n = int(n)
-    except (TypeError, ValueError):
-        raise SpecError("no such permission request") from None
-    rd = run_dir(Path(path).parent, run_id)
-    req = rd / f"perm-{int(n)}.json"
-    if not req.exists():
-        raise SpecError("no such permission request")
-    dec = rd / f"perm-{int(n)}.decision.json"
-    if dec.exists():
-        raise SpecError("that request was already decided")
-    dec.write_text(json.dumps({"allow": bool(allow), "message": message[:500], "ts": now(), "by": by}),
-                   encoding="utf-8")
+    if not any(str(p.get("id")) == str(n) for p in m.get("pending_permissions") or []):
+        raise SpecError("no such permission request (it may have been decided already)")
+    rd = _live(path, m)
+    if not rd:
+        raise SpecError("that session has ended — the request lapsed")
+    live.post(rd, {"kind": "permission", "request_id": str(n), "allow": bool(allow),
+                   "message": message[:500] or None, "by": "PI"})
     return {"ok": True}
 
 

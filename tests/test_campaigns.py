@@ -109,6 +109,29 @@ def test_first_tick_starts_a_cycle_and_only_one(camp):
     assert len(_cycles(lab)) == 1              # idempotent: never two live cycles
 
 
+def test_a_question_left_on_the_card_is_answered_into_the_next_pass(camp):
+    lab, make = camp
+    make(repeat_minutes=0)
+    executor.tick(lab, spawn=Spawns())
+    c1 = _cycles(lab)[0]
+    st = campaigns.load(lab, campaigns.all_states(lab)[0]["name"])
+    st["questions"] = [{"ts": manifest.now(), "run_id": c1["run_id"], "question": "Which baseline?"}]
+    campaigns.save(lab, st)
+    card = campaigns.summary(lab)[0]["questions"][0]
+    assert card["index"] == 0 and "answer" not in card
+    with pytest.raises(ValueError):
+        campaigns.control(lab, st["name"], "answer", index=3, text="x")
+    campaigns.control(lab, st["name"], "answer", index=0, text="the 2024 one")
+    w = _finish(lab, c1["run_id"], "completed")
+    _footer(lab, w, c1["run_id"], campaign="continue", summary="pass 1")
+    executor.tick(lab, spawn=Spawns())
+    c2 = _cycles(lab)[-1]
+    pre = (manifest.run_dir(executor.find_run(lab, c2["run_id"])[2].parent, c2["run_id"]) / "preamble.md").read_text(encoding="utf-8")
+    assert "The PI answered questions from earlier passes" in pre and "Which baseline?" in pre and "the 2024 one" in pre
+    assert "recommendation FIRST" in pre and "Never ask the PI" not in pre
+    assert campaigns.load(lab, st["name"])["questions"][0]["delivered"] is True   # delivered once
+
+
 def test_completed_cycle_repeats_after_the_interval(camp):
     lab, make = camp
     make(repeat_minutes=20)

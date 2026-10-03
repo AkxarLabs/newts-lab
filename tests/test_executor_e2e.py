@@ -128,56 +128,18 @@ def test_project_run_uses_project_cwd_and_hub_add_dir(hub, monkeypatch):
 
 # ── the question round-trip ───────────────────────────────────────────────────
 
-def test_oneshot_defer_answer_resume_round_trip(hub, monkeypatch):
-    monkeypatch.setenv("FAKE_MODE", "defer")
-    lab = setup(hub, extra_prog="    live: false\n")
-    m = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-x", created_by="test"))
-    m = wait_for(lab, m["run_id"])
-    assert m["status"] == "waiting_input", m
-    pq = m["pending_question"]
-    assert pq["tool_use_id"] == "toolu_q1"
-    assert pq["input"]["questions"][0]["question"] == "Which project type?"
-    assert (run_dir(lab, m) / "question.json").exists()          # written by the real hook
-    events = [json.loads(x) for x in (lab.bus / "events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert any(e["kind"] == "agent_waiting" and e["data"]["run_id"] == m["run_id"] for e in events)
-    # answering queues the resume; the resumed attempt continues the same session
-    executor.answer(lab, m["run_id"], {"Which project type?": "empirical"})
-    m2 = executor.find_run(lab, m["run_id"])[3]
-    assert m2["status"] == "queued" and m2["resume"]["mode"] == "answer" and m2["pending_question"] is None
-    m2 = wait_for(lab, m["run_id"])
-    assert m2["status"] == "completed", m2
-    assert 'answers={"Which project type?": "empirical"}' in m2["last_message"]
-    assert m2["attempt"] == 2 and [a["resume"] for a in m2["attempts"]] == [None, "answer"]
-    assert m2["qa"][0]["answers"] == {"Which project type?": "empirical"}
-    c = calls(lab, m2)
-    assert c[1]["argv"][c[1]["argv"].index("--resume") + 1] == m["session_id"]   # same session
-    assert "--session-id" not in c[1]["argv"]
-    assert c[1]["argv"][c[1]["argv"].index("--permission-mode") + 1] == "auto"    # re-passed on resume
-    assert c[1]["stdin"] == ""                                                    # no new user turn
-    assert (run_dir(lab, m) / "answer.used.json").exists()
-
-
-def test_oneshot_free_text_reply_to_a_question(hub, monkeypatch):
-    monkeypatch.setenv("FAKE_MODE", "defer")
-    lab = setup(hub, extra_prog="    live: false\n")
-    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-y"))["run_id"])
-    assert m["status"] == "waiting_input"
-    executor.reply(lab, m["run_id"], "neither — it's a theory project")
-    m = wait_for(lab, m["run_id"])
-    assert m["status"] == "completed"
-    assert "response=neither — it's a theory project" in m["last_message"]
-
-
-def test_prose_question_then_reply_resumes_with_text(hub, monkeypatch):
+def test_oneshot_prose_question_then_reply_resumes_with_text(hub, monkeypatch):
+    # the fallback: a one-shot run asks in prose and ends its turn; the PI's reply resumes the session
     monkeypatch.setenv("FAKE_MODE", "prose")
-    lab = setup(hub)
+    lab = setup(hub, extra_prog="    live: false\n")
     m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="discuss", args="direction"))["run_id"])
     assert m["status"] == "completed" and "A or B" in m["last_message"]
     executor.reply(lab, m["run_id"], "Use dataset B")
     m = wait_for(lab, m["run_id"])
     assert m["status"] == "completed" and "Use dataset B" in m["last_message"]
     c = calls(lab, m)
-    assert c[1]["stdin"] == "Use dataset B" and "--resume" in c[1]["argv"]
+    assert c[1]["stdin"] == "Use dataset B" and "--resume" in c[1]["argv"] and m["transport"] == "oneshot"
+    assert "--permission-prompt-tool" not in c[0]["argv"] and "--mcp-config" not in c[0]["argv"]
 
 
 # ── live sessions: the agent keeps running while you answer ───────────────────
@@ -281,6 +243,17 @@ def test_live_message_and_interrupt_reach_a_working_session(hub, monkeypatch):
     assert m["status"] == "completed" and "interrupted" in m["last_message"], m
 
 
+def test_a_campaign_run_assumes_the_recommended_answer_and_says_so(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "defer")
+    lab = setup(hub, extra_prog=_live_cfg(campaign_question_minutes=0.02))
+    rid = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-c", campaign="c1"))["run_id"]
+    m = wait_for(lab, rid, statuses=DONE, timeout=60)
+    assert m["status"] == "completed" and 'answers={"Which project type?": "ml"}' in m["last_message"], m
+    assert m["assumed"][0]["answers"] == {"Which project type?": "ml"}
+    items = [it for it in executor.attention.collect(lab) if it["run_id"] == rid and it["kind"] == "assumed"]
+    assert items and "ml" in items[0]["title"] and items[0]["actions"][0]["id"] == "reply"
+
+
 def test_live_start_failure_falls_back_to_one_shot(hub, monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "complete")
     monkeypatch.setenv("FAKE_LIVE_FAIL", "1")
@@ -290,7 +263,7 @@ def test_live_start_failure_falls_back_to_one_shot(hub, monkeypatch):
     assert m["attempt"] == 1 and len(m["attempts"]) == 1
     c = calls(lab, m)   # (the failing live start exits before the fake logs its call)
     assert len(c) == 1 and "--input-format" not in c[0]["argv"]
-    assert c[0]["argv"][c[0]["argv"].index("--permission-prompt-tool") + 1] == "mcp__newts__permission"
+    assert c[0]["stdin"] == "/lab-status"                              # one-shot: the prompt on stdin
     assert "retrying one-shot" in (lab.bus / "agents" / m["stream"]).read_text(encoding="utf-8")
 
 
@@ -342,17 +315,6 @@ def test_cancel_queued_run(hub, monkeypatch):
 
 
 # ── permission host + subagents ───────────────────────────────────────────────
-
-def test_oneshot_permission_host_denies_and_logs(hub, monkeypatch):
-    monkeypatch.setenv("FAKE_MODE", "mcp")
-    lab = setup(hub, extra_prog="    live: false\n")
-    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
-    assert m["status"] == "completed" and "permission=deny" in m["last_message"]
-    log = (run_dir(lab, m) / "permissions.jsonl").read_text(encoding="utf-8")
-    assert '"decision": "deny"' in log and "rm -rf" in log
-    items = executor.attention.collect(lab)
-    assert any(it["kind"] == "denied" and it["run_id"] == m["run_id"] for it in items)
-
 
 def test_subagents_tracked_from_stream(hub, monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "subagents")

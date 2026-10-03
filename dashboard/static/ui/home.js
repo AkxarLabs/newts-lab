@@ -7,7 +7,7 @@
   const { html, useState, useEffect, cls } = NL;
 
   /* ── the inbox: one list, typed actions ─────────────────────────────────── */
-  const ICON = { question: '?', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳' };
+  const ICON = { question: '?', assumed: '≈', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳' };
   const PRIMARY = new Set(['answer', 'sign', 'allow', 'next', 'proposal']);
   NL.attAct = async (it, a) => {
     const run = it.run_id, d = it.detail || {};

@@ -48,12 +48,15 @@
     ['max_concurrent', 'Runs at once per project', '', 1],
     ['daily_max_runs', 'Daily run limit', '0 = no limit', 0], ['daily_max_minutes', 'Daily agent-minutes limit', '0 = no limit', 0],
     ['chain_max_steps', '“Keep going until a gate” step limit', '', 1],
-    ['permission_wait_seconds', 'Wait for your allow/deny on a blocked action', 'seconds; 0 = deny it and tell you', 0],
+    ['park_minutes', 'Keep an agent waiting for your answer', 'minutes; then it pauses and your answer resumes it', 1],
+    ['permission_minutes', 'Wait for your allow/deny on a risky action', 'minutes; then it is denied (campaigns: at once)', 1],
+    ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1],
+    ['linger_minutes', 'Keep Ask Newt open after it answers', 'minutes, for your next message', 0],
   ];
   const ExecForm = () => {
     const s = NL.useLab();
     const x = NL.exec(s), cfg = x.config || {};
-    const init = () => Object.fromEntries([...EXEC.map(([k]) => [k, cfg[k] ?? '']), ['backend', x.backend || 'claude'], ['model', cfg.model || ''], ['permission_mode', x.permission_mode || 'auto'], ['auto_spawn_on_gate1', !!x.auto_spawn_on_gate1]]);
+    const init = () => Object.fromEntries([...EXEC.map(([k]) => [k, cfg[k] ?? '']), ['backend', x.backend || 'claude'], ['model', cfg.model || ''], ['permission_mode', x.permission_mode || 'auto'], ['auto_spawn_on_gate1', !!x.auto_spawn_on_gate1], ['live', cfg.live !== false]]);
     const [v, setV] = useState(init);
     const orig = init();
     const diff = Object.keys(v).filter(k => String(v[k]) !== String(orig[k]));
@@ -71,6 +74,7 @@
           options=${[{ value: 'auto', label: 'auto (recommended)' }, { value: 'acceptEdits', label: 'accept file edits' }, { value: 'default', label: 'ask for everything' }, { value: 'plan', label: 'plan only (read-only)' }, { value: 'dontAsk', label: 'deny anything that would ask' }]} /></${NL.Field}>
         ${EXEC.map(([k, label, hint, min]) => html`<${NL.Field} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} /></${NL.Field}>`)}
       </div>
+      <${NL.Toggle} on=${v.live} onChange=${x2 => set('live', x2)} label="Talk to agents while they run" sub="live sessions: questions, approvals and your messages reach the running agent; off = each answer restarts it" />
       <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I sign Gate 1" sub="queues /spawn-project right after your signature" />
       <div class="row end">${diff.length ? html`<span class="muted small">${NL.plural(diff.length, 'change')}</span><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div></div>`;
   };

@@ -48,8 +48,8 @@ class StubState:
         self.m.update(fields, status=to)
 
 
-def conv(tmp_path, campaign=None, **cfg):
-    s, st = StubSession(), StubState({"run_id": "r1", "status": "running", "campaign": campaign})
+def conv(tmp_path, campaign=None, kind="procedure", **cfg):
+    s, st = StubSession(), StubState({"run_id": "r1", "status": "running", "campaign": campaign, "kind": kind})
     notes = []
     c = live.Conversation(s, st, tmp_path, {"live": cfg} if cfg else {}, note=lambda k, **d: notes.append((k, d)))
     return c, s, st, notes
@@ -149,6 +149,23 @@ def test_the_session_closes_after_its_turn_unless_a_message_is_on_its_way(tmp_pa
     live.post(tmp_path, {"kind": "message", "text": "too late"})
     c.tick()
     assert c.leftover and c.leftover[0]["text"] == "too late"   # → the supervisor resumes with it
+
+
+def test_ask_newt_stays_open_for_the_next_message(tmp_path):
+    c, s, st, _ = conv(tmp_path, kind="ask", linger_minutes=0.002)
+    with st.lock:
+        c.on_event({"event": "turn_end"})
+    c.tick()
+    assert not s.closed and st.m["status"] == "waiting_input" and not st.m.get("pending_question") and c.waiting()
+    live.post(tmp_path, {"kind": "message", "text": "and the next one?"})
+    c.tick()
+    assert s.sent == ["and the next one?"] and st.m["status"] == "running" and not c.idle
+    with st.lock:
+        c.on_event({"event": "turn_end"})
+    c.tick()
+    time.sleep(0.2)
+    c.tick()
+    assert s.closed                    # nothing more within linger_minutes: the session ends
 
 
 def test_claude_session_translates_the_protocol():

@@ -27,6 +27,15 @@
     return NL.act('/api/campaign/control', { name: c.name, action, confirm: true, ...(extra || {}) });
   };
 
+  /* a question a pass left: answer it here and the next pass gets the answer */
+  const CampaignQuestion = ({ c, q }) => {
+    const [text, setText] = useState('');
+    const send = async () => { if (!text.trim()) return; const x = await act(c, 'answer', { index: q.index, text: text.trim() }); if (x && x.ok) setText(''); };
+    return html`<div class=${cls('inrow', q.answer ? 'sev-info' : 'sev-warn')}><div class="inrow-main"><span class="inrow-ico">?</span><span class="inrow-t"><b>${q.question}</b>
+      <small>${NL.hhmm(q.ts)}${q.answer ? html` — you answered: <b>${NL.clip(q.answer, 120)}</b>${q.delivered ? ' (the next pass got it)' : ' (the next pass gets it)'}` : ' — your answer goes to the next pass'}</small></span></div>
+      ${q.answer ? null : html`<div class="row grow"><${NL.Input} value=${text} onInput=${setText} onEnter=${send} placeholder="Your answer…" /><${NL.Btn} small kind="primary" onClick=${send} disabled=${!text.trim()}>Answer</${NL.Btn}></div>`}</div>`;
+  };
+
   NL.CampaignCard = ({ c, compact }) => {
     const k = counts(c);
     const b = c.budget || {};
@@ -57,8 +66,7 @@
       <${NL.CampaignCard} c=${c} />
       ${c.gate3_auto ? html`<div class="note note-ask">Papers of this campaign may finalize without you: after internal review accepts one, the lab re-runs the paper audits and, if clean, records Gate 3 and runs /finalize.
         <div class="row end"><${NL.Btn} small onClick=${() => act(c, 'revoke_gate3')}>Take Gate 3 back…</${NL.Btn}></div></div>` : null}
-      ${(c.questions || []).length ? html`<${NL.Section} title="Questions a pass left for you">${c.questions.map(q => html`<div class="inrow sev-warn"><div class="inrow-main"><span class="inrow-ico">?</span><span class="inrow-t"><b>${q.question}</b><small>${NL.hhmm(q.ts)} — answer by leaving a note for the lab; the next pass reads it</small></span></div>
-        <span class="inrow-acts"><${NL.Btn} small onClick=${() => NL.openNote('hub', 'About your question “' + q.question + '”: ')}>Leave a note</${NL.Btn}></span></div>`)}</${NL.Section}>` : null}
+      ${(c.questions || []).length ? html`<${NL.Section} title="Questions a pass left for you">${c.questions.map(q => html`<${CampaignQuestion} key=${q.index} c=${c} q=${q} />`)}</${NL.Section}>` : null}
       <${NL.Section} title="Studies" count=${studies.length}>${studies.length ? studies.map(([slug, v]) => html`<div class="camp-study">
           <a class="link" href=${'#/study/' + slug} onClick=${onClose}><b>${slug}</b></a>
           ${v.waiting ? html`<${NL.Pill} tone="ask">waiting for you: ${v.waiting}</${NL.Pill}>` : null}

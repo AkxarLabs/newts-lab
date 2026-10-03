@@ -16,7 +16,6 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -199,15 +198,6 @@ def test_dashboard_links_spawn_to_exact_child(tmp_path):
 
 
 # ── claude-side hardening ─────────────────────────────────────────────────────
-
-def test_ask_hook_refuses_questions_from_inside_a_subagent(tmp_path):
-    payload = {"tool_name": "AskUserQuestion", "agent_id": "a1", "tool_use_id": "t", "tool_input": {"questions": []}}
-    r = subprocess.run([sys.executable, str(REPO / "tools" / "executor" / "ask_hook.py")], input=json.dumps(payload),
-                       text=True, capture_output=True, env={**os.environ, "NEWTS_RUN_DIR": str(tmp_path)})
-    out = json.loads(r.stdout)["hookSpecificOutput"]
-    assert out["permissionDecision"] == "deny" and "result" in out["permissionDecisionReason"]
-    assert not (tmp_path / "question.json").exists()          # the run does NOT pause
-
 
 def test_preamble_warns_background_work_dies_with_the_session(hub):
     lab = executor.Lab(hub.root)
@@ -520,3 +510,7 @@ def test_executor_config_inserts_keys_missing_from_an_older_config(hub, monkeypa
     assert "# ── next section ──" in cfg.read_text(encoding="utf-8")
     out, code = serve.set_executor_config({"changes": {"auto_spawn_on_gate1": True}, "confirm": True})
     assert code == 400 and "dashboard" in out["error"]      # no such section: refused, file untouched
+    out, code = serve.set_executor_config({"changes": {"park_minutes": 45, "live": False}, "confirm": True})
+    assert code == 200, out                                  # a nested block an older config lacks is added
+    prog = yaml.safe_load(cfg.read_text(encoding="utf-8"))["agents"]["programmatic"]
+    assert prog["live"] == {"park_minutes": 45, "enabled": False} and prog["backends"]["claude"]["model"] == "opus"

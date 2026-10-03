@@ -245,6 +245,20 @@ def render_prompt(lab: Lab, v: dict, backend: str) -> str:
             f"the PI had typed `{cmd}` in a session.")
 
 
+_AWAY = ("- The PI is away. Ask only what you can't decide within the brief, as ONE question with "
+         "concrete options and your recommendation FIRST: if nobody answers in time the recommended option "
+         "is taken (and shown to the PI as assumed). A permission request is denied while the PI is away.")
+
+
+def _answers_block(spec: RunSpec) -> list[str]:
+    """The PI's answers to questions earlier passes left on the campaign card."""
+    ans = (spec.extra or {}).get("pi_answers") or []
+    if not ans:
+        return []
+    return ["- The PI answered questions from earlier passes — act on them:"] + [
+        f"  - Q: {a.get('question')}\n    A: {a.get('answer')}" for a in ans[:10]]
+
+
 def campaign_block(lab: Lab, spec: RunSpec, v: dict, run_id: str) -> str:
     """Standing instructions for a run that belongs to a campaign kept by the executor (campaigns.py)."""
     bus = (lab.hub / "tools" / "lab_bus.py").as_posix()
@@ -262,8 +276,10 @@ def campaign_block(lab: Lab, spec: RunSpec, v: dict, run_id: str) -> str:
             "if the brief delegates it) and never another campaign.",
             "- Before dispatching work for a NEW idea, append its Campaign Log row (the log is how the keeper knows "
             "which studies belong to this campaign).",
-            "- Never ask the PI (this overrides the question rule above; no AskUserQuestion): a study that needs a decision outside the brief's bounds is "
-            "queued for the PI (its own run reports needs_pi) and you move on to the others.",
+            _AWAY,
+            "- A decision outside the brief's bounds is never yours to assume: that study waits for the PI "
+            "(its own run reports needs_pi) and you move on to the others.",
+            *_answers_block(spec),
             "- End with the run footer, adding `--data campaign=<continue|idle|done>` (done = every target idea is "
             "at internal-review / final / killed, or a stop condition holds).",
         ]
@@ -273,8 +289,9 @@ def campaign_block(lab: Lab, spec: RunSpec, v: dict, run_id: str) -> str:
         return "\n".join(lines)
     return "\n".join([
         f"CAMPAIGN RUN for {spec.campaign}: dispatched by its keeper. The PI is away.",
-        "- Never ask the PI (this overrides the question rule above; no AskUserQuestion): if the procedure needs a PI decision, stop at it and report it "
-        "in the run footer (`needs_pi=<gate1|gate2|gate3|...>`) with `--data study=<slug>` — only this study waits.",
+        _AWAY,
+        "- A gate, or a decision outside the brief's bounds: stop at it and report it in the run footer "
+        "(`needs_pi=<gate1|gate2|gate3|...>`) with `--data study=<slug>` — only this study waits.",
         "- Everything else is exactly the procedure as usual; its gates and hard rules bind.",
     ])
 
@@ -305,13 +322,11 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
     bus = (lab.hub / "tools" / "lab_bus.py") if v["level"] == "hub" else (Path(v["workdir"]) / "scripts" / "lab_bus.py")
     bus = bus.as_posix()
     interactive = v["cfg"].get("mode") == "interactive"
-    ask = ("ask it with ONE AskUserQuestion call (concrete options, your recommended answer first) as "
-           "the ONLY tool call in that turn — the run pauses and you are resumed with the PI's answer. "
-           "If the question has no discrete options, ask it in plain prose as your final message and "
-           "stop; the PI's reply resumes this session."
-           if backend == "claude" else
-           f"run `python {bus} escalate --detail \"<the question>\"`, state the question as your final "
-           "message, and end the session; the PI's reply resumes it.")
+    tool = {"claude": "AskUserQuestion", "codex": "request_user_input", "opencode": "question"}.get(backend, "")
+    ask = (f"ask it with your question tool ({tool}): ONE call, concrete options, your recommended "
+           "answer FIRST. The PI's answer comes back to you in this same session. If that tool isn't "
+           "available, state the question as your final message and end your turn; the PI's reply "
+           "resumes this session.")
     lines = [
         f"You are running HEADLESS under the Newts' Lab executor (run id {run_id}, target "
         f"{v['target']}, cwd {Path(v['workdir']).as_posix()}). There is no terminal: the PI watches and "

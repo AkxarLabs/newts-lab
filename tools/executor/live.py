@@ -13,6 +13,9 @@ What a run is waiting on lives in its manifest, in the same shape the one-shot p
   pending_question     {tool_use_id, name, input, asked_at, live: True}   (status waiting_input)
   pending_permissions  [{id, tool, input, ts}]                            (status stays running)
 
+Ask Newt (a free-form run) stays open `linger_minutes` (10) after it answers — status waiting_input
+with nothing pending, i.e. "your turn" — so a follow-up goes straight in.
+
 Deadlines (agents.programmatic.live):
   park_minutes (60)            a question nobody answered: end the process; the answer resumes it
   permission_minutes (30)      a permission request nobody decided: deny it with a note
@@ -23,6 +26,7 @@ A campaign run's permission requests are denied at once (the PI is away).
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import threading
@@ -36,6 +40,7 @@ from .manifest import now
 INBOX = "inbox"
 KINDS = ("answer", "permission", "message", "interrupt")
 MAX_INBOX_BYTES = 16 * 1024
+_SEQ = itertools.count()
 
 
 # ── the inbox: dashboard → supervisor ────────────────────────────────────────
@@ -49,7 +54,7 @@ def post(rd: Path, item: dict) -> dict:
         raise ValueError("inbox item too large")
     d = Path(rd) / INBOX
     d.mkdir(parents=True, exist_ok=True)
-    name = f"{time.time_ns()}-{uuid.uuid4().hex[:6]}"
+    name = f"{time.time_ns():020d}-{next(_SEQ):06d}-{uuid.uuid4().hex[:6]}"   # ordered even within one clock tick
     tmp = d / f"{name}.tmp"
     tmp.write_text(data, encoding="utf-8")
     os.replace(tmp, d / f"{name}.json")
@@ -552,6 +557,8 @@ class Conversation:
         self.perm_after = pos_float(cfg.get("permission_minutes"), 30.0) * 60
         self.assume_after = pos_float(cfg.get("campaign_question_minutes"), 30.0) * 60
         self.campaign = bool(st.m.get("campaign"))
+        self.linger = pos_float(cfg.get("linger_minutes"), 10.0) * 60 if st.m.get("kind") == "ask" else 0.0
+        self.idle = False                      # Ask Newt: answered, waiting for the PI's next message
         self.note = note or (lambda *a, **k: None)
         self.pending: dict[str, dict] = {}     # request id → request (+ "t0")
         self.parked = False
@@ -589,7 +596,7 @@ class Conversation:
 
     def waiting(self) -> bool:
         """True while the agent waits on the PI (the run's clock is paused)."""
-        return bool(self.pending)
+        return bool(self.pending) or self.idle
 
     def tick(self) -> bool:
         """Called by the monitor every half second: deliver the inbox, apply deadlines, end the
@@ -616,8 +623,15 @@ class Conversation:
                 elif req["kind"] == "question" and age >= self.park_after:
                     self._park()
             if self._turn_end_at and not self.pending and not self.s.closed:
-                # the turn is over: end the session unless a message is still on its way in
-                if self.s.unread == 0 or t - self._turn_end_at > 30:
+                # the turn is over: end the session — unless a message is still on its way in, or
+                # this is Ask Newt waiting for the PI's next message
+                if self.s.unread and t - self._turn_end_at <= 30:
+                    pass
+                elif self.linger and t - self._turn_end_at < self.linger:
+                    if not self.idle:
+                        self.idle = True
+                        self.st.transition("waiting_input", reason="your turn")
+                else:
                     self.s.close()
         return self.parked
 
@@ -630,6 +644,9 @@ class Conversation:
         if k == "message":
             if self.s.send(str(item.get("text") or "")):
                 self._turn_end_at = None
+                if self.idle:
+                    self.idle = False
+                    self.st.transition("running", reason=None)
                 self.note("note", detail="PI message delivered")
             else:
                 self.leftover.append(item)

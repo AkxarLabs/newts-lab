@@ -1,7 +1,7 @@
 """One "needs you" queue for everything a run can want from the PI.
 
 Item: {id, kind, sev, ts, target, idea, run_id, title, body, detail, actions[]}
-  kind ∈ question · permission · denied · crashed · report · needs_pi · brake   (run-derived, here)
+  kind ∈ question · permission · assumed · denied · crashed · report · needs_pi · brake   (run-derived, here)
        + gate · escalation · stalled · subagent        (lab-derived, merged in by dashboard/sources.py)
   sev  ∈ block (the lab is waiting on you) · warn · info
   id   is stable (derived from the underlying record), so a dismissal is durable, and a genuinely new
@@ -12,7 +12,6 @@ Acks: lab/.bus/attention-acks.jsonl  {ts, id, action: dismiss|seen, by}
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
@@ -57,6 +56,17 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
                              f"{label} is paused until you answer.",
                              detail={"questions": qs, "tool_use_id": pq.get("tool_use_id")},
                              actions=[{"id": "answer", "label": "answer"}, {"id": "stop", "label": "stop run"}]))
+        # a campaign run took its recommended option because nobody answered in time
+        for i, a in enumerate(m.get("assumed") or []):
+            qs = a.get("questions") or []
+            q0 = qs[0].get("question") if qs and isinstance(qs[0], dict) else "a question"
+            ans = ", ".join(str(v) for v in (a.get("answers") or {}).values())
+            out.append(_item("assumed", "warn", f"assumed:{rid}:{i}", m, f"Assumed “{ans}”",
+                             body=f"{label} asked: {q0} Nobody answered in time, so it took its recommended "
+                                  "option. Reply to the run to change it.",
+                             detail={"questions": qs, "answers": a.get("answers")},
+                             actions=[{"id": "reply", "label": "change it"}, {"id": "dismiss", "label": "fine"}],
+                             ts=a.get("ts")))
         # a live session's permission requests (it waits for your decision, up to its deadline)
         for req in m.get("pending_permissions") or []:
             inp = req.get("input") or {}
@@ -66,24 +76,6 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
                              detail={"n": req.get("id"), "tool": req.get("tool"), "input": inp, "why": req.get("why")},
                              actions=[{"id": "allow", "label": "allow once"}, {"id": "deny", "label": "deny"}],
                              ts=req.get("ts")))
-        # a one-shot run's pending permission requests (only when permission_wait_seconds > 0)
-        for req in sorted(rd.glob("perm-*.json")) if rd.is_dir() else []:
-            if req.name.endswith(".decision.json"):
-                continue
-            n = req.stem.split("-")[-1]
-            if (rd / f"perm-{n}.decision.json").exists() or st not in ("running", "starting", "resuming"):
-                continue
-            try:
-                r = json.loads(req.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            inp = r.get("input") or {}
-            what = inp.get("command") or inp.get("file_path") or inp.get("url") or ""
-            out.append(_item("permission", "block", f"perm:{rid}:{n}", m,
-                             f"Allow {r.get('tool')}?", body=str(what)[:300],
-                             detail={"n": int(n) if str(n).isdigit() else n, "tool": r.get("tool"), "input": inp},
-                             actions=[{"id": "allow", "label": "allow once"}, {"id": "deny", "label": "deny"}],
-                             ts=r.get("ts")))
         den = int(m.get("denials") or 0)
         plog = rd / "permissions.jsonl"
         denied = [r for r in read_jsonl(plog, tail=200) if r.get("decision") == "deny" and r.get("by") != "PI"] \

@@ -28,11 +28,8 @@ from .manifest import (append_jsonl, emit, now, read_manifest, run_dir, transiti
 from .procs import NEW_GROUP, NO_WINDOW, RunLock, graceful_stop, kill_tree, python_exe
 
 PKG = Path(__file__).resolve().parent
-ASK_HOOK = PKG / "ask_hook.py"
 SIGNATURE_GUARD = PKG.parent / "signature_guard.py"   # only the PI signs — see tools/signature_guard.py
 GUARD_MATCHER = "Edit|Write|MultiEdit|NotebookEdit|Bash"
-PERMISSION_HOST = PKG / "permission_host.py"
-PERMISSION_TOOL = "mcp__newts__permission"
 MIN_ATTEMPT_SECONDS = 300          # a resumed attempt always gets at least 5 minutes
 MAX_SUBAGENTS = 60
 
@@ -47,7 +44,7 @@ class ProcResult:
     started: bool = False               # the CLI reported its session (it got past start-up)
     session_id: str | None = None
     last_message: str | None = None
-    result: dict | None = None          # the backend's final result event (claude: stop_reason, deferred_tool_use, cost)
+    result: dict | None = None          # the backend's final result event (claude: stop_reason, cost)
     n_actions: int = 0
     wall: float = 0.0
     events: list = field(default_factory=list)
@@ -187,7 +184,7 @@ def classify(res: ProcResult) -> str:
     stop reason, never by the exit code."""
     if res.cli_missing:
         return "failed"
-    if res.parked or (res.result or {}).get("stop_reason") == "tool_deferred":
+    if res.parked:
         return "waiting_input"
     if res.stopped and res.rc != 0:
         return "killed"
@@ -225,15 +222,13 @@ TRACE_HOOK = Path(__file__).resolve().parents[1] / "trace_hook.py"
 TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
 
 
-def _claude_sidecars(rd: Path, env_extra: dict, is_live: bool = False) -> tuple[Path, Path | None]:
-    """Per-run settings (the signature guard and the tracer — never permissions; one-shot runs also get
-    the AskUserQuestion hook) + the one-shot MCP permission host config. The tracer runs here with this
-    interpreter's absolute path; the repo's own `.claude/settings.json` hooks (`--from-repo`) stand down
-    for the run (NEWTS_TRACE_FLAGS=1), so a machine with only `python3` — or a repo whose tracing files
-    are stale — is still traced, once. A live session answers questions and permissions itself."""
+def _claude_sidecars(rd: Path) -> Path:
+    """Per-run settings: the signature guard and the tracer (never permissions). The tracer runs here
+    with this interpreter's absolute path; the repo's own `.claude/settings.json` hooks (`--from-repo`)
+    stand down for the run (NEWTS_TRACE_FLAGS=1), so a machine with only `python3` — or a repo whose
+    tracing files are stale — is still traced, once."""
     py = python_exe()
-    pre = [] if is_live else [{"matcher": "AskUserQuestion", "hooks": [
-        {"type": "command", "command": f'"{py}" "{ASK_HOOK}"', "timeout": 15}]}]
+    pre = []
     if SIGNATURE_GUARD.is_file():
         pre.append({"matcher": GUARD_MATCHER, "hooks": [
             {"type": "command", "command": f'"{py}" "{SIGNATURE_GUARD}"', "timeout": 15}]})
@@ -246,12 +241,7 @@ def _claude_sidecars(rd: Path, env_extra: dict, is_live: bool = False) -> tuple[
     settings = {"hooks": hooks}
     sp = rd / "settings.json"
     sp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    if is_live:
-        return sp, None
-    mcp = {"mcpServers": {"newts": {"command": py, "args": [str(PERMISSION_HOST)], "env": env_extra}}}
-    mp = rd / "mcp.json"
-    mp.write_text(json.dumps(mcp, indent=2), encoding="utf-8")
-    return sp, mp
+    return sp
 
 
 def _env_local(lab: Lab) -> dict:
@@ -343,10 +333,9 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     resume = m.get("resume") or None
     entry_status = m.get("status")
     resuming = entry_status == "resuming"
-    # live by default; one-shot when the backend has no live session, the PI turned it off, it failed
-    # to start on this machine before, or an old one-shot run is answered (its hook holds the answer)
-    is_live = (live.available(backend, prog) and not m.get("no_live")
-               and not (resuming and (resume or {}).get("mode") == "answer"))
+    # live by default; one-shot when the backend has no live session, the PI turned it off, or it
+    # failed to start on this machine before
+    is_live = live.available(backend, prog) and not m.get("no_live")
     attempt = int(m.get("attempt") or 0) + 1
     run_id = m["run_id"]
     bus_source = lab.source_of(workdir)
@@ -369,9 +358,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         prompt = (rd / "prompt.md").read_text(encoding="utf-8") if (rd / "prompt.md").exists() else ""
     else:
         mode = (resume or {}).get("mode") or "continue"
-        if mode == "answer":
-            prompt = None if backend == "claude" else (resume or {}).get("text") or None
-        elif mode == "reply":
+        if mode in ("answer", "reply"):
             prompt = (resume or {}).get("text") or ""
         else:
             prompt = _CONTINUE.format(why=m.get("reason") or m.get("status") or "unknown")
@@ -386,8 +373,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     env_extra = {"NEWTS_RUN_ID": run_id, "NEWTS_RUN_DIR": str(rd), "NEWTS_HUB": str(lab.hub),
                  "NEWTS_RUN_TARGET": str(m.get("target")), "NEWTS_ATTEMPT": str(attempt),
                  "NEWTS_RUN_SUBJECT": str(m.get("subject") or ""),
-                 "NEWTS_RUN_SKILL": str(m.get("skill") or ""),
-                 "NEWTS_PERMISSION_WAIT": str(pos_float(prog.get("permission_wait_seconds"), 0.0))}
+                 "NEWTS_RUN_SKILL": str(m.get("skill") or "")}
     env.update(env_extra)
     env["AUTOSCIENTIST_AGENT_DEPTH"] = str(depth + 1)
     if m.get("skill") == "finalize" and m.get("gate3_signed"):
@@ -408,9 +394,9 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         env["NEWTS_RESUME_SID"] = resume_sid or m.get("session_id") or ""
         env["NEWTS_RESUME_MODE"] = (resume or {}).get("mode") or ""
 
-    settings_path = mcp_path = sys_prompt = None
+    settings_path = sys_prompt = None
     if backend == "claude":
-        settings_path, mcp_path = _claude_sidecars(rd, env_extra, is_live)
+        settings_path = _claude_sidecars(rd)
         if TRACE_HOOK.is_file():
             env["NEWTS_TRACE_FLAGS"] = "1"   # the repo's own trace hooks (--from-repo) stand down: one line per event
         if preamble_text:
@@ -433,7 +419,6 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
             session_id=m.get("session_id") if (backend == "claude" and not resuming) else None,
             resume_sid=resume_sid if backend in ("claude", "opencode", "codex") else None,
             max_turns=m.get("max_turns"), add_dirs=add_dirs, settings_path=settings_path,
-            mcp_config_path=mcp_path, permission_tool=PERMISSION_TOOL if mcp_path else None,
             system_prompt_file=sys_prompt, preamble=preamble_text, cli_ver=ver,
             codex_hooks=codex_hooks, opencode_traced=oc_traced, live=is_live)
     except SystemExit as e:
@@ -658,29 +643,9 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
                       wall_seconds=total_wall, exit_code=res.rc, pid=None, post_processed=False, not_before=None)
         return 0
 
-    if status == "waiting_input" and (m.get("pending_question") or {}).get("live"):
+    if status == "waiting_input":   # parked: the question stays in Needs you; the answer resumes it
         st.transition("waiting_input", reason="asking the PI (parked)", wall_seconds=total_wall,
                       exit_code=res.rc, pid=None)
-        return 0
-    if status == "waiting_input":
-        q = (res.result or {}).get("deferred_tool_use") or {}
-        qfile = rd / "question.json"
-        qdata = None
-        if qfile.exists():
-            try:
-                qdata = json.loads(qfile.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                qdata = None
-        pending = {"tool_use_id": q.get("id") or (qdata or {}).get("tool_use_id"),
-                   "name": q.get("name") or "AskUserQuestion",
-                   "input": q.get("input") or (qdata or {}).get("input") or {},
-                   "asked_at": now(), "attempt": attempt}
-        st.transition("waiting_input", reason="asking the PI", pending_question=pending,
-                      wall_seconds=total_wall, exit_code=res.rc, pid=None)
-        qs = (pending["input"] or {}).get("questions") or []
-        emit(lab, workdir, "agent_waiting", detail=run_id, idea=m.get("subject"),
-             data={"run_id": run_id, "question": (qs[0].get("question") if qs and isinstance(qs[0], dict) else None),
-                   "skill": m.get("skill")})
         return 0
 
     st.transition(status, reason=reason, finished=now(), exit_code=res.rc, wall_seconds=total_wall, pid=None,

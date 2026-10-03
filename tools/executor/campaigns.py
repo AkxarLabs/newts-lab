@@ -118,8 +118,11 @@ def _event(st: dict, what: str) -> None:
 
 
 # ── the PI's controls (the dashboard, under the scheduler lock) ──────────────────────────────────
-def control(lab: Lab, name: str, action: str, study: str | None = None) -> dict:
-    """pause | resume | stop | revoke_gate3 | hold | unhold (hold/unhold take a study)."""
+def control(lab: Lab, name: str, action: str, study: str | None = None, text: str | None = None,
+            index: int | None = None) -> dict:
+    """pause | resume | stop | revoke_gate3 | hold | unhold (hold/unhold take a study) | answer (a
+    question a pass left on the card: `index` into its questions, `text` = the answer — the next pass
+    gets it)."""
     from .manifest import scheduler_lock   # noqa: PLC0415
     from .runs import stop as stop_run       # noqa: PLC0415
     with scheduler_lock(lab):
@@ -140,6 +143,12 @@ def control(lab: Lab, name: str, action: str, study: str | None = None) -> dict:
         elif action == "revoke_gate3":
             st["gate3_auto"] = False
             _event(st, "Gate-3 delegation revoked by the PI")
+        elif action == "answer":
+            qs = st.get("questions") or []
+            if index is None or not 0 <= int(index) < len(qs) or not (text or "").strip():
+                raise ValueError("which question, and what's the answer?")
+            qs[int(index)].update(answer=str(text).strip()[:2000], answered_at=now(), delivered=False)
+            _event(st, "the PI answered a question — the next pass gets it")
         elif action in ("hold", "unhold"):
             if not study or not _NAME_RE.match(study):
                 raise ValueError("which study?")
@@ -537,16 +546,20 @@ def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
     if final:
         nb = min(nb, time.time())   # the report cycle goes right away
     n = len(cycles) + 1
+    answers = [q for q in st.get("questions") or [] if q.get("answer") and not q.get("delivered")]
     spec = RunSpec(skill="autopilot", target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
                    model=st.get("model"), max_minutes=st.get("cycle_minutes"), campaign=name,
                    parent=last["run_id"] if last else None, created_by="campaign",
-                   extra={"campaign_cycle": n, "campaign_final": final, "not_before": _iso(max(nb, time.time()))})
+                   extra={"campaign_cycle": n, "campaign_final": final, "not_before": _iso(max(nb, time.time())),
+                          "pi_answers": [{"question": q.get("question"), "answer": q["answer"]} for q in answers]})
     try:
         child = enqueue(lab, spec)
     except SpecError as e:
         st["last_error"] = str(e)[:400]
         return
     st["last_error"] = None
+    for q in answers:
+        q["delivered"] = True
     out["cycles"].append(child["run_id"])
     _event(st, f"cycle {n}{' (final report)' if final else ''} queued")
 
@@ -562,6 +575,6 @@ def summary(lab: Lab) -> list[dict]:
                    | {"cycles": len(st.get("cycles") or []), "last_cycles": (st.get("cycles") or [])[-5:],
                       "studies": {k: {x: v.get(x) for x in ("member", "waiting", "hold", "gate3_done")}
                                   for k, v in studies.items()},
-                      "dispatch_log": (st.get("dispatch_log") or [])[-12:], "questions": (st.get("questions") or [])[-5:],
+                      "dispatch_log": (st.get("dispatch_log") or [])[-12:], "questions": [{**q, "index": i} for i, q in enumerate(st.get("questions") or [])][-5:],
                       "gate3_log": (st.get("gate3_log") or [])[-6:], "events": (st.get("events") or [])[-12:]})
     return out

@@ -186,8 +186,11 @@ Open any run (from Home, Runs, a study, or a notification) and it reads like a c
 
 At the bottom:
 
+- **Message** a running agent: it reads your message after its current step, in the same turn.
+  **Interrupt** stops the current step and leaves the session open for your next message.
 - **Reply** in your own words to a paused or finished run; it continues the same conversation.
-  A question answered while the run is live goes straight to the running agent.
+  A question answered while the run is live goes straight to the running agent. **Ask Newt** stays
+  open for a few minutes after it answers, so a follow-up goes straight in.
 - **Stop** ends it but leaves it resumable, and **Resume** continues it (claude `--resume`, codex
   `exec resume`, opencode `-s`).
 - A queued run can be cancelled.

@@ -1,9 +1,8 @@
 """A stand-in for the `claude` CLI, for hermetic executor tests.
 
 Speaks the flag surface tools/executor/backends.build_run_command emits and prints `claude -p
---output-format stream-json` shaped lines. Crucially it EXECUTES the real per-run hook from
-`--settings` (tools/executor/ask_hook.py) and talks to the real MCP permission host from
-`--mcp-config`, so the defer → answer → resume round-trip is tested end to end without a model.
+--output-format stream-json` shaped lines, and EXECUTES the hooks from `--settings` and the repo's
+.claude/settings.json (the tracer, the signature guard), so tracing is tested end to end without a model.
 
 With `--input-format stream-json` (the executor's live session) it speaks the stdio control protocol
 instead: the prompt is the first user line on stdin, AskUserQuestion and permission prompts go out as
@@ -14,11 +13,10 @@ keeps the first turn open that long for a mid-turn message.
 
 Behaviour is picked by env FAKE_MODE:
   complete   init → Bash tool_use → tool_result → text → result(success)
-  defer      first attempt: AskUserQuestion → hook → result(stop_reason=tool_deferred)
-             on --resume: hook again → answers delivered → result(success, echoing the answers)
+  defer      (live) AskUserQuestion → control_request → the answer → result echoing it
   slow       init, then sleep FAKE_SLEEP seconds (default 30)
   crash      init, then exit 3
-  mcp        ask the permission host to approve a Bash call; report its decision
+  mcp        (live) a Bash permission prompt → control_request → report the decision
   subagents  spawn an Agent subagent, let it act (parent_tool_use_id), return a result packet
   prose      end with a question in prose (no AskUserQuestion) — answered via reply/resume
   auto       (demos) pick by procedure: /spawn-project|/discuss → defer, /experiment|/improve →
@@ -33,7 +31,6 @@ from __future__ import annotations
 import json
 import os
 import queue
-import shlex
 import subprocess
 import sys
 import threading
@@ -71,23 +68,6 @@ def parse(argv: list[str]) -> tuple[dict, list[str]]:
     return opts, pos
 
 
-def run_hook(settings_path: str | None, payload: dict) -> dict | None:
-    if not settings_path:
-        return None
-    s = json.loads(Path(settings_path).read_text(encoding="utf-8"))
-    for entry in (s.get("hooks") or {}).get("PreToolUse") or []:
-        if entry.get("matcher") and entry["matcher"] != payload.get("tool_name"):
-            continue
-        for h in entry.get("hooks") or []:
-            cmd = h["command"]
-            argv = shlex.split(cmd, posix=(os.name != "nt"))
-            argv = [a.strip('"') for a in argv]
-            r = subprocess.run(argv, input=json.dumps(payload), capture_output=True, text=True, timeout=30)
-            if r.stdout.strip():
-                return json.loads(r.stdout)
-    return None
-
-
 def fire(settings_path: str | None, payload: dict) -> None:
     """Run every hook Claude Code would for this event: the run's --settings file AND the repo's own
     .claude/settings.json (with ${CLAUDE_PROJECT_DIR} = cwd), matchers honoured — the trace path end to end."""
@@ -109,29 +89,6 @@ def fire(settings_path: str | None, payload: dict) -> None:
                 cmd = h["command"].replace("${CLAUDE_PROJECT_DIR}", os.getcwd())
                 subprocess.run(cmd, shell=True, input=json.dumps(payload), capture_output=True, text=True,
                                timeout=30, cwd=os.getcwd())
-
-
-def ask_host(mcp_path: str, tool_name: str, tool_input: dict) -> dict:
-    cfg = json.loads(Path(mcp_path).read_text(encoding="utf-8"))["mcpServers"]["newts"]
-    env = {**os.environ, **(cfg.get("env") or {})}
-    p = subprocess.Popen([cfg["command"], *cfg["args"]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                         env=env)
-
-    def rpc(mid, method, params=None):
-        p.stdin.write((json.dumps({"jsonrpc": "2.0", "id": mid, "method": method, "params": params or {}}) + "\n").encode())
-        p.stdin.flush()
-        return json.loads(p.stdout.readline())
-
-    rpc(1, "initialize", {"protocolVersion": "2025-06-18"})
-    p.stdin.write((json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n").encode())
-    p.stdin.flush()
-    tools = rpc(2, "tools/list")["result"]["tools"]
-    assert tools and tools[0]["name"] == "permission"
-    res = rpc(3, "tools/call", {"name": "permission", "arguments": {"tool_name": tool_name, "input": tool_input,
-                                                                      "tool_use_id": "toolu_perm"}})
-    p.stdin.close()
-    p.wait(timeout=10)
-    return json.loads(res["result"]["content"][0]["text"])
 
 
 class Live:
@@ -310,22 +267,7 @@ def main() -> int:
             out({"type": "user", "parent_tool_use_id": None, "message": {"content": [
                 {"type": "tool_result", "tool_use_id": tu, "content": json.dumps(ans)}]}})
             return finish(f"answers={json.dumps(ans, sort_keys=True)} response={resp}")
-        payload = {"session_id": sid, "hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion",
-                   "tool_input": q, "tool_use_id": tu, "cwd": os.getcwd()}
-        decision = run_hook(settings, payload) or {}
-        hs = decision.get("hookSpecificOutput") or {}
-        if hs.get("permissionDecision") == "defer":
-            out({"type": "result", "subtype": "success", "is_error": False, "result": "", "session_id": sid,
-                 "stop_reason": "tool_deferred",
-                 "deferred_tool_use": {"id": tu, "name": "AskUserQuestion", "input": q}})
-            return 0
-        if hs.get("permissionDecision") == "allow":
-            ans = (hs.get("updatedInput") or {}).get("answers") or {}
-            resp = (hs.get("updatedInput") or {}).get("response")
-            out({"type": "user", "parent_tool_use_id": None, "message": {"content": [
-                {"type": "tool_result", "tool_use_id": tu, "content": json.dumps(ans)}]}})
-            return finish(f"answers={json.dumps(ans, sort_keys=True)} response={resp}")
-        return finish("no hook decision", 1)
+        return finish("no question channel (one-shot)", 1)
     if mode == "slow":
         time.sleep(float(os.environ.get("FAKE_SLEEP", "30")))
         return finish("slept")
@@ -402,12 +344,6 @@ def main() -> int:
     if mode == "mcp" and lv:
         assert (opts.get("--permission-prompt-tool") or [None])[0] == "stdio"
         d = lv.ask("Bash", {"command": "rm -rf /tmp/x"}, "toolu_perm")
-        return finish(f"permission={d['behavior']}")
-    if mode == "mcp":
-        mcp = (opts.get("--mcp-config") or [None])[0]
-        tool = (opts.get("--permission-prompt-tool") or [None])[0]
-        assert mcp and tool == "mcp__newts__permission", (mcp, tool)
-        d = ask_host(mcp, "Bash", {"command": "rm -rf /tmp/x"})
         return finish(f"permission={d['behavior']}")
     if mode == "subagents":
         out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [

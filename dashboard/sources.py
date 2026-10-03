@@ -169,7 +169,7 @@ _RUN_KEYS = ("agent_id", "run_id", "backend", "role", "status", "started", "fini
              "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema",
              "kind", "gate3_signed", "args", "model", "effort", "max_repeats", "repeat_index", "campaign",
              "repeat_child", "campaign_cycle", "campaign_final", "failure_kind", "limit_reset", "campaign_retries",
-             "brief_sha", "chain_step")
+             "brief_sha", "chain_step", "transport", "pending_permissions", "assumed", "limits", "pid")
 
 
 def _r10(x) -> int | None:

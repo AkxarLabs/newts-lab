@@ -599,7 +599,7 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     return out, 200
 
 
-CAMPAIGN_ACTIONS = ("pause", "resume", "stop", "revoke_gate3", "hold", "unhold")
+CAMPAIGN_ACTIONS = ("pause", "resume", "stop", "revoke_gate3", "hold", "unhold", "answer")
 
 
 def campaign_control(body: dict) -> tuple[dict, int]:
@@ -611,13 +611,14 @@ def campaign_control(body: dict) -> tuple[dict, int]:
         return {"error": "confirm first"}, 400
     try:
         from executor import campaigns  # noqa: PLC0415
-        st = campaigns.control(S.sources.executor.Lab(_hub()), name, action, study=body.get("study") or None)
+        st = campaigns.control(S.sources.executor.Lab(_hub()), name, action, study=body.get("study") or None,
+                               text=body.get("text"), index=body.get("index"))
     except (ValueError, OSError) as e:
         return {"error": str(e)}, 400
     S._pi_log({"action": f"campaign.{action}", "campaign": name, "study": body.get("study")})
     words = {"pause": "paused", "resume": "resumed", "stop": "stopping — it writes its final report",
              "revoke_gate3": "Gate 3 is yours again for this campaign", "hold": "held from auto-finalizing",
-             "unhold": "released"}
+             "unhold": "released", "answer": "answered — the next pass gets it"}
     return {"ok": True, "note": words[action], "status": st.get("status")}, 200
 
 

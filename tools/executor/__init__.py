@@ -58,7 +58,11 @@ def health(lab: Lab) -> dict:
         "queued": sum(1 for m in runs if m.get("status") == "queued"),
         "waiting": sum(1 for m in runs if m.get("status") in PAUSED),
         "last_tick": last_tick(lab),
-        "config": {k: prog.get(k) for k in CONFIG_KEYS if k in prog},
+        "config": {**{k: prog.get(k) for k in CONFIG_KEYS if k in prog},
+                   **{k: v for k, v in (prog.get("live") if isinstance(prog.get("live"), dict) else {}).items()
+                      if k in LIVE_KEYS},
+                   "live": prog.get("live") is not False and (prog.get("live") or {}).get("enabled", True)
+                   if isinstance(prog.get("live"), (dict, type(None))) else bool(prog.get("live"))},
         "auto_spawn_on_gate1": bool((lab.dashboard_cfg() or {}).get("auto_spawn_on_gate1")),
     }
 
@@ -66,8 +70,8 @@ def health(lab: Lab) -> dict:
 # agents.programmatic keys the dashboard settings panel may change (PI-owned; the dashboard is the PI's
 # localhost console, every change is confirmed and logged). The master switch has its own endpoint.
 CONFIG_KEYS = ("backend", "model", "permission_mode", "max_minutes", "max_concurrent", "max_concurrent_total",
-               "hub_max_concurrent", "daily_max_runs", "daily_max_minutes", "chain_max_steps",
-               "permission_wait_seconds")
+               "hub_max_concurrent", "daily_max_runs", "daily_max_minutes", "chain_max_steps")
+LIVE_KEYS = ("park_minutes", "permission_minutes", "campaign_question_minutes", "linger_minutes")
 
 
 __all__ = [

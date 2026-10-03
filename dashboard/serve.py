@@ -19,7 +19,8 @@ control surface — but it stays honest about what it can and can't do:
     POST /api/run                  queue a whitelisted procedure (/propose x, /experiment p, …)
     POST /api/run/answer|reply     answer a run's question / send it a follow-up (resumes the session)
     POST /api/run/stop|resume|cancel
-    POST /api/run/permission       decide a pending permission request (permission_wait_seconds > 0)
+    POST /api/run/permission       allow / deny a live run's pending permission request
+    POST /api/run/interrupt        interrupt a live run's current turn
     POST /api/attention/ack        dismiss a "needs you" item
     POST /api/executor/enable      flip agents.programmatic.enabled (explicit confirm, logged)
     GET  /api/run?run_id= · /api/run/tail?run_id=&offset= · /api/run/log · /api/executor/health
@@ -486,13 +487,18 @@ def _run_op(kind: str, body: dict) -> tuple[dict, int]:
             m = executor.resume(lab, rid)
         elif kind == "cancel":
             m = executor.cancel(lab, rid)
+        elif kind == "interrupt":
+            m = executor.interrupt(lab, rid)
         else:
             return {"error": "unknown operation"}, 400
     except executor.SpecError as e:
         return {"error": str(e)}, 400
     _pi_log({"action": f"run.{kind}", "run_id": rid})
     _KICK.set()
-    notes = {"answer": "answered — the run resumes in a moment", "reply": "sent — the session resumes with it",
+    live_now = m.get("transport") == "live" and m.get("status") in ("running", "waiting_input", "starting", "resuming")
+    notes = {"answer": "answered" + ("" if live_now else " — the run resumes in a moment"),
+             "reply": "sent to the running agent" if live_now else "sent — the session resumes with it",
+             "interrupt": "interrupted — it stops this turn and waits for your message",
              "stop": "stopping (POSIX: graceful, then killed; Windows: killed at once — the session stays resumable)",
              "resume": "queued to resume", "cancel": "cancelled"}
     return {"ok": True, "run_id": rid, "status": m.get("status"), "note": notes[kind]}, 200
@@ -606,7 +612,12 @@ EXEC_CONFIG = {
     "daily_max_runs": (["agents", "programmatic", "daily_max_runs"], _num(0, True)),
     "daily_max_minutes": (["agents", "programmatic", "daily_max_minutes"], _num(0)),
     "chain_max_steps": (["agents", "programmatic", "chain_max_steps"], _num(1, True)),
-    "permission_wait_seconds": (["agents", "programmatic", "permission_wait_seconds"], _num(0)),
+    "live": (["agents", "programmatic", "live", "enabled"],
+             lambda v: v if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes", "on")),
+    "park_minutes": (["agents", "programmatic", "live", "park_minutes"], _num(1)),
+    "permission_minutes": (["agents", "programmatic", "live", "permission_minutes"], _num(1)),
+    "campaign_question_minutes": (["agents", "programmatic", "live", "campaign_question_minutes"], _num(1)),
+    "linger_minutes": (["agents", "programmatic", "live", "linger_minutes"], _num(0)),
     "auto_spawn_on_gate1": (["dashboard", "auto_spawn_on_gate1"],
                             lambda v: v if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes", "on")),
 }
@@ -620,17 +631,25 @@ def _stamp_or_insert(profiles, text: str, dotted: list, value) -> tuple[str, boo
         return new, True
     lines = text.split("\n")
     lo, hi, indent = 0, len(lines), 0
-    for key in dotted[:-1]:
+
+    def end_of_block() -> int:   # back over blank lines / the NEXT section's leading comments
+        j = hi
+        while j > lo and (not lines[j - 1].strip() or
+                          (lines[j - 1].lstrip().startswith("#") and profiles._indent(lines[j - 1]) < indent)):
+            j -= 1
+        return j
+
+    for depth, key in enumerate(dotted[:-1]):
         i = profiles._find_key(lines, key, lo, hi, indent)
         if i < 0:
-            return text, False
+            if depth < 2:          # never invent a top-level section (agents / dashboard / …)
+                return text, False
+            i = end_of_block()     # a nested block an older config lacks (e.g. programmatic.live)
+            lines.insert(i, f"{' ' * indent}{key}:")
+            hi += 1
         lo, hi = i + 1, profiles._block_end(lines, i, indent)
         indent += 2
-    j = hi   # back over blank lines / the NEXT section's leading comments (shallower than this block)
-    while j > lo and (not lines[j - 1].strip() or
-                      (lines[j - 1].lstrip().startswith("#") and profiles._indent(lines[j - 1]) < indent)):
-        j -= 1
-    lines.insert(j, f"{' ' * indent}{dotted[-1]}: {profiles._fmt(value)}")
+    lines.insert(end_of_block(), f"{' ' * indent}{dotted[-1]}: {profiles._fmt(value)}")
     return "\n".join(lines), True
 
 
@@ -1854,6 +1873,7 @@ class Handler(BaseHTTPRequestHandler):
         "/api/run": lambda b: launch_run(b),
         "/api/run/answer": lambda b: _run_op("answer", b),
         "/api/run/reply": lambda b: _run_op("reply", b),
+        "/api/run/interrupt": lambda b: _run_op("interrupt", b),
         "/api/run/stop": lambda b: _run_op("stop", b),
         "/api/run/resume": lambda b: _run_op("resume", b),
         "/api/run/cancel": lambda b: _run_op("cancel", b),

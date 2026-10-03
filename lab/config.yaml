@@ -125,9 +125,16 @@ agents:                         # ── subagent settings · PI-owned ──
     daily_max_minutes: 0        # usage brake: max headless agent-minutes per day (0 = no cap)
     chain_max_steps: 6          # a run launched with chain=loop re-launches its own reported next step at
                                 # most this many times — and ALWAYS stops at any gate / needs-PI report
-    permission_wait_seconds: 0  # a headless run's permission prompts: 0 = deny at once + log (never hangs
-                                # an unattended run; denials surface as "needs you"). >0 = wait that long
-                                # for the PI's allow/deny in the dashboard, then deny
+    live:                       # runs are LIVE sessions: questions, permission prompts and your messages
+                                # reach the running agent (claude stream-json · codex app-server · opencode
+                                # serve). A run that can't start live falls back to one-shot by itself.
+      enabled: true             # false = one-shot runs only (questions then end the turn; a reply resumes)
+      park_minutes: 60          # a question nobody answered: the process ends, the question stays in
+                                # Needs you, and your answer resumes the same session
+      permission_minutes: 30    # a permission request nobody decided is denied (campaign runs: at once)
+      campaign_question_minutes: 30  # a campaign run takes the recommended option of an unanswered
+                                # question and marks it assumed (Needs you: "Assumed …, change?")
+      linger_minutes: 10        # Ask Newt stays open this long after answering, for your next message
     backends:                   # per-backend invocation knobs. The safety-critical flags are REFUSED in
                                 # extra_args (so they can't silently negate human-in-loop); set them
                                 # through these DEDICATED keys instead — change as needed.

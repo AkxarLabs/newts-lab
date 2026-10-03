@@ -171,9 +171,12 @@ The run's preamble says `CAMPAIGN CYCLE n of <campaign>`. Then:
    bookkeeping (the Campaign Log, the notebook, a registry fix) you may do yourself.
 3. **Membership:** append the idea's Campaign Log row **before** dispatching its first step — the log is
    how the keeper knows the study is part of this campaign.
-4. **Never ask the PI.** A step that needs a decision outside the brief (a proposal out of bounds, a
-   kill decision, a frozen-set change) is reported by that step's own run (`needs_pi`, `study=<slug>`):
-   only that study waits; carry on with the others. Read PI directives (`tools/lab_bus.py inbox`) each pass.
+4. **The PI is away.** Ask only what you can't decide within the brief: ONE question, concrete options,
+   your recommendation first — if nobody answers in time the recommendation is taken and shown to the PI
+   as assumed. A step that needs a decision outside the brief (a proposal out of bounds, a kill decision,
+   a frozen-set change) is never assumed: that step's own run reports it (`needs_pi`, `study=<slug>`) and
+   only that study waits; carry on with the others. Read PI directives (`tools/lab_bus.py inbox`) and the
+   answers in your preamble each pass.
 5. **Gate 3:** never dispatch `/finalize`. If the brief delegates Gate 3, the keeper records it for a
    paper whose `/review-paper` reported `needs_pi=gate3`, after re-running the paper audits itself, and
    starts `/finalize`; otherwise the paper waits for the PI.

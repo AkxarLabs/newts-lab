@@ -398,13 +398,11 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
                       effort: str | None = None, session_id: str | None = None,
                       resume_sid: str | None = None, max_turns: int | None = None,
                       add_dirs: list[Path] | None = None, settings_path: Path | None = None,
-                      mcp_config_path: Path | None = None, permission_tool: str | None = None,
                       system_prompt_file: Path | None = None, preamble: str | None = None,
                       cli_ver: tuple | None = None, codex_hooks: list[str] | None = None,
                       opencode_traced: bool = False, live: bool = False) -> RunCommand:
-    """The executor's argv for one attempt. `prompt=None` on a claude resume means "continue the
-    deferred turn" (the answer rides the AskUserQuestion hook, not a new user message). `live`: the
-    session stays open on stdin (tools/executor/live.py sends the prompt and everything after it)."""
+    """The executor's argv for one attempt. `live`: the session stays open (tools/executor/live.py
+    sends the prompt and everything after it); otherwise one-shot, the prompt on stdin or argv."""
     bcfg = (prog.get("backends") or {}).get(backend) or {}
     extra = str(bcfg.get("extra_args") or "")
     eff_model = _eff_model(model or prog.get("model"), bcfg)
@@ -441,8 +439,6 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
             argv += ["--append-system-prompt-file", str(system_prompt_file)]
         if settings_path:
             argv += ["--settings", str(settings_path)]
-        if mcp_config_path and permission_tool and not live:
-            argv += ["--mcp-config", str(mcp_config_path), "--permission-prompt-tool", permission_tool]
         for d in add_dirs or []:
             argv += ["--add-dir", str(d)]
         for flag, minv in CLAUDE_MIN.items():
@@ -601,7 +597,7 @@ def parse_events(backend: str, obj: dict) -> list[dict]:
     """Every activity in one stream object, normalized:
       start{session_id} · text{text,parent} · action{tool,tool_use_id,summary,parent,spawn?}
       tool_result{tool_use_id,text,is_error,parent} · begin{tool,summary} · denied{tool}
-      result{last_message,session_id,stop_reason,deferred_tool_use,cost_usd,usage,is_error}
+      result{last_message,session_id,stop_reason,cost_usd,usage,is_error}
     `parent` is the tool_use_id of the Agent/Task call that spawned the subagent the message came
     from (None = the main thread) — a hook-free source for the run → subagent tree."""
     if not isinstance(obj, dict):
@@ -647,7 +643,7 @@ def parse_events(backend: str, obj: dict) -> list[dict]:
             return out
         if t == "result":
             return [{"event": "result", "last_message": obj.get("result"), "session_id": obj.get("session_id"),
-                     "stop_reason": obj.get("stop_reason"), "deferred_tool_use": obj.get("deferred_tool_use"),
+                     "stop_reason": obj.get("stop_reason"),
                      "cost_usd": obj.get("total_cost_usd"), "usage": obj.get("usage"),
                      "num_turns": obj.get("num_turns"), "is_error": obj.get("is_error"),
                      "subtype": obj.get("subtype"),

@@ -139,6 +139,11 @@ From then on the **campaign keeper**, part of the executor's scheduler rather th
   ("stalled").
 - **Only that study waits.** A step that needs you (a proposal outside your bounds, a kill decision)
   shows in **Needs you**; the rest of the campaign carries on.
+- **Questions while you're away.** A campaign's agents may still ask, with options and their
+  recommendation first. Answer in time and it goes straight to the running agent; otherwise, after
+  `live.campaign_question_minutes` (30), the agent takes its recommendation and **Needs you** shows
+  *Assumed …* (reply to the run to change it). A question a pass leaves on the campaign card can be
+  answered there: the next pass gets your answer.
 - **It ends** at the deadline, the agent-hours budget, a pass reporting everything done, or your
   **Stop**, with one final pass that writes the morning report.
 - **Gate 3, if you ticked the box:** once `/review-paper` accepts a paper, the keeper re-runs the four
@@ -406,12 +411,8 @@ uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
   In a campaign run the PI is away, so a permission request is denied at once.
 - **The fallback: one-shot runs.** When a live session can't start (an old CLI), the attempt
   re-runs one-shot (`claude -p`, `codex exec`, `opencode run`), and `live: false` makes that the
-  default.
-  There, a per-run `PreToolUse` hook **defers** a question (the process exits with
-  `stop_reason: tool_deferred`), the PI answers, and the resumed attempt's hook returns the answer;
-  other permission prompts go to a small MCP host that denies and logs them (or waits for the PI when
-  `permission_wait_seconds > 0`). codex/opencode runs ask by escalating and ending their turn; the
-  PI's reply resumes them.
+  default. A one-shot run asks by stating its question and ending its turn, and your reply resumes the
+  session; anything its permission mode doesn't allow is denied (and listed under *Needs you*).
 - **Caps and brakes:** `max_concurrent_total`, `hub_max_concurrent` (1 — hub sessions share the
   registry), per-project `max_concurrent`, `daily_max_runs` / `daily_max_minutes`, and the master
   switch itself — all `agents.programmatic.*`, all PI-owned. Training still serializes through

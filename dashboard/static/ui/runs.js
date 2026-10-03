@@ -99,7 +99,7 @@
       case 'spawn': return html`<div class="spawn"><span class="spawn-ico">⤷</span><span>started a subagent</span> <b>${NL.clip(b.t, 120)}</b></div>`;
       case 'sub': return html`<div class="subres"><div class="subres-h">↩ <b>${b.who || 'subagent'}</b> handed back</div><div class="subres-t">${NL.clip(b.t, 1800)}</div></div>`;
       case 'err': return html`<div class="msg-err"><${Who} who=${b.who} />${b.t}</div>`;
-      case 'end': return html`<div class="msg-end">${b.stop === 'tool_deferred' ? '⏸ paused — waiting for your answer' : '■ session ended'}${b.cost != null ? html` <span class="muted">· $${(+b.cost).toFixed(3)}</span>` : null}</div>`;
+      case 'end': return html`<div class="msg-end">${'■ turn ended'}${b.cost != null ? html` <span class="muted">· $${(+b.cost).toFixed(3)}</span>` : null}</div>`;
       case 'attempt': case 'start': return html`<div class="msg-div"><span>${b.t}</span></div>`;
       default: return html`<div class="tline muted">${b.t}</div>`;
     }
@@ -121,11 +121,11 @@
     const send = async () => {
       const a = answers();
       if (!Object.keys(a).length) return NL.toast('Pick an option, or type your own answer', 'warn');
-      const x = await NL.act('/api/run/answer', { run_id: r.run_id, answers: a }, 'Answered — the run picks up where it stopped');
+      const x = await NL.act('/api/run/answer', { run_id: r.run_id, answers: a });
       return x;
     };
     return html`<div class="ask">
-      <div class="ask-h"><span class="ask-ico">?</span> The agent is asking you</div>
+      <div class="ask-h"><span class="ask-ico">?</span> ${r.pid ? 'The agent is asking you — it is waiting for your answer' : 'The agent asked you — your answer resumes it'}</div>
       ${qs.map(q => html`<fieldset class="ask-q"><legend>${q.header ? html`<span class="ask-tag">${q.header}</span>` : null}${q.question}</legend>
         ${(q.options || []).map(o => {
           const on = q.multiSelect ? (ans[q.question] || []).includes(o.label) : ans[q.question] === o.label;
@@ -174,17 +174,21 @@
     const it = r.subject && NL.item(s, r.subject);
     const active = NL.RUN_ACTIVE.has(r.status);
     const budget = r.max_minutes ? r.max_minutes * 60 : null;
-    const canReply = r.session_id && (r.status === 'waiting_input' || NL.RUN_DONE.has(r.status));
-    const sendReply = async () => { if (!reply.trim()) return; const x = await NL.act('/api/run/reply', { run_id: r.run_id, text: reply.trim() }, 'Sent — the session continues with it'); if (x.ok) setReply(''); };
+    const liveNow = r.transport === 'live' && (active || r.status === 'waiting_input') && r.pid;
+    const canReply = r.session_id && (r.status === 'waiting_input' || NL.RUN_DONE.has(r.status) || liveNow);
+    const sendReply = async () => { if (!reply.trim()) return; const x = await NL.act('/api/run/reply', { run_id: r.run_id, text: reply.trim() }); if (x.ok) setReply(''); };
+    const hint = liveNow && active ? 'Message the agent while it works — it reads it after its current step (Ctrl+Enter)'
+      : r.status === 'waiting_input' ? 'Your turn — reply in your own words (Ctrl+Enter)' : 'Reply — continues this same conversation (Ctrl+Enter to send)';
     const title = NL.runTitle(r);
     const sub = html`<span class="row-wrap"><${NL.RunPill} r=${r} />
       ${it ? html`<a class="chip" href=${'#/study/' + it.id}>${NL.clip(it.title || it.id, 40)}</a>` : html`<span class="chip">the lab</span>`}
       <span class="muted">${r.backend}${r.model_used || r.model ? ' · ' + (r.model_used || r.model) : ''}${r.attempt > 1 ? ' · attempt ' + r.attempt : ''}</span></span>`;
     const footer = html`<div class="runfoot">
       ${r.status === 'waiting_input' && r.pending_question ? null : canReply ? html`<div class="reply">
-        <${NL.Textarea} rows="2" value=${reply} onInput=${setReply} onSubmit=${sendReply} placeholder=${r.status === 'waiting_input' ? 'Reply in your own words…' : 'Reply — continues this same conversation (Ctrl+Enter to send)'} />
+        <${NL.Textarea} rows="2" value=${reply} onInput=${setReply} onSubmit=${sendReply} placeholder=${hint} />
         <${NL.Btn} kind="primary" onClick=${sendReply} disabled=${!reply.trim()}>Send</${NL.Btn}></div>` : null}
       <div class="row">
+        ${liveNow && active ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/interrupt', { run_id: r.run_id })} title="Stop the current step; the session stays open for your next message">⏸ Interrupt</${NL.Btn}>` : null}
         ${active ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }}>■ Stop</${NL.Btn}>` : null}
         ${r.status === 'queued' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/cancel', { run_id: r.run_id }, 'Cancelled')}>Cancel</${NL.Btn}>` : null}
         ${NL.RUN_DONE.has(r.status) && r.session_id && r.status !== 'completed' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/resume', { run_id: r.run_id }, 'Resuming')}>↻ Resume</${NL.Btn}>` : null}
@@ -269,7 +273,7 @@
     return html`<button type="button" class=${cls('runrow', compact && 'compact', 'tone-' + (NL.RUN_TONE[r.status] || 'muted'))} onClick=${() => NL.openRun(r.run_id)}>
       <span class="runrow-top"><${NL.RunPill} r=${r} /><b class="clip">${NL.runTitle(r)}</b></span>
       <span class="runrow-sub muted">${it ? NL.clip(it.title || it.id, 34) : 'the lab'}
-        ${r.status === 'waiting_input' ? ' · asking you' : NL.RUN_ACTIVE.has(r.status) && r.last_action ? ' · ' + NL.clip(r.last_action.summary || r.last_action.tool, 60) : r.finished ? ' · ' + NL.ago(r.finished) : ''}</span>
+        ${r.status === 'waiting_input' ? (r.pending_question ? ' · asking you' : ' · your turn') : NL.RUN_ACTIVE.has(r.status) && r.last_action ? ' · ' + NL.clip(r.last_action.summary || r.last_action.tool, 60) : r.finished ? ' · ' + NL.ago(r.finished) : ''}</span>
       ${NL.RUN_ACTIVE.has(r.status) && budget && r.elapsed_s != null ? html`<${NL.Bar} value=${r.elapsed_s} max=${budget} />` : null}</button>`;
   };
 
