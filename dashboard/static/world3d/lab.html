@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The tabletop lab — prototype</title>
+<!-- A PROTOTYPE: the lab as an open-plan tabletop in 3D (three.js). Its rooms are the workflow's (workflow/
+     stages.yaml) in their own room files (world3d/rooms/*.js), arranged around YOUR desk in the middle; the
+     paths between them are the moves a study makes, and the gates stand on the paths they guard. Every newt
+     is an agent at the station of the procedure it runs; every card is a study. Nothing here is decoration.
+     ?theme=day|night  ?lens=work|cost|waiting|risk  ?extra (two rooms a lab added in Compose)
+     All activity is simulated (a fixed seed), so the replay works the same every time. -->
+<style>
+  @font-face { font-family: 'Newsreader'; src: url('../vendor/fonts/newsreader-opsz-normal.woff2') format('woff2'); font-weight: 200 800; }
+  @font-face { font-family: 'Newsreader'; src: url('../vendor/fonts/newsreader-opsz-italic.woff2') format('woff2'); font-weight: 200 800; font-style: italic; }
+  @font-face { font-family: 'Instrument Sans'; src: url('../vendor/fonts/instrument-sans-wght-normal.woff2') format('woff2'); font-weight: 400 700; }
+  @font-face { font-family: 'IBM Plex Mono'; src: url('../vendor/fonts/ibm-plex-mono-400.woff2') format('woff2'); font-weight: 400; }
+  @font-face { font-family: 'IBM Plex Mono'; src: url('../vendor/fonts/ibm-plex-mono-500.woff2') format('woff2'); font-weight: 500 800; }
+  :root { --bg: #eef1ef; --ink: #1b1915; --soft: #5d584f; --faint: #948e83; --card: rgba(255, 254, 251, .92); --edge: rgba(30, 26, 20, .12); --accent: #1d776a; --warm: #a3600f; --bad: #b0412f;
+    --sky: linear-gradient(#a9cbe8, #e8efe9 62%, #f3efe6); }
+  body.night { --bg: #0b1114; --ink: #e9efed; --soft: #a2b1ad; --faint: #6c7c78; --card: rgba(17, 24, 27, .9); --edge: rgba(255, 255, 255, .1); --accent: #5ccfbc; --warm: #f0c26c; --bad: #f28b82;
+    --sky: radial-gradient(ellipse at 50% 30%, #16262e, #0b1114 70%); }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--ink); background: var(--sky); font: 14px/1.5 'Instrument Sans', system-ui, sans-serif; }
+  canvas#c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .glass { background: var(--card); border: 1px solid var(--edge); border-radius: 14px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  #bar { position: fixed; z-index: 5; top: 14px; left: 14px; right: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; pointer-events: none; }
+  #bar > * { pointer-events: auto; }
+  #bar h1 { margin: 0 6px 0 2px; font: 450 26px/1 'Newsreader', Georgia, serif; letter-spacing: -.01em; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; color: var(--soft); font: 500 13px 'Instrument Sans', sans-serif; padding: 6px 11px; border-radius: 9px; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: var(--bg); }
+  .kick { font: 500 10.5px 'IBM Plex Mono', monospace; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+  #labels { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+  .rl { position: absolute; transform: translate(-50%, -100%); text-align: center; white-space: nowrap; }
+  .rl b { display: block; font: 450 19px/1.1 'Newsreader', Georgia, serif; text-shadow: 0 1px 0 var(--card), 0 0 12px var(--card); }
+  .rl span { font: 500 10px 'IBM Plex Mono', monospace; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); text-shadow: 0 0 8px var(--card); }
+  .rl .hot { color: var(--warm); }
+  .bub { position: absolute; transform: translate(-50%, -100%); padding: 2px 8px; border-radius: 9px; font: 500 11px 'IBM Plex Mono', monospace; white-space: nowrap; background: var(--card); border: 1px solid var(--edge); color: var(--soft); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .bub.ask { color: #231400; background: var(--warm); border-color: transparent; font-weight: 600; }
+  .bub.bad { color: #fff; background: var(--bad); border-color: transparent; }
+  .bub.zzz { font-style: italic; }
+  .bub.cost { color: var(--warm); }
+  .bub.icon { padding: 1px 7px; }
+  #tip { position: fixed; z-index: 6; pointer-events: none; padding: 8px 12px; max-width: 320px; font-size: 13px; display: none; }
+  #tip b { font-weight: 600; } #tip small { display: block; color: var(--soft); }
+  #panel { position: fixed; z-index: 6; top: 70px; right: 14px; width: 340px; max-height: calc(100vh - 190px); overflow-y: auto; padding: 18px 20px; display: none; }
+  #panel h2 { margin: 4px 0 4px; font: 450 24px/1.15 'Newsreader', Georgia, serif; letter-spacing: -.01em; }
+  #panel .lede { font: 400 16px/1.4 'Newsreader', Georgia, serif; color: var(--soft); margin: 0 0 12px; }
+  #panel .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--edge); }
+  #panel .row span { color: var(--soft); }
+  #panel .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  #panel button.btn { border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 500 13px 'Instrument Sans', sans-serif; padding: 6px 12px; border-radius: 9px; cursor: pointer; }
+  #panel button.btn.primary { background: var(--accent); color: var(--bg); border-color: transparent; }
+  #panel .x { position: absolute; top: 10px; right: 10px; border: 0; background: none; color: var(--soft); font-size: 18px; cursor: pointer; }
+  #panel ol { margin: 6px 0 0; padding-left: 18px; font: 12px/1.6 'IBM Plex Mono', monospace; color: var(--soft); }
+  #panel .item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--edge); font-size: 13px; }
+  #panel .item .grow { flex: 1; }
+  #tl { position: fixed; z-index: 5; left: 14px; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+  #tl input[type=range] { flex: 1; accent-color: var(--accent); }
+  #tl .t { font: 500 12px 'IBM Plex Mono', monospace; color: var(--soft); min-width: 120px; text-align: right; }
+  #tl button { border: 0; background: var(--accent); color: var(--bg); font: 600 12px 'Instrument Sans', sans-serif; padding: 6px 12px; border-radius: 9px; cursor: pointer; }
+  #tl button.ghost { background: none; color: var(--soft); border: 1px solid var(--edge); }
+  #ticks { position: absolute; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none; }
+  #toast { position: fixed; z-index: 7; left: 50%; bottom: 90px; transform: translateX(-50%); padding: 9px 16px; display: none; font-size: 13.5px; }
+  #legend { position: fixed; z-index: 5; left: 14px; bottom: 80px; padding: 12px 14px; max-width: 300px; font-size: 12.5px; }
+  #legend p { margin: 4px 0 0; color: var(--soft); font: 400 14px/1.4 'Newsreader', Georgia, serif; }
+</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="bar"><h1>The tabletop lab</h1>
+  <div class="seg glass" id="lens"></div><div class="seg glass" id="theme"></div><div class="seg glass" id="rooms"></div>
+  <span class="kick">drag to turn · scroll to zoom · click anything</span></div>
+<div id="labels"></div>
+<div id="tip" class="glass"></div>
+<aside id="panel" class="glass"></aside>
+<div id="legend" class="glass"></div>
+<div id="tl" class="glass"><button id="play">Pause</button><div style="position:relative;flex:1;display:flex"><canvas id="ticks"></canvas><input id="scrub" type="range" min="0" max="1000" value="1000"></div>
+  <span class="t" id="tlabel">now</span><button id="live" class="ghost">Live</button></div>
+<div id="toast" class="glass"></div>
+<canvas id="c"></canvas>
+<script src="../ui/workflow-default.js"></script>
+<script src="kit.js"></script>
+<script src="newt.js"></script>
+<script src="components.js"></script>
+<script src="rooms/incubator.js"></script>
+<script src="rooms/study.js"></script>
+<script src="rooms/lab.js"></script>
+<script src="rooms/writing.js"></script>
+<script src="rooms/archive.js"></script>
+<script src="rooms/margins.js"></script>
+<script type="module">
+import * as THREE from 'three';
+const L = window.Lab3D, q = new URLSearchParams(location.search);
+const S = { theme: q.get('theme') || 'day', lens: q.get('lens') || 'work', extra: q.has('extra') };
+document.body.classList.toggle('night', S.theme === 'night');
+await Promise.race([Promise.all(['600 20px Newsreader', '500 13px "Instrument Sans"', '500 11px "IBM Plex Mono"'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 1500))]);
+const K = L.kit(THREE, S.theme), TH = K.th;
+const ROLE = { orchestrator: ['Newt', '#e0b44e'], 'experiment-runner': ['Experiment runner', '#3fb8a6'], overseer: ['Overseer', '#6f9be6'], 'fresh-context-reviewer': ['Reviewer', '#9b84ea'], 'ideation-critic': ['Critic', '#e57ab5'], 'scoping-advocate': ['Scoping advocate', '#e0a346'] };
+const MIN = 60, H = 14 * 3600, WALK = 0.055;   // sim seconds · history+future span · metres per sim-second
+
+// ── the workflow → rooms, procedures, links, gates ─────────────────────────────────────────────────
+function workflow() {
+  const wf = JSON.parse(JSON.stringify(window.__WORKFLOW_DEFAULT__));
+  if (S.extra) {   // what a lab might add in Compose: analysis gets a room of its own, and a replication stage
+    const at = wf.states.findIndex(s => s.id === 'analysis');
+    wf.states.splice(at + 1, 0, { id: 'replicating', label: 'Replicating', stage: 'replication', room: 'bench' });
+    wf.stages.splice(wf.stages.findIndex(s => s.id === 'analysis') + 1, 0, { id: 'replication', title: 'Replication', states: ['replicating'], procedures: ['replicate'] });
+    wf.next_for_state.replicating = 'replicate'; wf.procedures.replicate = { title: 'Replicate the result', does: 'Re-runs the headline result from a clean checkout.' };
+    const lab = wf.rooms.find(r => r.id === 'lab'); lab.states = lab.states.filter(s => s !== 'analysis');
+    wf.rooms.splice(wf.rooms.findIndex(r => r.id === 'lab') + 1, 0, { id: 'data', label: 'Data', title: 'The Data Room', states: ['analysis'] }, { id: 'bench', label: 'Bench', title: 'Replication Bench', states: ['replicating'] });
+  }
+  return wf;
+}
+const WF = workflow();
+const ORDER = WF.states.map(s => s.id), SIDE = new Set((WF.side_states || []).map(s => s.id));
+const LABEL = Object.fromEntries(WF.states.concat(WF.side_states || []).map(s => [s.id, s.label]));
+const ROOM_OF = {}; WF.rooms.forEach(r => (r.states || []).forEach(s => { ROOM_OF[s] = r.id; }));
+const procsOfRoom = rid => [...new Set(WF.stages.filter(st => (st.states || []).some(s => ROOM_OF[s] === rid)).flatMap(st => st.procedures || []))];
+const procFor = st => { const v = WF.next_for_state[st]; return typeof v === 'object' ? v.unsigned : v; };
+const procTitle = p => ((WF.procedures || {})[p] || {}).title || '/' + p;
+const GATE_ON = {}; const GATE_IN = {};
+(WF.gates || []).forEach(g => { if (g.before) GATE_ON[ROOM_OF[g.at] + '>' + ROOM_OF[g.before]] = g; else GATE_IN[ROOM_OF[g.at]] = g; });
+
+// ── the table: rooms on a ring around your desk, their open fronts toward you ────────────────────────
+const MAIN = WF.rooms.filter(r => (r.states || []).some(s => !SIDE.has(s)));
+const SIDEROOMS = WF.rooms.filter(r => !MAIN.includes(r));
+const ROOMS = {};
+const span = MAIN.length > 5 ? 250 : 220, dTh = span / Math.max(1, MAIN.length - 1) * Math.PI / 180;
+const specOf = r => L.rooms[r.id] || plainSpec(r);
+const maxW = Math.max(...WF.rooms.map(r => specOf(r).size[0])), maxD = Math.max(...WF.rooms.map(r => specOf(r).size[1]));
+const R = Math.max(13.5, (maxW + 1.6) / (2 * Math.sin(dTh / 2)));
+const RING = R - maxD / 2 - 1.3, HUBR = 2.7, TABLE = R + maxD / 2 + 3.2;
+MAIN.forEach((r, i) => { ROOMS[r.id] = { r, i, th: (-span / 2 * Math.PI / 180) + i * dTh, R }; });
+SIDEROOMS.forEach((r, i) => { ROOMS[r.id] = { r, i: -1, th: Math.PI + (i - (SIDEROOMS.length - 1) / 2) * 0.55, R: R * 0.98, side: true }; });
+for (const o of Object.values(ROOMS)) { o.spec = specOf(o.r); o.ry = -o.th; o.x = o.R * Math.sin(o.th); o.z = -o.R * Math.cos(o.th); o.procs = procsOfRoom(o.r.id); }
+const toWorld = (o, lx, lz) => [o.x + lx * Math.cos(o.ry) + lz * Math.sin(o.ry), o.z - lx * Math.sin(o.ry) + lz * Math.cos(o.ry)];
+const ringPt = th => [RING * Math.sin(th), -RING * Math.cos(th)];
+const hubPt = th => [HUBR * Math.sin(th), -HUBR * Math.cos(th)];
+const front = o => toWorld(o, 0, o.spec.size[1] / 2 + 0.5);
+
+/** a room with no file of its own: a floor, low walls, a desk per procedure */
+function plainSpec(r) {
+  const procs = procsOfRoom(r.id), w = Math.max(7, 2.4 * procs.length + 2), stations = {}, props = [];
+  procs.forEach((p, i) => { const x = -w / 2 + 1.6 + i * 2.4; props.push({ c: 'workstation', at: [x, -1.6], props: { monitors: 1 + (i % 2) } }); stations[p] = [x, -0.95, Math.PI]; });
+  props.push({ c: 'plant', at: [w / 2 - 0.8, 1.8], props: { kind: 'tall' } }, { c: 'cabinet', at: [-w / 2 + 0.6, 1.2], rot: Math.PI / 2 });
+  return { key: r.id, size: [w, 6], floor: 'tiles', accent: 'blue', props, stations, roleStation: {}, plain: true };
+}
+/** every procedure of a room gets a station: the room file's, else a desk the engine adds */
+for (const o of Object.values(ROOMS)) {
+  o.st = Object.assign({}, o.spec.stations); o.extraProps = [];
+  const missing = o.procs.filter(p => !o.st[p]);
+  missing.forEach((p, i) => { const [w, d] = o.spec.size, x = w / 2 - 1.2 - i * 2.2; o.extraProps.push({ c: 'workstation', at: [x, d / 2 - 1.6], rot: 0, props: { monitors: 1 } }); o.st[p] = [x, d / 2 - 1.0, Math.PI]; });
+}
+const stationOf = (rid, proc, role, k) => {
+  const o = ROOMS[rid], base = (role && o.spec.roleStation[role]) || o.st[proc] || Object.values(o.st)[0] || [0, 0, Math.PI];
+  const off = (k || 0) * 0.55; return { at: toWorld(o, base[0] + (role ? off : 0), base[1] + (role ? 0 : off * 0.5)), ry: o.ry + (base[2] ?? Math.PI) };
+};
+
+// ── a simulated day (a fixed seed): sessions, questions, gates, couriers ───────────────────────────
+let seed = 11; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rr = (a, b) => a + rnd() * (b - a);
+const SUBS = { 'lit-review': ['fresh-context-reviewer'], scope: ['scoping-advocate', 'scoping-advocate'], ideate: ['ideation-critic', 'ideation-critic'], advance: ['ideation-critic'], experiment: ['experiment-runner', 'overseer'],
+  improve: ['experiment-runner'], analyze: ['overseer'], 'review-paper': ['fresh-context-reviewer', 'fresh-context-reviewer'], 'critique-paper': ['fresh-context-reviewer'], propose: ['overseer'], replicate: ['experiment-runner'] };
+const ACTS = { experiment: ['Bash: uv run scripts/run.py --stage PILOT --seed 2', 'Edit: src/model.py', 'Read: runs/exp-014/metrics.json', 'Bash: git commit -m "exp-014: PILOT ok"'],
+  'lit-review': ['WebSearch: mixture-of-experts routing collapse', 'Read: papers/shazeer-2017.pdf', 'Write: lit-review.md § novelty'], scope: ['Write: decisions.md — D3 eval set', 'Read: IDEA.md', 'Task: scoping advocate for option B'],
+  ideate: ['Write: seeds/cheap-routing.md', 'Task: ideation critic ×2', 'Read: knowledge/ROADMAP.md'], propose: ['Write: proposal.md § budget', 'Read: lit-review.md', 'Bash: guard.py spawn'],
+  analyze: ['Bash: uv run scripts/compare.py', 'Write: analysis.md § H1', 'Read: runs/registry.jsonl'], 'write-paper': ['Edit: paper/main.tex § Results', 'Bash: latexmk -pdf', 'Write: claims.yaml'],
+  'review-paper': ['Task: fresh-context reviewer ×3', 'Read: paper/main.pdf', 'Write: meta-review.md'], 'make-figures': ['Bash: python figures/plot_loss.py', 'Edit: figures/style.py'],
+  improve: ['Edit: src/router.py', 'Bash: uv run scripts/run.py --stage SMOKE'], advance: ['Read: lab/REGISTRY.md', 'Write: triage.md'], finalize: ['Bash: guard.py finalization', 'Write: RECIPE.md'], replicate: ['Bash: git clone --depth 1 …', 'Bash: uv run scripts/run.py --seed 7'] };
+const actOf = (proc, t) => { const a = ACTS[proc] || ['Read: …', 'Edit: …']; return a[Math.floor(t / 170) % a.length]; };
+const NAMES = ['Sparse MoE routing', 'Curriculum distillation', 'Long-context eval', 'Token routing', 'Scaling probes', 'Quantisation note', 'RL fine-tuning', 'Adaptive optimisers', 'Retrieval heads', 'Data mixing laws'];
+const studies = NAMES.map((title, i) => ({ id: 's' + i, title, hue: (i * 47 + 170) % 360, timeline: [], carried: [] }));
+const sessions = [], couriers = [];
+const NOW0 = 7 * 3600;
+studies.forEach((s, si) => {
+  let idx = Math.min(ORDER.length - 2, Math.floor(Math.pow(rnd(), 1.4) * (ORDER.length - 1))), t = rr(0, 50) * MIN, state = ORDER[idx];
+  s.timeline.push({ t: 0, state });
+  while (t < H - 40 * MIN) {
+    if (state === 'final' || SIDE.has(state)) break;
+    const room = ROOM_OF[state], proc = procFor(state) || Object.keys(ROOMS[room].st)[0];
+    const dur = rr(22, 70) * MIN, ss = { id: 'a' + sessions.length, study: s, room, proc, t0: t, t1: t + dur, rate: rr(1500, 6000), subs: [], ev: [] };
+    const fail = rnd() < 0.1, ask = rnd() < 0.32, stall = rnd() < 0.07, deny = rnd() < 0.18;
+    if (stall) ss.ev.push({ kind: 'stall', t: t + dur * 0.3, until: t + dur * 0.3 + 14 * MIN });
+    if (ask) { const a = t + dur * 0.45, ans = a + rr(6, 55) * MIN; ss.ev.push({ kind: 'ask', t: a, until: ans, q: ['Which baseline should FULL runs compare against?', 'The eval set leaks 2% of train — drop those rows or re-split?', 'Two reviewers disagree on the main claim — whose framing?'][sessions.length % 3] }); ss.t1 += ans - a; }
+    if (deny) ss.ev.push({ kind: 'deny', t: t + dur * rr(0.2, 0.8), what: ['Write: lab/REGISTRY.md (only the guard moves a study)', 'Edit: workflow/stages.yaml (PI-owned)', 'Bash: rm -rf runs/ (refused)'][sessions.length % 3] });
+    if (fail) { ss.ev.push({ kind: 'fail', t: t + dur * 0.6, until: t + dur * 0.6 + 9 * MIN }); ss.t1 = t + dur * 0.6 + 9 * MIN; ss.failed = true; }
+    ss.ev.sort((a, b) => a.t - b.t);
+    (SUBS[proc] || []).forEach((role, k) => ss.subs.push({ id: ss.id + 's' + k, role, k, t0: t + dur * rr(0.08, 0.2), t1: Math.min(ss.t1, t + dur * rr(0.6, 0.9)) }));
+    sessions.push(ss);
+    t = ss.t1 + rr(1, 4) * MIN;
+    if (ss.failed) continue;                                   // a retry, same step
+    let next = rnd() < 0.05 ? 'parked' : ORDER[idx + 1];
+    if (!next) break;
+    const ra = room, rb = ROOM_OF[next];
+    if (ra !== rb) {
+      const gate = GATE_ON[ra + '>' + rb], c = { id: 'c' + couriers.length, study: s, from: ra, to: rb, t0: t, gate };
+      if (gate) c.sign = t + rr(12, 85) * MIN;
+      couriers.push(c); c.script = courierScript(c); s.carried.push([c.t0, c.script.end, c]); t = c.script.end;
+    }
+    state = next; if (next !== 'parked') idx++;
+    s.timeline.push({ t, state });
+    t += rr(3, 14) * MIN;
+  }
+});
+
+// ── scripts: where each actor is at any moment (so live and replay are the same function of time) ──
+function builder(t0, start) {
+  const segs = []; let t = t0, pos = start;
+  return { segs, get t() { return t; }, get pos() { return pos; },
+    walk(pts, pose) { const all = [pos, ...pts]; let len = 0; for (let i = 1; i < all.length; i++) len += Math.hypot(all[i][0] - all[i - 1][0], all[i][1] - all[i - 1][1]); const dur = Math.max(1, len / WALK); segs.push({ type: 'walk', t0: t, t1: t + dur, pts: all, len, pose }); t += dur; pos = all[all.length - 1]; return this; },
+    stay(until, pose, ry, extra) { if (until > t) segs.push(Object.assign({ type: 'stay', t0: t, t1: until, at: pos, ry, pose }, extra || {})); t = Math.max(t, until); return this; } };
+}
+function arc(r, a, b, n) { return Array.from({ length: n + 1 }, (_, i) => { const th = a + (b - a) * i / n; return [r * Math.sin(th), -r * Math.cos(th)]; }); }
+function toStation(o, st) { return [hubPt(o.th), ringPt(o.th), front(o), st.at]; }
+function toHub(o, slot) { return [front(o), ringPt(o.th), hubPt(o.th), slot]; }
+function slotOf(id) { const k = parseInt(id.replace(/\D/g, ''), 10) % 9, th = Math.PI + (k - 4) * 0.36; return [2.25 * Math.sin(th), -2.25 * Math.cos(th)]; }
+function route(a, b) {    // courier paths: along the ring between neighbours, through the hub otherwise
+  const A = ROOMS[a], B = ROOMS[b];
+  if (!A.side && !B.side && Math.abs(A.i - B.i) === 1) return { pts: [ringPt(A.th), ...arc(RING, A.th, B.th, 10).slice(1), front(B)], gateAt: 6 };
+  return { pts: [ringPt(A.th), hubPt(A.th), ...arc(HUBR, A.th, B.th, 8).slice(1), ringPt(B.th), front(B)], gateAt: 5 };
+}
+function courierScript(c) {
+  const A = ROOMS[c.from], b = builder(c.t0, front(A)), rt = route(c.from, c.to);
+  if (c.gate) { b.walk(rt.pts.slice(0, rt.gateAt), 'carry'); c.atGate = b.t; b.stay(Math.max(c.sign, b.t + 60), 'wait', null, { gate: c.gate }); b.walk(rt.pts.slice(rt.gateAt), 'carry'); }
+  else b.walk(rt.pts, 'carry');
+  return { segs: b.segs, end: b.t };
+}
+function sessionScript(ss) {
+  const o = ROOMS[ss.room], st = stationOf(ss.room, ss.proc), b = builder(ss.t0, hubPt(o.th));
+  b.walk(toStation(o, st).slice(1));
+  for (const e of ss.ev) {
+    if (e.kind === 'deny') continue;
+    b.stay(e.t, 'work', st.ry);
+    if (e.kind === 'ask') { b.walk(toHub(o, slotOf(ss.id)), 'walk'); b.stay(e.until, 'wait', Math.atan2(-b.pos[0], -b.pos[1]), { ask: e }); b.walk(toStation(o, st).slice(1)); }
+    if (e.kind === 'stall') b.stay(e.until, 'sleep', st.ry, { stall: true });
+    if (e.kind === 'fail') { b.stay(e.until, 'fail', st.ry, { fail: true }); break; }
+  }
+  if (!ss.failed) b.stay(ss.t1, 'work', st.ry);
+  b.walk(toHub(o, hubPt(o.th)).slice(0, 3));
+  return { segs: b.segs, end: b.t };
+}
+function subScript(ss, sub) {
+  const main = stationOf(ss.room, ss.proc), st = stationOf(ss.room, ss.proc, sub.role, sub.k + 1), b = builder(sub.t0, main.at);
+  b.walk([st.at]); b.stay(sub.t1, 'work', st.ry);
+  return { segs: b.segs, end: b.t };
+}
+const actors = [];
+sessions.forEach(ss => { ss.script = sessionScript(ss); actors.push({ id: ss.id, kind: 'agent', role: 'orchestrator', ss, script: ss.script });
+  ss.subs.forEach(sub => { sub.script = subScript(ss, sub); actors.push({ id: sub.id, kind: 'agent', role: sub.role, ss, sub, script: sub.script }); }); });
+couriers.forEach(c => actors.push({ id: c.id, kind: 'courier', role: 'orchestrator', c, script: c.script }));
+function where(sc, t) {
+  for (const s of sc.segs) {
+    if (t < s.t0 || t >= s.t1) continue;
+    if (s.type === 'walk') {
+      let d = (t - s.t0) / (s.t1 - s.t0) * s.len;
+      for (let i = 1; i < s.pts.length; i++) { const a = s.pts[i - 1], c = s.pts[i], l = Math.hypot(c[0] - a[0], c[1] - a[1]); if (d <= l || i === s.pts.length - 1) { const u = l ? Math.min(1, d / l) : 0; return { x: a[0] + (c[0] - a[0]) * u, z: a[1] + (c[1] - a[1]) * u, ry: Math.atan2(c[0] - a[0], c[1] - a[1]), pose: s.pose || 'walk', moving: true, seg: s }; } d -= l; }
+    }
+    return { x: s.at[0], z: s.at[1], ry: s.ry ?? 0, pose: s.pose, moving: false, seg: s };
+  }
+  return null;
+}
+const stateAt = (s, t) => { let cur = s.timeline[0].state; for (const e of s.timeline) if (e.t <= t) cur = e.state; return cur; };
+const carriedAt = (s, t) => s.carried.find(([a, b]) => t >= a && t < b);
+
+// ── the scene ─────────────────────────────────────────────────────────────────────────────────────
+const cv = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = S.theme === 'night' ? 1.1 : 1.0;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 0.5, 500);
+scene.add(new THREE.HemisphereLight(S.theme === 'night' ? 0x7f9fb0 : 0xffffff, S.theme === 'night' ? 0x1a2024 : 0xd8cbb4, TH.hemi));
+const sun = new THREE.DirectionalLight(S.theme === 'night' ? 0x9fc7ff : 0xfff3df, TH.sun); sun.position.set(-18, 34, 22); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -TABLE, right: TABLE, top: TABLE, bottom: -TABLE, near: 1, far: 120 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; scene.add(sun);
+const pickables = [];
+
+// the tabletop: a round slab with an earthy edge, paths, your desk
+const tableG = new THREE.Group(); scene.add(tableG);
+tableG.add(K.cyl(TABLE, TABLE, 0.35, TH.table, 0, -0.35, 0, { seg: 96 }));
+tableG.add(K.cyl(TABLE - 0.05, TABLE - 0.6, 1.4, TH.tableSide, 0, -1.75, 0, { seg: 96 }));
+tableG.add(K.cyl(TABLE - 0.6, TABLE - 2.4, 1.6, TH.soil, 0, -3.35, 0, { seg: 96 }));
+const flat = (geo, c, y) => { const m = new THREE.Mesh(geo, K.mat(c)); m.rotation.x = -Math.PI / 2; m.position.y = y || 0.012; m.receiveShadow = true; return m; };
+tableG.add(flat(new THREE.RingGeometry(RING - 0.75, RING + 0.75, 160, 1, -Math.PI / 2 - (span / 2 + 8) * Math.PI / 180 + Math.PI, ((span + 16) * Math.PI / 180)), TH.path));
+tableG.add(flat(new THREE.CircleGeometry(HUBR + 0.75, 64), TH.path));
+for (const o of Object.values(ROOMS)) { const a = hubPt(o.th), b = ringPt(o.th), len = Math.hypot(b[0] - a[0], b[1] - a[1]); const sp = flat(new THREE.PlaneGeometry(1.3, len), TH.path, 0.013); sp.position.set((a[0] + b[0]) / 2, 0.013, (a[1] + b[1]) / 2); sp.rotation.set(-Math.PI / 2, 0, -o.th); tableG.add(sp);
+  const fr = front(o), l2 = Math.hypot(fr[0] - b[0], fr[1] - b[1]); const sp2 = flat(new THREE.PlaneGeometry(1.3, l2 + 0.6), TH.path, 0.013); sp2.position.set((fr[0] + b[0]) / 2, 0.013, (fr[1] + b[1]) / 2); sp2.rotation.set(-Math.PI / 2, 0, -o.th); tableG.add(sp2); }
+// a little garden between the rooms
+for (let i = 0; i < 26; i++) { const th = rnd() * Math.PI * 2, r = TABLE - 1.2 - rnd() * 1.6; if (Object.values(ROOMS).some(o => Math.hypot(o.x - r * Math.sin(th), o.z + r * Math.cos(th)) < Math.max(...o.spec.size) / 2 + 1.2)) continue; tableG.add(K.at(K.build('tree', { size: 0.7 + rnd() * 0.6 }), r * Math.sin(th), 0, -r * Math.cos(th))); }
+const hub = K.build('hubDesk'); hub.userData.pick = { kind: 'hub' }; tableG.add(hub); pickables.push(hub);
+const inbox = new THREE.Group(); inbox.position.set(0.55, 0.98, 0.1); tableG.add(inbox);
+const bigNewt = L.makeNewt(K, { scale: 1.25 }); bigNewt.group.position.set(0, 0.12, -1.0); bigNewt.group.rotation.y = 0; bigNewt.group.userData.pick = { kind: 'hub' }; tableG.add(bigNewt.group); pickables.push(bigNewt.group);
+
+// gates on their paths
+const gateObjs = {};
+for (const [k, g] of Object.entries(GATE_ON)) {
+  const [a, b] = k.split('>'); const A = ROOMS[a], B = ROOMS[b]; if (!A || !B) continue;
+  const rt = route(a, b), p = rt.pts[rt.gateAt - 1], p2 = rt.pts[rt.gateAt], ang = Math.atan2(p2[0] - p[0], p2[1] - p[1]);
+  const arch = K.build('gateArch'); arch.position.set(p[0], 0, p[1]); arch.rotation.y = ang; arch.userData.pick = { kind: 'gate', gate: g }; tableG.add(arch); pickables.push(arch);
+  const lamp = K.sphere(0.16, 'amber', 0, 2.62, 0, { glow: 'amber', gi: 0.2 }); arch.add(lamp);
+  const plate = K.sign('Gate ' + g.n, { h: 0.26, font: '600 40px "IBM Plex Mono", monospace' }); plate.position.set(0, 2.33, 0.17); arch.add(plate);
+  gateObjs[g.n] = { arch, lamp, g, pos: p };
+}
+
+// the rooms: a floor, low walls (they duck when they'd hide the room from you), their furniture
+for (const o of Object.values(ROOMS)) {
+  const sp = o.spec, [w, d] = sp.size, g = new THREE.Group(); g.position.set(o.x, 0, o.z); g.rotation.y = o.ry; tableG.add(g); o.g = g;
+  o.floorMat = K.mat(sp.floor === 'grass' ? TH.grass : sp.floor).clone(); o.floorBase = o.floorMat.color.clone();
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), o.floorMat); fl.position.y = 0.07; fl.receiveShadow = true; fl.userData.pick = { kind: 'room', id: o.r.id }; g.add(fl); pickables.push(fl);
+  g.add(K.box(w, 0.05, 0.22, sp.accent, 0, 0.14, d / 2 - 0.11));                     // a coloured sill along the open front
+  o.walls = [];
+  if (sp.walls !== false) for (const [lx, lz, len, nx, nz] of [[0, -d / 2, w, 0, -1], [-w / 2, 0, d, -1, 0], [w / 2, 0, d, 1, 0]]) {
+    const wall = K.box(nz ? len : 0.16, 1.5, nz ? 0.16 : len, sp.wall || 'plaster', lx, 0.14, lz); g.add(wall);
+    const cap = K.box(nz ? len + 0.02 : 0.2, 0.06, nz ? 0.2 : len + 0.02, sp.accent, lx, 1.64, lz); g.add(cap);
+    o.walls.push({ wall, cap, n: [nx, nz], lx, lz });
+  }
+  const sign = K.sign(o.r.title || o.r.label, { h: 0.42 }); sign.position.set(0, 1.25, -d / 2 + 0.1); g.add(sign); o.sign = sign;
+  for (const p of sp.props.concat(o.extraProps)) { const m = K.build(p.c, p.props); m.position.set(p.at[0], 0.14, p.at[1]); m.rotation.y = p.rot || 0; g.add(m); }
+  // the study shelf by the door: where a room's studies wait
+  o.shelfAt = [-w / 2 + 0.5, d / 2 - 0.55]; g.add(K.box(Math.min(3.4, w * 0.4), 0.42, 0.5, 'woodLight', o.shelfAt[0] + Math.min(3.4, w * 0.4) / 2, 0.14, o.shelfAt[1]));
+  if (S.theme === 'night') { const pl = new THREE.PointLight(0xffc98a, 14, 9, 1.6); pl.position.set(0, 2.6, 0); g.add(pl); }
+}
+scene.traverse(m => { if (m.isMesh && m.geometry && m.geometry.type === 'PlaneGeometry') m.castShadow = false; });
+
+// studies: cards; agents: newts (a pool, reused)
+const cards = {};
+for (const s of studies) {
+  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(`hsl(${s.hue}, 55%, ${S.theme === 'night' ? 58 : 60}%)`), roughness: 0.6, emissive: new THREE.Color(`hsl(${s.hue}, 60%, 40%)`), emissiveIntensity: S.theme === 'night' ? 0.35 : 0 });
+  const c = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.08, 0.38), m); b.castShadow = true; c.add(b);
+  const lab = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.01, 0.1), K.mat('paper')); lab.position.set(-0.04, 0.045, -0.08); c.add(lab);
+  c.userData.pick = { kind: 'study', id: s.id }; scene.add(c); pickables.push(c); cards[s.id] = c;
+}
+const pool = new Map();
+function newtFor(a) {
+  if (!pool.has(a.id)) {
+    const n = L.makeNewt(K, { color: a.kind === 'courier' ? null : (ROLE[a.role] || ROLE.orchestrator)[1], scale: a.role === 'orchestrator' ? 1.35 : 1.1 });
+    n.group.userData.pick = { kind: 'agent', id: a.id }; scene.add(n.group); pickables.push(n.group); pool.set(a.id, n);
+  }
+  return pool.get(a.id);
+}
+
+// ── time: live (sped up), or replaying the day ────────────────────────────────────────────────────
+const SPEED = q.has('speed') ? +q.get('speed') : 60;   // sim seconds per real second (?speed=0 holds the clock)
+const T = { now: NOW0, t: NOW0, live: true, playing: true };
+const scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel');
+const fmt = s => { const sg = s < 0 ? '−' : '+', a = Math.abs(s), h = Math.floor(a / 3600), m = Math.floor(a % 3600 / 60); return `${sg}${h ? h + 'h ' : ''}${m}m`; };
+const clock = t => { const d = new Date(2026, 9, 3, 7, 0, 0); d.setSeconds(t); return d.toTimeString().slice(0, 5); };
+scrub.oninput = () => { T.t = scrub.value / 1000 * T.now; T.live = false; T.playing = false; document.getElementById('play').textContent = 'Play'; };
+document.getElementById('play').onclick = () => { T.playing = !T.playing; document.getElementById('play').textContent = T.playing ? 'Pause' : 'Play'; };
+document.getElementById('live').onclick = () => { T.live = true; T.playing = true; T.t = T.now; document.getElementById('play').textContent = 'Pause'; };
+function drawTicks() {
+  const c = document.getElementById('ticks'), w = c.parentElement.clientWidth; c.width = w; c.height = 6; const x = c.getContext('2d'); x.clearRect(0, 0, w, 6);
+  const tick = (t, col) => { if (t > T.now) return; x.fillStyle = col; x.fillRect(Math.round(t / T.now * (w - 16) + 8), 0, 2, 6); };
+  sessions.forEach(ss => ss.ev.forEach(e => tick(e.t, e.kind === 'ask' ? '#f0b24a' : e.kind === 'fail' ? '#e06a5a' : e.kind === 'deny' ? '#b04aa0' : '#888')));
+  couriers.forEach(c => tick(c.t0, c.gate ? '#d9a441' : '#3fb8a6'));
+}
+
+// ── camera ────────────────────────────────────────────────────────────────────────────────────────
+const fitR = () => TABLE * 2.6 * Math.max(1, 1.45 / (innerWidth / innerHeight));   // further back on a narrow window
+const cam = { az: 0, el: 0.9, r: fitR(), tx: 0, tz: -1.2 }, camT = { ...cam };
+let focus = null, follow = null;
+function overview() { focus = null; follow = null; Object.assign(camT, { r: fitR(), tx: 0, tz: -1.2, el: 0.9 }); }
+function focusRoom(id) { const o = ROOMS[id]; focus = id; follow = null; Object.assign(camT, { tx: o.x * 0.92, tz: o.z * 0.92, r: Math.max(o.spec.size[0], 9) * 2.3, az: -o.th }); }
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, az: camT.az, el: camT.el, moved: false }; });
+addEventListener('pointerup', e => { if (drag && !drag.moved) click(e); drag = null; });
+addEventListener('pointermove', e => {
+  if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; camT.az = drag.az - dx * 0.006; camT.el = Math.max(0.35, Math.min(1.35, drag.el + dy * 0.004)); }
+  hoverAt(e.clientX, e.clientY);
+});
+cv.addEventListener('wheel', e => { e.preventDefault(); camT.r = Math.max(9, Math.min(TABLE * 3.4, camT.r * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
+addEventListener('keydown', e => { if (e.key === 'Escape') { overview(); closePanel(); } });
+
+// ── picking, the tooltip and the panel ────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let hovered = null, sel = null;
+function pickAt(x, y) {
+  mouse.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
+  const hits = ray.intersectObjects(pickables.filter(p => p.visible), true);
+  for (const h of hits) { let o = h.object; while (o && !o.userData.pick) o = o.parent; if (o) return o.userData.pick; }
+  return null;
+}
+const tip = document.getElementById('tip');
+function hoverAt(x, y) {
+  if (drag && drag.moved) { tip.style.display = 'none'; return; }
+  hovered = pickAt(x, y); cv.style.cursor = hovered ? 'pointer' : 'default';
+  const html = hovered ? describe(hovered, true) : null;
+  if (!html) { tip.style.display = 'none'; return; }
+  tip.innerHTML = html; tip.style.display = 'block'; tip.style.left = Math.min(innerWidth - 330, x + 16) + 'px'; tip.style.top = (y + 14) + 'px';
+}
+function click(e) { const p = pickAt(e.clientX, e.clientY); if (!p) { closePanel(); return; } sel = p; if (p.kind === 'room') focusRoom(p.id); if (p.kind === 'study') { follow = p.id; focus = null; camT.r = 15; } openPanel(); }
+const agentState = (a, t) => { const w = where(a.script, t); if (!w) return null; const sg = w.seg || {}; return { w, ask: sg.ask, fail: sg.fail, stall: sg.stall, gate: sg.gate, deny: a.ss && a.ss.ev.find(e => e.kind === 'deny' && t >= e.t && t < e.t + 25 * MIN) }; };
+const tokensAt = (ss, t) => Math.max(0, Math.min(t, ss.t1) - ss.t0) / 60 * ss.rate * (1 + ss.subs.length * 0.6);
+function describe(p, short) {
+  const t = T.t;
+  if (p.kind === 'agent') {
+    const a = actors.find(x => x.id === p.id), st = agentState(a, t); if (!st) return null;
+    if (a.kind === 'courier') return `<b>Carrying “${a.c.study.title}”</b><small>${ROOMS[a.c.from].r.title} → ${ROOMS[a.c.to].r.title}${st.gate ? ` · waiting at Gate ${st.gate.n} for your signature` : ''}</small>`;
+    const role = ROLE[a.role] || ROLE.orchestrator, ss = a.ss;
+    const doing = st.ask ? `asking you: “${st.ask.q}”` : st.fail ? 'failed — its run stopped' : st.stall ? 'no progress for 14 minutes' : st.w.moving ? 'walking' : actOf(ss.proc, t + (a.sub ? 60 : 0));
+    return `<b>${role[0]}${a.sub ? '' : ''} · ${procTitle(ss.proc)}</b><small>on “${ss.study.title}” — ${doing}</small><small>${Math.round(tokensAt(ss, t) / 1000)}k tokens so far${st.deny ? ' · <span style="color:var(--bad)">blocked by the guard just now</span>' : ''}</small>`;
+  }
+  if (p.kind === 'study') { const s = studies.find(x => x.id === p.id), c = carriedAt(s, t); return `<b>${s.title}</b><small>${c ? `on the way to ${ROOMS[c[2].to].r.title}` : LABEL[stateAt(s, t)]}</small>`; }
+  if (p.kind === 'room') { const o = ROOMS[p.id], n = actors.filter(a => a.ss && a.ss.room === p.id && where(a.script, t)).length; return `<b>${o.r.title}</b><small>${(o.r.states || []).map(x => LABEL[x]).join(' · ')} — ${n} agent${n === 1 ? '' : 's'} here</small>`; }
+  if (p.kind === 'hub') { const n = waitingAt(t).length; return `<b>Your desk</b><small>${n ? n + ' waiting for you' : 'nothing waiting for you'}</small>`; }
+  if (p.kind === 'gate') return `<b>${p.gate.title}</b><small>${p.gate.means}</small>`;
+  return null;
+}
+function waitingAt(t) {
+  const out = [];
+  sessions.forEach(ss => ss.ev.forEach(e => { if (e.kind === 'ask' && t >= e.t && t < e.until) out.push({ kind: 'ask', ss, e }); }));
+  couriers.forEach(c => { if (c.gate && c.atGate != null && t >= c.atGate && t < c.sign) out.push({ kind: 'gate', c }); });
+  return out;
+}
+const panel = document.getElementById('panel');
+function closePanel() { panel.style.display = 'none'; sel = null; follow = null; }
+function toast(m) { const el = document.getElementById('toast'); el.textContent = m; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => { el.style.display = 'none'; }, 3200); }
+window.__act = m => toast(m);
+function openPanel() {
+  if (!sel) return; const t = T.t, p = sel; let h = '';
+  const X = '<button class="x" onclick="document.getElementById(\'panel\').style.display=\'none\'">✕</button>';
+  if (p.kind === 'agent') {
+    const a = actors.find(x => x.id === p.id), st = agentState(a, t); if (!st) { closePanel(); return; }
+    if (a.kind === 'courier') h = `<div class="kick">Moving a study</div><h2>${a.c.study.title}</h2><p class="lede">${ROOMS[a.c.from].r.title} → ${ROOMS[a.c.to].r.title}</p>${a.c.gate ? `<div class="row"><span>Gate</span><b>${a.c.gate.title}</b></div>` : ''}`;
+    else {
+      const ss = a.ss, role = ROLE[a.role];
+      h = `<div class="kick">${role[0]}${a.sub ? ' · a subagent' : ' · the run’s agent'}</div><h2>${procTitle(ss.proc)}</h2><p class="lede">on ${ss.study.title}</p>
+        <div class="row"><span>Started</span><b>${clock(ss.t0)} · ${fmt(ss.t0 - t)}</b></div><div class="row"><span>Tokens so far</span><b>${Math.round(tokensAt(ss, t) / 1000)}k</b></div>
+        <div class="row"><span>Status</span><b>${st.ask ? 'waiting for you' : st.fail ? 'failed' : st.stall ? 'stalled' : 'working'}</b></div>
+        ${st.ask ? `<p class="lede" style="margin-top:10px">“${st.ask.q}”</p>` : ''}
+        <div class="kick" style="margin-top:12px">Recent actions</div><ol>${[0, 1, 2, 3].map(k => `<li>${actOf(ss.proc, t - k * 170)}</li>`).join('')}</ol>
+        ${ss.ev.filter(e => e.kind === 'deny' && e.t <= t).map(e => `<div class="row"><span style="color:var(--bad)">Blocked by the guard</span><b>${e.what}</b></div>`).join('')}
+        <div class="acts">${st.ask ? '<button class="btn primary" onclick="__answer()">Answer…</button>' : ''}<button class="btn" onclick="__act('Opens the run’s conversation')">Open the conversation</button><button class="btn" onclick="__act('Pins a note it reads at its next checkpoint')">Leave a note</button><button class="btn" onclick="__act('Stops the run (it stays resumable)')">Stop</button></div>`;
+      window.__answer = () => { const e = st.ask; e.until = T.t + 30; ss.script = sessionScript(ss); a.script = ss.script; toast('Answered — it walks back to work'); openPanel(); };
+    }
+  } else if (p.kind === 'study') {
+    const s = studies.find(x => x.id === p.id), agents = actors.filter(a => a.ss && a.ss.study === s && where(a.script, t));
+    h = `<div class="kick">A study · followed</div><h2>${s.title}</h2><p class="lede">${LABEL[stateAt(s, t)]}</p>
+      <div class="kick" style="margin-top:8px">Its path so far</div><ol>${s.timeline.filter(e => e.t <= t).map(e => `<li>${clock(e.t)} · ${LABEL[e.state]}</li>`).join('')}</ol>
+      <div class="row"><span>Agents on it now</span><b>${agents.length}</b></div>
+      <div class="acts"><button class="btn primary" onclick="__act('Opens the study page')">Open the study</button><button class="btn" onclick="__act('Starts its next step')">Start its next step</button></div>`;
+  } else if (p.kind === 'room') {
+    const o = ROOMS[p.id];
+    h = `<div class="kick">A room</div><h2>${o.r.title}</h2><p class="lede">${(o.r.states || []).map(x => LABEL[x]).join(' · ')}</p>
+      <div class="kick" style="margin-top:8px">Its stations</div>${o.procs.map(pr => { const n = actors.filter(a => a.ss && a.ss.room === p.id && a.ss.proc === pr && !a.sub && where(a.script, t)).length; return `<div class="item"><span class="grow">${procTitle(pr)}</span><span class="kick">${n ? n + ' working' : 'free'}</span></div>`; }).join('') || '<div class="item">No procedures — studies rest here.</div>'}
+      <div class="row"><span>Studies here</span><b>${studies.filter(s => !carriedAt(s, t) && ROOM_OF[stateAt(s, t)] === p.id).length}</b></div>
+      <div class="row"><span>Spent today</span><b>${Math.round(sessions.filter(ss => ss.room === p.id).reduce((a, ss) => a + tokensAt(ss, t), 0) / 1000)}k tokens</b></div>
+      <div class="acts"><button class="btn" onclick="__act('Opens this room in Compose: its stations, its states, its look')">Edit in Compose</button></div>`;
+  } else if (p.kind === 'hub') {
+    const w = waitingAt(t);
+    h = `<div class="kick">Your desk</div><h2>${w.length ? w.length + ' waiting for you' : 'All clear'}</h2><p class="lede">Questions walk here; gates are signed here.</p>
+      ${w.map((x, i) => x.kind === 'ask' ? `<div class="item"><span class="grow"><b>${procTitle(x.ss.proc)}</b> on ${x.ss.study.title}<br><span style="color:var(--soft)">“${x.e.q}”</span></span><button class="btn primary" onclick="__w(${i})">Answer</button></div>`
+        : `<div class="item"><span class="grow"><b>${x.c.gate.title.split('—')[0]}</b> — ${x.c.study.title}</span><button class="btn primary" onclick="__w(${i})">Sign</button></div>`).join('')}`;
+    window.__w = i => { const x = w[i]; if (x.kind === 'ask') { x.e.until = T.t + 30; x.ss.script = sessionScript(x.ss); actors.find(a => a.ss === x.ss && !a.sub && a.kind === 'agent').script = x.ss.script; toast('Answered — it walks back to work'); }
+      else { x.c.sign = T.t + 30; x.c.script = courierScript(x.c); actors.find(a => a.c === x.c).script = x.c.script; const s = x.c.study; const k = s.carried.find(z => z[2] === x.c); if (k) k[1] = x.c.script.end; toast('Signed — the study goes through the gate'); } openPanel(); };
+  } else if (p.kind === 'gate') {
+    h = `<div class="kick">A gate</div><h2>${p.gate.title}</h2><p class="lede">${p.gate.means}</p><div class="row"><span>Signed by</span><b>you, at your desk</b></div>`;
+  }
+  panel.innerHTML = X + h; panel.style.display = 'block';
+}
+
+// ── overlays: room labels, what each newt is doing, lens marks ────────────────────────────────────
+const labelsEl = document.getElementById('labels');
+const tmpV = new THREE.Vector3();
+function screen(x, y, z) { tmpV.set(x, y, z).project(camera); return [(tmpV.x + 1) / 2 * innerWidth, (1 - tmpV.y) / 2 * innerHeight, tmpV.z < 1]; }
+function overlays(t, live) {
+  const out = [], close = cam.r < 34;
+  for (const o of Object.values(ROOMS)) {
+    const [bx, bz] = toWorld(o, 0, -o.spec.size[1] / 2), [sx, sy, vis] = screen(bx, 2.3, bz); if (!vis) continue;
+    const n = live.filter(x => x.a.ss && x.a.ss.room === o.r.id).length, asks = live.filter(x => x.a.ss && x.a.ss.room === o.r.id && x.st.ask).length;
+    const cost = Math.round(sessions.filter(ss => ss.room === o.r.id).reduce((a, ss) => a + tokensAt(ss, t), 0) / 1000);
+    const line = S.lens === 'cost' ? `<span class="hot">${cost}k tokens</span>` : S.lens === 'risk' ? `<span class="${riskOf(o.r.id, t) ? 'hot' : ''}">${riskOf(o.r.id, t)} flagged</span>` : `<span>${n} agent${n === 1 ? '' : 's'}${asks ? ` · <span class="hot">${asks} asking you</span>` : ''}</span>`;
+    out.push(`<div class="rl" style="left:${sx}px;top:${sy}px"><b>${o.r.title}</b>${line}</div>`);
+  }
+  for (const x of live) {
+    const head = x.n.group.position, [sx, sy, vis] = screen(head.x, 1.62 * (x.a.role === 'orchestrator' ? 1.35 : 1.1), head.z); if (!vis) continue;
+    let cls = '', txt = '';
+    if (x.st.ask) { cls = 'ask'; txt = close ? '? ' + x.st.ask.q : '?'; }
+    else if (x.st.gate) { cls = 'ask'; txt = close ? `Gate ${x.st.gate.n} — needs your signature` : `G${x.st.gate.n}`; }
+    else if (x.st.fail) { cls = 'bad'; txt = close ? 'failed' : '!'; }
+    else if (x.st.stall) { cls = 'zzz'; txt = 'zzz'; }
+    else if (S.lens === 'risk' && x.st.deny) { cls = 'bad'; txt = close ? 'blocked: ' + x.st.deny.what : '⛨'; }
+    else if (S.lens === 'cost' && x.a.ss && !x.a.sub) { cls = 'cost'; txt = Math.round(tokensAt(x.a.ss, t) / 1000) + 'k'; }
+    else if (S.lens === 'work' && close && x.a.ss && !x.st.w.moving && (focus ? x.a.ss.room === focus : true)) txt = actOf(x.a.ss.proc, t + (x.a.sub ? 60 : 0));
+    if (S.lens === 'waiting' && !(x.st.ask || x.st.gate)) continue;
+    if (txt) out.push(`<div class="bub ${cls} ${txt.length < 4 ? 'icon' : ''}" style="left:${sx}px;top:${sy}px">${txt}</div>`);
+  }
+  labelsEl.innerHTML = out.join('');
+}
+const riskOf = (rid, t) => sessions.filter(ss => ss.room === rid && ss.ev.some(e => (e.kind === 'deny' || e.kind === 'fail') && e.t <= t && e.t > t - 2 * 3600)).length;
+
+// ── the frame ─────────────────────────────────────────────────────────────────────────────────────
+let last = performance.now(), panelT = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  T.now = Math.min(H, T.now + dt * SPEED);
+  if (T.live) T.t = T.now; else if (T.playing) { T.t = Math.min(T.now, T.t + dt * SPEED * 4); if (T.t >= T.now) T.live = true; }
+  const t = T.t;
+  scrub.value = Math.round(t / T.now * 1000); tlabel.textContent = T.live ? `live · ${clock(t)}` : `${clock(t)} · ${fmt(t - T.now)}`;
+  // actors
+  const live = [];
+  const seen = new Set();
+  for (const a of actors) {
+    const st = agentState(a, t); if (!st) continue;
+    const n = newtFor(a); seen.add(a.id); n.group.visible = true;
+    n.group.position.set(st.w.x, 0.14, st.w.z); n.group.rotation.y = st.w.ry;
+    n.update(now / 1000, { pose: st.w.pose, moving: st.w.moving });
+    live.push({ a, n, st });
+  }
+  for (const [id, n] of pool) if (!seen.has(id)) n.group.visible = false;
+  // studies: on their room's shelf, or carried
+  const shelfN = {};
+  for (const s of studies) {
+    const c = cards[s.id], k = carriedAt(s, t);
+    if (k) { const n = pool.get(k[2].id); if (n && n.group.visible) { c.position.set(n.group.position.x, 1.95, n.group.position.z); c.rotation.y = n.group.rotation.y; c.visible = true; continue; } }
+    const rid = ROOM_OF[stateAt(s, t)], o = ROOMS[rid]; if (!o) { c.visible = false; continue; }
+    const i = (shelfN[rid] = (shelfN[rid] || 0) + 1) - 1, perRow = Math.max(1, Math.floor(Math.min(3.4, o.spec.size[0] * 0.4) / 0.6));
+    const [x, z] = toWorld(o, o.shelfAt[0] + 0.32 + (i % perRow) * 0.6, o.shelfAt[1]);
+    c.position.set(x, 0.6 + Math.floor(i / perRow) * 0.09, z); c.rotation.y = o.ry; c.visible = true;
+    const dim = follow && follow !== s.id; c.children[0].material.opacity = dim ? 0.3 : 1; c.children[0].material.transparent = !!dim;
+  }
+  // your desk: one envelope per thing waiting; the big newt looks up when something arrives
+  const w = waitingAt(t);
+  while (inbox.children.length < w.length) inbox.add(K.box(0.4, 0.035, 0.28, 'amber', 0, inbox.children.length * 0.045, 0, { glow: 'amber', gi: 0.4 }));
+  inbox.children.forEach((e, i) => { e.visible = i < w.length; });
+  bigNewt.update(now / 1000, { pose: w.length ? 'wait' : 'idle' });
+  for (const g of Object.values(gateObjs)) { const waiting = w.some(x => x.kind === 'gate' && x.c.gate.n === g.g.n); g.lamp.material.emissiveIntensity = waiting ? 1.6 + Math.sin(now / 160) * 0.6 : 0.15; }
+  // lenses: floors tinted by what the lens asks
+  for (const o of Object.values(ROOMS)) {
+    let tint = null;
+    if (S.lens === 'cost') { const c = sessions.filter(ss => ss.room === o.r.id).reduce((a, ss) => a + tokensAt(ss, t), 0), max = 2.5e6; tint = new THREE.Color('#f0b24a').lerp(new THREE.Color('#e0503a'), Math.min(1, c / max)); o.floorMat.color.copy(o.floorBase).lerp(tint, Math.min(0.75, c / max * 0.9 + 0.1)); }
+    else if (S.lens === 'risk') o.floorMat.color.copy(o.floorBase).lerp(new THREE.Color('#e0503a'), Math.min(0.6, riskOf(o.r.id, t) * 0.2));
+    else if (S.lens === 'waiting') o.floorMat.color.copy(o.floorBase).multiplyScalar(0.55);
+    else o.floorMat.color.copy(o.floorBase);
+  }
+  // camera, following a study when asked
+  if (follow) { const c = cards[follow]; if (c.visible) { camT.tx = c.position.x; camT.tz = c.position.z; } }
+  const k = 1 - Math.pow(0.002, dt);
+  for (const key of ['az', 'el', 'r', 'tx', 'tz']) cam[key] += (camT[key] - cam[key]) * k;
+  camera.position.set(cam.tx + cam.r * Math.cos(cam.el) * Math.sin(cam.az), cam.r * Math.sin(cam.el), cam.tz + cam.r * Math.cos(cam.el) * Math.cos(cam.az));
+  camera.lookAt(cam.tx, 0.6, cam.tz);
+  // walls duck when they stand between you and the room
+  for (const o of Object.values(ROOMS)) for (const wl of o.walls) {
+    const [wx, wz] = toWorld(o, wl.lx, wl.lz), n = [wl.n[0] * Math.cos(o.ry) + wl.n[1] * Math.sin(o.ry), -wl.n[0] * Math.sin(o.ry) + wl.n[1] * Math.cos(o.ry)];
+    const facing = n[0] * (camera.position.x - wx) + n[1] * (camera.position.z - wz) > 0, target = facing ? 0.14 : 1;
+    wl.wall.scale.y += (target - wl.wall.scale.y) * k * 1.5; wl.wall.position.y = 0.14 + 0.75 * wl.wall.scale.y; wl.cap.position.y = 0.14 + 1.5 * wl.wall.scale.y + 0.03;
+  }
+  renderer.render(scene, camera);
+  overlays(t, live);
+  if ((panelT += dt) > 0.5 && panel.style.display === 'block') { panelT = 0; openPanel(); }
+  requestAnimationFrame(frame);
+}
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); drawTicks(); if (!focus && !follow) camT.r = fitR(); }
+addEventListener('resize', resize); resize(); setInterval(drawTicks, 4000);
+
+// ── the bar and the legend ────────────────────────────────────────────────────────────────────────
+const LEGEND = {
+  work: ['Work', 'Every newt is an agent at the station of the procedure it runs; small ones are its subagents. Cards are studies, on their room’s shelf or being carried. Zoom in to read what each newt is doing.'],
+  cost: ['Cost', 'Floors warm with the tokens spent in each room today; the number over a newt is what its run has used so far.'],
+  waiting: ['Waiting', 'Only what is blocked on you: questions at your desk, studies waiting at a gate. Everything else steps back.'],
+  risk: ['Risk', 'Agents the guard blocked recently, failed runs, rooms where either happened in the last two hours.'],
+};
+function seg(id, opts, cur, set) { const el = document.getElementById(id); el.innerHTML = ''; for (const [v, lab] of opts) { const b = document.createElement('button'); b.textContent = lab; if (v === cur) b.className = 'on'; b.onclick = () => set(v); el.appendChild(b); } }
+const reloadWith = (k, v) => { const u = new URL(location.href); if (v === false) u.searchParams.delete(k); else u.searchParams.set(k, v === true ? '' : v); location.href = u; };
+function renderBar() {
+  seg('lens', Object.entries(LEGEND).map(([k, v]) => [k, v[0]]), S.lens, v => { S.lens = v; renderBar(); const u = new URL(location.href); u.searchParams.set('lens', v); history.replaceState(null, '', u); });
+  seg('theme', [['day', 'Day'], ['night', 'Night']], S.theme, v => reloadWith('theme', v));
+  seg('rooms', [[false, 'This lab'], [true, '+ 2 rooms of your own']], S.extra, v => reloadWith('extra', v));
+  document.getElementById('legend').innerHTML = `<div class="kick">${LEGEND[S.lens][0]} lens</div><p>${LEGEND[S.lens][1]}</p>`;
+}
+renderBar();
+if (q.get('focus') && ROOMS[q.get('focus')]) { focusRoom(q.get('focus')); Object.assign(cam, camT); }
+window.__LAB = { T, ROOMS, actors, studies, sessions, couriers, cam, camT, overview, focusRoom, waitingAt };
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
