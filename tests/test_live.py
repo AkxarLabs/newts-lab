@@ -3,6 +3,7 @@ supervisor would send the agent, a stub state records the manifest."""
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
@@ -152,13 +153,14 @@ def test_the_session_closes_after_its_turn_unless_a_message_is_on_its_way(tmp_pa
 
 def test_claude_session_translates_the_protocol():
     sess = live.ClaudeSession("hi")
-    evs = sess.handle({"type": "control_request", "request_id": "r9", "request": {
-        "subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": Q, "tool_use_id": "tu"}})
-    assert evs == [{"event": "request", "id": "r9", "tool": "AskUserQuestion", "kind": "question",
-                    "input": Q, "tool_use_id": "tu", "why": None}]
-    assert sess.handle({"type": "result"}) == [{"event": "turn_end"}]
+    obj = {"type": "control_request", "request_id": "r9", "request": {
+        "subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": Q, "tool_use_id": "tu"}}
+    lines, evs = sess.handle(obj)
+    assert lines == [obj] and evs == [{"event": "request", "id": "r9", "tool": "AskUserQuestion", "kind": "question",
+                                       "input": Q, "tool_use_id": "tu", "why": None}]
+    assert sess.handle({"type": "result"})[1] == [{"event": "turn_end"}]
     assert sess.handle({"type": "rate_limit_event", "rate_limit_info": {"status": "allowed", "resetsAt": 5,
-                                                                         "rateLimitType": "five_hour"}}) == [
+                                                                         "rateLimitType": "five_hour"}})[1] == [
         {"event": "limits", "status": "allowed", "resets_at": 5, "type": "five_hour"}]
     sess.unread = 1
     sess.handle({"type": "user", "message": {"role": "user", "content": "hi"}})
@@ -166,6 +168,76 @@ def test_claude_session_translates_the_protocol():
     sess.unread = 1
     sess.handle({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "x"}]}})
     assert sess.unread == 1           # a tool result is not our message coming back
+
+
+class _Pipe:
+    def __init__(self):
+        self.lines = []
+
+    def write(self, s):
+        self.lines.append(json.loads(s))
+
+    def flush(self):
+        pass
+
+
+class _Proc:
+    def __init__(self):
+        self.stdin = _Pipe()
+
+
+def test_codex_session_translates_app_server_to_exec_events():
+    from executor import backends
+    sess = live.CodexSession("go", thread={"cwd": "/w"})
+    proc = _Proc()
+    sess.open(proc)
+    assert proc.stdin.lines[0]["method"] == "initialize"
+    sess.handle({"id": 1, "result": {}})                                   # → initialized + thread/start
+    assert [x.get("method") for x in proc.stdin.lines[1:]] == ["initialized", "thread/start"]
+    lines, _ = sess.handle({"id": 2, "result": {"thread": {"id": "thr1"}}})   # → the first turn
+    assert lines == [{"type": "thread.started", "thread_id": "thr1"}] and sess.session_id == "thr1"
+    assert proc.stdin.lines[-1]["method"] == "turn/start" and proc.stdin.lines[-1]["params"]["input"][0]["text"] == "go"
+    sess.handle({"method": "turn/started", "params": {"turn": {"id": "t1"}}})
+    lines, _ = sess.handle({"method": "item/completed", "params": {"item": {
+        "type": "collabAgentToolCall", "id": "c", "tool": "spawnAgent", "prompt": "v1", "receiverThreadIds": ["k1"],
+        "agentsStates": {}, "status": "completed"}}})
+    evs = backends.parse_events("codex", lines[0])
+    assert evs[0]["spawn"]["child_session"] == "k1"                       # the exec parser reads it unchanged
+    _, evs = sess.handle({"id": 0, "method": "item/tool/requestUserInput", "params": {"questions": [
+        {"id": "q", "question": "Which?", "header": "H", "options": [{"label": "x"}, {"label": "y"}]}]}})
+    req = evs[0]
+    assert req["kind"] == "question" and req["input"]["questions"][0]["question"] == "Which?"
+    sess.respond(req, {"answers": {"Which?": "y"}})
+    assert proc.stdin.lines[-1] == {"id": 0, "result": {"answers": {"q": {"answers": ["y"]}}}}
+    sess.send("more")                                                      # mid-turn → steer
+    assert proc.stdin.lines[-1]["method"] == "turn/steer" and proc.stdin.lines[-1]["params"]["expectedTurnId"] == "t1"
+    lines, evs = sess.handle({"method": "turn/completed", "params": {"turn": {"id": "t1", "status": "completed"}}})
+    assert lines[0]["type"] == "turn.completed" and evs == [{"event": "turn_end"}] and sess.turn is None
+
+
+def test_opencode_session_translates_server_events_to_run_lines():
+    from executor import backends
+    sess = live.OpencodeSession("go", workdir="/w")
+    sess.session_id = "ses_r"
+    tool = {"id": "p1", "sessionID": "ses_r", "type": "tool", "tool": "bash", "callID": "c1",
+            "state": {"status": "completed", "input": {"command": "ls"}, "title": "ls"}}
+    lines, _ = sess.handle({"type": "message.part.updated", "properties": {"part": tool}})
+    assert backends.parse_events("opencode", lines[0])[0]["tool"] == "bash"
+    assert sess.handle({"type": "message.part.updated", "properties": {"part": tool}}) == ([], [])   # once only
+    child = {**tool, "id": "p2", "sessionID": "ses_child"}
+    assert sess.handle({"type": "message.part.updated", "properties": {"part": child}}) == ([], [])  # root only
+    sess.handle({"type": "session.status", "properties": {"sessionID": "ses_r", "status": {"type": "busy"}}})
+    _, evs = sess.handle({"type": "session.status", "properties": {"sessionID": "ses_r", "status": {"type": "idle"}}})
+    assert evs == [{"event": "turn_end"}]
+    _, evs = sess.handle({"type": "question.asked", "properties": {"id": "que_1", "questions": [
+        {"question": "Which?", "header": "H", "options": [{"label": "x"}], "multiple": True}]}})
+    assert evs[0]["id"] == "que_1" and evs[0]["input"]["questions"][0]["multiSelect"] is True
+    _, evs = sess.handle({"type": "permission.asked", "properties": {"id": "per_1", "permission": "bash",
+                                                                      "metadata": {"command": "rm x"}}})
+    assert evs[0]["kind"] == "permission" and evs[0]["input"] == {"command": "rm x"}
+    lines, _ = sess.handle({"type": "session.error", "properties": {"sessionID": "ses_r", "error": {
+        "name": "APIError", "data": {"message": "429 rate limit"}}}})
+    assert sess.error == "429 rate limit" and lines[0]["type"] == "error"
 
 
 def test_the_codex_app_s_bundled_cli_is_found_newest_first(tmp_path, monkeypatch):

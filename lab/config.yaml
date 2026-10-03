@@ -159,10 +159,11 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # and the agent escalates it to the bus — codex exec has no per-call
                                 # human approval routing. read-only = stricter; danger-full-access
                                 # removes the boundary entirely (PI-owned escape hatch — avoid).
-        approval: never         # codex approval_policy. `codex exec` already runs with `never` (it has no
-                                # -a flag — that is the TUI's): a blocked op fails back to the model.
-                                # A stricter value is passed as `-c approval_policy=…`, which in exec
-                                # means such ops are REJECTED (exec can't ask). PI-owned.
+        approval: on-request    # codex approval_policy. A live session (codex app-server) sends each
+                                # approval to the dashboard (Needs you: allow / deny; a campaign denies at
+                                # once). `never` = a blocked op fails back to the model without asking.
+                                # One-shot `codex exec` can't ask: anything but never REJECTS such ops.
+                                # PI-owned.
         network_access: false   # workspace-write turns network OFF by default; set true to let codex
                                 # reach the network for a genuine need (passes
                                 # `-c sandbox_workspace_write.network_access=true`). PI-owned capability

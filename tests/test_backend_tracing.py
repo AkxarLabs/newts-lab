@@ -227,10 +227,13 @@ def test_spec_validates_model_effort_and_repeat(hub):
 
 # ── end to end: codex ─────────────────────────────────────────────────────────
 
-def _setup_backend(hub, backend, cmd, extra=""):
+def _setup_backend(hub, backend, cmd, extra="", live=False):
+    """(one-shot runs unless `live`: these tests pin the `codex exec` / `opencode run` path; the
+    live sessions have their own tests in test_live_backends.py)"""
     (hub.lab / "config.yaml").write_text(
         'lab:\n  projects_root: "../projects"\n'
         "agents:\n  programmatic:\n    enabled: true\n"
+        + ("" if live else "    live: false\n") +
         f"    backend: {backend}\n    max_minutes: 5\n    max_concurrent: 2\n    max_concurrent_total: 3\n"
         "    hub_max_concurrent: 2\n    max_depth: 1\n    backends:\n"
         f"      {backend}:\n        command: {json.dumps(cmd)}\n{extra}",

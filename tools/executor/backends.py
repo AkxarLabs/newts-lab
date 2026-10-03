@@ -301,6 +301,27 @@ def trace_script(workdir) -> Path | None:
     return None
 
 
+def codex_thread(bcfg: dict, workdir, model, effort=None, preamble: str | None = None,
+                 hooks: bool = False) -> dict:
+    """thread/start params for a live codex session (app-server): the same posture as `codex exec`
+    (sandbox, model, effort, network), plus approvals that reach the PI (`approval`, default
+    on-request: a sandbox-blocked step asks instead of failing) and questions (request_user_input)."""
+    cfg = {"features.default_mode_request_user_input": True, "suppress_unstable_features_warning": True}
+    if bcfg.get("network_access"):
+        cfg["sandbox_workspace_write.network_access"] = True
+    if effort or bcfg.get("reasoning_effort"):
+        cfg["model_reasoning_effort"] = str(effort or bcfg["reasoning_effort"])
+    if hooks:
+        cfg["bypass_hook_trust"] = True   # the -c hooks of this run (app-server reads it per thread)
+    params = {"cwd": str(workdir), "sandbox": str(bcfg.get("sandbox") or "workspace-write"),
+              "approvalPolicy": str(bcfg.get("approval") or "on-request"), "config": cfg}
+    if model and model != "inherit":
+        params["model"] = str(model)
+    if preamble:
+        params["developerInstructions"] = preamble
+    return params
+
+
 def codex_hook_overrides(workdir, bcfg: dict | None = None, python: str | None = None,
                          guard=None) -> list[str] | None:
     """codex exec flags that register trace_hook.py on every hook event for THIS invocation.
@@ -432,6 +453,19 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
         if extra:
             argv += extra.split()
         return RunCommand(argv, stdin_text, True, notes)
+
+    if live and backend == "codex":
+        # `codex [-c hooks…] app-server`: the hooks are global -c overrides; hook trust and everything
+        # per-run (cwd, model, sandbox, approvals, instructions) ride thread/start (codex_thread)
+        hooks = [x for x in (codex_hooks or []) if x != "--dangerously-bypass-hook-trust"]
+        traced = any("trace_hook" in str(x) for x in hooks)
+        if extra:
+            notes.append("extra_args ignored for a live codex session")
+        return RunCommand([*cli, *hooks, "app-server"], None, traced, notes)
+    if live and backend == "opencode":
+        if extra:
+            notes.append("extra_args ignored for a live opencode session")
+        return RunCommand([*cli, "serve", "--port", "0", "--hostname", "127.0.0.1"], None, opencode_traced, notes)
 
     # codex / opencode / _dummy have no system-prompt flag: the executor preamble rides the prompt.
     text = prompt or ""

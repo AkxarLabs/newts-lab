@@ -382,9 +382,16 @@ uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
 - **States:** `queued → starting → running → completed | waiting_input | failed | timeout | killed`;
   a paused (`waiting_input`) or ended run resumes **the same session** on an answer, a reply, or
   *resume* (`claude -p --resume <session>`).
-- **Live sessions: the agent keeps running while it waits for you.** A claude run is a *live
-  session* (`claude -p --input-format stream-json --permission-prompt-tool stdio`, the channel the
-  Agent SDK uses; `tools/executor/live.py`):
+- **Live sessions: the agent keeps running while it waits for you.** Every run is a *live
+  session* by default (`tools/executor/live.py`), over each CLI's own two-way protocol:
+  - claude: `claude -p --input-format stream-json --permission-prompt-tool stdio` (the channel the
+    Agent SDK uses);
+  - codex: `codex app-server` (approvals and `request_user_input` are server requests; a message
+    mid-turn steers the turn);
+  - opencode: `opencode serve` on a random local port with a per-run password (its `question` tool
+    and permission prompts arrive on the event stream).
+
+  In all three:
   - a question (`AskUserQuestion`) or a permission prompt reaches the supervisor, shows in *Needs
     you*, and your answer goes straight back to the running agent — no exit, no resume;
   - a message you send while it works is read in the same turn; *interrupt* stops the current turn;
@@ -398,7 +405,8 @@ uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
   the same session. A permission request nobody decides is denied after `permission_minutes` (30).
   In a campaign run the PI is away, so a permission request is denied at once.
 - **The fallback: one-shot runs.** When a live session can't start (an old CLI), the attempt
-  re-runs one-shot (`claude -p`, the prompt on stdin), and `live: false` makes that the default.
+  re-runs one-shot (`claude -p`, `codex exec`, `opencode run`), and `live: false` makes that the
+  default.
   There, a per-run `PreToolUse` hook **defers** a question (the process exits with
   `stop_reason: tool_deferred`), the PI answers, and the resumed attempt's hook returns the answer;
   other permission prompts go to a small MCP host that denies and logs them (or waits for the PI when

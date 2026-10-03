@@ -119,17 +119,23 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
     mon = threading.Thread(target=_monitor, daemon=True)
     mon.start()
     written, truncated = 0, False
-    with Path(stream_path).open("a", encoding="utf-8") as sf:
-        for line in proc.stdout:  # type: ignore[union-attr]
-            if max_bytes <= 0 or written < max_bytes:
-                sf.write(line)
+
+    def store(sf, line: str) -> None:
+        nonlocal written, truncated
+        if max_bytes <= 0 or written < max_bytes:
+            sf.write(line)
+            sf.flush()
+            written += len(line.encode("utf-8", "replace"))
+            if max_bytes > 0 and written >= max_bytes and not truncated:
+                sf.write('{"_truncated":"transcript hit max_transcript_mb; further output is parsed '
+                         'for activity but no longer stored"}\n')
                 sf.flush()
-                written += len(line.encode("utf-8", "replace"))
-                if max_bytes > 0 and written >= max_bytes and not truncated:
-                    sf.write('{"_truncated":"transcript hit max_transcript_mb; further output is parsed '
-                             'for activity but no longer stored"}\n')
-                    sf.flush()
-                    truncated = True
+                truncated = True
+
+    with Path(stream_path).open("a", encoding="utf-8") as sf:
+        for line in (live.stream(proc) if live else proc.stdout):  # type: ignore[union-attr]
+            if not live:
+                store(sf, line)
             s = line.strip()
             if not s or not s.startswith("{"):
                 continue
@@ -137,9 +143,13 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
                 obj = json.loads(s)
             except json.JSONDecodeError:
                 continue
-            evs = backends.parse_events(backend, obj)
-            if live:
-                evs += live.handle(obj)
+            if live:   # the session translates its protocol: store + parse what it returns
+                lines, evs = live.handle(obj)
+                for o in lines:
+                    store(sf, json.dumps(o) + "\n")
+                evs = [ev for o in lines for ev in backends.parse_events(backend, o)] + evs
+            else:
+                evs = backends.parse_events(backend, obj)
             for ev in evs:
                 e = ev.get("event")
                 if e == "start":
@@ -163,6 +173,11 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
     proc.wait()
     mon.join(timeout=grace + 2)
     res.rc = proc.returncode
+    if live and live.ended and not (res.stopped or res.breached or res.parked):
+        res.rc = 0
+    if live and live.error and not (res.stopped or res.breached or res.parked):
+        res.rc = res.rc or 1   # the CLI reported a failure without exiting (codex / opencode servers)
+        res.last_message = live.error
     res.wall = round(time.time() - t0, 1)
     return res
 
@@ -453,7 +468,16 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     subagents: dict = m.setdefault("subagents", {})
     sess = conv = None
     if is_live:
-        sess = live.make(backend, prompt or "", m.get("session_id"))
+        eff_model = backends._eff_model(m.get("model") or prog.get("model"), bcfg)
+        ctx = {}
+        if backend == "codex":
+            ctx["thread"] = backends.codex_thread(bcfg, workdir, eff_model, m.get("effort"), preamble_text,
+                                                  hooks=bool(codex_hooks))
+        elif backend == "opencode":
+            ctx = {"workdir": workdir, "model": eff_model if eff_model != "inherit" else None,
+                   "agent": bcfg.get("agent"), "system": preamble_text or None, "title": m.get("label")}
+        sess = live.make(backend, prompt or "", m.get("session_id") if (resuming or backend == "claude") else None, **ctx)
+        env.update(sess.env())
         conv = live.Conversation(sess, st, rd, prog, note=lambda kind, detail=None, **d: emit(
             lab, workdir, kind, detail=detail or run_id, idea=m.get("subject"), data={"run_id": run_id, **d}))
 
