@@ -513,15 +513,6 @@ details.cmp-sec > summary { cursor: pointer; font-weight: 600; display: flex; al
 .cmp-pipe-add { flex: 0 0 124px; border: 1px dashed var(--edge-2); border-radius: var(--r-l); background: transparent; color: var(--ink-soft); cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 13px; padding: 14px; }
 .cmp-pipe-add:hover { border-color: var(--accent); color: var(--accent); } .cmp-pipe-add.wide { flex-direction: row; width: 100%; margin-top: 4px; }
-.cmp-building { display: flex; flex-direction: column; gap: 12px; }
-.cmp-floor { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; }
-.cmp-floor-l { padding-top: 14px; }
-.cmp-floor-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; padding-bottom: 12px; border-bottom: 2px solid var(--edge-2); }
-.cmp-room { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px 12px 4px 4px; border: 1px solid var(--edge); background: var(--paper); text-decoration: none; position: relative; min-height: 96px; }
-.cmp-room:hover { border-color: var(--edge-2); box-shadow: var(--shadow-s); } .cmp-room b { font: 450 17px/1.2 var(--serif); padding-right: 28px; }
-.cmp-room.plain { background: var(--paper-2); border-style: dashed; }
-.cmp-room-states { display: flex; flex-wrap: wrap; gap: 4px; }
-.cmp-room-gate { position: absolute; top: 13px; right: 12px; font: 500 11px var(--mono); color: var(--warm); display: inline-flex; gap: 3px; align-items: center; }
 .cmp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .cmp-tile { padding: 16px; border-radius: var(--r-l); border: 1px solid var(--edge); background: var(--paper); text-decoration: none; } .cmp-tile:hover { border-color: var(--edge-2); box-shadow: var(--shadow-s); } .cmp-tile p { margin: 6px 0 0; }
 .cmp-rows { display: flex; flex-direction: column; border: 1px solid var(--edge); border-radius: var(--r-l); background: var(--paper); overflow: hidden; }
@@ -573,11 +564,33 @@ details.cmp-sec > summary { cursor: pointer; font-weight: 600; display: flex; al
 .tour-dots { display: inline-flex; gap: 5px; align-items: center; } .tour-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--edge-2); }
 .tour-dots i.on { background: var(--accent); width: 16px; } .tour-dots i.done { background: color-mix(in srgb, var(--accent) 50%, transparent); }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
+.lg { display: grid; gap: 8px; }
+.lg-cell { aspect-ratio: 1.35; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; position: relative; min-width: 0; overflow: hidden; }
+.lg-empty { border: 1px dashed var(--edge); } .lg-empty.lg-target { border-color: var(--accent); background: var(--accent-wash); cursor: pointer; }
+.lg-hub { background: var(--paper-2); border: 1px solid var(--edge); align-items: center; justify-content: center; text-align: center; } .lg-hub b { font: 450 17px/1.2 var(--serif); }
+.lg-room { background: var(--paper); border: 1px solid var(--edge-2); cursor: grab; box-shadow: var(--shadow-s); }
+.lg-room.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.lg-room b { font: 450 16px/1.2 var(--serif); } .lg-states { font: 500 10px/1.4 var(--mono); color: var(--ink-faint); text-transform: uppercase; letter-spacing: .05em; }
+.lg-room::after { content: ''; position: absolute; background: var(--accent); border-radius: 2px; }
+.lg-room.door-s::after { left: 35%; right: 35%; bottom: 0; height: 4px; } .lg-room.door-n::after { left: 35%; right: 35%; top: 0; height: 4px; }
+.lg-room.door-e::after { top: 30%; bottom: 30%; right: 0; width: 4px; } .lg-room.door-w::after { top: 30%; bottom: 30%; left: 0; width: 4px; }
+.lg-acts { margin-top: auto; display: flex; align-items: center; gap: 8px; }
+.lg-turn { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--edge-2); background: var(--paper-2); cursor: pointer; font-size: 14px; line-height: 1; }
+.lg-turn:hover { border-color: var(--accent); color: var(--accent); } .lg-open { font-size: 12px; color: var(--accent); }
+.lg-gate { position: absolute; top: 9px; right: 10px; font: 500 11px var(--mono); color: var(--warm); display: inline-flex; gap: 3px; align-items: center; }
+.lg-foot { margin-top: 10px; } .lg-add { width: auto; margin: 0; }
+.cmp-look { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 18px; align-items: start; }
+.cmp-look-view { position: sticky; top: 56px; } .cmp-3d { width: 100%; aspect-ratio: 4 / 3; border: 1px solid var(--edge); border-radius: 14px; background: var(--paper-2); display: block; }
+.cmp-look-cap { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.cmp-look-side h3 { font: 450 22px/1.2 var(--serif); margin-bottom: 4px; }
+.cmp-design { border: 1px solid var(--edge); border-radius: 12px; padding: 12px 14px; margin: 12px 0; background: var(--paper); } .cmp-design.on { border-color: var(--accent); }
+.cmp-design .md { font-size: 13px; } .cmp-design .md p { margin: 4px 0; }
 @media (max-width: 860px) {
-  .compose { grid-template-columns: minmax(0, 1fr); }
+  .compose { grid-template-columns: minmax(0, 1fr); } .cmp-look { grid-template-columns: 1fr; } .cmp-look-view { position: static; }
+  .lg-cell { aspect-ratio: 1; padding: 6px 8px; } .lg-states, .lg-gate { display: none; }
   .cmp-nav { position: static; height: auto; flex-direction: row; overflow-x: auto; scrollbar-width: none; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--edge); }
   .cmp-nav-sec, .cmp-nav-foot { display: none; } .cmp-link { flex: none; } .cmp-page { padding: 24px 16px 0; } .cmp-bar { padding: 9px 16px; flex-wrap: wrap; }
-  .cmp-hero h1 { font-size: 34px; } .cmp-floor { grid-template-columns: 1fr; } .cmp-floor-l { padding-top: 0; }
+  .cmp-hero h1 { font-size: 34px; }
   .cmp-row { flex-wrap: wrap; } .cmp-row-side { max-width: none; justify-content: flex-start; }
   .cmp-files { flex-direction: column; } .cmp-file-list { position: static; flex-basis: auto; width: 100%; flex-direction: row; overflow-x: auto; }
 }

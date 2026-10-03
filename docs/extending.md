@@ -30,7 +30,8 @@ Every moving part is a small, named registry; the table is the map.
 | Anything below, from the dashboard | Compose (a draft, checked, then published) | [Customising](customising.md) |
 | How a stage is done | Compose → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
-| A stage, a state, a room | `workflow/stages.yaml` (+ a room's art in `world/rooms/` or `lab/rooms/`) | `tools/workflow.py check` |
+| A stage, a state, a room | `workflow/stages.yaml` (a room's `place` and `facing` on the table too) | `tools/workflow.py check` |
+| How a room looks in 3D | `lab/rooms3d/<room>.json` (data: Compose → a room → Look → *Describe it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/` | Compose (it checks every room file) |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |

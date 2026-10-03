@@ -40,6 +40,28 @@
         lamp: '#ffcf7a', liquid: '#5ff0d8', cream: '#e9ddd2', amber: '#f0c26c', red: '#e06a5a', green: '#6fd39a', white: '#e9efed', black: '#0c0e10' } },
   };
 
+  /** A room given as DATA (a lab's own room, lab/rooms3d/<id>.json, or an agent's design): new furniture is a
+   *  list of parts — {shape: box|cyl|cone|sphere, size, at: [x, y, z], rot?, color, glow?, alpha?} — so nothing
+   *  in it is code. box size [w, h, d] · cyl [rTop, rBottom, h] · cone [r, h] · sphere [r]; y is the part's base
+   *  (a sphere's centre). */
+  L.defineRoomData = function defineRoomData(d) {
+    for (const [name, c] of Object.entries(d.components || {})) {
+      L.defineComponent(name, { build(K) {
+        const g = K.group();
+        for (const p of c.parts || []) {
+          const [a, b, h] = p.size, [x, y, z] = p.at, o = { glow: p.glow ? p.color : null, alpha: p.alpha };
+          const m = p.shape === 'box' ? K.box(a, b, h, p.color, x, y, z, o) : p.shape === 'cyl' ? K.cyl(a, b, h, p.color, x, y, z, o)
+            : p.shape === 'cone' ? K.cone(a, b, p.color, x, y, z, o) : K.sphere(a, p.color, x, y, z, o);
+          if (p.rot) m.rotation.set(p.rot[0], p.rot[1], p.rot[2]);
+          g.add(m);
+        }
+        return g;
+      } });
+    }
+    return L.defineRoom({ key: d.key, title: d.title, size: d.size, floor: d.floor || 'boards', wall: d.wall || 'plaster', accent: d.accent || 'teal',
+      walls: d.walls !== false, props: d.props || [], stations: d.stations || {}, roleStation: d.roleStation || {} });
+  };
+
   /** the builder's toolbox for one theme: materials, primitives, a sign */
   L.kit = function kit(THREE, themeName) {
     const th = L.THEMES[themeName], night = themeName === 'night', cache = new Map();

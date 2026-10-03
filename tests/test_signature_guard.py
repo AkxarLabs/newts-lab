@@ -274,7 +274,7 @@ console.log(JSON.stringify({{ denied }}))
 @pytest.mark.parametrize("rel", [".claude/skills/experiment/SKILL.md", ".claude/skills/experiment/METHOD.md",
                                  "agent-roles/overseer.md", ".claude/agents/overseer.md", "workflow/stages.yaml",
                                  "lab/workflow/experiment.add.md", "studies/idea-a/workflow/propose.method.md",
-                                 "lab/.bus/compose/draft/workflow/stages.yaml"])
+                                 "lab/.bus/compose/draft/workflow/stages.yaml", "lab/rooms3d/lab.json"])
 def test_agents_cannot_edit_procedures_or_their_own_instructions(g, hub, rel):
     p = hub.root / rel
     p.parent.mkdir(parents=True, exist_ok=True)

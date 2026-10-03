@@ -316,6 +316,20 @@ def check(hub=None) -> list[str]:
         if x not in covered:
             probs.append(f"state {x} belongs to no stage")
     roomed = {x for r in m.get("rooms", []) for x in r.get("states", [])}
+    plots: dict[tuple, str] = {}
+    for r in m.get("rooms", []):          # where a room stands on the table (optional; the rest are placed for you)
+        pl, rid = r.get("place"), r.get("id")
+        if pl is not None:
+            if not (isinstance(pl, list) and len(pl) == 2 and all(isinstance(x, int) and not isinstance(x, bool) for x in pl)):
+                probs.append(f"room {rid}: place must be [column, row], two whole numbers")
+            elif pl == [0, 0]:
+                probs.append(f"room {rid}: place [0, 0] is the plaza with the PI's desk")
+            elif tuple(pl) in plots:
+                probs.append(f"rooms {plots[tuple(pl)]} and {rid} both stand at {pl}")
+            else:
+                plots[tuple(pl)] = rid
+        if r.get("facing") is not None and r.get("facing") not in ("n", "e", "s", "w"):
+            probs.append(f"room {rid}: facing must be n, e, s or w")
     for x in allst:
         if x not in roomed:
             probs.append(f"state {x} has no room")
@@ -889,6 +903,36 @@ def ui_default_js(hub=None) -> str:
             "window.__WORKFLOW_DEFAULT__ = " + json.dumps(view, ensure_ascii=False, sort_keys=True) + ";\n")
 
 
+def room_brief(rid: str, hub=None) -> str | None:
+    """What a room must hold — for /design-room: its states, the procedures that need a station, its gate.
+    Looks in the lab, then in the PI's open Compose draft (a room added there but not published yet)."""
+    h = _hub(hub)
+    for root in (h, h / "lab" / ".bus" / "compose" / "draft"):
+        if root != h and not (root / MANIFEST).is_file():
+            continue
+        try:
+            m = load(root)
+        except (OSError, yaml.YAMLError):
+            continue
+        room = next((r for r in m.get("rooms", []) if r.get("id") == rid), None)
+        if not room:
+            continue
+        label = {s["id"]: s.get("label", s["id"]) for s in m.get("states", []) + m.get("side_states", [])}
+        states = room.get("states") or []
+        procs = list(dict.fromkeys(p for st in m.get("stages", []) if set(st.get("states") or []) & set(states)
+                                   for p in st.get("procedures") or []))
+        gates = [g for g in m.get("gates", []) if g.get("at") in states or g.get("before") in states]
+        lines = [f"ROOM {rid} — {room.get('title') or room.get('label') or rid}" + ("  (in the PI's draft)" if root != h else ""),
+                 "states: " + (", ".join(f"{s} ({label.get(s, s)})" for s in states) or "none — studies only rest here"),
+                 "procedures (each needs a station): " + (", ".join(f"{p} — {(m['procedures'].get(p) or {}).get('title', p)}" for p in procs) or "none"),
+                 "gates: " + ("; ".join(str(g.get("title") or f"Gate {g['n']}") for g in gates) or "none"),
+                 "subagent roles that may work here: " + ", ".join(roles(root)),
+                 "kit: dashboard/static/world3d/kit.js (format, colour names) · furniture: dashboard/static/world3d/components.js",
+                 "examples: dashboard/static/world3d/rooms/*.js · write to: lab/.bus/designs/" + rid + "/room.json (+ notes.md)"]
+        return "\n".join(lines)
+    return None
+
+
 def render_docs(hub=None, check_only: bool = False) -> list[Path]:
     hub = _hub(hub)
     stale = []
@@ -956,6 +1000,8 @@ def main(argv=None) -> int:
     pr.add_argument("--why", default="")
     rd = sub.add_parser("render-docs")
     rd.add_argument("--check", action="store_true")
+    rm = sub.add_parser("room", help="what one room must hold (for /design-room)")
+    rm.add_argument("room")
     sh = sub.add_parser("show")
     sh.add_argument("--study")
     a = ap.parse_args(argv)
@@ -996,6 +1042,13 @@ def main(argv=None) -> int:
         except Exception:  # noqa: BLE001 — the proposal file is the record; the event is a nudge
             pass
         print(f"[workflow] proposal {rec['id']} filed — the PI accepts or declines it in the dashboard (Compose)")
+        return 0
+    if a.cmd == "room":
+        text = room_brief(a.room)
+        if not text:
+            print(f"[workflow] no room {a.room!r} in the workflow (or the PI's draft)", file=sys.stderr)
+            return 2
+        print(text)
         return 0
     if a.cmd == "render-docs":
         stale = render_docs(check_only=a.check)

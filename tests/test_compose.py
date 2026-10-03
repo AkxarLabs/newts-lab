@@ -127,3 +127,54 @@ def test_rules_and_files(m, hub):
         assert m.compose.op({"op": "write", "path": bad, "text": "x"})[1] == 400, bad
     f, code = m.compose.file_get({"path": "agent-roles/overseer.md"})
     assert code == 200 and f["text"] == f["published"]
+
+
+ROOM = {"key": "lab", "size": [10, 7], "floor": "tiles", "accent": "teal",
+        "components": {"lab-wall": {"parts": [{"shape": "box", "size": [3, 1.6, 0.1], "at": [0, 0.5, 0], "color": "black"},
+                                              {"shape": "sphere", "size": [0.1], "at": [1, 1.2, 0.1], "color": "#ffcc00", "glow": True}]}},
+        "props": [{"c": "workstation", "at": [-2, -2], "props": {"monitors": 2}}, {"c": "lab-wall", "at": [1, -3]}],
+        "stations": {"experiment": [-2, -1.4, 3.1416]}}
+
+
+def test_a_room_is_placed_on_the_table_and_checked(m, hub):
+    _op(m, op="room-place", id="archive", place=[-1, 1], facing="n")
+    r = next(r for r in _stages(m.compose._draft())["rooms"] if r["id"] == "archive")
+    assert r["place"] == [-1, 1] and r["facing"] == "n" and m.compose.problems() == []
+    assert m.compose.op({"op": "room-place", "id": "lab", "place": [0, 0]})[1] == 400        # the plaza
+    assert m.compose.op({"op": "room-place", "id": "lab", "place": [1, 1], "facing": "up"})[1] == 400
+    _op(m, op="room-place", id="lab", place=[-1, 1])                                        # two rooms, one plot
+    assert any("both stand at" in p for p in m.compose.problems())
+    _op(m, op="room-place", id="lab", place=None, facing=None)                               # back to the lab's choice
+    assert "place" not in next(r for r in _stages(m.compose._draft())["rooms"] if r["id"] == "lab")
+
+
+def test_an_agents_room_design_is_data_checked_previewed_and_taken(m, hub):
+    import json
+    d = hub.lab / ".bus" / "designs" / "lab"
+    d.mkdir(parents=True)
+    (d / "room.json").write_text(json.dumps(ROOM), encoding="utf-8")
+    (d / "notes.md").write_text("A wall of screens.", encoding="utf-8")
+    v = m.compose.view()[0]
+    assert v["designs"][0]["room"] == "lab" and v["designs"][0]["problems"] == []
+    got, code = m.compose.design_get({"room": "lab"})
+    assert code == 200 and got["data"]["components"]["lab-wall"]
+    _op(m, op="design-use", room="lab")
+    assert (m.compose._draft() / "lab" / "rooms3d" / "lab.json").is_file() and m.compose.problems() == []
+    _op(m, op="publish")
+    assert [x["key"] for x in m.compose.rooms3d()[0]["rooms"]] == ["lab"]
+    # anything but data is refused — a design never runs as code
+    for bad in ({**ROOM, "script": "fetch('/api/run')"}, {**ROOM, "key": "study"}, {**ROOM, "size": [500, 7]},
+                {**ROOM, "components": {"x": {"parts": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "color": "url(javascript:x)"}]}}},
+                {**ROOM, "props": [{"c": "desk", "at": [0, 0], "props": {"o": {"nested": 1}}}]}):
+        assert m.compose.room_check(json.dumps(bad), "lab")[1], bad
+    (d / "room.json").write_text("Lab3D.defineRoom({key: 'lab'})", encoding="utf-8")
+    assert m.compose.op({"op": "design-use", "room": "lab"})[1] == 400
+    _op(m, op="write", path="lab/rooms3d/lab.json", text="not json")
+    assert any("lab/rooms3d/lab.json" in p for p in m.compose.problems())
+
+
+def test_the_room_brief_for_design_room(m, hub):
+    wf = load("workflow")
+    text = wf.room_brief("lab", hub.root)
+    assert "experiment" in text and "Gate 2" in text and "lab/.bus/designs/lab/room.json" in text
+    assert wf.room_brief("nope", hub.root) is None

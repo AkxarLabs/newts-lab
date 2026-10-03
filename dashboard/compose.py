@@ -2,7 +2,7 @@
 
 What it covers is every file that says how this lab works (ROOTS): the workflow and the rules (workflow/),
 the procedures (.claude/skills/), the subagent roles (agent-roles/), the checks (checks/), the project
-types and domain profiles (templates/…, lab/templates/), the rooms' art (lab/rooms/) and the lab-wide
+types and domain profiles (templates/…, lab/templates/), the rooms' looks (lab/rooms/, lab/rooms3d/) and the lab-wide
 instructions (lab/workflow/). Settings (lab/config.yaml) stay on the Settings page; one study's own
 instructions stay on its page.
 
@@ -32,7 +32,7 @@ import ctx  # noqa: E402
 import sources  # noqa: E402
 
 ROOTS = ("workflow", ".claude/skills", "agent-roles", "checks", "templates/project-types",
-         "templates/domain-profiles", "lab/rooms", "lab/templates", "lab/workflow")
+         "templates/domain-profiles", "lab/rooms", "lab/rooms3d", "lab/templates", "lab/workflow")
 TEXT_EXT = {".md", ".yaml", ".yml", ".py", ".js", ".txt", ".json", ".toml", ".tex", ".bib", ".cfg", ".ini", ".sh", ".csv"}
 LOCKED_TABLES = ("pi_owned_config", "protected_paths", "rigor_floors", "gate3_audits", "config_procedures")
 MAX_FILE = 400_000
@@ -125,7 +125,7 @@ def problems(root: Path | None = None) -> list[str]:
         probs = list(_wf().check(root))
     except Exception as e:  # noqa: BLE001 — a broken YAML file is a problem to show, not a crash
         return [f"the workflow can't be read: {e}"]
-    return probs + (_locks(root) if root != ctx.HUB else []) + _orphans(root)
+    return probs + (_locks(root) if root != ctx.HUB else []) + _orphans(root) + _room_files(root)
 
 
 def _locks(root: Path) -> list[str]:
@@ -145,6 +145,99 @@ def _locks(root: Path) -> list[str]:
         out.append("Hard rules are cited by number: edit their text or add new ones at the end, but don't "
                    "remove or reorder them.")
     return out
+
+
+# ── a room's 3D look, as data ────────────────────────────────────────────────────────────────────
+# The lab's own rooms (lab/rooms3d/<id>.json) — and every design an agent makes — are DATA, never code: a size,
+# colours, furniture by name with positions, a station per procedure, and any new furniture as a list of
+# boxes, cylinders, cones and spheres. The world builds them; nothing an agent writes ever runs in the page.
+ROOM_KEYS = {"key", "title", "size", "floor", "wall", "walls", "accent", "props", "stations", "roleStation", "components"}
+SHAPES = {"box": 3, "cyl": 3, "cone": 2, "sphere": 1}
+_COLOR = re.compile(r"^(?:[a-zA-Z]{2,20}|#[0-9a-fA-F]{6})$")
+_CNAME = re.compile(r"^[a-zA-Z][a-zA-Z0-9-]{0,60}$")
+
+
+def _nums(v, n, lo=-60.0, hi=60.0) -> bool:
+    return isinstance(v, list) and len(v) == n and all(isinstance(x, (int, float)) and not isinstance(x, bool) and lo <= x <= hi for x in v)
+
+
+def room_check(text: str, rid: str | None = None) -> tuple[dict | None, list[str]]:
+    """A room look's problems (empty = fine to draw)."""
+    try:
+        d = json.loads(text or "")
+    except ValueError as e:
+        return None, [f"not valid JSON ({e})"]
+    if not isinstance(d, dict):
+        return None, ["a room is one JSON object"]
+    p: list[str] = []
+    if set(d) - ROOM_KEYS:
+        p.append("unknown fields: " + ", ".join(sorted(set(d) - ROOM_KEYS)))
+    if rid and d.get("key") != rid:
+        p.append(f"key must be {rid!r}")
+    if not _nums(d.get("size"), 2, 3, 30):
+        p.append("size is [width, depth] in metres, 3–30")
+    for k in ("floor", "wall", "accent"):
+        if k in d and not (isinstance(d[k], str) and _COLOR.match(d[k])):
+            p.append(f"{k} is a theme colour name or #rrggbb")
+    if "walls" in d and not isinstance(d["walls"], bool):
+        p.append("walls is true or false")
+    comps, parts = d.get("components") or {}, 0
+    if not isinstance(comps, dict) or len(comps) > 40:
+        p.append("components is an object of at most 40 pieces of furniture")
+        comps = {}
+    for name, c in comps.items():
+        if not _CNAME.match(str(name)) or not isinstance(c, dict) or not isinstance(c.get("parts"), list) or not 0 < len(c["parts"]) <= 120:
+            p.append(f"component {name!r}: a name and 1–120 parts")
+            continue
+        for part in c["parts"]:
+            parts += 1
+            n = SHAPES.get((part or {}).get("shape")) if isinstance(part, dict) else None
+            if not n or not _nums(part.get("size"), n, 0.005, 30) or not _nums(part.get("at"), 3, -30, 30) \
+                    or ("rot" in part and not _nums(part["rot"], 3, -7, 7)) or not (isinstance(part.get("color"), str) and _COLOR.match(part["color"])) \
+                    or ("glow" in part and not isinstance(part["glow"], bool)) or ("alpha" in part and not _nums([part["alpha"]], 1, 0, 1)) \
+                    or set(part) - {"shape", "size", "at", "rot", "color", "glow", "alpha"}:
+                p.append(f"component {name}: a part must be {{shape: box|cyl|cone|sphere, size, at: [x, y, z], color, rot?, glow?, alpha?}}")
+                break
+    if parts > 1500:
+        p.append("too many parts (at most 1500 in a room)")
+    props = d.get("props") or []
+    if not isinstance(props, list) or len(props) > 150:
+        p.append("props is a list of at most 150 pieces")
+        props = []
+    for pr in props:
+        ok = isinstance(pr, dict) and isinstance(pr.get("c"), str) and _CNAME.match(pr["c"]) and _nums(pr.get("at"), 2, -30, 30) \
+            and ("rot" not in pr or _nums([pr["rot"]], 1, -7, 7)) and not set(pr) - {"c", "at", "rot", "props"} \
+            and all(isinstance(v, (str, int, float, bool)) for v in (pr.get("props") or {}).values()) if isinstance(pr, dict) else False
+        if not ok:
+            p.append("a prop is {c: furniture name, at: [x, z], rot?, props?: {simple values}}")
+            break
+    for k in ("stations", "roleStation"):
+        st = d.get(k) or {}
+        if not isinstance(st, dict) or not all(_CNAME.match(str(n)) and (_nums(v, 2, -30, 30) or _nums(v, 3, -30, 30)) for n, v in st.items()):
+            p.append(f"{k} maps a name to [x, z] or [x, z, facing]")
+    return (d if not p else None), p
+
+
+def _room_files(root: Path) -> list[str]:
+    out, d = [], root / "lab" / "rooms3d"
+    for f in sorted(d.iterdir()) if d.is_dir() else []:
+        if f.suffix != ".json":
+            out.append(f"lab/rooms3d/{f.name}: a room's look is data — <room>.json")
+            continue
+        probs = room_check(ctx.read(f) or "", f.stem)[1]
+        if probs:
+            out.append(f"lab/rooms3d/{f.name}: " + "; ".join(probs[:3]))
+    return out
+
+
+def rooms3d(q: dict | None = None) -> tuple[dict, int]:
+    """The lab's own room looks (published), for the world to build."""
+    d, out = ctx.LAB / "rooms3d", []
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        data = room_check(ctx.read(f) or "", f.stem)[0]
+        if data:
+            out.append(data)
+    return {"ok": True, "rooms": out}, 200
 
 
 def _orphans(root: Path) -> list[str]:
@@ -482,6 +575,65 @@ def _op_room(b: dict) -> str:
     return "room updated"
 
 
+def _op_room_place(b: dict) -> str:
+    """Where a room stands on the table: place [col, row] (None = let the lab place it) and facing n|e|s|w."""
+    rid = str(b.get("id") or "")
+    place, facing = b.get("place"), b.get("facing")
+    if place is not None and not (isinstance(place, list) and len(place) == 2 and all(isinstance(x, int) and not isinstance(x, bool) for x in place)):
+        raise ComposeError("place is [column, row] — two whole numbers")
+    if place == [0, 0]:
+        raise ComposeError("the middle plot is your desk's plaza")
+    if facing is not None and facing not in ("n", "e", "s", "w"):
+        raise ComposeError("facing is n, e, s or w")
+
+    def fn(text):
+        r = dict(_entry(text, "rooms", rid)[2])
+        for k, v in (("place", place), ("facing", facing)):
+            if v is None:
+                r.pop(k, None)
+            else:
+                r[k] = v
+        return _set_entry(text, "rooms", rid, r)
+    _edit(STAGE_MANIFEST, fn)
+    return "placed" if place else "the lab places it"
+
+
+def _designs_dir() -> Path:
+    return ctx.LAB / ".bus" / "designs"
+
+
+def designs() -> list[dict]:
+    """Room looks agents have designed (/design-room), newest first, each with its problems."""
+    out, d = [], _designs_dir()
+    for f in sorted(d.glob("*/room.json"), key=lambda x: x.stat().st_mtime, reverse=True) if d.is_dir() else []:
+        name = f.parent.name
+        if re.match(r"^[a-z0-9][a-z0-9-]{0,40}$", name):
+            out.append({"room": name, "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(f.stat().st_mtime)),
+                        "notes": (ctx.read(f.parent / "notes.md") or "").strip()[:1500],
+                        "problems": room_check(ctx.read(f) or "", name)[1]})
+    return out
+
+
+def design_get(q: dict) -> tuple[dict, int]:
+    name = str(q.get("room") or "")
+    f = _designs_dir() / name / "room.json"
+    if not re.match(r"^[a-z0-9][a-z0-9-]{0,40}$", name) or not f.is_file():
+        return {"error": "no such design"}, 404
+    data, probs = room_check(ctx.read(f) or "", name)
+    return {"ok": True, "room": name, "data": data, "problems": probs, "notes": (ctx.read(f.parent / "notes.md") or "").strip()}, 200
+
+
+def _op_design_use(b: dict) -> str:
+    """Take an agent's design for a room into the draft (lab/rooms3d/<room>.json, reviewed before it's published)."""
+    d, code = design_get({"room": b.get("room")})
+    if code != 200:
+        raise ComposeError(d["error"])
+    if d["problems"]:
+        raise ComposeError("this design has problems (" + "; ".join(d["problems"][:2]) + ") — ask for another")
+    _put(f"lab/rooms3d/{d['room']}.json", json.dumps(d["data"], indent=1, ensure_ascii=False) + "\n")
+    return f"the design for {d['room']} is in your draft — review it, then publish"
+
+
 def _op_role(b: dict) -> str:
     name, f = str(b.get("name") or ""), b.get("fields") or {}
     rel = f"agent-roles/{name}.yaml"
@@ -637,6 +789,7 @@ def _op_delete(b: dict) -> str:
         own = f"lab/templates/project-types/{name}"
         _rmtree(own if (d / own).is_dir() else f"templates/project-types/{name}")
     elif kind == "room":
+        _put(f"lab/rooms3d/{name}.json", None)
         move = str(b.get("move_to") or "")
 
         def fn(text):
@@ -686,7 +839,8 @@ def _op_discard(b: dict) -> str:
 
 OPS = {"write": _op_write, "instructions": _op_instructions, "procedure": _op_procedure, "stage": _op_stage,
        "state": _op_state, "room": _op_room, "role": _op_role, "rule": _op_rule, "copy": _op_copy,
-       "stage-add": _op_stage_add, "room-art": _op_room_art, "delete": _op_delete, "discard": _op_discard}
+       "stage-add": _op_stage_add, "room-art": _op_room_art, "room-place": _op_room_place, "design-use": _op_design_use,
+       "delete": _op_delete, "discard": _op_discard}
 
 
 def op(body: dict) -> tuple[dict, int]:
@@ -858,7 +1012,9 @@ def view(q: dict | None = None) -> tuple[dict, int]:
             key = re.search(r"key: '[^']*'[^\n]*?floor: (-?\d+), order: (\d+)", ctx.read(f) or "")
             if key:
                 r = {**r, "floor": int(key.group(1)), "order": int(key.group(2))}
-        rooms.append({**r, "art": art})
+        look = "yours" if (root / "lab" / "rooms3d" / f"{r['id']}.json").is_file() else \
+            "built-in" if (ctx.ROOT / "dashboard" / "static" / "world3d" / "rooms" / f"{r['id']}.js").is_file() else "plain"
+        rooms.append({**r, "art": art, "look3d": look})
     rl = wf.rules(root)
     rules = {g: [{"id": x.get("id"), "text": str(x.get("text") or ""), "checks": x.get("checks") or []}
                  for x in rl.get(f"{g}_rules") or []] for g in ("hard", "subagent", "project")}
@@ -883,7 +1039,7 @@ def view(q: dict | None = None) -> tuple[dict, int]:
         "states": m.get("states", []), "side_states": m.get("side_states", []), "gates": m.get("gates", []),
         "stages": m.get("stages", []), "rooms": rooms, "next_for_state": m.get("next_for_state", {}),
         "offer_for_state": m.get("offer_for_state", {}), "procedures": procs, "roles": roles,
-        "built_in_art": sorted(f.stem for f in static_rooms.glob("*.js")),
+        "built_in_art": sorted(f.stem for f in static_rooms.glob("*.js")), "designs": designs(),
         "rules": rules, "locked": locked, "built_in_checks": sorted(wf.BUILT_IN_CHECKS), "checks": checks,
         "types": types, "domains": domains, "custom": lab_custom,
         "proposals": [{k: r.get(k) for k in ("id", "kind", "name", "study", "why", "by", "ts")} for r in wf.proposals(ctx.HUB)],

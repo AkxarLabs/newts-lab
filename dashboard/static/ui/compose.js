@@ -41,7 +41,7 @@
       dirty: d => touched(d, '.claude/skills/') || changes(d).some(c => c.path.startsWith('lab/workflow/') && !/^lab\/workflow\/(stage\.|roles\/)/.test(c.path)) },
     { id: 'roles', item: 'role', label: 'Roles', one: 'role', n: d => d.roles.length, blurb: 'The specialist subagents that procedures call on — critics, reviewers, runners.',
       dirty: d => touched(d, 'agent-roles/', 'lab/workflow/roles/') },
-    { id: 'rooms', item: 'room', label: 'Rooms', one: 'room', n: d => d.rooms.length, blurb: 'The building on Home. Each state of a study stands in one room.',
+    { id: 'rooms', item: 'room', label: 'Rooms', one: 'room', n: d => d.rooms.length, blurb: 'The rooms on the table round your desk: which states of a study stand in each, where it stands, and how it looks.',
       dirty: d => touched(d, 'lab/rooms/') },
     { id: 'rules', item: 'rule', label: 'Rules', one: 'rule', n: d => ['hard', 'subagent', 'project'].reduce((a, g) => a + (d.rules[g] || []).length, 0), blurb: 'What every agent always does. They are written into every agent’s manual.',
       dirty: d => touched(d, 'workflow/rules.yaml') },
@@ -167,22 +167,44 @@
             ${inside[st.id] ? html`<div class="cmp-gate-in"><${NL.Icon} name="lock" /> Gate ${inside[st.id].n} inside</div>` : null}
           </div>${after[st.id] ? html`<div class="cmp-gate" title=${after[st.id].title}><${NL.Icon} name="lock" /><span>Gate ${after[st.id].n}</span></div>` : null}`)}
           <button type="button" class="cmp-pipe-add" onClick=${() => NL.open(StageAddDialog, {}, { kind: 'dialog' })}><${NL.Icon} name="plus" /><span>Add a stage</span></button></div></section>
-      <section class="cmp-sec"><div class="cmp-sec-h"><h2>The building</h2><span class="muted small grow">Where each state of a study stands on Home.</span><a class="link small" href=${href('rooms')}>All rooms →</a></div>
-        <${Building} d=${d} /></section>
+      <section class="cmp-sec"><div class="cmp-sec-h"><h2>The table</h2><span class="muted small grow">The rooms around your desk. Drag one to move it; turn its door with the arrow.</span>
+        <a class="link small" href="/static/world3d/lab.html" target="_blank" rel="noopener">See it in 3D ↗</a><a class="link small" href=${href('rooms')}>All rooms →</a></div>
+        <${LayoutGrid} d=${d} /></section>
       <section class="cmp-sec"><div class="cmp-tiles">${KINDS.filter(k => ['roles', 'rules', 'checks', 'types'].includes(k.id)).map(k => html`
         <a class="cmp-tile" href=${href(k.id)}><div class="row between"><b>${k.label}</b><span class="cmp-n">${k.n(d)}</span></div><p class="muted small">${k.blurb}</p></a>`)}</div></section>
     </div>`;
   };
 
   const FLOOR = f => f > 0 ? (f === 1 ? 'Upstairs' : `Floor ${f}`) : f < 0 ? (f === -1 ? 'Cellar' : `Basement ${-f}`) : 'Ground floor';
-  const Building = ({ d }) => {
-    const floors = [...new Set((d.rooms || []).map(r => r.floor ?? 0))].sort((a, b) => b - a);
-    return html`<div class="cmp-building">${floors.map(f => html`<div class="cmp-floor"><span class="kicker cmp-floor-l">${FLOOR(f)}</span>
-      <div class="cmp-floor-rooms">${(d.rooms || []).filter(r => (r.floor ?? 0) === f).sort((a, b) => (a.order || 0) - (b.order || 0)).map(r => html`
-        <a class=${cls('cmp-room', r.art === 'plain' && 'plain')} href=${href('room', r.id)}><b>${r.title || r.label}</b>
-          <div class="cmp-room-states">${(r.states || []).map(s => html`<span class="chip">${stateLabel(d, s)}</span>`)}</div>
-          ${r.gate ? html`<span class="cmp-room-gate"><${NL.Icon} name="lock" /> ${r.gate}</span>` : null}</a>`)}</div></div>`)}
-      <button type="button" class="cmp-pipe-add wide" onClick=${() => openNew('room')}><${NL.Icon} name="plus" /><span>Add a room</span></button></div>`;
+  /* ── the table, as a plan: plots round your desk; drag a room to move it, turn its door ─────────────
+     The same placement the 3D world uses (world3d/layout.js): a room's `place` and `facing` in the
+     workflow, or the next free plot round the plaza. */
+  const NEXT_FACING = { n: 'e', e: 's', s: 'w', w: 'n' }, ARROW = { n: '↑', e: '→', s: '↓', w: '←' };
+  const LayoutGrid = ({ d }) => {
+    const [pick, setPick] = useState(null);
+    const plan = window.Lab3D && Lab3D.plan ? Lab3D.plan(d.rooms || [], (d.side_states || []).map(s => s.id)) : {};
+    const all = Object.values(plan).map(p => p.cell).concat([[0, 0]]);
+    const c0 = Math.min(...all.map(c => c[0])) - 1, c1 = Math.max(...all.map(c => c[0])) + 1, r0 = Math.min(...all.map(c => c[1])) - 1, r1 = Math.max(...all.map(c => c[1])) + 1;
+    const at = {}; Object.entries(plan).forEach(([id, p]) => { at[p.cell.join(',')] = id; });
+    const room = id => (d.rooms || []).find(r => r.id === id) || {};
+    const move = async (id, cell) => { setPick(null); if (!id || at[cell.join(',')] || (cell[0] === 0 && cell[1] === 0)) return; await edit({ op: 'room-place', id, place: cell, facing: plan[id].facing }, `Moved ${room(id).title || id} — in your draft`); };
+    const turn = (id, e) => { e.preventDefault(); e.stopPropagation(); edit({ op: 'room-place', id, place: plan[id].cell, facing: NEXT_FACING[plan[id].facing] }, false); };
+    const rows = [];
+    for (let w = r0; w <= r1; w++) for (let c = c0; c <= c1; c++) {
+      const key = c + ',' + w, id = at[key], hub = c === 0 && w === 0;
+      if (hub) { rows.push(html`<div class="lg-cell lg-hub"><b>Your desk</b><span class="kicker">the plaza</span></div>`); continue; }
+      if (!id) { rows.push(html`<div class=${cls('lg-cell', 'lg-empty', pick && 'lg-target')} onDragOver=${e => e.preventDefault()} onDrop=${e => { e.preventDefault(); move(e.dataTransfer.getData('text/plain'), [c, w]); }} onClick=${() => pick && move(pick, [c, w])}></div>`); continue; }
+      const r = room(id), p = plan[id];
+      rows.push(html`<div class=${cls('lg-cell', 'lg-room', 'door-' + p.facing, pick === id && 'on')} draggable="true" onDragStart=${e => { e.dataTransfer.setData('text/plain', id); setPick(id); }} onDragEnd=${() => setPick(null)}
+        onClick=${() => setPick(pick === id ? null : id)} title=${`${r.title || id}${p.auto ? ' — placed by the lab' : ''}`}>
+        <b>${r.title || r.label || id}</b><span class="lg-states">${(r.states || []).map(s => stateLabel(d, s)).join(' · ')}</span>
+        <span class="lg-acts"><button type="button" class="lg-turn" title="turn its door" onClick=${e => turn(id, e)}>${ARROW[p.facing]}</button>
+          <a class="lg-open" href=${href('room', id)} onClick=${e => e.stopPropagation()}>open</a>${p.auto ? html`<span class="kicker">auto</span>` : null}</span>
+        ${r.gate ? html`<span class="lg-gate"><${NL.Icon} name="lock" /> ${r.gate}</span>` : null}</div>`);
+    }
+    return html`<div><div class="lg" style=${{ gridTemplateColumns: `repeat(${c1 - c0 + 1}, minmax(0, 1fr))` }}>${rows}</div>
+      <div class="row lg-foot"><span class="muted small grow">${pick ? 'Now click an empty plot to move it there.' : 'Drag a room (or click it, then a plot). The arrow is its door; the lab places any room you don’t.'}</span>
+        <button type="button" class="cmp-add lg-add" onClick=${() => openNew('room')}><${NL.Icon} name="plus" /> Add a room</button></div></div>`;
   };
 
   /* ── shared pieces: a page head, an item head, files ─────────────────────── */
@@ -433,19 +455,19 @@
   };
 
   /* ── rooms ────────────────────────────────────────────────────────────────── */
-  const RoomsList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
-    <${Building} d=${d} />
-    <p class="muted small cmp-foot">A room with no art of its own is drawn plain. Art is a small script — start one from any room's art, then shape it.</p></div>`;
+  const RoomsList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k}><a class="btn" href="/static/world3d/lab.html" target="_blank" rel="noopener">See it in 3D ↗</a></${ListHead}>
+    <${LayoutGrid} d=${d} />
+    <p class="muted small cmp-foot">Which rooms exist, and which states stand in each, is the workflow's; how a room looks is its own — open a room, then <b>Look</b>, and describe what you want: a coding agent designs it for you to preview and take.</p></div>`;
 
   const RoomEditor = ({ d, name, query }) => {
     const [tab, setTab] = useTab(query, 'about');
     const r = d.rooms.find(x => x.id === name);
     if (!r) return html`<${Missing} k=${KIND_OF.room} name=${name} />`;
     return html`<div class="cmp-page">
-      <${ItemHead} k=${KIND_OF.room} name=${name} title=${r.title || r.label} sub=${`${FLOOR(r.floor ?? 0)} · ${r.art === 'plain' ? 'drawn plain' : r.art === 'yours' ? 'its own art' : 'built-in art'}`}
+      <${ItemHead} k=${KIND_OF.room} name=${name} title=${r.title || r.label} sub=${`${(r.states || []).map(x => stateLabel(d, x)).join(' · ') || 'studies rest here'} — ${r.look3d === 'yours' ? 'its own look' : r.look3d === 'built-in' ? 'built-in look' : 'drawn plain'}`}
         actions=${html`<${CopyBtn} kind="room" like=${name} />${!r.gate ? html`<${NL.Btn} small kind="ghost" onClick=${() => NL.open(RoomRemoveDialog, { r }, { kind: 'dialog' })}><${NL.Icon} name="trash" /> Remove</${NL.Btn}>` : null}`} />
-      <${NL.Tabs} tabs=${[{ id: 'about', label: 'About' }, { id: 'art', label: 'Art' }]} value=${tab} onChange=${setTab} />
-      <div class="tabpane">${tab === 'about' ? html`<${RoomAbout} key=${JSON.stringify(r)} d=${d} r=${r} />` : html`<${RoomArt} d=${d} r=${r} />`}</div></div>`;
+      <${NL.Tabs} tabs=${[{ id: 'about', label: 'About' }, { id: 'look', label: 'Look', count: (d.designs || []).filter(x => x.room === name).length || null }, { id: 'art', label: '2D art' }]} value=${tab} onChange=${setTab} />
+      <div class="tabpane">${tab === 'about' ? html`<${RoomAbout} key=${JSON.stringify(r)} d=${d} r=${r} />` : tab === 'look' ? html`<${RoomLook} d=${d} r=${r} />` : html`<${RoomArt} d=${d} r=${r} />`}</div></div>`;
   };
   const RoomAbout = ({ d, r }) => {
     const init = { label: r.label || '', title: r.title || '', floor: r.floor ?? 0, order: r.order ?? 1 };
@@ -466,6 +488,55 @@
           <${NL.Btn} small disabled=${!pick} onClick=${async () => { await edit({ op: 'state', id: pick, fields: { room: r.id } }); setPick(''); }}>Move</${NL.Btn}></div></${NL.Section}>
       ${r.gate ? html`<div class="cmp-lock"><${NL.Icon} name="lock" /><div><b>Gate ${r.gate} is signed in this room</b><div class="muted small">A room with a gate stays.</div></div></div>` : null}</div>`;
   };
+  /** a room in 3D, in a SANDBOXED frame (it can't reach the dashboard): a built-in look by name, or a look
+   *  given as data — the lab's own, or an agent's design — posted in and only ever built */
+  const procsOf = (d, r) => [...new Set((d.stages || []).filter(st => (st.states || []).some(s => (r.states || []).includes(s))).flatMap(st => st.procedures || []))];
+  const RoomPreview = ({ r, data, procs }) => {
+    const ref = NL.useRef(), theme = NL.themeNow() === 'day' ? 'day' : 'night';
+    const src = `/static/world3d/sandbox-room.html?theme=${theme}${!data ? '&room=' + encodeURIComponent(r.id) + '&procs=' + encodeURIComponent((procs || []).join(',')) : ''}`;
+    useEffect(() => {
+      const send = () => { if (data && ref.current && ref.current.contentWindow) ref.current.contentWindow.postMessage({ room: data, procs }, '*'); };
+      const on = e => { if (e.source !== (ref.current && ref.current.contentWindow) || !e.data) return; if (e.data.ready) send(); if (e.data.built || e.data.error) setStatus(e.data); };
+      addEventListener('message', on); send(); return () => removeEventListener('message', on);
+    }, [JSON.stringify(data), src]);
+    const [status, setStatus] = useState(null);
+    return html`<iframe ref=${ref} class="cmp-3d" sandbox="allow-scripts" src=${src} title=${'a 3D preview of ' + (r.title || r.id)}></iframe>
+      ${status ? html`<div class=${cls('small', status.error ? 'danger' : 'muted')}>${status.error ? 'It could not be built: ' + status.error : status.built}</div>` : null}`;
+  };
+  const RoomLook = ({ d, r }) => {
+    const [mine, setMine] = useState(undefined);
+    const [show, setShow] = useState(null);       // a design being previewed
+    const [ask, setAsk] = useState('');
+    const s = NL.useLab();
+    const procs = procsOf(d, r), designs = (d.designs || []).filter(x => x.room === r.id);
+    const path = `lab/rooms3d/${r.id}.json`;
+    useEffect(() => { getFile(path).then(f => { try { setMine(f && f.text ? JSON.parse(f.text) : null); } catch (e) { setMine(null); } }); }, [r.id, (d.draft || {}).changes && JSON.stringify(d.draft.changes)]);
+    const [designData, setDesignData] = useState(null);
+    useEffect(() => { if (show) NL.get('/api/compose/design?room=' + encodeURIComponent(show)).then(x => setDesignData(x && x.ok ? x : null)); else setDesignData(null); }, [show, JSON.stringify(designs.map(x => x.ts))]);
+    const running = NL.runs(s, x => x.skill === 'design-room' && (x.command || x.label || '').includes(' ' + r.id + ' ') && !NL.RUN_DONE.has(x.status));
+    const design = async () => { if (!ask.trim()) return; const x = await NL.launch({ skill: 'design-room', args: `${r.id} ${ask.trim()}` }, { open: false }); if (x) setAsk(''); };
+    const showing = show && designData ? designData.data : mine;
+    if (mine === undefined) return html`<${NL.Spinner} />`;
+    return html`<div class="cmp-look">
+      <div class="cmp-look-view"><${RoomPreview} r=${r} data=${showing} procs=${procs} />
+        <div class="cmp-look-cap"><span class="kicker">${show ? 'design · not taken yet' : mine ? 'its own look' : r.look3d === 'built-in' ? 'built-in look' : 'drawn plain'}</span>
+          ${show ? html`<button type="button" class="link small" onClick=${() => setShow(null)}>back to the current look</button>` : null}</div></div>
+      <div class="cmp-look-side">
+        <h3>Describe it</h3>
+        <p class="muted small">A coding agent (Claude, Codex…) designs the room from your words: furniture from the kit, new pieces where it needs them, a station for each of ${procs.length ? procs.map(p => '/' + p).join(', ') : 'its procedures'}. You see it here before you take it.</p>
+        <${NL.Textarea} rows=${4} value=${ask} onInput=${setAsk} onSubmit=${design} placeholder="e.g. A quiet data room: a wall of big screens, two long desks, a server cupboard, plants by the window." />
+        <div class="row end"><${NL.Btn} kind="primary" disabled=${!ask.trim()} onClick=${design}><${NL.Icon} name="spark" /> Design it</${NL.Btn}></div>
+        ${running.length ? html`<div class="note">An agent is designing it now — <button type="button" class="link" onClick=${() => NL.openRun(running[0].run_id)}>watch</button>.</div>` : null}
+        ${designs.map(x => html`<div class=${cls('cmp-design', show === x.room && 'on')}>
+          <div class="row between"><b>A design</b><span class="mono muted small">${NL.ago(x.ts)}</span></div>
+          ${x.notes ? html`<${NL.Markdown} text=${x.notes.split('\n').slice(0, 6).join('\n')} />` : null}
+          ${x.problems.length ? html`<div class="note note-warn">${x.problems.slice(0, 2).join(' · ')}</div>` : null}
+          <div class="row end"><${NL.Btn} small onClick=${() => setShow(show === x.room ? null : x.room)}>${show === x.room ? 'Hide' : 'Preview'}</${NL.Btn}>
+            <${NL.Btn} small kind="primary" disabled=${!!x.problems.length} onClick=${async () => { const y = await edit({ op: 'design-use', room: x.room }); if (y.ok) setShow(null); }}>Use this design</${NL.Btn}></div></div>`)}
+        ${mine ? html`<details class="more"><summary>Its look, as data</summary><${FileEditor} path=${path} rows=${18} intro="The room's look: size, colours, furniture and where it stands, a station per procedure. Data, never code." /></details>` : null}
+      </div></div>`;
+  };
+
   const RoomArt = ({ d, r }) => {
     const [from, setFrom] = useState(d.built_in_art.includes(r.id) ? r.id : d.built_in_art[0] || '');
     if (r.art === 'yours') return html`<div><${FileEditor} path=${`lab/rooms/${r.id}.js`} rows=${28} intro="The room's art: a small script for the world on Home (its shapes, stations and props — see docs/world-design.md). It shows after you publish." />

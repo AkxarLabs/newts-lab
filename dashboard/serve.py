@@ -143,9 +143,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # quiet
         pass
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
+    def _send(self, code: int, body: bytes, ctype: str, headers: dict | None = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -376,7 +378,12 @@ class Handler(BaseHTTPRequestHandler):
         body = target.read_bytes()
         if target.suffix == ".html" and target.parent.name == "world":   # the world's authoring pages load the room files the same way
             body = _with_rooms(body.decode("utf-8"), "rooms/", lab_rooms=False).encode("utf-8")
-        self._send(200, body, f"{ctype}{charset}")
+        if target.suffix == ".html" and target.parent.name == "world3d":
+            body = _with_rooms3d(body.decode("utf-8")).encode("utf-8")
+        # the 3D world's code and three.js may load into a sandboxed frame (a room preview: an opaque origin
+        # that /api refuses); a module import from there needs CORS. Static code only — never /api.
+        cors = {"Access-Control-Allow-Origin": "*"} if rel.startswith(("world3d/", "vendor/three/", "vendor/fonts/", "ui/workflow-default.js")) else None
+        self._send(200, body, f"{ctype}{charset}", cors)
 
     def _serve_sse(self) -> None:
         self.send_response(200)
@@ -460,6 +467,8 @@ GET_ROUTES = {
     "/api/workflow/item": instructions.workflow_item,
     "/api/compose": compose.view,
     "/api/compose/file": compose.file_get,
+    "/api/compose/design": compose.design_get,
+    "/api/rooms3d": compose.rooms3d,
     "/api/campaign/preflight": campaign.campaign_preflight,
     "/api/workflow/proposal": instructions.workflow_proposal_get,
     "/api/lab/config": lambda q: settings.lab_config_get(),
@@ -499,6 +508,21 @@ def _with_rooms(html: str, prefix: str, lab_rooms: bool) -> str:
         tags += [f'<script src="api/room?name={f.stem}"></script>' for f in sorted((ctx.LAB / "rooms").glob("*.js"))
                  if ctx.safe_id(f.stem)]
     return html[:i] + "\n".join(tags) + html[html.index("-->", i) + 3:]
+
+
+ROOMS3D_MARK = "<!-- newts:rooms3d"
+
+
+def _with_rooms3d(html: str) -> str:
+    """The 3D world's built-in room files where the page marks them (up to <!-- /newts:rooms3d -->). The lab's
+    own rooms are data (GET /api/rooms3d), built by the page itself."""
+    i = html.find(ROOMS3D_MARK)
+    if i < 0:
+        return html
+    j = html.find("<!-- /newts:rooms3d -->", i)
+    end = j + len("<!-- /newts:rooms3d -->") if j >= 0 else html.index("-->", i) + 3
+    tags = [f'<script src="rooms/{f.name}"></script>' for f in sorted((STATIC / "world3d" / "rooms").glob("*.js"))]
+    return html[:i] + "\n".join(tags) + html[end:]
 
 
 def _typed(f, ctype: str | None = None):

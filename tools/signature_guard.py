@@ -73,7 +73,7 @@ SHELL_ALWAYS = [
 SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_approved|gate ?3 approved|"
                         r"PI Gate 3|gate3_approved|\[x\]\s*Authorized", re.I)
 PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.bus/campaigns/|\.claude/(?:skills|agents)/|agent-roles/|"
-                             r"\.(?:codex|opencode)/agents/|"
+                             r"\.(?:codex|opencode)/agents/|lab/rooms3?d?/|\.bus/compose/|"
                              r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/(?:stages|rules)\.yaml|"
                              r"(?:^|[\s/'\"])(?:AGENTS|CLAUDE)\.md", re.I)
 WRITE_HINT = re.compile(r"(?<![0-9&])>(?!&)|\btee\b|sed\s+-i|perl\s+-\w*i|Set-Content|Add-Content|Out-File|"
@@ -321,7 +321,7 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
 
 
 PROTECTED_DEFAULT = [r"^\.claude/(skills|agents)/", r"^\.(codex|opencode)/agents/", r"^agent-roles/", r"^workflow/",
-                     r"^lab/workflow/", r"^studies/[^/]+/workflow/", r"^lab/\.bus/compose/"]   # the PI's Compose draft
+                     r"^lab/workflow/", r"^studies/[^/]+/workflow/", r"^lab/\.bus/compose/", r"^lab/rooms3d/"]   # the PI's Compose draft, the 3D rooms
 
 
 def _protected(rel: str) -> bool:

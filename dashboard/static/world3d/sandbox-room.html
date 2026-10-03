@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A room</title>
+<!-- One room on its own, turning slowly, with a newt at every station — Compose's 3D preview. It runs in a
+     SANDBOXED frame (an opaque origin the dashboard's API refuses): a room given as data (a lab's own room, or
+     an agent's design) arrives by postMessage {room: <data>, procs: [...]} and is only ever built, never run.
+     ?room=<id> shows a built-in room · ?theme=day|night -->
+<style>
+  @font-face { font-family: 'IBM Plex Mono'; src: url('../vendor/fonts/ibm-plex-mono-500.woff2') format('woff2'); font-weight: 500 800; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: linear-gradient(#d6e5ef, #f3efe6); font: 500 11px 'IBM Plex Mono', monospace; }
+  body.night { background: radial-gradient(ellipse at 50% 35%, #16262e, #0b1114 72%); color: #e9efed; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #st { position: fixed; inset: 0; pointer-events: none; }
+  .tag { position: absolute; transform: translate(-50%, -100%); padding: 1px 7px; border-radius: 8px; background: rgba(255, 254, 251, .92); color: #3b372f; white-space: nowrap; letter-spacing: .04em; }
+  body.night .tag { background: rgba(17, 24, 27, .9); color: #a2b1ad; }
+  #msg { position: fixed; left: 12px; bottom: 10px; opacity: .7; }
+</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="st"></div><div id="msg">waiting for a room…</div>
+<canvas id="c"></canvas>
+<script>addEventListener('error', e => parent.postMessage({ error: String(e.message || e) }, '*'));</script>
+<script src="kit.js"></script>
+<script src="newt.js"></script>
+<script src="components.js"></script>
+<!-- newts:rooms3d — the server puts one <script> per built-in room file here -->
+<!-- /newts:rooms3d -->
+<script type="module">
+import * as THREE from 'three';
+const q = new URLSearchParams(location.search), theme = q.get('theme') || 'day';
+document.body.classList.toggle('night', theme === 'night');
+const L = window.Lab3D, K = L.kit(THREE, theme);
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true });
+r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+scene.add(new THREE.HemisphereLight(0xffffff, theme === 'night' ? 0x1a2024 : 0xd8cbb4, K.th.hemi));
+const sun = new THREE.DirectionalLight(theme === 'night' ? 0x9fc7ff : 0xfff3df, K.th.sun); sun.position.set(-8, 16, 10); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 }); scene.add(sun);
+let group = null, newts = [], span = 10;
+const tags = [];
+function build(spec, procs) {
+  if (group) scene.remove(group);
+  group = new THREE.Group(); scene.add(group); newts = []; tags.length = 0;
+  const [w, d] = spec.size; span = Math.max(w, d);
+  const base = K.box(w + 2, 0.3, d + 2, K.th.table, 0, -0.3, 0); group.add(base);
+  const fl = K.box(w, 0.14, d, spec.floor === 'grass' ? K.th.grass : spec.floor, 0, 0, 0); group.add(fl);
+  group.add(K.box(w, 0.05, 0.22, spec.accent, 0, 0.14, d / 2 - 0.11));
+  if (spec.walls !== false) for (const [lx, lz, len, ns] of [[0, -d / 2, w, true], [-w / 2, 0, d, false], [w / 2, 0, d, false]]) {
+    group.add(K.box(ns ? len : 0.16, 1.5, ns ? 0.16 : len, spec.wall || 'plaster', lx, 0.14, lz)); group.add(K.box(ns ? len + 0.02 : 0.2, 0.06, ns ? 0.2 : len + 0.02, spec.accent, lx, 1.64, lz));
+  }
+  for (const p of spec.props || []) { const m = K.build(p.c, p.props); m.position.set(p.at[0], 0.14, p.at[1]); m.rotation.y = p.rot || 0; group.add(m); }
+  const st = Object.assign({}, spec.stations || {});
+  (procs || []).forEach((p, i) => { if (!st[p]) tags.push({ text: `${p}: no station`, at: [-w / 2 + 1 + i * 1.6, d / 2 - 0.6], bad: true }); });
+  Object.entries(st).concat(Object.entries(spec.roleStation || {})).forEach(([name, a], i) => {
+    const n = L.makeNewt(K, { color: ['#e0b44e', '#3fb8a6', '#6f9be6', '#9b84ea', '#e57ab5', '#e0a346'][i % 6], scale: 1.2 });
+    n.group.position.set(a[0], 0.14, a[1]); n.group.rotation.y = a[2] ?? Math.PI; group.add(n.group); newts.push(n); tags.push({ text: name, at: [a[0], a[1]], y: 1.9 });
+  });
+  document.getElementById('msg').textContent = `${spec.key} · ${w}×${d} m · ${Object.keys(st).length} stations`;
+}
+addEventListener('message', e => { const m = e.data || {}; if (m.room && m.room.key) { try { L.defineRoomData(m.room); build(L.rooms[m.room.key], m.procs); parent.postMessage({ built: document.getElementById('msg').textContent }, '*'); } catch (err) { document.getElementById('msg').textContent = 'this room could not be built: ' + err.message; parent.postMessage({ error: err.message }, '*'); } } });
+if (q.get('room') && L.rooms[q.get('room')]) build(L.rooms[q.get('room')], (q.get('procs') || '').split(',').filter(Boolean));
+const resize = () => { r.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); };
+addEventListener('resize', resize); resize();
+const v = new THREE.Vector3();
+function frame(now) {
+  const t = now / 1000, az = t * 0.12, R = span * 1.55 + 4;
+  cam.position.set(Math.sin(az) * R, R * 0.75, Math.cos(az) * R); cam.lookAt(0, 0.4, 0);
+  newts.forEach(n => n.update(t, { pose: 'work' }));
+  r.render(scene, cam);
+  document.getElementById('st').innerHTML = tags.map(g => { v.set(g.at[0], g.y || 0.6, g.at[1]); if (group) v.applyMatrix4(group.matrixWorld); v.project(cam);
+    return `<span class="tag" style="left:${(v.x + 1) / 2 * innerWidth}px;top:${(1 - v.y) / 2 * innerHeight}px;${g.bad ? 'color:#b0412f' : ''}">${g.text}</span>`; }).join('');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+parent.postMessage({ ready: true }, '*');
+</script>
+</body>
+</html>

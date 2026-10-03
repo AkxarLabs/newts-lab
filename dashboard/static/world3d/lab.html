@@ -83,12 +83,11 @@
 <script src="kit.js"></script>
 <script src="newt.js"></script>
 <script src="components.js"></script>
-<script src="rooms/incubator.js"></script>
-<script src="rooms/study.js"></script>
-<script src="rooms/lab.js"></script>
-<script src="rooms/writing.js"></script>
-<script src="rooms/archive.js"></script>
-<script src="rooms/margins.js"></script>
+<script src="layout.js"></script>
+<!-- newts:rooms3d — the server puts one <script> per room file here (world3d/rooms/*.js, then the lab's lab/rooms3d/*.js) -->
+<script src="rooms/incubator.js"></script><script src="rooms/study.js"></script><script src="rooms/lab.js"></script>
+<script src="rooms/writing.js"></script><script src="rooms/archive.js"></script><script src="rooms/margins.js"></script>
+<!-- /newts:rooms3d -->
 <script type="module">
 import * as THREE from 'three';
 const L = window.Lab3D, q = new URLSearchParams(location.search);
@@ -96,12 +95,17 @@ const S = { theme: q.get('theme') || 'day', lens: q.get('lens') || 'work', extra
 document.body.classList.toggle('night', S.theme === 'night');
 await Promise.race([Promise.all(['600 20px Newsreader', '500 13px "Instrument Sans"', '500 11px "IBM Plex Mono"'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 1500))]);
 const K = L.kit(THREE, S.theme), TH = K.th;
+// the lab's own rooms are data (lab/rooms3d/*.json): built here, never run
+try { const r = await fetch('/api/rooms3d', { credentials: 'same-origin' }); if (r.ok) ((await r.json()).rooms || []).forEach(d => L.defineRoomData(d)); } catch (e) { /* demo or static page */ }
 const ROLE = { orchestrator: ['Newt', '#e0b44e'], 'experiment-runner': ['Experiment runner', '#3fb8a6'], overseer: ['Overseer', '#6f9be6'], 'fresh-context-reviewer': ['Reviewer', '#9b84ea'], 'ideation-critic': ['Critic', '#e57ab5'], 'scoping-advocate': ['Scoping advocate', '#e0a346'] };
 const MIN = 60, H = 14 * 3600, WALK = 0.055;   // sim seconds · history+future span · metres per sim-second
 
 // ── the workflow → rooms, procedures, links, gates ─────────────────────────────────────────────────
+// the lab's live workflow (its rooms, their places), else the built-in one (a static or demo page)
+let LIVE = null;
+try { const r = await fetch('/api/state', { credentials: 'same-origin' }); if (r.ok) LIVE = (await r.json()).workflow || null; } catch (e) { /* no lab behind this page */ }
 function workflow() {
-  const wf = JSON.parse(JSON.stringify(window.__WORKFLOW_DEFAULT__));
+  const wf = JSON.parse(JSON.stringify(LIVE && Array.isArray(LIVE.rooms) ? LIVE : window.__WORKFLOW_DEFAULT__));
   if (S.extra) {   // what a lab might add in Compose: analysis gets a room of its own, and a replication stage
     const at = wf.states.findIndex(s => s.id === 'analysis');
     wf.states.splice(at + 1, 0, { id: 'replicating', label: 'Replicating', stage: 'replication', room: 'bench' });
@@ -113,6 +117,7 @@ function workflow() {
   return wf;
 }
 const WF = workflow();
+for (const spec of q.getAll('place')) { const [id, cr, f] = spec.split(':'), r = WF.rooms.find(x => x.id === id); if (r && cr) { r.place = cr.split(',').map(Number); if (f) r.facing = f; } }
 const ORDER = WF.states.map(s => s.id), SIDE = new Set((WF.side_states || []).map(s => s.id));
 const LABEL = Object.fromEntries(WF.states.concat(WF.side_states || []).map(s => [s.id, s.label]));
 const ROOM_OF = {}; WF.rooms.forEach(r => (r.states || []).forEach(s => { ROOM_OF[s] = r.id; }));
@@ -122,23 +127,45 @@ const procTitle = p => ((WF.procedures || {})[p] || {}).title || '/' + p;
 const GATE_ON = {}; const GATE_IN = {};
 (WF.gates || []).forEach(g => { if (g.before) GATE_ON[ROOM_OF[g.at] + '>' + ROOM_OF[g.before]] = g; else GATE_IN[ROOM_OF[g.at]] = g; });
 
-// ── the table: rooms on a ring around your desk, their open fronts toward you ────────────────────────
-const MAIN = WF.rooms.filter(r => (r.states || []).some(s => !SIDE.has(s)));
-const SIDEROOMS = WF.rooms.filter(r => !MAIN.includes(r));
-const ROOMS = {};
-const span = MAIN.length > 5 ? 250 : 220, dTh = span / Math.max(1, MAIN.length - 1) * Math.PI / 180;
-const specOf = r => L.rooms[r.id] || plainSpec(r);
-const maxW = Math.max(...WF.rooms.map(r => specOf(r).size[0])), maxD = Math.max(...WF.rooms.map(r => specOf(r).size[1]));
-const R = Math.max(13.5, (maxW + 1.6) / (2 * Math.sin(dTh / 2)));
-const RING = R - maxD / 2 - 1.3, HUBR = 2.7, TABLE = R + maxD / 2 + 3.2;
-MAIN.forEach((r, i) => { ROOMS[r.id] = { r, i, th: (-span / 2 * Math.PI / 180) + i * dTh, R }; });
-SIDEROOMS.forEach((r, i) => { ROOMS[r.id] = { r, i: -1, th: Math.PI + (i - (SIDEROOMS.length - 1) / 2) * 0.55, R: R * 0.98, side: true }; });
-for (const o of Object.values(ROOMS)) { o.spec = specOf(o.r); o.ry = -o.th; o.x = o.R * Math.sin(o.th); o.z = -o.R * Math.cos(o.th); o.procs = procsOfRoom(o.r.id); }
+// ── the table: rooms on plots with streets between them, your desk on a plaza in the middle ──────────
+// A room's `place: [col, row]` and `facing: n|e|s|w` (in workflow/stages.yaml `rooms:`) put it where the PI
+// wants it; a room without them takes the next free plot round your desk, in workflow order, door toward you.
+const ROOMSCALE = 1.2;     // rooms a little roomier than their files draw them (the furniture keeps its size)
+function scaled(sp) {
+  const k = ROOMSCALE, pt = a => a && [a[0] * k, a[1] * k, a[2]];
+  return Object.assign({}, sp, { size: [sp.size[0] * k, sp.size[1] * k], props: sp.props.map(p => Object.assign({}, p, { at: [p.at[0] * k, p.at[1] * k] })),
+    stations: Object.fromEntries(Object.entries(sp.stations || {}).map(([n, a]) => [n, pt(a)])), roleStation: Object.fromEntries(Object.entries(sp.roleStation || {}).map(([n, a]) => [n, pt(a)])) });
+}
+const specOf = r => scaled(L.rooms[r.id] || plainSpec(r));
+const STREET = 3.4, PLAZA = 13, ROOMS = {};
+const SPECS = Object.fromEntries(WF.rooms.map(r => [r.id, specOf(r)]));
+const DIR = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }, RY = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
+const PLAN = L.plan(WF.rooms, [...SIDE]);            // world3d/layout.js — Compose's layout editor uses the same
+const taken = new Set(['0,0', ...Object.values(PLAN).map(x => x.cell.join(','))]);
+const MAINR = WF.rooms.filter(r => (r.states || []).some(s => !SIDE.has(s)));
+for (const r of WF.rooms) {
+  const { cell, facing } = PLAN[r.id];
+  const sp = SPECS[r.id], turned = facing === 'e' || facing === 'w';
+  ROOMS[r.id] = { r, cell, facing, spec: sp, ry: RY[facing], dir: DIR[facing], side: !MAINR.includes(r), ex: turned ? sp.size[1] : sp.size[0], ez: turned ? sp.size[0] : sp.size[1] };
+}
+// each column is as wide as its widest room (and each row as deep as its deepest), plus a street
+const cells = Object.values(ROOMS).map(o => o.cell).concat([[0, 0]]);
+const C0 = Math.min(...cells.map(c => c[0])), C1 = Math.max(...cells.map(c => c[0])), R0 = Math.min(...cells.map(c => c[1])), R1 = Math.max(...cells.map(c => c[1]));
+const colW = {}, rowH = {};
+for (let c = C0; c <= C1; c++) colW[c] = Math.max(c === 0 ? PLAZA : 8, ...Object.values(ROOMS).filter(o => o.cell[0] === c).map(o => o.ex + 1.2)) + STREET;
+for (let w = R0; w <= R1; w++) rowH[w] = Math.max(w === 0 ? PLAZA : 8, ...Object.values(ROOMS).filter(o => o.cell[1] === w).map(o => o.ez + 1.2)) + STREET;
+const XS = [], ZS = [];      // the streets: the column and row edges
+{ let x = 0; for (let c = C0; c <= C1; c++) { XS.push(x); x += colW[c]; } XS.push(x); let z = 0; for (let w = R0; w <= R1; w++) { ZS.push(z); z += rowH[w]; } ZS.push(z); }
+const ox = XS[-C0] + colW[0] / 2, oz = ZS[-R0] + rowH[0] / 2;      // your desk at the origin
+XS.forEach((v, i) => { XS[i] = v - ox; }); ZS.forEach((v, i) => { ZS[i] = v - oz; });
+const cx = c => XS[c - C0] + colW[c] / 2, cz = w => ZS[w - R0] + rowH[w] / 2;
+for (const o of Object.values(ROOMS)) { o.x = cx(o.cell[0]); o.z = cz(o.cell[1]); o.hx = colW[o.cell[0]] / 2; o.hz = rowH[o.cell[1]] / 2; }
+const EXT = { x0: XS[0], x1: XS[XS.length - 1], z0: ZS[0], z1: ZS[ZS.length - 1] };
+const TABLE = Math.max(EXT.x1 - EXT.x0, EXT.z1 - EXT.z0) / 2 + 2.5;
+for (const o of Object.values(ROOMS)) { o.procs = procsOfRoom(o.r.id); }
 const toWorld = (o, lx, lz) => [o.x + lx * Math.cos(o.ry) + lz * Math.sin(o.ry), o.z - lx * Math.sin(o.ry) + lz * Math.cos(o.ry)];
-const ringPt = th => [RING * Math.sin(th), -RING * Math.cos(th)];
-const hubPt = th => [HUBR * Math.sin(th), -HUBR * Math.cos(th)];
-const front = o => toWorld(o, 0, o.spec.size[1] / 2 + 0.5);
-
+for (const o of Object.values(ROOMS)) { o.door = toWorld(o, 0, o.spec.size[1] / 2 + 0.5); o.street = [o.x + o.dir[0] * o.hx, o.z + o.dir[1] * o.hz]; }
+const HUB = { exits: Object.values(DIR).map(d => [d[0] * colW[0] / 2, d[1] * rowH[0] / 2]) };
 /** a room with no file of its own: a floor, low walls, a desk per procedure */
 function plainSpec(r) {
   const procs = procsOfRoom(r.id), w = Math.max(7, 2.4 * procs.length + 2), stations = {}, props = [];
@@ -211,33 +238,42 @@ function builder(t0, start) {
     walk(pts, pose) { const all = [pos, ...pts]; let len = 0; for (let i = 1; i < all.length; i++) len += Math.hypot(all[i][0] - all[i - 1][0], all[i][1] - all[i - 1][1]); const dur = Math.max(1, len / WALK); segs.push({ type: 'walk', t0: t, t1: t + dur, pts: all, len, pose }); t += dur; pos = all[all.length - 1]; return this; },
     stay(until, pose, ry, extra) { if (until > t) segs.push(Object.assign({ type: 'stay', t0: t, t1: until, at: pos, ry, pose }, extra || {})); t = Math.max(t, until); return this; } };
 }
-function arc(r, a, b, n) { return Array.from({ length: n + 1 }, (_, i) => { const th = a + (b - a) * i / n; return [r * Math.sin(th), -r * Math.cos(th)]; }); }
-function toStation(o, st) { return [hubPt(o.th), ringPt(o.th), front(o), st.at]; }
-function toHub(o, slot) { return [front(o), ringPt(o.th), hubPt(o.th), slot]; }
-function slotOf(id) { const k = parseInt(id.replace(/\D/g, ''), 10) % 9, th = Math.PI + (k - 4) * 0.36; return [2.25 * Math.sin(th), -2.25 * Math.cos(th)]; }
-function route(a, b) {    // courier paths: along the ring between neighbours, through the hub otherwise
-  const A = ROOMS[a], B = ROOMS[b];
-  if (!A.side && !B.side && Math.abs(A.i - B.i) === 1) return { pts: [ringPt(A.th), ...arc(RING, A.th, B.th, 10).slice(1), front(B)], gateAt: 6 };
-  return { pts: [ringPt(A.th), hubPt(A.th), ...arc(HUBR, A.th, B.th, 8).slice(1), ringPt(B.th), front(B)], gateAt: 5 };
+// streets run along the plot edges (XS, ZS). A street point lies on one.
+function onX(p) { return XS.some(x => Math.abs(p[0] - x) < 1e-6); }
+function near(v, arr) { return arr.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)); }
+function corner(p) { return onX(p) ? [p[0], near(p[1], ZS)] : [near(p[0], XS), p[1]]; }
+function streetPath(p, q) {           // along its street to a corner, across (x then z), along to q
+  const a = corner(p), b = corner(q), pts = [p, a, [b[0], a[1]], b, q], out = [];
+  for (const x of pts) if (!out.length || Math.hypot(x[0] - out[out.length - 1][0], x[1] - out[out.length - 1][1]) > 0.01) out.push(x);
+  return out;
+}
+function hubExit(to) { return HUB.exits.reduce((a, b) => (Math.hypot(b[0] - to[0], b[1] - to[1]) < Math.hypot(a[0] - to[0], a[1] - to[1]) ? b : a)); }
+function toStation(o, st) { const ex = hubExit(o.street); return [ex, ...streetPath(ex, o.street).slice(1), o.door, st.at]; }
+function toHub(o, slot) { const ex = hubExit(o.street); return [o.door, ...streetPath(o.street, ex), slot]; }
+function slotOf(id) { const k = parseInt(id.replace(/\D/g, ''), 10) % 9, th = Math.PI + (k - 4) * 0.36; return [2.4 * Math.sin(th), -2.4 * Math.cos(th)]; }
+function route(a, b) {    // a study carried from one room to another: out of the door, along the streets, in at the next
+  const A = ROOMS[a], B = ROOMS[b], pts = [...streetPath(A.street, B.street), B.door];
+  return { pts, gateAt: pts.length - 1 };
 }
 function courierScript(c) {
-  const A = ROOMS[c.from], b = builder(c.t0, front(A)), rt = route(c.from, c.to);
+  const A = ROOMS[c.from], b = builder(c.t0, A.door), rt = route(c.from, c.to);
+  b.walk([A.street]);
   if (c.gate) { b.walk(rt.pts.slice(0, rt.gateAt), 'carry'); c.atGate = b.t; b.stay(Math.max(c.sign, b.t + 60), 'wait', null, { gate: c.gate }); b.walk(rt.pts.slice(rt.gateAt), 'carry'); }
   else b.walk(rt.pts, 'carry');
   return { segs: b.segs, end: b.t };
 }
 function sessionScript(ss) {
-  const o = ROOMS[ss.room], st = stationOf(ss.room, ss.proc), b = builder(ss.t0, hubPt(o.th));
-  b.walk(toStation(o, st).slice(1));
+  const o = ROOMS[ss.room], st = stationOf(ss.room, ss.proc), b = builder(ss.t0, [0, 1.6]);
+  b.walk(toStation(o, st));
   for (const e of ss.ev) {
     if (e.kind === 'deny') continue;
     b.stay(e.t, 'work', st.ry);
-    if (e.kind === 'ask') { b.walk(toHub(o, slotOf(ss.id)), 'walk'); b.stay(e.until, 'wait', Math.atan2(-b.pos[0], -b.pos[1]), { ask: e }); b.walk(toStation(o, st).slice(1)); }
+    if (e.kind === 'ask') { b.walk(toHub(o, slotOf(ss.id)), 'walk'); b.stay(e.until, 'wait', Math.atan2(-b.pos[0], -b.pos[1]), { ask: e }); b.walk(toStation(o, st)); }
     if (e.kind === 'stall') b.stay(e.until, 'sleep', st.ry, { stall: true });
     if (e.kind === 'fail') { b.stay(e.until, 'fail', st.ry, { fail: true }); break; }
   }
   if (!ss.failed) b.stay(ss.t1, 'work', st.ry);
-  b.walk(toHub(o, hubPt(o.th)).slice(0, 3));
+  b.walk(toHub(o, [0, 1.6]));
   return { segs: b.segs, end: b.t };
 }
 function subScript(ss, sub) {
@@ -272,36 +308,49 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, 1, 0.5, 500);
 scene.add(new THREE.HemisphereLight(S.theme === 'night' ? 0x7f9fb0 : 0xffffff, S.theme === 'night' ? 0x1a2024 : 0xd8cbb4, TH.hemi));
 const sun = new THREE.DirectionalLight(S.theme === 'night' ? 0x9fc7ff : 0xfff3df, TH.sun); sun.position.set(-18, 34, 22); sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -TABLE, right: TABLE, top: TABLE, bottom: -TABLE, near: 1, far: 120 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; scene.add(sun);
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -TABLE - 4, right: TABLE + 4, top: TABLE + 4, bottom: -TABLE - 4, near: 1, far: 160 }); sun.position.set(-TABLE * 0.7, TABLE * 1.3, TABLE * 0.9); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; scene.add(sun);
 const pickables = [];
 
-// the tabletop: a round slab with an earthy edge, paths, your desk
+// the tabletop: a rounded slab under the plots, an earthy edge, streets between the plots, your plaza
 const tableG = new THREE.Group(); scene.add(tableG);
-tableG.add(K.cyl(TABLE, TABLE, 0.35, TH.table, 0, -0.35, 0, { seg: 96 }));
-tableG.add(K.cyl(TABLE - 0.05, TABLE - 0.6, 1.4, TH.tableSide, 0, -1.75, 0, { seg: 96 }));
-tableG.add(K.cyl(TABLE - 0.6, TABLE - 2.4, 1.6, TH.soil, 0, -3.35, 0, { seg: 96 }));
+function slab(x0, z0, x1, z1, r, h, y, c) {
+  const sh = new THREE.Shape(); sh.moveTo(x0 + r, z0); sh.lineTo(x1 - r, z0); sh.quadraticCurveTo(x1, z0, x1, z0 + r); sh.lineTo(x1, z1 - r); sh.quadraticCurveTo(x1, z1, x1 - r, z1);
+  sh.lineTo(x0 + r, z1); sh.quadraticCurveTo(x0, z1, x0, z1 - r); sh.lineTo(x0, z0 + r); sh.quadraticCurveTo(x0, z0, x0 + r, z0);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false, curveSegments: 10 }); g.rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(g, K.mat(c)); m.position.y = y; m.receiveShadow = true; m.castShadow = false; return m;
+}
+const M = 1.6;
+tableG.add(slab(EXT.x0 - M, EXT.z0 - M, EXT.x1 + M, EXT.z1 + M, 2.2, 0.35, 0, TH.table));
+tableG.add(slab(EXT.x0 - M + 0.1, EXT.z0 - M + 0.1, EXT.x1 + M - 0.1, EXT.z1 + M - 0.1, 2.1, 1.3, -0.35, TH.tableSide));
+tableG.add(slab(EXT.x0 - M + 0.6, EXT.z0 - M + 0.6, EXT.x1 + M - 0.6, EXT.z1 + M - 0.6, 1.8, 1.5, -1.65, TH.soil));
 const flat = (geo, c, y) => { const m = new THREE.Mesh(geo, K.mat(c)); m.rotation.x = -Math.PI / 2; m.position.y = y || 0.012; m.receiveShadow = true; return m; };
-tableG.add(flat(new THREE.RingGeometry(RING - 0.75, RING + 0.75, 160, 1, -Math.PI / 2 - (span / 2 + 8) * Math.PI / 180 + Math.PI, ((span + 16) * Math.PI / 180)), TH.path));
-tableG.add(flat(new THREE.CircleGeometry(HUBR + 0.75, 64), TH.path));
-for (const o of Object.values(ROOMS)) { const a = hubPt(o.th), b = ringPt(o.th), len = Math.hypot(b[0] - a[0], b[1] - a[1]); const sp = flat(new THREE.PlaneGeometry(1.3, len), TH.path, 0.013); sp.position.set((a[0] + b[0]) / 2, 0.013, (a[1] + b[1]) / 2); sp.rotation.set(-Math.PI / 2, 0, -o.th); tableG.add(sp);
-  const fr = front(o), l2 = Math.hypot(fr[0] - b[0], fr[1] - b[1]); const sp2 = flat(new THREE.PlaneGeometry(1.3, l2 + 0.6), TH.path, 0.013); sp2.position.set((fr[0] + b[0]) / 2, 0.013, (fr[1] + b[1]) / 2); sp2.rotation.set(-Math.PI / 2, 0, -o.th); tableG.add(sp2); }
-// a little garden between the rooms
-for (let i = 0; i < 26; i++) { const th = rnd() * Math.PI * 2, r = TABLE - 1.2 - rnd() * 1.6; if (Object.values(ROOMS).some(o => Math.hypot(o.x - r * Math.sin(th), o.z + r * Math.cos(th)) < Math.max(...o.spec.size) / 2 + 1.2)) continue; tableG.add(K.at(K.build('tree', { size: 0.7 + rnd() * 0.6 }), r * Math.sin(th), 0, -r * Math.cos(th))); }
+const SW = STREET - 0.6;
+for (const x of XS) { const st = flat(new THREE.PlaneGeometry(SW, EXT.z1 - EXT.z0 + SW), TH.path); st.position.set(x, 0.012, (EXT.z0 + EXT.z1) / 2); tableG.add(st); }
+for (const z of ZS) { const st = flat(new THREE.PlaneGeometry(EXT.x1 - EXT.x0 + SW, SW), TH.path, 0.013); st.position.set((EXT.x0 + EXT.x1) / 2, 0.013, z); tableG.add(st); }
+// the plaza, and a little park on any plot nobody uses
+tableG.add(K.cyl(Math.min(colW[0], rowH[0]) / 2 - 2.0, Math.min(colW[0], rowH[0]) / 2 - 1.9, 0.1, TH.path, 0, 0, 0, { seg: 48 }));
+for (let c = C0; c <= C1; c++) for (let w = R0; w <= R1; w++) {
+  if (taken.has(c + ',' + w)) continue;
+  const pw = colW[c] - STREET, ph = rowH[w] - STREET;
+  tableG.add(K.box(pw, 0.08, ph, TH.grass, cx(c), 0, cz(w)));
+  for (let i = 0; i < 5; i++) tableG.add(K.at(K.build('tree', { size: 0.8 + rnd() * 0.6 }), cx(c) + (rnd() - 0.5) * (pw - 2), 0.08, cz(w) + (rnd() - 0.5) * (ph - 2)));
+}
+for (let i = 0; i < 18; i++) { const side = i % 4, u = rnd(); const x = side < 2 ? EXT.x0 + u * (EXT.x1 - EXT.x0) : (side === 2 ? EXT.x0 - M * 0.55 : EXT.x1 + M * 0.55), z = side < 2 ? (side ? EXT.z1 + M * 0.55 : EXT.z0 - M * 0.55) : EXT.z0 + u * (EXT.z1 - EXT.z0); tableG.add(K.at(K.build('tree', { size: 0.55 + rnd() * 0.4 }), x, 0, z)); }
 const hub = K.build('hubDesk'); hub.userData.pick = { kind: 'hub' }; tableG.add(hub); pickables.push(hub);
 const inbox = new THREE.Group(); inbox.position.set(0.55, 0.98, 0.1); tableG.add(inbox);
-const bigNewt = L.makeNewt(K, { scale: 1.25 }); bigNewt.group.position.set(0, 0.12, -1.0); bigNewt.group.rotation.y = 0; bigNewt.group.userData.pick = { kind: 'hub' }; tableG.add(bigNewt.group); pickables.push(bigNewt.group);
+const bigNewt = L.makeNewt(K, { scale: 1.35 }); bigNewt.group.position.set(0, 0.12, -1.0); bigNewt.group.userData.pick = { kind: 'hub' }; tableG.add(bigNewt.group); pickables.push(bigNewt.group);
 
 // gates on their paths
 const gateObjs = {};
 for (const [k, g] of Object.entries(GATE_ON)) {
-  const [a, b] = k.split('>'); const A = ROOMS[a], B = ROOMS[b]; if (!A || !B) continue;
-  const rt = route(a, b), p = rt.pts[rt.gateAt - 1], p2 = rt.pts[rt.gateAt], ang = Math.atan2(p2[0] - p[0], p2[1] - p[1]);
-  const arch = K.build('gateArch'); arch.position.set(p[0], 0, p[1]); arch.rotation.y = ang; arch.userData.pick = { kind: 'gate', gate: g }; tableG.add(arch); pickables.push(arch);
+  const [, b] = k.split('>'); const B = ROOMS[b]; if (!B) continue;
+  const p = [B.street[0] + (B.door[0] - B.street[0]) * 0.3, B.street[1] + (B.door[1] - B.street[1]) * 0.3];
+  const arch = K.build('gateArch'); arch.position.set(p[0], 0, p[1]); arch.rotation.y = B.ry; arch.userData.pick = { kind: 'gate', gate: g }; tableG.add(arch); pickables.push(arch);
   const lamp = K.sphere(0.16, 'amber', 0, 2.62, 0, { glow: 'amber', gi: 0.2 }); arch.add(lamp);
   const plate = K.sign('Gate ' + g.n, { h: 0.26, font: '600 40px "IBM Plex Mono", monospace' }); plate.position.set(0, 2.33, 0.17); arch.add(plate);
+  const plate2 = plate.clone(); plate2.rotation.y = Math.PI; plate2.position.z = -0.17; arch.add(plate2);
   gateObjs[g.n] = { arch, lamp, g, pos: p };
 }
-
 // the rooms: a floor, low walls (they duck when they'd hide the room from you), their furniture
 for (const o of Object.values(ROOMS)) {
   const sp = o.spec, [w, d] = sp.size, g = new THREE.Group(); g.position.set(o.x, 0, o.z); g.rotation.y = o.ry; tableG.add(g); o.g = g;
@@ -356,11 +405,11 @@ function drawTicks() {
 }
 
 // ── camera ────────────────────────────────────────────────────────────────────────────────────────
-const fitR = () => TABLE * 2.6 * Math.max(1, 1.45 / (innerWidth / innerHeight));   // further back on a narrow window
-const cam = { az: 0, el: 0.9, r: fitR(), tx: 0, tz: -1.2 }, camT = { ...cam };
+const fitR = () => TABLE * 3.05 * Math.max(1, 1.45 / (innerWidth / innerHeight));   // further back on a narrow window
+const cam = { az: 0, el: 0.92, r: fitR(), tx: (EXT.x0 + EXT.x1) / 2, tz: (EXT.z0 + EXT.z1) / 2 + 1 }, camT = { ...cam };
 let focus = null, follow = null;
-function overview() { focus = null; follow = null; Object.assign(camT, { r: fitR(), tx: 0, tz: -1.2, el: 0.9 }); }
-function focusRoom(id) { const o = ROOMS[id]; focus = id; follow = null; Object.assign(camT, { tx: o.x * 0.92, tz: o.z * 0.92, r: Math.max(o.spec.size[0], 9) * 2.3, az: -o.th }); }
+function overview() { focus = null; follow = null; Object.assign(camT, { r: fitR(), tx: (EXT.x0 + EXT.x1) / 2, tz: (EXT.z0 + EXT.z1) / 2 + 1, el: 0.92 }); }
+function focusRoom(id) { const o = ROOMS[id]; focus = id; follow = null; Object.assign(camT, { tx: o.x, tz: o.z, r: Math.max(o.spec.size[0], 9) * 2.0, az: Math.atan2(o.dir[0], o.dir[1]), el: 0.95 }); }
 let drag = null;
 cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, az: camT.az, el: camT.el, moved: false }; });
 addEventListener('pointerup', e => { if (drag && !drag.moved) click(e); drag = null; });
@@ -368,7 +417,7 @@ addEventListener('pointermove', e => {
   if (drag) { const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; camT.az = drag.az - dx * 0.006; camT.el = Math.max(0.35, Math.min(1.35, drag.el + dy * 0.004)); }
   hoverAt(e.clientX, e.clientY);
 });
-cv.addEventListener('wheel', e => { e.preventDefault(); camT.r = Math.max(9, Math.min(TABLE * 3.4, camT.r * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
+cv.addEventListener('wheel', e => { e.preventDefault(); camT.r = Math.max(9, Math.min(TABLE * 3.6, camT.r * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
 addEventListener('keydown', e => { if (e.key === 'Escape') { overview(); closePanel(); } });
 
 // ── picking, the tooltip and the panel ────────────────────────────────────────────────────────────
@@ -466,7 +515,7 @@ function screen(x, y, z) { tmpV.set(x, y, z).project(camera); return [(tmpV.x + 
 function overlays(t, live) {
   const out = [], close = cam.r < 34;
   for (const o of Object.values(ROOMS)) {
-    const [bx, bz] = toWorld(o, 0, -o.spec.size[1] / 2), [sx, sy, vis] = screen(bx, 2.3, bz); if (!vis) continue;
+    const [sx, sy, vis] = screen(o.x, 1.9, o.z - o.ez / 2 - 0.2); if (!vis) continue;
     const n = live.filter(x => x.a.ss && x.a.ss.room === o.r.id).length, asks = live.filter(x => x.a.ss && x.a.ss.room === o.r.id && x.st.ask).length;
     const cost = Math.round(sessions.filter(ss => ss.room === o.r.id).reduce((a, ss) => a + tokensAt(ss, t), 0) / 1000);
     const line = S.lens === 'cost' ? `<span class="hot">${cost}k tokens</span>` : S.lens === 'risk' ? `<span class="${riskOf(o.r.id, t) ? 'hot' : ''}">${riskOf(o.r.id, t)} flagged</span>` : `<span>${n} agent${n === 1 ? '' : 's'}${asks ? ` · <span class="hot">${asks} asking you</span>` : ''}</span>`;

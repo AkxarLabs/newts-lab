@@ -25,8 +25,17 @@ Each editor gives you a form for what a form makes easy and the files for everyt
 - **A stage**: its title, its procedures in order, its states (their names and the room each stands in),
   and instructions for every procedure of the stage. **New stage** adds one after any other, with its
   first state, in a room you pick.
-- **A room**: its sign, its column name on the Studies board, its floor and position, which states stand
-  in it, and its art (a small script; start from any room's art).
+- **A room**: its sign, its column name on the Studies board, which states stand in it, and its **look**:
+  - **Describe it**, and a coding agent (`/design-room`, on Claude, Codex or opencode) designs the room in 3D
+    from the lab's furniture kit, adding pieces of its own where it needs them, with a station for each
+    procedure the room holds. The design comes back as a suggestion you see turning in 3D before you take
+    it into your draft; ask again with a sharper description if it isn't right.
+  - A room's look is **data**, never code (`lab/rooms3d/<room>.json`: its size and colours, furniture by
+    name and where it stands, new furniture as a list of simple shapes). Compose checks it, and the
+    preview builds it in a sandbox, so nothing an agent designs ever runs in your dashboard.
+- **The table**: Compose → Rooms shows the rooms on plots round your desk. Drag a room to another plot,
+  turn its door with the arrow; a room you don't place takes the next free plot, in workflow order. Each
+  room's place is `place: [column, row]` and `facing: n|e|s|w` on its line in `workflow/stages.yaml`.
 - **A role**: its name, what it is for, your instructions for it (added for every agent CLI), its files.
 - **Rules**: each rule's text and the checks that enforce it; add rules to any list.
 - **Checks** and **project types**: their files.
@@ -129,6 +138,8 @@ The dashboard writes these for you, but they are plain Markdown and PI-owned:
 | `lab/workflow/stage.<stage>.add.md` | instructions for every procedure of a stage |
 | `lab/workflow/roles/<role>.add.md` | instructions added to a subagent role |
 | `studies/<slug>/workflow/…` | the same, for one study |
+| `lab/rooms3d/<room>.json` | a room's 3D look, as data |
+| `lab/.bus/designs/<room>/` | an agent's design for a room, waiting for you in Compose |
 | `lab/.bus/compose/` | your draft, while one is open, and what each publish replaced (for undo) |
 
 `uv run --with pyyaml python tools/workflow.py brief <procedure> [--study <slug>]` prints what an agent
