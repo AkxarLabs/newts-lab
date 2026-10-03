@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, load
 
 STATIC = REPO / "dashboard" / "static"
 UI = STATIC / "ui"
@@ -57,11 +57,13 @@ def test_every_NL_name_used_is_defined():
 
 
 def test_every_api_path_the_ui_calls_exists_on_the_server():
-    serve = (REPO / "dashboard" / "serve.py").read_text(encoding="utf-8")
+    serve = load("dashboard/serve")
+    routes = set(serve.GET_ROUTES) | set(serve.POST_ROUTES) | set(serve.FILE_ROUTES) | {"/api/events", "/api/ping"}
     paths = set()
     for text in _js().values():
         paths |= set(re.findall(r"['\"`](/api/[a-z0-9/_-]+)", text))
-    missing = sorted(p for p in paths if f'"{p}"' not in serve and f"'{p}'" not in serve and f'startswith("{p}' not in serve)
+    # a path the UI builds (`/api/run/${op}`) shows up as its prefix
+    missing = sorted(p for p in paths if p not in routes and not (p.endswith("/") and any(r.startswith(p) for r in routes)))
     assert not missing, f"the UI calls endpoints the server doesn't route: {missing}"
 
 

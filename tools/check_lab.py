@@ -33,6 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 HUB = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import labfiles  # noqa: E402 — the lab's files, read one way
 import workflow  # noqa: E402
 
 TERMINAL_STATES = workflow.terminal_states(HUB)
@@ -72,11 +73,10 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
-    config_path = HUB / "lab" / "config.yaml"
-    config = (yaml.safe_load(config_path.read_text(encoding="utf-8-sig")) or {}) if config_path.exists() else {}
+    config = labfiles.config(HUB)
     lab_cfg = config.get("lab") or {}
     stale_days = args.stale_days if args.stale_days is not None else lab_cfg.get("stale_days", 14)
-    projects_root = (HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
+    projects_root = labfiles.projects_root(HUB)
 
     rows = {r["id"]: r for r in parse_registry()}
     problems, stale = [], []

@@ -40,19 +40,13 @@ import argparse
 import sys
 from pathlib import Path
 
-import yaml
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-
-
-def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+sys.path.insert(0, str(HUB / "tools"))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 
 def _roles_dir() -> Path:
@@ -64,7 +58,7 @@ def _role_names() -> list[str]:
 
 
 def _cfg_agents() -> dict:
-    return (_load_yaml(HUB / "lab" / "config.yaml").get("agents") or {})
+    return (labfiles.load_yaml(HUB / "lab" / "config.yaml").get("agents") or {})
 
 
 def _norm(text: str) -> str:
@@ -123,7 +117,7 @@ def resolve_role(role: str, agents_cfg: dict | None = None) -> tuple[str, str]:
 
 
 def _spec(name: str) -> tuple[dict, str]:
-    meta = _load_yaml(_roles_dir() / f"{name}.yaml")
+    meta = labfiles.load_yaml(_roles_dir() / f"{name}.yaml")
     body = _norm((_roles_dir() / f"{name}.md").read_text(encoding="utf-8"))
     if not body.endswith("\n"):
         body += "\n"

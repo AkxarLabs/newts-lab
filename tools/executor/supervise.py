@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import backends, live
-from .lab import Lab, pos_float, pos_int
+from .lab import Lab, labfiles, pos_float, pos_int
 from .manifest import (append_jsonl, emit, now, read_manifest, run_dir, transition, worker_line,
                        write_manifest)
 from .procs import NEW_GROUP, NO_WINDOW, RunLock, graceful_stop, kill_tree, python_exe
@@ -218,20 +218,8 @@ class _State:
 def _env_local(lab: Lab) -> dict:
     """lab/.env.local (git-ignored; written by the dashboard's Research keys form): KEY=value lines a run
     inherits (e.g. S2_API_KEY). Never overrides what the executor itself sets."""
-    out = {}
-    try:
-        text = (lab.lab / ".env.local").read_text(encoding="utf-8-sig")
-    except OSError:
-        return out
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip()
-        if k and k.replace("_", "").isalnum() and not k.startswith(("NEWTS_", "AUTOSCIENTIST_")):
-            out[k] = v.strip().strip('"').strip("'")
-    return out
+    return {k: v for k, v in labfiles.read_env(lab.lab / ".env.local").items()
+            if k.replace("_", "").isalnum() and not k.startswith(("NEWTS_", "AUTOSCIENTIST_"))}
 
 
 _CONTINUE = ("This session was interrupted before it finished ({why}). Check what was already done "

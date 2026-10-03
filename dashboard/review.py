@@ -91,7 +91,7 @@ def _pilot_evidence(pdir: Path | None) -> dict:
     if not pdir:
         return {"title": "Pilot evidence", "text": "project not reachable — no runs to show"}
     reg = pdir / "runs" / "registry.jsonl"
-    rows = sources._read_jsonl(reg) if reg.exists() else []
+    rows = ctx.labfiles.read_jsonl(reg)
     pilots = [r for r in rows if r.get("status") == "completed" and str(r.get("stage", "")).upper() == "PILOT"]
     sec = {"title": f"Pilot evidence — {len(pilots)} completed PILOT run(s)"}
     if reg.exists():
@@ -131,7 +131,7 @@ def _gate2_accounting(pdir: Path | None, env: dict | None) -> dict:
 def _gate2_bundle(slug: str) -> dict:
     pdir = ctx.pdir(slug)
     ctrl = (pdir / "control.yaml") if pdir else None
-    env = (sources._load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
+    env = (ctx.labfiles.load_yaml(ctrl).get("gate2_envelope") if ctrl and ctrl.exists() else None)
     secs = [_gate2_accounting(pdir, env),
             {"title": "gate2_envelope (control.yaml)",
              "text": json.dumps(env, indent=2, default=str) if env else "no gate2_envelope found — spawn the project first"}]
@@ -219,7 +219,7 @@ def claims_map(idea: str | None = None) -> dict:
     cfile = ctx.HUB / "studies" / slug / "paper" / "claims.yaml"
     if not cfile.exists():
         return {"error": f"no claims.yaml at studies/{slug}/paper/claims.yaml"}
-    doc = sources._load_yaml(cfile)
+    doc = ctx.labfiles.load_yaml(cfile)
     if not isinstance(doc, dict):        # a malformed top-level scalar/list → empty map, never a 500
         doc = {}
     claims_in = doc.get("claims")

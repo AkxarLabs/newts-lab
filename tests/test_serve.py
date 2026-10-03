@@ -26,23 +26,23 @@ def _mod(hub, monkeypatch):
 
 def test_run_tool_rejects_non_whitelisted(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    res = m.run_tool("rm_rf")
+    res = m.runops.run_tool("rm_rf")
     assert "error" in res
     assert "whitelist" in res["error"]
 
 
 def test_safe_tools_set_is_read_only(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert "check_lab" in m.SAFE_TOOLS
+    assert "check_lab" in m.runops.SAFE_TOOLS
     # nothing that trains/writes
-    assert "run" not in m.SAFE_TOOLS and "sweep" not in m.SAFE_TOOLS
+    assert "run" not in m.runops.SAFE_TOOLS and "sweep" not in m.runops.SAFE_TOOLS
 
 
 # ── gate approval ─────────────────────────────────────────────────────────────
 
 def test_gate3_never_signable(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    res = m.approve_gate("demo", 3)
+    res = m.gates.approve_gate("demo", 3)
     assert "error" in res
     assert "Gate 3" in res["error"]
 
@@ -55,7 +55,7 @@ def test_gate2_expired_envelope_errors(hub, monkeypatch):
         "pi_signed": False, "signed_via": None, "expires": past,
         "full_runs": 4, "per_run_max_minutes": 30, "total_max_minutes": 120})
     hub.add_registry_row("demo", state="active", project=str(proj))
-    res = m.approve_gate("demo", 2)
+    res = m.gates.approve_gate("demo", 2)
     assert "error" in res
     assert "expired" in res["error"]
 
@@ -66,7 +66,7 @@ def test_gate2_all_zero_envelope_returns_warning(hub, monkeypatch):
         "pi_signed": False, "signed_via": None, "expires": None,
         "full_runs": 0, "per_run_max_minutes": 0, "total_max_minutes": 0})
     hub.add_registry_row("demo", state="active", project=str(proj))
-    res = m.approve_gate("demo", 2)
+    res = m.gates.approve_gate("demo", 2)
     assert res.get("ok") is True
     assert res.get("warnings")  # non-empty warnings list
     assert any("authorizes nothing" in w for w in res["warnings"])
@@ -79,7 +79,7 @@ def test_gate2_successful_sign_writes_signed_and_signed_via(hub, monkeypatch):
         "pi_signed": False, "signed_via": None, "expires": None,
         "full_runs": 4, "per_run_max_minutes": 30, "total_max_minutes": 120})
     hub.add_registry_row("demo", state="active", project=str(proj))
-    res = m.approve_gate("demo", 2)
+    res = m.gates.approve_gate("demo", 2)
     assert res.get("ok") is True
     doc = yaml.safe_load((proj / "control.yaml").read_text(encoding="utf-8"))
     env = doc["gate2_envelope"]
@@ -92,7 +92,7 @@ def test_gate1_signs_proposal_and_leaves_command(hub, monkeypatch):
     prop = hub.root / "studies" / "demo" / "proposal.md"
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
-    res = m.approve_gate("demo", 1)
+    res = m.gates.approve_gate("demo", 1)
     assert res.get("ok") is True
     assert "Gate 1 approved" in prop.read_text(encoding="utf-8")
 
@@ -103,8 +103,8 @@ def test_gate1_is_idempotent(hub, monkeypatch):
     prop = hub.root / "studies" / "demo" / "proposal.md"
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
-    assert m.approve_gate("demo", 1).get("ok") is True
-    again = m.approve_gate("demo", 1)
+    assert m.gates.approve_gate("demo", 1).get("ok") is True
+    again = m.gates.approve_gate("demo", 1)
     assert "error" in again and "already approved" in again["error"]
     assert prop.read_text(encoding="utf-8").count("PI Gate 1 approved via Vivarium dashboard") == 1
 
@@ -117,7 +117,7 @@ def test_gate1_records_idea_target_in_command(hub, monkeypatch):
     prop = hub.root / "studies" / "demo" / "proposal.md"
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
-    m.approve_gate("demo", 1)
+    m.gates.approve_gate("demo", 1)
     lines = (hub.lab / ".bus" / "directives.jsonl").read_text(encoding="utf-8").splitlines()
     rec = json.loads(lines[-1])
     assert rec["action"] == "gate1_approved"
@@ -130,7 +130,7 @@ def test_gate1_warns_when_state_not_proposal(hub, monkeypatch):
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
     hub.add_registry_row("demo", state="active", project="-")   # not 'proposal'
-    res = m.approve_gate("demo", 1)
+    res = m.gates.approve_gate("demo", 1)
     assert res.get("ok") is True and res.get("warnings")
 
 
@@ -143,7 +143,7 @@ def test_gate2_write_preserves_lf_line_endings(hub, monkeypatch):
     hub.add_registry_row("demo", state="active", project=str(proj))
     ctrl = proj / "control.yaml"
     ctrl.write_text(ctrl.read_text(encoding="utf-8").replace("\r\n", "\n"), encoding="utf-8", newline="")
-    assert m.approve_gate("demo", 2).get("ok") is True
+    assert m.gates.approve_gate("demo", 2).get("ok") is True
     assert b"\r\n" not in ctrl.read_bytes()      # stayed LF
 
 
@@ -172,16 +172,16 @@ def _make_paper(hub, slug="demo", figures=None):
 
 def test_paper_pdf_found_and_missing(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert m.paper_pdf("demo") is None        # nothing compiled yet
+    assert m.library.paper_pdf("demo") is None        # nothing compiled yet
     _make_paper(hub)
-    f = m.paper_pdf("demo")
+    f = m.library.paper_pdf("demo")
     assert f is not None and f.name == "main.pdf"
 
 
 def test_figure_list_filters_by_extension(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _make_paper(hub, figures={"loss.png": b"\x89PNG", "tab.tex": b"x", "diagram.pdf": b"%PDF"})
-    figs = m.figure_list("demo")
+    figs = m.library.figure_list("demo")
     assert "loss.png" in figs and "diagram.pdf" in figs
     assert "tab.tex" not in figs              # .tex is not a servable figure
 
@@ -189,10 +189,10 @@ def test_figure_list_filters_by_extension(hub, monkeypatch):
 def test_figure_file_blocks_path_traversal(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _make_paper(hub, figures={"loss.png": b"\x89PNG"})
-    assert m.figure_file("demo", "loss.png") is not None
+    assert m.library.figure_file("demo", "loss.png") is not None
     # any traversal attempt is reduced to a basename that doesn't exist in figures/ -> None
-    assert m.figure_file("demo", "../../../etc/passwd") is None
-    assert m.figure_file("demo", "../control.yaml") is None
+    assert m.library.figure_file("demo", "../../../etc/passwd") is None
+    assert m.library.figure_file("demo", "../control.yaml") is None
 
 
 def test_read_doc_section_carries_editor_path(hub, monkeypatch):
@@ -200,7 +200,7 @@ def test_read_doc_section_carries_editor_path(hub, monkeypatch):
     prop = hub.root / "studies" / "demo" / "proposal.md"
     prop.parent.mkdir(parents=True, exist_ok=True)
     prop.write_text("# Proposal\n", encoding="utf-8")
-    sec = m.read_doc("gate", "demo", 1)["sections"][0]
+    sec = m.review.read_doc("gate", "demo", 1)["sections"][0]
     assert sec.get("path", "").endswith("proposal.md")
 
 
@@ -208,7 +208,7 @@ def test_read_doc_knowledge_includes_references(hub, monkeypatch):
     # The hub fixture seeds all four knowledge files; the knowledge view must surface REFERENCES
     # (the shared reading index) alongside the three triggered-operator files.
     m = _mod(hub, monkeypatch)
-    titles = [s["title"] for s in m.read_doc("knowledge")["sections"]]
+    titles = [s["title"] for s in m.review.read_doc("knowledge")["sections"]]
     assert {"Findings", "Failures", "Open Questions", "References"} <= set(titles)
 
 
@@ -223,11 +223,11 @@ def test_md_section_numbered_and_suffixed_headings(hub, monkeypatch):
         "## 6. Kill criteria (checked after every pilot)\n\n- effect < 0.1\n\n"
         "## 7. Success criteria & deliverable\n\n- a paper\n"
     )
-    budget = m._md_section(text, re.compile(r"\bBudget\b", re.I))
+    budget = m.review._md_section(text, re.compile(r"\bBudget\b", re.I))
     assert "compute: 10h" in budget and "Gate 2 envelope" in budget   # ### nested stays inside the ## section
     assert "Kill criteria" not in budget                              # stops at the next ## heading
-    assert "effect < 0.1" in m._md_section(text, re.compile(r"Kill criteria", re.I))
-    assert m._md_section(text, re.compile(r"nonexistent", re.I)) == ""
+    assert "effect < 0.1" in m.review._md_section(text, re.compile(r"Kill criteria", re.I))
+    assert m.review._md_section(text, re.compile(r"nonexistent", re.I)) == ""
 
 
 # ── Gate 1 bundle: novelty verdict + decision-critical sections + full proposal ──
@@ -243,7 +243,7 @@ def test_gate1_bundle_composes_novelty_and_critical_sections(hub, monkeypatch):
         "# Proposal\n\n## 1. Hypothesis\n\nH\n\n## 5. Budget\n\n- 10 GPU-h\n\n"
         "## 6. Kill criteria (checked after every pilot)\n\n- kill if X\n\n"
         "## 7. Success criteria & deliverable\n\n- a paper\n", encoding="utf-8")
-    res = m.read_doc("gate", "demo", 1)
+    res = m.review.read_doc("gate", "demo", 1)
     titles = [s["title"] for s in res["sections"]]
     assert any("Novelty verdict" in t for t in titles)
     crit = next(s for s in res["sections"] if "Decision-critical" in s["title"])
@@ -270,7 +270,7 @@ def test_gate2_bundle_surfaces_completed_pilot_runs(hub, monkeypatch):
         {"run_id": "exp-003-pilot-s1", "stage": "PILOT", "status": "running", "seed": 1, "metrics": {}},
     ]
     reg.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
-    pilot = next(s for s in m.read_doc("gate", "demo", 2)["sections"] if "Pilot evidence" in s["title"])
+    pilot = next(s for s in m.review.read_doc("gate", "demo", 2)["sections"] if "Pilot evidence" in s["title"])
     assert "exp-002-pilot-s0" in pilot["text"] and "val_acc=0.83" in pilot["text"]
     assert "exp-001-smoke" not in pilot["text"]    # SMOKE excluded
     assert "exp-003-pilot" not in pilot["text"]    # still-running excluded
@@ -295,7 +295,7 @@ def test_gate2_accounting_computes_remaining_capacity(hub, monkeypatch):
                                 "planned_minutes": 60, "status": "active"}) + "\n", encoding="utf-8")
     env = {"pi_signed": True, "expires": "2099-01-01", "full_runs": 4,
            "per_run_max_minutes": 60, "total_max_minutes": 300}
-    acc = m._gate2_accounting(proj, env)
+    acc = m.review._gate2_accounting(proj, env)
     assert "active" in acc["title"]
     lines = {ln.split(":", 1)[0].strip(): ln for ln in acc["text"].splitlines() if ":" in ln}
     assert "2 run(s)" in lines["completed FULL"]                 # only FULL rows count
@@ -308,7 +308,7 @@ def test_gate2_bundle_includes_accounting_section(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     proj = hub.make_project("demo", gate2={"pi_signed": True, "expires": None, "full_runs": 2})
     hub.add_registry_row("demo", state="active", project=str(proj))
-    titles = [s["title"] for s in m.read_doc("gate", "demo", 2)["sections"]]
+    titles = [s["title"] for s in m.review.read_doc("gate", "demo", 2)["sections"]]
     assert any("Envelope capacity" in t for t in titles)
 
 
@@ -323,7 +323,7 @@ def test_gate3_bundle_finds_reviews_recursively_and_lifts_verdict(hub, monkeypat
     (paper / "reviews" / "critique-2026-06-27" / "meta-review.md").write_text(
         "# Meta\n\n## Score aggregation\n\n| Dimension | Median | Range |\n|---|---|---|\n"
         "| **Overall** | 7 | 6-8 |\n\n## Decision\n\n**accept**\n\n## Action items\n\n- none\n", encoding="utf-8")
-    res = m.read_doc("gate", "demo", 3)
+    res = m.review.read_doc("gate", "demo", 3)
     titles = [s["title"] for s in res["sections"]]
     verdict = next(s for s in res["sections"] if "Meta-review verdict" in s["title"])
     assert "accept" in verdict["text"] and "Overall" in verdict["text"]
@@ -349,7 +349,7 @@ def test_claims_map_resolves_and_marks_linkage(hub, monkeypatch):
         "    location: Table 2\n    project: demo\n    artifacts:\n      - runs/r0/metrics.json\n"
         "  - id: C002\n    claim: missing one\n    numbers: ['1.0']\n    project: demo\n"
         "    artifacts:\n      - runs/ghost/metrics.json\n", encoding="utf-8")
-    res = m.claims_map("demo")
+    res = m.review.claims_map("demo")
     assert res["n"] == 2
     c1 = res["claims"][0]
     assert c1["id"] == "C001" and c1["linked"] is True
@@ -361,14 +361,14 @@ def test_claims_map_resolves_and_marks_linkage(hub, monkeypatch):
 
 def test_claims_map_missing_file_errors(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    res = m.claims_map("demo")
+    res = m.review.claims_map("demo")
     assert "error" in res and "claims.yaml" in res["error"]
 
 
 def test_run_tool_audit_claims_whitelisted_needs_slug(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert "audit_claims" in m.SAFE_TOOLS          # read-only audit is allowed
-    res = m.run_tool("audit_claims", "")
+    assert "audit_claims" in m.runops.SAFE_TOOLS          # read-only audit is allowed
+    res = m.runops.run_tool("audit_claims", "")
     assert "error" in res and "slug" in res["error"]
 
 
@@ -387,7 +387,7 @@ def test_claims_map_coerces_scalar_artifacts_and_numbers(hub, monkeypatch):
         "claims:\n  - just a bare string\n"            # non-dict list item → skipped
         "  - id: C001\n    numbers: '0.91'\n    artifacts: runs/r0/metrics.json\n    project: demo\n",
         encoding="utf-8")
-    res = m.claims_map("demo")
+    res = m.review.claims_map("demo")
     assert res["n"] == 1                               # the bare string is not a claim
     c = res["claims"][0]
     assert c["numbers"] == ["0.91"]                    # scalar coerced — NOT split into characters
@@ -401,7 +401,7 @@ def test_claims_map_tolerates_non_dict_toplevel(hub, monkeypatch):
     paper = hub.root / "studies" / "demo" / "paper"
     paper.mkdir(parents=True, exist_ok=True)
     (paper / "claims.yaml").write_text("just a bare scalar\n", encoding="utf-8")
-    res = m.claims_map("demo")                          # must not raise AttributeError
+    res = m.review.claims_map("demo")                          # must not raise AttributeError
     assert res["ok"] is True and res["n"] == 0
 
 
@@ -413,7 +413,7 @@ def test_claims_map_blocks_artifact_traversal(hub, monkeypatch):
     paper.mkdir(parents=True, exist_ok=True)
     (paper / "claims.yaml").write_text(
         "claims:\n  - id: C001\n    project: demo\n    artifacts:\n      - ../secret.json\n", encoding="utf-8")
-    a = m.claims_map("demo")["claims"][0]["artifacts"][0]
+    a = m.review.claims_map("demo")["claims"][0]["artifacts"][0]
     assert a["exists"] is False and "abs" not in a     # escapes the project → never surfaced
 
 
@@ -444,7 +444,7 @@ def test_lib_tree_lab_layer_above_studies(hub, monkeypatch):
     (proj / "PLAN.md").write_text("# plan\n", encoding="utf-8")
     (proj / "EXPERIMENT_LOG.md").write_text("# log\n", encoding="utf-8")
     hub.add_registry_row("demo", title="Demo study", state="active", project=str(proj))
-    tree = m.lib_tree()
+    tree = m.library.lib_tree()
     assert tree["ok"] is True
     keys = [g["key"] for g in tree["groups"]]
     assert keys[0] == "lab"                              # ideation/knowledge/notebook sit ABOVE projects
@@ -471,14 +471,14 @@ def test_lib_tree_lab_layer_above_studies(hub, monkeypatch):
 def test_lib_tree_includes_unregistered_study_dirs(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _lib_hub(hub)                                        # demo study exists but has NO registry row
-    tree = m.lib_tree()
+    tree = m.library.lib_tree()
     assert any(g["key"] == "study:demo" for g in tree["groups"])
 
 
 def test_lib_doc_reads_markdown_with_meta(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _lib_hub(hub)
-    d = m.lib_doc("study", "demo", "proposal.md")
+    d = m.library.lib_doc("study", "demo", "proposal.md")
     assert d["ok"] is True and d["format"] == "markdown"
     assert "E=mc^2" in d["text"] and d["title"] == "proposal.md"
     assert d["path"].endswith("proposal.md") and d["mtime"] > 0
@@ -488,27 +488,27 @@ def test_lib_doc_blocks_traversal_and_absolute(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     _lib_hub(hub)
     (hub.root / "secret.md").write_text("no\n", encoding="utf-8")
-    assert "outside" in m.lib_doc("study", "demo", "../../secret.md")["error"]
-    assert "outside" in m.lib_doc("lab", None, "../secret.md")["error"]
+    assert "outside" in m.library.lib_doc("study", "demo", "../../secret.md")["error"]
+    assert "outside" in m.library.lib_doc("lab", None, "../secret.md")["error"]
     # an absolute rel is treated as relative-or-refused, never a free read
-    res = m.lib_doc("study", "demo", str(hub.root / "secret.md"))
+    res = m.library.lib_doc("study", "demo", str(hub.root / "secret.md"))
     assert "error" in res
-    assert m.lib_doc("study", "demo", "IDEA.md")["ok"] is True   # sanity: legit reads still work
+    assert m.library.lib_doc("study", "demo", "IDEA.md")["ok"] is True   # sanity: legit reads still work
 
 
 def test_lib_doc_extension_whitelist(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     sdir = _lib_hub(hub)
     (sdir / "tool.exe").write_bytes(b"MZ")
-    res = m.lib_doc("study", "demo", "tool.exe")
+    res = m.library.lib_doc("study", "demo", "tool.exe")
     assert "error" in res and ".exe" in res["error"]
 
 
 def test_lib_doc_unknown_scope_or_slug(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert "error" in m.lib_doc("nope", None, "x.md")
-    assert "error" in m.lib_doc("study", "no-such", "IDEA.md")
-    assert "error" in m.lib_doc("study", "../demo", "IDEA.md")   # slug is sanitized, not a path
+    assert "error" in m.library.lib_doc("nope", None, "x.md")
+    assert "error" in m.library.lib_doc("study", "no-such", "IDEA.md")
+    assert "error" in m.library.lib_doc("study", "../demo", "IDEA.md")   # slug is sanitized, not a path
 
 
 def test_lib_file_serves_contained_images_only(hub, monkeypatch):
@@ -517,10 +517,10 @@ def test_lib_file_serves_contained_images_only(hub, monkeypatch):
     fig = sdir / "paper" / "figures" / "f1.png"
     fig.parent.mkdir(parents=True, exist_ok=True)
     fig.write_bytes(b"\x89PNG\r\n")
-    hit = m.lib_file("study", "demo", "paper/figures/f1.png")
+    hit = m.library.lib_file("study", "demo", "paper/figures/f1.png")
     assert hit and hit[0].name == "f1.png" and hit[1] == "image/png"
-    assert m.lib_file("study", "demo", "../../secret.png") is None      # traversal
-    assert m.lib_file("study", "demo", "proposal.md") is None           # not an image
+    assert m.library.lib_file("study", "demo", "../../secret.png") is None      # traversal
+    assert m.library.lib_file("study", "demo", "proposal.md") is None           # not an image
 
 
 # ── write-path hardening: client-supplied ids must never become path traversal ─
@@ -528,7 +528,7 @@ def test_lib_file_serves_contained_images_only(hub, monkeypatch):
 def test_gate_approve_rejects_traversal_idea(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     for bad in ("../evil", "..", "a/b", r"a\b", ".hidden", "", "  "):   # r"a\b" = real backslash (win path sep)
-        res = m.approve_gate(bad, 1)
+        res = m.gates.approve_gate(bad, 1)
         assert res.get("error") == "invalid idea slug", f"{bad!r} was not rejected"
     # nothing was written anywhere near the fake hub
     assert not (hub.root / "evil").exists() and not (hub.root.parent / "evil").exists()
@@ -538,7 +538,7 @@ def test_gate_approve_rejects_non_string_idea(hub, monkeypatch):
     # a non-string JSON value must fail validation cleanly, not AttributeError -> 500
     m = _mod(hub, monkeypatch)
     for bad in (123, ["x"], {"a": 1}, None):
-        assert m.approve_gate(bad, 1).get("error") == "invalid idea slug"
+        assert m.gates.approve_gate(bad, 1).get("error") == "invalid idea slug"
 
 
 def test_bus_append_rejects_traversal_target(hub, monkeypatch):
@@ -546,13 +546,13 @@ def test_bus_append_rejects_traversal_target(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     for bad in ("../evil", "a/b", ".hidden"):
         with pytest.raises(ValueError):
-            m.append_directive(bad, "hello")
+            m.bus.append_directive(bad, "hello")
     # a non-string target must also raise ValueError (not AttributeError)
     with pytest.raises(ValueError):
-        m.append_directive(123, "hello")
+        m.bus.append_directive(123, "hello")
     # the happy paths still work: hub and a bare slug (pre-spawn -> hub-bus fallback)
-    assert m.append_directive("hub", "hi")["target"] == "hub"
-    assert m.append_directive("demo", "hi")["target"] == "demo"
+    assert m.bus.append_directive("hub", "hi")["target"] == "hub"
+    assert m.bus.append_directive("demo", "hi")["target"] == "demo"
     assert (hub.lab / ".bus" / "directives.jsonl").exists()
 
 
@@ -567,9 +567,9 @@ def test_withdraw_routes_to_the_bus_holding_the_ref(hub, monkeypatch):
     # bus — not on the project bus the target now resolves to (where the ref would never match
     # and the directive would stay pending forever).
     m = _mod(hub, monkeypatch)
-    rec = m.append_directive("demo", "do the thing")     # no project dir yet -> hub bus
+    rec = m.bus.append_directive("demo", "do the thing")     # no project dir yet -> hub bus
     hub.make_project("demo")                             # now the project exists
-    m.append_withdraw("demo", rec["id"], rec["ts"])
+    m.bus.append_withdraw("demo", rec["id"], rec["ts"])
     hub_lines = _read_jsonl(hub.lab / ".bus" / "directives.jsonl")
     assert any(r.get("kind") == "withdraw" and r.get("ref") == rec["id"] for r in hub_lines)
     proj_bus = hub.projects_root / "demo" / ".bus" / "directives.jsonl"
@@ -590,7 +590,7 @@ def test_withdraw_disambiguates_colliding_ids_by_ts(hub, monkeypatch):
     (pbus / "directives.jsonl").write_text(
         '{"text": "post-spawn", "id": "d-001", "ts": "2026-06-20T14:00:00", "target": "demo"}\n',
         encoding="utf-8")
-    m.append_withdraw("demo", "d-001", "2026-06-01T09:00:00")   # the HUB record's ts
+    m.bus.append_withdraw("demo", "d-001", "2026-06-01T09:00:00")   # the HUB record's ts
     hub_lines = _read_jsonl(hub_bus / "directives.jsonl")
     proj_lines = _read_jsonl(pbus / "directives.jsonl")
     assert any(r.get("kind") == "withdraw" for r in hub_lines)          # landed on the hub bus
@@ -601,7 +601,7 @@ def test_withdraw_falls_back_to_target_bus_for_unknown_ref(hub, monkeypatch):
     # an unknown ref (e.g. a synthesized d?xxxx id) keeps the original target routing
     m = _mod(hub, monkeypatch)
     hub.make_project("demo")
-    m.append_withdraw("demo", "d?deadbeef")
+    m.bus.append_withdraw("demo", "d?deadbeef")
     proj_lines = _read_jsonl(hub.projects_root / "demo" / ".bus" / "directives.jsonl")
     assert any(r.get("kind") == "withdraw" and r.get("ref") == "d?deadbeef" for r in proj_lines)
 
@@ -614,6 +614,6 @@ def test_withdraw_of_legacy_nonslug_target_does_not_raise(hub, monkeypatch):
     (bus / "directives.jsonl").write_text(
         '{"text": "legacy", "id": "d-009", "ts": "2026-01-01T00:00:00", "target": "the econ project"}\n',
         encoding="utf-8")
-    m.append_withdraw("the econ project", "d-009", "2026-01-01T00:00:00")   # must NOT raise
+    m.bus.append_withdraw("the econ project", "d-009", "2026-01-01T00:00:00")   # must NOT raise
     hub_lines = _read_jsonl(bus / "directives.jsonl")
     assert any(r.get("kind") == "withdraw" and r.get("ref") == "d-009" for r in hub_lines)

@@ -194,7 +194,7 @@ def set_executor_config(body: dict) -> tuple[dict, int]:
         return {"error": err}, 400
     parsed = {k: updates[tuple(EXEC_CONFIG[k][0])] for k in body["changes"]}
     ctx.pi_log({"action": "executor.config", "changes": parsed})
-    sources._EXEC_CACHE["ts"] = 0   # re-probe (e.g. the new backend's CLI) on the next snapshot
+    sources.recheck_executor()   # re-probe (e.g. the new backend's CLI) on the next snapshot
     ctx.KICK.set()
     return {"ok": True, "changes": parsed, "note": f"saved {len(parsed)} setting(s) to lab/config.yaml"}, 200
 
@@ -230,7 +230,7 @@ def doc_save(body: dict) -> tuple[dict, int]:
 
 
 def lab_config_get() -> tuple[dict, int]:
-    cfg = sources._load_yaml(ctx.LAB / "config.yaml")
+    cfg = ctx.config()
     out = {}
     for k, (path, _p) in LAB_CONFIG.items():
         node = cfg
@@ -272,7 +272,7 @@ def lab_config_set(body: dict) -> tuple[dict, int]:
         notes.append(f"saved {len(updates)} setting(s)")
     parsed = {k: updates[tuple(LAB_CONFIG[k][0])] for k in changes}
     ctx.pi_log({"action": "lab.config", "changes": parsed, "budget_tier": tier})
-    sources._EXEC_CACHE["ts"] = 0
+    sources.recheck_executor()
     return {"ok": True, "changes": parsed, "note": "; ".join(notes) or "nothing changed"}, 200
 
 
@@ -287,12 +287,7 @@ def _env_path() -> Path:
 
 
 def _env_read() -> dict:
-    out = {}
-    for line in (ctx.read(_env_path()) or "").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            k, v = line.split("=", 1)
-            out[k.strip()] = v.strip()
-    return out
+    return ctx.labfiles.read_env(_env_path())
 
 
 def keys_status() -> tuple[dict, int]:
@@ -405,7 +400,7 @@ def system_info(q: dict) -> tuple[dict, int]:
             _SYS_CACHE.update(hub=str(ctx.HUB), at=time.time(), facts=json.loads(r.stdout))
         except ValueError:
             return {"error": f"the system probe failed: {(r.stderr or r.stdout)[-300:]}"}, 500
-    cfg = sources._load_yaml(ctx.LAB / "config.yaml")
+    cfg = ctx.config()
     sched = ((cfg.get("compute") or {}).get("scheduler")) or {"kind": "local"}
     return {"ok": True, "facts": _SYS_CACHE["facts"], "scheduler": sched,
             "system_md": (ctx.LAB / "SYSTEM.md").exists()}, 200
@@ -512,7 +507,7 @@ def system_scheduler_set(body: dict) -> tuple[dict, int]:
 # ── first-run setup ──────────────────────────────────────────────────────────
 
 def setup_status() -> dict:
-    cfg = sources._load_yaml(ctx.LAB / "config.yaml")
+    cfg = ctx.config()
     done = (cfg.get("dashboard") or {}).get("setup_completed")
     rows = [r for r in sources.parse_registry() if r.get("id")]
     return {"completed": bool(done), "completed_at": str(done) if done else None,

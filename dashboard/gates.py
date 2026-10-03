@@ -61,7 +61,7 @@ def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
     idea = ctx.safe_id(idea) or ""
     if not idea:
         return {"error": "invalid idea slug"}   # the raw id becomes a path under studies/ — never trust it
-    ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+    ts = ctx.ts()
     _MARK = sources.GATE1_MARK
     if gate == 1:
         proposal = ctx.HUB / "studies" / idea / "proposal.md"
@@ -85,12 +85,12 @@ def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
         ctx.emit_hub("gate_resolved", idea=idea, detail="Gate 1 approved (PI via dashboard)")
         ctx.pi_log({"action": "approve_gate", "gate": 1, "idea": idea, "envelope": bool(envelope)})
         exec_on = executor is not None and bool(
-            ((sources._load_yaml(ctx.LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}).get("enabled"))
+            ((ctx.config().get("agents") or {}).get("programmatic") or {}).get("enabled"))
         res = {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
                "note": (f"Proposal signed — launch /spawn-project {idea} from the Activity tab when you're ready."
                         if exec_on else
                         "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint.")}
-        if (sources._load_yaml(ctx.LAB / "config.yaml").get("dashboard") or {}).get("auto_spawn_on_gate1"):
+        if (ctx.config().get("dashboard") or {}).get("auto_spawn_on_gate1"):
             out, code = launch_run({"skill": "spawn-project", "target": idea, "confirm": True}, by="gate1-auto")
             res["launch"] = out
             if code == 200:
@@ -109,7 +109,7 @@ def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
     text = raw.replace("\r\n", "\n")
     if "pi_signed:" not in text:
         return {"error": "control.yaml has no gate2_envelope.pi_signed field"}
-    env = sources._load_yaml(control).get("gate2_envelope") or {}
+    env = ctx.labfiles.load_yaml(control).get("gate2_envelope") or {}
     if env.get("pi_signed"):
         return {"error": "gate2_envelope is already signed (pi_signed: true) — nothing to do"}
     expires = str(env.get("expires") or "").strip()
@@ -123,7 +123,7 @@ def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
         return {"error": "could not set gate2_envelope.pi_signed (unexpected format) — sign via /configure"}
     with control.open("w", encoding="utf-8", newline="") as f:
         f.write(new_text.replace("\n", eol))            # restore the original EOL — a clean one-line diff
-    env_after = sources._load_yaml(control).get("gate2_envelope") or {}
+    env_after = ctx.labfiles.load_yaml(control).get("gate2_envelope") or {}
     if not env_after.get("pi_signed"):   # verify the write actually parsed to signed — never report a phantom ok
         return {"error": "gate2_envelope.pi_signed did not take effect after write — check control.yaml format"}
     ctx.emit_hub("gate_resolved", idea=idea, detail="Gate 2 envelope signed (PI via dashboard)")
@@ -326,7 +326,7 @@ def envelope_set(body: dict) -> tuple[dict, int]:
             out["expires"] = e or "null"
     except (TypeError, ValueError) as e:
         return {"error": f"{e}: must be a whole number ≥ 0 (expires: YYYY-MM-DD)"}, 400
-    before = (sources._load_yaml(ctl).get("gate2_envelope") or {})
+    before = (ctx.labfiles.load_yaml(ctl).get("gate2_envelope") or {})
     sign = bool(body.get("sign"))
     ts = ctx.ts()
     changed_values = any(str(before.get(k) if before.get(k) is not None else "null") != out[k] for k in out)

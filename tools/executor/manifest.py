@@ -25,7 +25,7 @@ import re
 import time
 from pathlib import Path
 
-from .lab import Lab, read_jsonl
+from .lab import Lab, labfiles, read_jsonl
 from .procs import excl_lock
 
 SCHEMA = 2
@@ -38,17 +38,7 @@ RESUMABLE = TERMINAL | PAUSED                          # given a known session i
 _ID_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
 
-def now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S")
-
-
-def parse_ts(ts) -> float | None:
-    if not ts or not isinstance(ts, str):
-        return None
-    try:
-        return time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
-    except ValueError:
-        return None
+now, parse_ts = labfiles.now, labfiles.parse_ts
 
 
 def safe_id(s) -> str | None:

@@ -235,6 +235,12 @@ _VERSION_CACHE: dict[tuple, tuple[float, tuple | None]] = {}
 _AUTH_CACHE: dict[tuple, tuple[float, dict | None]] = {}
 
 
+def forget_checks() -> None:
+    """Re-probe every CLI's version and sign-in next time (after an install or a sign-in)."""
+    _VERSION_CACHE.clear()
+    _AUTH_CACHE.clear()
+
+
 def cli_version(prefix: list[str] | None) -> tuple | None:
     """(major, minor, patch) from `<cli> --version`, cached per prefix for 10 minutes (so an upgrade
     shows without restarting the dashboard). None if unknown."""

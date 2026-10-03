@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import backends
@@ -68,9 +68,6 @@ class RunSpec:
     prompt: str | None = None           # the PI's free-form instruction (skill "ask")
     gate3: bool = False                 # set only by the dashboard's Gate-3 signature for /finalize
     extra: dict = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        return asdict(self)
 
 
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,119}$")

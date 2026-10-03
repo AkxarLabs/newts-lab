@@ -32,10 +32,6 @@ HUB = Path(__file__).resolve().parents[1]
 _SPLIT_ANALOGUE = "newts: split=analogue"   # in a type's TYPE.md: it has no literal held-out test split
 
 
-def _load_yaml(path: Path) -> dict:
-    return labfiles.load_yaml(path)
-
-
 def _projects_root() -> Path:
     return labfiles.projects_root(HUB)
 
@@ -66,7 +62,7 @@ def audit(paper_dir: Path) -> int:
     ptype = ""
     pdir = _project_dir(slug)
     if pdir:
-        ptype = str(_load_yaml(pdir / "control.yaml").get("project_type") or "").strip().lower()
+        ptype = str(labfiles.load_yaml(pdir / "control.yaml").get("project_type") or "").strip().lower()
     if proposal.exists():
         text = proposal.read_text(encoding="utf-8-sig")
         val = _line_filled(text, "Validation")
@@ -87,7 +83,7 @@ def audit(paper_dir: Path) -> int:
         have_manual = True
 
     # Check 2: headline claims report on test, not validation.
-    claims = (_load_yaml(paper_dir / "claims.yaml").get("claims")) or []
+    claims = (labfiles.load_yaml(paper_dir / "claims.yaml").get("claims")) or []
     headline = [c for c in claims if isinstance(c, dict) and c.get("headline")]
     if headline:
         declared = 0

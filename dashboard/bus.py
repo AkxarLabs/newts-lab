@@ -64,7 +64,7 @@ def _append(target: str, rec: dict, bus: Path | None = None) -> dict:
     path = bus / "directives.jsonl"
     with _BUS_LOCK, _file_lock(bus / ".directives.lock"):
         rec.setdefault("id", _next_id(path))
-        rec.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S"))
+        rec.setdefault("ts", ctx.ts())
         rec.setdefault("from", "PI via dashboard")
         # record the intended target IN the line: a directive/command aimed at a pre-spawn idea (no
         # project dir yet) falls back to the hub bus, and without this the agent inbox can't tell what

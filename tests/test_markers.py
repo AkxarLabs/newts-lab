@@ -33,3 +33,12 @@ def test_the_readers_share_the_definition():
     assert guard.GATE1_RE is markers.GATE1_RE and signature_guard.GATE3_RE is markers.GATE3_RE
     assert gate3.AUTH_BOX_RE is markers.AUTH_BOX_RE is signature_guard.AUTH_BOX_RE
     assert markers.GATE1_RE.search(markers.GATE1_DASHBOARD_MARK)
+
+
+def test_gate_waiting_is_word_bounded():
+    m = markers
+    assert m.gate_waiting("awaiting PI Gate 1") == 1
+    assert m.gate_waiting("sign the Gate-2 envelope") == 2
+    assert m.gate_waiting("investigate 3 baselines") is None    # not a gate
+    assert m.gate_waiting("delegate 2 sweeps to runners") is None
+    assert m.gate_waiting("mitigate the risk") is None

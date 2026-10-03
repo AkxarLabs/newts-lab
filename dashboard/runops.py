@@ -10,7 +10,6 @@ import re
 import subprocess
 import sys
 import threading
-import time
 
 import ctx  # noqa: E402
 import settings  # noqa: E402
@@ -153,7 +152,7 @@ def resolve_escalation(body: dict) -> tuple[dict, int]:
         return {"error": f"unknown source '{src}'"}, 400
     bus.mkdir(parents=True, exist_ok=True)
     with (bus / "events.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": src or "hub",
+        f.write(json.dumps({"ts": ctx.ts(), "source": src or "hub",
                             "kind": "escalation_resolved", "detail": "handled by the PI (dashboard)",
                             "data": {"ref": ref}}) + "\n")
     ctx.pi_log({"action": "escalation.resolve", "ref": ref, "source": src})
@@ -241,7 +240,7 @@ def run_tail(run_id: str, offset: int = 0) -> tuple[dict, int]:
         return {"error": "no such run"}, 404
     target, workdir, path, m = hit
     stream = path.parent / (m.get("stream") or f"{run_id}.stream.jsonl")
-    cap = int((sources._load_yaml(ctx.LAB / "config.yaml").get("dashboard") or {}).get("tail_max_kb") or 64) * 1024
+    cap = int((ctx.config().get("dashboard") or {}).get("tail_max_kb") or 64) * 1024
     try:
         size = stream.stat().st_size
     except OSError:
@@ -296,9 +295,7 @@ def executor_health(fresh: bool = False) -> tuple[dict, int]:
     if executor is None:
         return {"available": False, "enabled": False}, 200
     if fresh:   # "check again" after a sign-in
-        executor.backends._AUTH_CACHE.clear()
-        executor.backends._VERSION_CACHE.clear()
-        sources._EXEC_CACHE["ts"] = 0
+        sources.recheck_executor(cli=True)
     h = executor.health(_xlab())
     h["available"] = True
     h["thread_alive"] = bool(_SCHED.get("thread") and _SCHED["thread"].is_alive())
@@ -394,7 +391,7 @@ def run_tool(name: str, idea: str | None = None) -> dict:
         s = ctx.slug(idea or "")
         if not s:
             return {"error": "audit_claims needs an idea slug"}
-        rel_tol = (sources._load_yaml(ctx.LAB / "config.yaml").get("critique") or {}).get("claim_rel_tol", 1e-3)
+        rel_tol = (ctx.config().get("critique") or {}).get("claim_rel_tol", 1e-3)
         cmd = [py, str(ctx.HUB / "tools" / "audit_claims.py"), f"studies/{s}/paper", "--rel-tol", str(rel_tol)]
     elif name == "inbox":
         if pdir:

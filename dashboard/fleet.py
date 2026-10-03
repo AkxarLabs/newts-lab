@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import http.client
 import json
-import re
 import threading
 import time
 from pathlib import Path
@@ -30,7 +29,6 @@ import machines  # noqa: E402
 _CACHE: dict[str, tuple[float, dict]] = {}
 _LOCAL_TTL = 10.0
 POLL_S = 15.0
-_GATE_RE = re.compile(r"\bgate\s*-?\s*([123])\b", re.I)
 _state = {"thread": None, "stop": None, "attempts": {}}
 
 
@@ -69,10 +67,10 @@ def lab_summary(hub: Path) -> dict:
         rows = lab.registry_rows()
         out["studies"] = len(rows)
         for r in rows:
-            m = _GATE_RE.search(r.get("next") or "")
-            if m and r.get("state") not in ("final", "killed", "parked") and not _gate_signed(hub, lab, r["id"], int(m.group(1))):
-                items.append({"kind": "gate", "title": f"Gate {m.group(1)} — {r.get('title') or r['id']}", "idea": r["id"],
-                              "detail": {"gate": int(m.group(1))}})
+            g = ctx.tool("markers").gate_waiting(r.get("next"))
+            if g and r.get("state") not in ("final", "killed", "parked") and not _gate_signed(hub, lab, r["id"], g):
+                items.append({"kind": "gate", "title": f"Gate {g} — {r.get('title') or r['id']}", "idea": r["id"],
+                              "detail": {"gate": g}})
         from executor import campaigns  # noqa: PLC0415
         for c in campaigns.summary(lab):
             if c["status"] in ("active", "finishing", "stopping", "paused", "stalled"):

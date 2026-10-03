@@ -30,6 +30,7 @@ module that owns that area —
 from __future__ import annotations
 
 import argparse
+import functools
 import http.client
 import json
 import os
@@ -49,7 +50,7 @@ STATIC = HERE / "static"
 sys.path.insert(0, str(HERE))
 
 # The dashboard's modules — each one area of the product; all share ctx (the lab being shown), none
-# imports this one. These re-exports keep `serve.<name>` working for tests and older callers.
+# imports this one.
 import ctx  # noqa: E402
 import sources  # noqa: E402
 import term  # noqa: E402
@@ -62,12 +63,8 @@ import campaign  # noqa: E402
 import settings  # noqa: E402
 import instructions  # noqa: E402
 import fleet  # noqa: E402
-from bus import COMMAND_ACTIONS, _BUS_LOCK, _next_id, _bus_dir, _append, _file_lock, append_directive, append_command, _find_ref_bus, append_withdraw  # noqa: E402,F401
-from gates import _sign_gate2_block, approve_gate  # noqa: E402,F401
-from review import _DOC_CLIP, _read_clip, _filesec, _read_full, _HEADING, _md_section, _gate1_bundle, _pilot_evidence, _gate2_accounting, _gate2_bundle, _find_review_files, _meta_verdict, _gate3_bundle, _as_list, _within, _claim_project_dir, claims_map, read_doc  # noqa: E402,F401
-from runops import COMMAND_TO_RUN, _xlab, _run_ref, launch_run, _run_op, permission_run, ack_attention, resolve_escalation, set_programmatic, run_detail, _tail_entry, run_tail, run_log, executor_health, command_launch, command_stop_loop, _SCHED, _SCHED_HUBS, start_scheduler, handoff_scheduler, SAFE_TOOLS, run_tool  # noqa: E402,F401
-from settings import EXEC_CONFIG, set_executor_config, write_config  # noqa: E402,F401
-from library import _LIB_EXTS, _LIB_CLIP, _LIB_SECTION_CAP, _lib_root, _lib_entry, _lib_docs, _lib_glob, _dated_first, _lab_group, _STUDY_CORE_ORDER, _PROJECT_DOC_ORDER, _study_group, lib_tree, lib_doc, lib_file, _FIG_EXTS, _FIG_CTYPE, _paper_dir, paper_pdf, figure_list, figure_file  # noqa: E402,F401
+import library  # noqa: E402
+import review  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
 TOKEN = secrets.token_urlsafe(24)    # this server process's session secret (the cookie below)
@@ -236,18 +233,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         if route == "/api/events":
             return self._serve_sse()
-        if self.path.startswith("/api/paper"):
-            return self._serve_paper()
-        if self.path.startswith("/api/figs"):
-            return self._serve_figs()
-        if self.path.startswith("/api/figure"):
-            return self._serve_figure()
-        if self.path.startswith("/api/libfile"):
-            q = self._query()
-            hit = lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", ""))
-            if not hit:
-                return self._send(404, b"no such file", "text/plain")
-            return self._serve_bytes(hit[0], hit[1])
+        if route in FILE_ROUTES:
+            hit = FILE_ROUTES[route](self._query())
+            return self._serve_bytes(*hit) if hit else self._send(404, b"no such file", "text/plain")
         if self.path.startswith("/static/") or self.path.count("/") == 1:
             return self._serve_static(self.path.lstrip("/"))
         self._send(404, b"not found", "text/plain")
@@ -261,22 +249,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read_bytes(), ctype)
         except OSError:
             self._send(404, b"unreadable", "text/plain")
-
-    def _serve_paper(self) -> None:
-        f = paper_pdf(self._query().get("idea", ""))
-        if not f:
-            return self._send(404, b"no compiled paper (studies/<slug>/paper/main.pdf)", "text/plain")
-        self._serve_bytes(f, "application/pdf")
-
-    def _serve_figs(self) -> None:
-        self._json({"figures": figure_list(self._query().get("idea", ""))})
-
-    def _serve_figure(self) -> None:
-        q = self._query()
-        f = figure_file(q.get("idea", ""), q.get("name", ""))
-        if not f:
-            return self._send(404, b"no such figure", "text/plain")
-        self._serve_bytes(f, _FIG_CTYPE.get(f.suffix.lower(), "application/octet-stream"))
 
     def _proxy(self, method: str):
         """Forward this request to the remote lab's own dashboard through its tunnel."""
@@ -464,85 +436,91 @@ def _int(v, default: int = 0) -> int:
 
 GET_ROUTES = {
     "/api/state": lambda q: (_snapshot_cached(), 200),
-    "/api/run": lambda q: run_detail(q.get("run_id", "")),
-    "/api/run/tail": lambda q: run_tail(q.get("run_id", ""), _int(q.get("offset"))),
-    "/api/run/log": lambda q: run_log(q.get("run_id", "")),
-    "/api/executor/health": lambda q: executor_health(fresh=bool(q.get("fresh"))),
-    "/api/library": lambda q: (lib_tree(), 200),
+    "/api/run": lambda q: runops.run_detail(q.get("run_id", "")),
+    "/api/run/tail": lambda q: runops.run_tail(q.get("run_id", ""), _int(q.get("offset"))),
+    "/api/run/log": lambda q: runops.run_log(q.get("run_id", "")),
+    "/api/executor/health": lambda q: runops.executor_health(fresh=bool(q.get("fresh"))),
+    "/api/library": lambda q: (library.lib_tree(), 200),
     "/api/machines": lambda q: machines.list_machines(),
     "/api/labs": lambda q: labs.labs_list(),
     "/api/fleet": lambda q: fleet.fleet(),
     "/api/summary": lambda q: ({"ok": True, **fleet.lab_summary(ctx.HUB)}, 200),
     "/api/gate3/readiness": lambda q: (gates.gate3_readiness(ctx.safe_id(q.get("idea", "")) or "-"), 200),
     "/api/doc": lambda q: settings.doc_get(q.get("which", "")),
-    "/api/workflow/item": lambda q: instructions.workflow_item(q),
-    "/api/campaign/preflight": lambda q: campaign.campaign_preflight(q),
-    "/api/workflow/proposal": lambda q: instructions.workflow_proposal_get(q),
+    "/api/workflow/item": instructions.workflow_item,
+    "/api/campaign/preflight": campaign.campaign_preflight,
+    "/api/workflow/proposal": instructions.workflow_proposal_get,
     "/api/lab/config": lambda q: settings.lab_config_get(),
     "/api/keys": lambda q: settings.keys_status(),
     "/api/notify": lambda q: settings.notify_status(),
-    "/api/setup": lambda q: ({"ok": True, **settings.setup_status()}, 200),
-    "/api/term/read": lambda q: term.read(q),
-    "/api/system": lambda q: settings.system_info(q),
+    "/api/term/read": term.read,
+    "/api/system": settings.system_info,
+    "/api/figs": lambda q: ({"figures": library.figure_list(q.get("idea", ""))}, 200),
 }
 
+# GET routes that answer with a file: fn(query) -> (path, content type) | None (404)
+FILE_ROUTES = {
+    "/api/paper": lambda q: _typed(library.paper_pdf(q.get("idea", "")), "application/pdf"),
+    "/api/figure": lambda q: _typed(library.figure_file(q.get("idea", ""), q.get("name", ""))),
+    "/api/libfile": lambda q: library.lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", "")),
+}
+
+
+def _typed(f, ctype: str | None = None):
+    return (f, ctype or library._FIG_CTYPE.get(f.suffix.lower(), "application/octet-stream")) if f else None
+
 POST_ROUTES = {
-    "/api/run": lambda b: launch_run(b),
-    "/api/run/answer": lambda b: _run_op("answer", b),
-    "/api/run/reply": lambda b: _run_op("reply", b),
-    "/api/run/interrupt": lambda b: _run_op("interrupt", b),
-    "/api/run/stop": lambda b: _run_op("stop", b),
-    "/api/run/resume": lambda b: _run_op("resume", b),
-    "/api/run/cancel": lambda b: _run_op("cancel", b),
-    "/api/run/permission": lambda b: permission_run(b),
-    "/api/attention/ack": lambda b: ack_attention(b),
-    "/api/escalation/resolve": lambda b: resolve_escalation(b),
-    "/api/executor/enable": lambda b: set_programmatic(b),
-    "/api/executor/config": lambda b: set_executor_config(b),
-    "/api/labs/open": lambda b: labs.labs_open(b),
-    "/api/labs/create": lambda b: labs.labs_create(b),
-    "/api/labs/forget": lambda b: labs.labs_forget(b),
-    "/api/terminal": lambda b: labs.terminal_open(b),
-    "/api/gate/revoke": lambda b: gates.gate_revoke(b),
-    "/api/finalize": lambda b: gates.finalize_start(b),
-    "/api/envelope": lambda b: gates.envelope_set(b),
-    "/api/loopbrief/sign": lambda b: gates.loopbrief_sign(b),
-    "/api/campaign": lambda b: campaign.campaign_create(b),
-    "/api/campaign/control": lambda b: campaign.campaign_control(b),
-    "/api/revive": lambda b: gates.revive(b),
-    "/api/doc/save": lambda b: settings.doc_save(b),
-    "/api/workflow/save": lambda b: instructions.workflow_save(b),
-    "/api/workflow/proposal": lambda b: instructions.workflow_proposal(b),
-    "/api/lab/config": lambda b: settings.lab_config_set(b),
-    "/api/keys": lambda b: settings.keys_set(b),
-    "/api/notify": lambda b: settings.notify_set(b),
-    "/api/notify/test": lambda b: settings.notify_test(b),
-    "/api/setup/complete": lambda b: settings.setup_complete(b),
-    "/api/server/stop": lambda b: labs.server_stop(b),
-    "/api/machines/add": lambda b: machines.add_machine(b),
-    "/api/machines/remove": lambda b: machines.remove_machine(b),
-    "/api/machines/probe": lambda b: machines.probe(b),
-    "/api/machines/add-lab": lambda b: machines.add_lab(b),
-    "/api/machines/create-lab": lambda b: machines.create_lab(b),
-    "/api/machines/open": lambda b: machines.open_lab(b),
-    "/api/machines/use": lambda b: machines.use_lab(b),
-    "/api/machines/disconnect": lambda b: machines.disconnect(b),
-    "/api/fleet/keep": lambda b: fleet.set_keep(b),
-    "/api/machines/local": lambda b: machines.local(b),
-    "/api/machines/install-uv": lambda b: machines.install_uv(b),
-    "/api/system/scheduler": lambda b: settings.system_scheduler_set(b),
-    "/api/term/open": lambda b: term.open_session(b),
-    "/api/term/write": lambda b: term.write(b),
-    "/api/term/resize": lambda b: term.resize(b),
-    "/api/term/close": lambda b: term.close(b),
+    "/api/run": runops.launch_run,
+    **{f"/api/run/{op}": functools.partial(runops._run_op, op) for op in ("answer", "reply", "interrupt", "stop", "resume", "cancel")},
+    "/api/run/permission": runops.permission_run,
+    "/api/attention/ack": runops.ack_attention,
+    "/api/escalation/resolve": runops.resolve_escalation,
+    "/api/executor/enable": runops.set_programmatic,
+    "/api/executor/config": settings.set_executor_config,
+    "/api/labs/open": labs.labs_open,
+    "/api/labs/create": labs.labs_create,
+    "/api/labs/forget": labs.labs_forget,
+    "/api/terminal": labs.terminal_open,
+    "/api/gate/revoke": gates.gate_revoke,
+    "/api/finalize": gates.finalize_start,
+    "/api/envelope": gates.envelope_set,
+    "/api/loopbrief/sign": gates.loopbrief_sign,
+    "/api/campaign": campaign.campaign_create,
+    "/api/campaign/control": campaign.campaign_control,
+    "/api/revive": gates.revive,
+    "/api/doc/save": settings.doc_save,
+    "/api/workflow/save": instructions.workflow_save,
+    "/api/workflow/proposal": instructions.workflow_proposal,
+    "/api/lab/config": settings.lab_config_set,
+    "/api/keys": settings.keys_set,
+    "/api/notify": settings.notify_set,
+    "/api/notify/test": settings.notify_test,
+    "/api/setup/complete": settings.setup_complete,
+    "/api/server/stop": labs.server_stop,
+    "/api/machines/add": machines.add_machine,
+    "/api/machines/remove": machines.remove_machine,
+    "/api/machines/probe": machines.probe,
+    "/api/machines/add-lab": machines.add_lab,
+    "/api/machines/create-lab": machines.create_lab,
+    "/api/machines/open": machines.open_lab,
+    "/api/machines/use": machines.use_lab,
+    "/api/machines/disconnect": machines.disconnect,
+    "/api/fleet/keep": fleet.set_keep,
+    "/api/machines/local": machines.local,
+    "/api/machines/install-uv": machines.install_uv,
+    "/api/system/scheduler": settings.system_scheduler_set,
+    "/api/term/open": term.open_session,
+    "/api/term/write": term.write,
+    "/api/term/resize": term.resize,
+    "/api/term/close": term.close,
     "/api/directive": bus.directive_post,
     "/api/withdraw": bus.withdraw_post,
     "/api/command": runops.command_post,
     "/api/gate": gates.gate_post,
-    "/api/tool": lambda b: _res(run_tool(b.get("name", ""), b.get("idea"))),
-    "/api/read": lambda b: _res(read_doc(b.get("what", ""), b.get("idea"), b.get("gate"), b.get("run"))),
-    "/api/libdoc": lambda b: _res(lib_doc(b.get("scope", ""), b.get("slug"), b.get("rel", ""))),
-    "/api/claims": lambda b: _res(claims_map(b.get("idea"))),
+    "/api/tool": lambda b: _res(runops.run_tool(b.get("name", ""), b.get("idea"))),
+    "/api/read": lambda b: _res(review.read_doc(b.get("what", ""), b.get("idea"), b.get("gate"), b.get("run"))),
+    "/api/libdoc": lambda b: _res(library.lib_doc(b.get("scope", ""), b.get("slug"), b.get("rel", ""))),
+    "/api/claims": lambda b: _res(review.claims_map(b.get("idea"))),
 }
 
 
@@ -587,7 +565,7 @@ def main() -> int:
     known, _ = pre.parse_known_args()
     if known.hub:
         _use_hub(known.hub)
-    cfg = sources._load_yaml(ctx.LAB / "config.yaml").get("dashboard") or {}
+    cfg = ctx.config().get("dashboard") or {}
     parser = argparse.ArgumentParser()
     parser.add_argument("--hub", default=None, help="serve another lab (its hub root); default: this repo")
     parser.add_argument("--port", type=int, default=int(cfg.get("port", 8787)))
@@ -604,16 +582,16 @@ def main() -> int:
         return 3
     SERVER = ctx.SERVER = server
     labs.remember_lab(ctx.HUB)
-    _SCHED_HUBS.add(ctx.HUB)
+    runops._SCHED_HUBS.add(ctx.HUB)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
     if executor is None:
         print("  executor: not available (tools/executor missing) — observe-and-sign only")
     elif cfg.get("executor", True) is False:
         print("  executor: disabled for this dashboard (dashboard.executor: false) — observe-and-sign only")
     else:
-        start_scheduler()
+        runops.start_scheduler()
         fleet.start_keeper()
-        on = bool((sources._load_yaml(ctx.LAB / "config.yaml").get("agents") or {}).get("programmatic", {}).get("enabled"))
+        on = bool((ctx.config().get("agents") or {}).get("programmatic", {}).get("enabled"))
         print("  executor: scheduler running · programmatic launching is "
               + ("ON" if on else "OFF (enable it in the dashboard settings, or /configure)"))
     if Handler.demo:
@@ -622,7 +600,7 @@ def main() -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nlights out in the vivarium.")
-    handoff_scheduler()
+    runops.handoff_scheduler()
     return 0
 
 

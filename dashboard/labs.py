@@ -37,7 +37,7 @@ def _labs_save(labs: list[dict]) -> None:
 
 
 def lab_name(hub: Path) -> str:
-    cfg = sources._load_yaml(hub / "lab" / "config.yaml")
+    cfg = ctx.labfiles.config(hub)
     return str(((cfg.get("lab") or {}).get("name")) or hub.name)
 
 
@@ -144,7 +144,7 @@ def terminal_open(body: dict) -> tuple[dict, int]:
         else:
             if sources.executor is None:
                 return ctx.no_executor()
-            prog = (sources._load_yaml(ctx.LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}
+            prog = (ctx.config().get("agents") or {}).get("programmatic") or {}
             cli = sources.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
             argv = terminal.login_argv(backend, cli or [])
             if not argv:
@@ -154,12 +154,7 @@ def terminal_open(body: dict) -> tuple[dict, int]:
         return {"error": "unknown purpose"}, 400
     if not res.get("ok"):
         return res, 500
-    sources._EXEC_CACHE["ts"] = 0
-    if sources.executor is not None:
-        try:
-            sources.executor.backends._AUTH_CACHE.clear()
-        except AttributeError:
-            pass
+    sources.recheck_executor(cli=True)
     ctx.pi_log({"action": f"terminal.{purpose}", "backend": backend or None})
     what = {"login": "sign-in", "install": "install", "shell": "shell"}[purpose]
     return {"ok": True, "note": f"opened {res['how']} for the {backend + ' ' if backend else ''}{what} — "

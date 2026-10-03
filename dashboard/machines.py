@@ -415,7 +415,7 @@ def add_machine(body: dict) -> tuple[dict, int]:
     mid = _slug(name)
     if _get(mid):
         return {"error": f"a machine named {name} already exists"}, 400
-    m = {"id": mid, "name": name, "host": host, "labs": [], "facts": None, "added": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    m = {"id": mid, "name": name, "host": host, "labs": [], "facts": None, "added": ctx.ts()}
     _put(m)
     ctx.pi_log({"action": "machine.add", "id": mid, "host": host})
     res, _ = probe({"id": mid})
@@ -448,7 +448,7 @@ def probe(body: dict) -> tuple[dict, int]:
         _put(m)
         return {"ok": False, "kind": kind, "error": msg, "needs_interactive": kind == "auth"}, 200
     facts = parse_probe((r.stdout or b"").decode("utf-8", "replace"))
-    m["facts"], m["reach"], m["probed"] = facts, {"ok": True}, time.strftime("%Y-%m-%dT%H:%M:%S")
+    m["facts"], m["reach"], m["probed"] = facts, {"ok": True}, ctx.ts()
     for lab in m.get("labs") or []:
         lab["exists"] = lab["path"] in facts["labs"]
     _put(m)

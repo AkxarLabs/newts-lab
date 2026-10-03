@@ -27,6 +27,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — import the sibling renderer
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 import role_sync  # noqa: E402 — canonical model:/effort: sync (replaces the old private regex path)
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -52,13 +53,6 @@ PROFILE_KEYS = [
 
 
 # ── yaml + dict helpers ───────────────────────────────────────────────────────
-
-def _load_yaml(p: Path) -> dict:
-    try:
-        return yaml.safe_load(p.read_text(encoding="utf-8-sig")) or {}
-    except Exception:
-        return {}
-
 
 def _flatten(d: dict, prefix: tuple = ()) -> dict:
     """Leaf dotted-tuple -> value, e.g. {('agents','reviewer_model'): 'opus'}."""
@@ -176,7 +170,7 @@ def _load_profile(name: str) -> dict:
     if not p.exists():
         print(f"no profile '{name}' at {p}", file=sys.stderr)
         raise SystemExit(2)
-    return _load_yaml(p)
+    return labfiles.load_yaml(p)
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
@@ -202,7 +196,7 @@ def cmd_show(args) -> int:
 
 def cmd_diff(args) -> int:
     flat = _flatten(_load_profile(args.name))
-    cur = _flatten(_load_yaml(LAB / "config.yaml"))
+    cur = _flatten(labfiles.load_yaml(LAB / "config.yaml"))
     print(f"## diff: lab/config.yaml -> profile '{args.name}'\n")
     changes = 0
     for dotted, value in flat.items():
@@ -258,7 +252,7 @@ def cmd_apply(args) -> int:
 
 
 def cmd_save(args) -> int:
-    cur = _flatten(_load_yaml(LAB / "config.yaml"))
+    cur = _flatten(labfiles.load_yaml(LAB / "config.yaml"))
     out: dict = {}
     for key in PROFILE_KEYS:
         dotted = tuple(key.split("."))

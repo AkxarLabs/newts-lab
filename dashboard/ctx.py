@@ -10,6 +10,7 @@ server, and nothing reaches back into it.
     safe_id / slug    a client-supplied id for writing (strict) / reading (cleaned)
     pdir              a registered idea's project dir
     tool(name)        a lab tool module from tools/ (markers, workflow, profiles, …)
+    config() / ts()   the shown lab's config.yaml / a timestamp in the lab's format
 """
 
 from __future__ import annotations
@@ -19,11 +20,13 @@ import json
 import re
 import sys
 import threading
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]   # the code this dashboard runs (the template for new labs)
 TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+import labfiles  # noqa: E402 — the lab's files and the shared readers (tools/labfiles.py)
 HUB = ROOT
 LAB = HUB / "lab"
 REMOTE = None
@@ -97,14 +100,14 @@ def pi_log(rec: dict) -> None:
     """Append-only audit trail of PI actions taken through the dashboard. `default=str` keeps it robust
     to YAML-parsed values (e.g. an `expires:` date) that aren't natively JSON-serializable."""
     (LAB / ".bus").mkdir(parents=True, exist_ok=True)
-    rec["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    rec["ts"] = ts()
     with (LAB / ".bus" / "pi-actions.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, default=str) + "\n")
 
 
 def emit_hub(kind: str, **fields) -> None:
     (LAB / ".bus").mkdir(parents=True, exist_ok=True)
-    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": "hub", "kind": kind, **fields}
+    rec = {"ts": ts(), "source": "hub", "kind": kind, **fields}
     with (LAB / ".bus" / "events.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
 
@@ -121,8 +124,12 @@ def tool(name: str):
     return importlib.import_module(name)
 
 
-def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S")
+ts = labfiles.now
+
+
+def config() -> dict:
+    """The shown lab's lab/config.yaml."""
+    return labfiles.config(HUB)
 
 
 def read(p: Path) -> str | None:

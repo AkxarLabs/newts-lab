@@ -191,7 +191,7 @@ def test_read_text_tolerates_non_utf8_bytes(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     f = hub.lab / "dirty.txt"
     f.write_bytes(b"ok \xff\xfe not utf8\n")   # invalid UTF-8 — read_text(utf-8-sig) would raise
-    assert "not utf8" in m._read_text(f)         # errors='replace' → no UnicodeDecodeError
+    assert "not utf8" in m.labfiles.read_text(f)        # errors='replace' → no UnicodeDecodeError
 
 
 def test_snapshot_survives_non_utf8_event_line(hub, monkeypatch):
@@ -206,15 +206,6 @@ def test_snapshot_survives_non_utf8_event_line(hub, monkeypatch):
 
 
 # ── M1: gate detection is word-bounded (no phantom gates from "investigate"/"delegate") ──
-
-def test_gate_of_word_bounded(hub, monkeypatch):
-    m = _mod(hub, monkeypatch)
-    assert m._gate_of("awaiting PI Gate 1") == 1
-    assert m._gate_of("sign the Gate-2 envelope") == 2
-    assert m._gate_of("investigate 3 baselines") is None    # not a gate
-    assert m._gate_of("delegate 2 sweeps to runners") is None
-    assert m._gate_of("mitigate the risk") is None
-
 
 def test_gates_waiting_matches_parsed_gate_items(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
@@ -325,12 +316,12 @@ def test_snapshot_includes_escalations_and_notebook(hub, monkeypatch):
 # ── hardening from the adversarial verification pass ──────────────────────────
 
 def test_load_yaml_non_mapping_returns_empty_dict(hub, monkeypatch):
-    # a valid-YAML but non-mapping file must not make _load_yaml(...).get(...) raise AttributeError
+    # a valid-YAML but non-mapping file must not make load_yaml(...).get(...) raise AttributeError
     m = _mod(hub, monkeypatch)
     for content in ("42\n", "- a\n- b\n", "just a bare string\n"):
         f = hub.lab / "x.yaml"
         f.write_text(content, encoding="utf-8")
-        assert m._load_yaml(f) == {}
+        assert m.labfiles.load_yaml(f) == {}
 
 
 def test_snapshot_survives_non_mapping_control_yaml(hub, monkeypatch):

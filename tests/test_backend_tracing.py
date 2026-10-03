@@ -359,13 +359,13 @@ def test_executor_config_endpoint_whitelists_validates_and_stamps(hub, monkeypat
     cfg = hub.lab / "config.yaml"
     cfg.write_text("agents:\n  programmatic:\n    enabled: false   # master\n    backend: claude   # which CLI\n"
                    "    max_minutes: 240\n    daily_max_runs: 0\ndashboard:\n  auto_spawn_on_gate1: false\n", encoding="utf-8")
-    out, code = serve.set_executor_config({"changes": {"backend": "codex"}})
+    out, code = serve.settings.set_executor_config({"changes": {"backend": "codex"}})
     assert code == 400                                          # needs confirm
     for bad in ({"enabled": True}, {"permission_mode": "bypassPermissions"}, {"max_minutes": 1},
                 {"model": "--x"}, {"backend": "gemini"}):
-        out, code = serve.set_executor_config({"changes": bad, "confirm": True})
+        out, code = serve.settings.set_executor_config({"changes": bad, "confirm": True})
         assert code == 400, bad
-    out, code = serve.set_executor_config({"changes": {"backend": "opencode", "max_minutes": "90",
+    out, code = serve.settings.set_executor_config({"changes": {"backend": "opencode", "max_minutes": "90",
                                                        "daily_max_runs": 12, "auto_spawn_on_gate1": True},
                                            "confirm": True})
     assert code == 200, out
@@ -380,9 +380,9 @@ def test_launch_passes_repeat_and_rejects_bad_model(hub, monkeypatch):
     setup(hub)
     monkeypatch.setattr(serve.ctx, "HUB", hub.root)
     monkeypatch.setattr(serve.ctx, "pi_log", lambda rec: None)
-    out, code = serve.launch_run({"skill": "lab-status", "model": "-p", "confirm": True})
+    out, code = serve.runops.launch_run({"skill": "lab-status", "model": "-p", "confirm": True})
     assert code == 400 and "model" in out["error"]
-    out, code = serve.launch_run({"skill": "lab-status", "repeat_minutes": "30", "max_repeats": "4",
+    out, code = serve.runops.launch_run({"skill": "lab-status", "repeat_minutes": "30", "max_repeats": "4",
                                   "effort": "high", "confirm": True})
     assert code == 200, out
     run = executor.find_run(executor.Lab(hub.root), out["run_id"])[3]
@@ -454,7 +454,7 @@ def test_executor_config_inserts_keys_missing_from_an_older_config(hub, monkeypa
     cfg.write_text("agents:\n  programmatic:\n    enabled: true   # master\n    backends:\n      claude:\n"
                    "        model: opus\n\n# ── next section ──\nautopilot:\n  max_concurrent_projects: 1\n",
                    encoding="utf-8")
-    out, code = serve.set_executor_config({"changes": {"daily_max_runs": 20, "hub_max_concurrent": 2},
+    out, code = serve.settings.set_executor_config({"changes": {"daily_max_runs": 20, "hub_max_concurrent": 2},
                                            "confirm": True})
     assert code == 200, out
     import yaml
@@ -463,9 +463,9 @@ def test_executor_config_inserts_keys_missing_from_an_older_config(hub, monkeypa
     assert prog["daily_max_runs"] == 20 and prog["hub_max_concurrent"] == 2
     assert prog["backends"]["claude"]["model"] == "opus" and doc["autopilot"]["max_concurrent_projects"] == 1
     assert "# ── next section ──" in cfg.read_text(encoding="utf-8")
-    out, code = serve.set_executor_config({"changes": {"auto_spawn_on_gate1": True}, "confirm": True})
+    out, code = serve.settings.set_executor_config({"changes": {"auto_spawn_on_gate1": True}, "confirm": True})
     assert code == 400 and "dashboard" in out["error"]      # no such section: refused, file untouched
-    out, code = serve.set_executor_config({"changes": {"park_minutes": 45, "live": False}, "confirm": True})
+    out, code = serve.settings.set_executor_config({"changes": {"park_minutes": 45, "live": False}, "confirm": True})
     assert code == 200, out                                  # a nested block an older config lacks is added
     prog = yaml.safe_load(cfg.read_text(encoding="utf-8"))["agents"]["programmatic"]
     assert prog["live"] == {"park_minutes": 45, "enabled": False} and prog["backends"]["claude"]["model"] == "opus"

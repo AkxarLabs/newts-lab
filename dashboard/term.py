@@ -177,7 +177,7 @@ def command_for(purpose: str, backend: str | None) -> tuple[list[str] | None, st
     if purpose == "login":
         if sources.executor is None:
             return None, "the executor is not available"
-        prog = (sources._load_yaml(ctx.LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}
+        prog = (ctx.config().get("agents") or {}).get("programmatic") or {}
         cli = sources.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
         argv = terminal.login_argv(backend, cli or [])
         return (argv, None) if argv else (None, f"{backend} is not installed yet — install it first")
@@ -204,12 +204,7 @@ def open_session(body: dict) -> tuple[dict, int]:
             return {"error": f"could not start it: {e}"}, 500
         SESSIONS[s.id] = s
     ctx.pi_log({"action": f"term.{purpose}", "backend": backend, "argv": argv[:4]})
-    if sources.executor is not None:
-        try:
-            sources.executor.backends._AUTH_CACHE.clear()
-        except AttributeError:
-            pass
-    sources._EXEC_CACHE["ts"] = 0
+    sources.recheck_executor(cli=True)
     title = {"login": f"Sign in to {backend}", "install": f"Install {backend}", "shell": "Terminal"}[purpose]
     return {"ok": True, "id": s.id, "title": title, "pty": has_pty(), "command": " ".join(shlex.quote(a) for a in argv)}, 200
 

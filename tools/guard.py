@@ -67,10 +67,6 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d")
 
 
-def _load_yaml(path: Path) -> dict:
-    return labfiles.load_yaml(path)
-
-
 def _registry_rows() -> list[dict]:
     return labfiles.registry_rows(HUB)
 
@@ -227,10 +223,10 @@ def c_full_run(a) -> int:
     # Convenience: a named config whose stage isn't FULL needs no Gate 2 at all.
     cfg_path = getattr(a, "config", None)
     if cfg_path:
-        stg = str((_load_yaml(Path(cfg_path)) or {}).get("stage") or "").upper()
+        stg = str((labfiles.load_yaml(Path(cfg_path)) or {}).get("stage") or "").upper()
         if stg and stg != "FULL":
             return _verdict(0, f"config stage is {stg} (not FULL) — no Gate-2 envelope needed")
-    env = _load_yaml(pdir / "control.yaml").get("gate2_envelope") or {}
+    env = labfiles.load_yaml(pdir / "control.yaml").get("gate2_envelope") or {}
     if not env.get("pi_signed"):
         return _verdict(1, "no signed gate2_envelope — every FULL run needs fresh PI approval")
     exp = str(env.get("expires") or "").strip()
@@ -286,7 +282,7 @@ def c_frozen(a) -> int:
     pdir = _project_dir(a.slug)
     if not pdir:
         return _verdict(1, f"no project dir for {a.slug}")
-    ctl = _load_yaml(pdir / "control.yaml")
+    ctl = labfiles.load_yaml(pdir / "control.yaml")
     problems = []
     if ctl.get("eval_frozen") is not True:
         problems.append("eval_frozen is not true — the eval/test protocol must never be unfrozen by the agent")
@@ -468,7 +464,7 @@ def c_decisions(a) -> int:
     is expected, so they're exempt entirely."""
     row = _row(a.slug)
     pdir = _project_dir(a.slug, row)
-    target = (_load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
+    target = (labfiles.load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
     if bool(target.get("active")):
         return _verdict(0, f"target-driven — no decisions.md expected for {a.slug}")
     dfile = HUB / "studies" / a.slug / "decisions.md"
@@ -608,7 +604,7 @@ def c_finalization(a) -> int:
         return _verdict(1, f"no registry row for {a.slug}")
     state = (row.get("state") or "").lower()
     pdir = _project_dir(a.slug, row)
-    target = (_load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
+    target = (labfiles.load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
     target_driven = bool(target.get("active"))
     if target_driven:
         if state != "active":

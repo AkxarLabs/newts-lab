@@ -92,9 +92,7 @@ _NOVELTY_BACKING_RE = re.compile(r"\\cite|%.*\b[CN]\d+\b")
 
 def projects_root() -> Path:
     """Resolve lab.projects_root from lab/config.yaml (relative paths anchor at the hub)."""
-    config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 

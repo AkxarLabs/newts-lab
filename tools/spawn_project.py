@@ -40,10 +40,6 @@ _EXCLUDE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", ".bus", ".guar
 _PLACEHOLDERS = ("{{slug}}", "{{title}}", "{{date}}", "{{hub_path}}")  # ONLY these four — leave {{c}} etc.
 
 
-def _load_yaml(path: Path) -> dict:
-    return labfiles.load_yaml(path)
-
-
 def _projects_root(hub: Path) -> Path:
     return labfiles.projects_root(hub)
 

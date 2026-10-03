@@ -8,11 +8,9 @@ hubs share one interpreter.
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
@@ -21,34 +19,7 @@ DEFAULT_HUB = Path(__file__).resolve().parents[2]
 HUB_TARGET = "hub"
 
 
-def load_yaml(path: Path) -> dict:
-    """Always a dict — a missing, unreadable, non-mapping, or invalid YAML file is {}."""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8-sig", errors="replace"))
-    except (OSError, yaml.YAMLError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def read_jsonl(path: Path, tail: int | None = None) -> list[dict]:
-    """Parse a JSONL file, skipping torn/invalid lines. `tail` keeps only the last N lines."""
-    try:
-        lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
-    except OSError:
-        return []
-    if tail:
-        lines = lines[-tail:]
-    out = []
-    for ln in lines:
-        if not ln.strip():
-            continue
-        try:
-            obj = json.loads(ln)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            out.append(obj)
-    return out
+load_yaml, read_jsonl = labfiles.load_yaml, labfiles.read_jsonl   # re-exported: executor modules import them from here
 
 
 def pos_int(value, default: int, minimum: int) -> int:
@@ -152,6 +123,3 @@ class Lab:
     def acks_ledger(self) -> Path:
         return self.bus / "attention-acks.jsonl"
 
-    @property
-    def pi_actions(self) -> Path:
-        return self.bus / "pi-actions.jsonl"

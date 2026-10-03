@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 from . import attention, campaigns
-from .lab import Lab
+from .lab import Lab, labfiles
 from .manifest import now
 
 CHECK_EVERY = 15.0
@@ -36,17 +36,8 @@ KEYS = {"ntfy": "NEWTS_NOTIFY_NTFY", "webhook": "NEWTS_NOTIFY_WEBHOOK", "link": 
 
 
 def config(lab: Lab) -> dict:
-    out = {}
-    try:
-        text = (lab.lab / ".env.local").read_text(encoding="utf-8-sig")
-    except OSError:
-        return out
-    names = {v: k for k, v in KEYS.items()}
-    for line in text.splitlines():
-        k, _, v = line.partition("=")
-        if k.strip() in names and v.strip():
-            out[names[k.strip()]] = v.strip()
-    return out
+    env = labfiles.read_env(lab.lab / ".env.local")
+    return {name: env[key] for name, key in KEYS.items() if env.get(key)}
 
 
 def state_path(lab: Lab) -> Path:

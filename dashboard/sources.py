@@ -39,54 +39,6 @@ import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.
 TERMINAL_STATES = workflow.terminal_states()
 
 
-def _read_text(path: Path) -> str:
-    # errors="replace" so ONE non-UTF-8 byte written by a training script into any tailed file
-    # (metrics.jsonl, events.jsonl, a worker log) can't raise UnicodeDecodeError and 500 the whole
-    # snapshot — the module's "never a crash" contract must hold for exactly that dirty input.
-    try:
-        return path.read_text(encoding="utf-8-sig", errors="replace")
-    except OSError:
-        return ""
-
-
-def _to_int(v, default: int = 0) -> int:
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return default
-
-
-def _to_float(v, default: float = 0.0) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return default
-
-
-def _read_jsonl(path: Path, limit: int | None = None) -> list[dict]:
-    if not path.exists():
-        return []
-    rows = []
-    for line in _read_text(path).splitlines():
-        if line.strip():
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return rows[-limit:] if limit else rows
-
-
-def _load_yaml(path: Path) -> dict:
-    # Always return a dict: a valid-YAML but non-mapping file (a bare scalar `42`, a top-level list)
-    # would otherwise make every `_load_yaml(...).get(...)` call site raise AttributeError and blank
-    # the whole snapshot — the same "never a crash on dirty input" contract _read_text upholds.
-    try:
-        data = yaml.safe_load(_read_text(path))
-    except yaml.YAMLError:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 # ── registry ──────────────────────────────────────────────────────────────────
 
 def parse_registry() -> list[dict]:
@@ -114,7 +66,7 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
         if not (run_dir.is_dir() and meta_path.exists()):
             continue
         try:
-            meta = json.loads(_read_text(meta_path))
+            meta = json.loads(labfiles.read_text(meta_path))
         except json.JSONDecodeError:
             continue
         if meta.get("status") == "queued":   # waiting in the machine's job scheduler
@@ -131,7 +83,7 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
         if stream.exists() and stream.stat().st_size:
             age = time.time() - stream.stat().st_mtime
             stalled = age > 2 * log_interval
-            tail = _read_text(stream).strip().splitlines()
+            tail = labfiles.read_text(stream).strip().splitlines()
             if tail:
                 try:
                     rec = json.loads(tail[-1])
@@ -174,14 +126,14 @@ def _compact_run(m: dict) -> dict:
         if isinstance(la, dict) else None
     now = time.time()
     st = m.get("status")
-    started = _epoch(m.get("started"))
+    started = labfiles.parse_ts(m.get("started"))
     if st in ("starting", "running", "resuming") and started:
         prior = sum(float(a.get("wall_seconds") or 0) for a in (m.get("attempts") or [])[:-1])
-        cur = _epoch(((m.get("attempts") or [{}])[-1] or {}).get("started")) or started
+        cur = labfiles.parse_ts(((m.get("attempts") or [{}])[-1] or {}).get("started")) or started
         out["elapsed_s"] = _r10(prior + max(0.0, now - cur))
     else:   # a finished run's wall time never changes → exact (only LIVE numbers are rounded for SSE)
         out["elapsed_s"] = round(float(m.get("wall_seconds") or 0)) if m.get("wall_seconds") is not None else None
-    hb = _epoch(m.get("heartbeat"))
+    hb = labfiles.parse_ts(m.get("heartbeat"))
     out["heartbeat_age_s"] = _r10(now - hb) if (hb and st in ("starting", "running", "resuming")) else None
     subs = m.get("subagents") or {}
     out["subagents"] = [{"id": k, "type": v.get("type"), "description": v.get("description"),
@@ -208,7 +160,7 @@ def _agents_in(adir: Path) -> list[dict]:
     out = []
     for f in sorted(adir.glob("*.json")):
         try:
-            m = json.loads(_read_text(f))
+            m = json.loads(labfiles.read_text(f))
         except json.JSONDecodeError:
             continue
         if isinstance(m, dict):
@@ -232,7 +184,7 @@ def _best_metric(rows: list[dict]) -> dict | None:
 # ── slots & campaigns ─────────────────────────────────────────────────────────
 
 def _stale_slot_minutes() -> float:
-    return _to_float((_load_yaml(ctx.LAB / "config.yaml").get("compute") or {}).get("stale_slot_minutes"), 360.0)
+    return labfiles.to_float((ctx.config().get("compute") or {}).get("stale_slot_minutes"), 360.0)
 
 
 def slots() -> list[dict]:
@@ -244,7 +196,7 @@ def slots() -> list[dict]:
     out = []
     for f in sorted(sdir.glob("*.json")):
         try:
-            data = json.loads(_read_text(f))
+            data = json.loads(labfiles.read_text(f))
         except json.JSONDecodeError:
             continue
         data["slot_id"] = f.stem
@@ -263,7 +215,7 @@ def slots() -> list[dict]:
 
 
 def slot_cap() -> int:
-    return _to_int((_load_yaml(ctx.LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs"), 1)
+    return labfiles.to_int((ctx.config().get("compute") or {}).get("max_concurrent_runs"), 1)
 
 
 # ── Gate-2 envelope accounting (ONE source of truth, mirrors tools/guard.py c_full_run) ───────────
@@ -277,13 +229,13 @@ def envelope_accounting(pdir: "Path | None", env: dict | None) -> dict:
     signed = bool(env.get("pi_signed"))
     exp = str(env.get("expires") or "").strip()
     expired = bool(exp and exp.lower() not in ("null", "none") and exp < time.strftime("%Y-%m-%d"))
-    full_cap = _to_int(env.get("full_runs"))
-    per_cap = _to_float(env.get("per_run_max_minutes"))
-    total_cap = _to_float(env.get("total_max_minutes"))
+    full_cap = labfiles.to_int(env.get("full_runs"))
+    per_cap = labfiles.to_float(env.get("per_run_max_minutes"))
+    total_cap = labfiles.to_float(env.get("total_max_minutes"))
     done_count, done_min = 0, 0.0
     if pdir:
         reg = pdir / "runs" / "registry.jsonl"
-        for r in (_read_jsonl(reg) if reg.exists() else []):
+        for r in labfiles.read_jsonl(reg):
             if str(r.get("stage", "")).upper() == "FULL":
                 done_count += 1
                 ws = r.get("wall_seconds")
@@ -293,13 +245,13 @@ def envelope_accounting(pdir: "Path | None", env: dict | None) -> dict:
     if pdir:
         rf = pdir / ".guard" / "full-run-reservations.jsonl"
         now = time.time()
-        for r in (_read_jsonl(rf) if rf.exists() else []):
+        for r in labfiles.read_jsonl(rf):
             if str(r.get("status", "active")).lower() != "active":
                 continue
             ts = r.get("ts")
             if isinstance(ts, (int, float)) and (now - ts) > 24 * 3600:
                 continue
-            pr, pm = _to_int(r.get("planned_runs")), _to_float(r.get("planned_minutes"))
+            pr, pm = labfiles.to_int(r.get("planned_runs")), labfiles.to_float(r.get("planned_minutes"))
             resv_runs += pr
             resv_min += pr * pm
     # a zero/unset cap is "unbounded" for THAT dimension (guard.py:202); but an envelope whose caps are
@@ -349,7 +301,7 @@ def _notebook_status() -> dict:
 def editor_scheme() -> str:
     """URI scheme for the 'open in editor' deep-links (vscode|cursor|…|none). The dashboard is
     local-only, so a `<scheme>://file/<abs-path>` opens the PI's own editor. Default vscode."""
-    return str((_load_yaml(ctx.LAB / "config.yaml").get("dashboard") or {}).get("editor", "vscode")).strip().lower()
+    return str((ctx.config().get("dashboard") or {}).get("editor", "vscode")).strip().lower()
 
 
 # ── paper artifacts (the compiled PDF a back-half session produced) ────────────
@@ -379,7 +331,7 @@ def _claims_count(slug: str) -> int:
     f = ctx.HUB / "studies" / slug / "paper" / "claims.yaml"
     if not f.is_file():
         return 0
-    doc = _load_yaml(f)
+    doc = labfiles.load_yaml(f)
     cl = doc.get("claims") if isinstance(doc, dict) else None
     # count only dict items, matching serve.claims_map's filter so "claims (N)" == rendered rows
     return sum(1 for c in cl if isinstance(c, dict)) if isinstance(cl, list) else 0
@@ -395,8 +347,8 @@ def _synth_id(d: dict) -> str:
 
 
 def _directive_threads(bus_dir: Path, default_target: str = "hub") -> list[dict]:
-    directives = _read_jsonl(bus_dir / "directives.jsonl")
-    events = _read_jsonl(bus_dir / "events.jsonl")
+    directives = labfiles.read_jsonl(bus_dir / "directives.jsonl")
+    events = labfiles.read_jsonl(bus_dir / "events.jsonl")
     withdrawn = {d.get("ref") for d in directives if d.get("kind") == "withdraw"}
     acks: dict[str, dict] = {}
     for e in events:
@@ -432,14 +384,6 @@ def _directive_threads(bus_dir: Path, default_target: str = "hub") -> list[dict]
 # \bgate\s*-?\s*(N)\b — word-bounded so "investigate 3" / "delegate 2" in a next-action can't be read
 # as a waiting Gate 3 / Gate 2 (which would raise a phantom one-click Approve button). Matches
 # "Gate 1", "gate-2", "PI Gate 3", "gate1".
-_GATE_RE = re.compile(r"\bgate\s*-?\s*([123])\b", re.I)
-
-
-def _gate_of(next_action: str) -> int | None:
-    m = _GATE_RE.search(next_action or "")
-    return int(m.group(1)) if m else None
-
-
 # The dashboard's Gate-1 signature marker (serve.approve_gate writes it; defined here so the
 # snapshot can detect "signed, waiting for the agent" without importing the server).
 GATE1_MARK = "PI Gate 1 approved via Vivarium dashboard"   # (= markers.GATE1_DASHBOARD_MARK)
@@ -451,7 +395,7 @@ def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
     Rendering this distinctly is what stops a successful approval from looking like 'nothing
     happened'. Detection rides on the on-disk signature (not the event bus), so it holds no
     matter which session/tool signed, and it clears itself the moment the agent transitions the
-    registry row past the gate (the next-action text stops matching _GATE_RE, so gate -> None)."""
+    registry row past the gate (the next-action text stops naming a gate, so gate -> None)."""
     # (an EXPIRED signed envelope is not "waiting for the agent": guard.py full-run and approve_gate
     # both refuse it, so the PI must re-authorize — markers.gate_signed keeps it an actionable gate)
     return bool(gate) and ctx.tool("markers").gate_signed(ctx.HUB, idea, gate, pdir)
@@ -502,15 +446,6 @@ _KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
 _WORKER_CACHE: dict[str, tuple] = {}
 _WORKER_IN_TOOL_MAX_S = 3 * 86400   # inside one tool call (a long training run, a SLURM queue wait) this long
 _LIVE_IDS: set = set()               # session / run ids of runs that were live at the last snapshot
-
-
-def _epoch(ts) -> float | None:
-    if not ts or not isinstance(ts, str):
-        return None
-    try:
-        return time.mktime(time.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S"))
-    except ValueError:
-        return None
 
 
 def _fold_worker(lines: list[dict]) -> dict:
@@ -586,7 +521,7 @@ def _workers(bus_dir: Path, project: str | None = None, projects: set | None = N
         if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
             fold = hit[2]
         else:
-            lines = _read_jsonl(f)
+            lines = labfiles.read_jsonl(f)
             if not lines:
                 continue
             fold = _fold_worker(lines)
@@ -721,7 +656,7 @@ def campaigns(rows: list[dict] | None = None) -> list[dict]:
     cmap: dict[str, dict] = {}
     cdir = ctx.LAB / "campaigns"
     for f in (sorted(cdir.glob("*.md")) if cdir.exists() else []):
-        text = _read_text(f)
+        text = labfiles.read_text(f)
         meta = {}
         if text.lstrip().startswith("---"):
             parts = text.split("---", 2)
@@ -748,7 +683,7 @@ def campaigns(rows: list[dict] | None = None) -> list[dict]:
         ctrl = (pdir / "control.yaml") if pdir else None
         if not ctrl or not ctrl.exists():
             continue
-        env = (_load_yaml(ctrl).get("gate2_envelope") or {})
+        env = (labfiles.load_yaml(ctrl).get("gate2_envelope") or {})
         sv = str(env.get("signed_via") or "").strip()
         if ":" in sv:
             kind, ref = sv.split(":", 1)
@@ -771,12 +706,12 @@ def snapshot() -> dict:
     workers = _workers(hub_bus, None, proj_ids)
     hub_runs = _agents_in(hub_bus / "agents")
 
-    for e in _read_jsonl(hub_bus / "events.jsonl", limit=400):
+    for e in labfiles.read_jsonl(hub_bus / "events.jsonl", tail=400):
         all_events.append(e)
 
     for row in rows:
         pdir = _project_path(row)
-        gate = _gate_of(row["next"])   # the registry next-action text is the gate signal
+        gate = ctx.tool("markers").gate_waiting(row["next"])   # the registry next-action text is the gate signal
         item = {
             "id": row["id"], "title": row["title"], "state": row["state"],
             "updated": row["updated"], "next": row["next"],
@@ -792,7 +727,7 @@ def snapshot() -> dict:
         item["n_workers"] = 0
         item["envelope"] = None
         if pdir is not None:
-            registry = _read_jsonl(pdir / "runs" / "registry.jsonl")
+            registry = labfiles.read_jsonl(pdir / "runs" / "registry.jsonl")
             item["n_runs"] = sum(1 for r in registry if r.get("run_id"))
             item["best"] = _best_metric(registry)
             item["inflight"] = _inflight_runs(pdir)
@@ -800,10 +735,10 @@ def snapshot() -> dict:
             item["agents"] = _launched_agents(pdir)
             item["directives"] = _directive_threads(pdir / ".bus", default_target=row["id"])
             ctrl = pdir / "control.yaml"
-            env = (_load_yaml(ctrl).get("gate2_envelope") if ctrl.exists() else None)
+            env = (labfiles.load_yaml(ctrl).get("gate2_envelope") if ctrl.exists() else None)
             if env:   # only projects with an envelope block carry the burn-down chip
                 item["envelope"] = envelope_accounting(pdir, env)
-            pevents = _read_jsonl(pdir / ".bus" / "events.jsonl", limit=80)
+            pevents = labfiles.read_jsonl(pdir / ".bus" / "events.jsonl", tail=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)
             workers.extend(_workers(pdir / ".bus", row["id"], proj_ids))
@@ -827,7 +762,7 @@ def snapshot() -> dict:
     # can never light with an empty panel.
     held = slots()   # compute once (was called twice)
     return {
-        "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "now": ctx.ts(),
         "editor": editor_scheme(),
         "items": items,
         "events": all_events[-200:],
@@ -985,6 +920,14 @@ def _attention(items, events, workers, runs) -> list[dict]:
 
 _EXEC_CACHE: dict = {"ts": 0.0, "key": None, "value": None}
 ctx.on_change(lambda _old, _new: _EXEC_CACHE.update(ts=0))
+
+
+def recheck_executor(cli: bool = False) -> None:
+    """The next snapshot re-reads the executor's status; `cli` also re-probes the agent CLIs (after a
+    sign-in, an install, a backend change)."""
+    _EXEC_CACHE["ts"] = 0
+    if cli and executor is not None:
+        executor.backends.forget_checks()
 
 
 def executor_status() -> dict:

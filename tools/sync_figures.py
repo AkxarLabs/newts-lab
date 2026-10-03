@@ -24,7 +24,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
@@ -36,9 +35,7 @@ EXTS = (".pdf", ".tex", ".png")
 
 
 def projects_root() -> Path:
-    config = yaml.safe_load((HUB / "lab" / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 

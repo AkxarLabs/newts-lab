@@ -30,10 +30,6 @@ if hasattr(sys.stdout, "reconfigure"):
 HUB = Path(__file__).resolve().parents[1]
 
 
-def _load_yaml(path: Path) -> dict:
-    return labfiles.load_yaml(path)
-
-
 def _projects_root() -> Path:
     return labfiles.projects_root(HUB)
 
@@ -53,11 +49,11 @@ def resolve_project_dir(claim: dict) -> Path:
 
 def multi_seed_n(project_dir: Path) -> int:
     """Resolve the seed floor: project control.yaml seeds.multi_seed_n > lab experiment.multi_seed_n > 3."""
-    seeds = _load_yaml(project_dir / "control.yaml").get("seeds")
+    seeds = labfiles.load_yaml(project_dir / "control.yaml").get("seeds")
     n = seeds.get("multi_seed_n") if isinstance(seeds, dict) else None
     if n:
         return int(n)
-    n = ((_load_yaml(HUB / "lab" / "config.yaml").get("experiment") or {}).get("multi_seed_n"))
+    n = ((labfiles.load_yaml(HUB / "lab" / "config.yaml").get("experiment") or {}).get("multi_seed_n"))
     return int(n) if n else 3
 
 
@@ -112,7 +108,7 @@ def audit(paper_dir: Path) -> int:
     if not claims_path.exists():
         print(f"no claims.yaml at {claims_path}")
         return 1
-    claims = (_load_yaml(claims_path).get("claims")) or []
+    claims = (labfiles.load_yaml(claims_path).get("claims")) or []
     headline = [c for c in claims if isinstance(c, dict) and c.get("headline")]
     if not headline:
         print("[multiseed] no claims marked `headline: true` — nothing to enforce "

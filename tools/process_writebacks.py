@@ -24,13 +24,14 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
+sys.path.insert(0, str(HUB / "tools"))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 _COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 PENDING_RE = re.compile(r"^HUB-WRITEBACK-PENDING:\s*(\S+)\s*$")
 # Match only a tool-emitted marker (id + ISO timestamp), so a casual mention of an id in prose
@@ -51,9 +52,7 @@ def _append(path: Path, text: str) -> None:
 
 
 def projects_root() -> Path:
-    config = yaml.safe_load((LAB / "config.yaml").read_text(encoding="utf-8-sig")) or {}
-    root = ((config.get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 def registry_projects() -> list[tuple[str, Path]]:

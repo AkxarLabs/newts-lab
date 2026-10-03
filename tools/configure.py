@@ -46,10 +46,6 @@ def is_pi_owned(key: str) -> bool:
     return key in PI_OWNED_EXACT or any(key.startswith(p) for p in PI_OWNED_PREFIXES)
 
 
-def _load_yaml(path: Path) -> dict:
-    return labfiles.load_yaml(path)
-
-
 def _projects_root() -> Path:
     return labfiles.projects_root(HUB)
 

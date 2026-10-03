@@ -52,7 +52,7 @@ def _manifest(m, hub, rid):
 # ── free-form runs ────────────────────────────────────────────────────────────
 
 def test_free_form_run(m, hub):
-    out, code = m.launch_run({"prompt": "Summarize the open questions\nand suggest two ideas.", "confirm": True})
+    out, code = m.runops.launch_run({"prompt": "Summarize the open questions\nand suggest two ideas.", "confirm": True})
     assert code == 200, out
     man = _manifest(m, hub, out["run_id"])
     assert man["skill"] == "ask" and man["kind"] == "ask" and man["command"] is None
@@ -61,15 +61,15 @@ def test_free_form_run(m, hub):
     assert (rd / "prompt.md").read_text(encoding="utf-8").startswith("Summarize")
     assert "PI's own instruction" in (rd / "preamble.md").read_text(encoding="utf-8")
     assert _pi(hub)[-1]["prompt"].startswith("Summarize")
-    assert m.launch_run({"prompt": "   ", "confirm": True})[1] == 400
-    assert m.launch_run({"prompt": "x" * 9000, "confirm": True})[1] == 400
-    assert m.launch_run({"prompt": "go", "chain": "loop", "confirm": True})[1] == 400
+    assert m.runops.launch_run({"prompt": "   ", "confirm": True})[1] == 400
+    assert m.runops.launch_run({"prompt": "x" * 9000, "confirm": True})[1] == 400
+    assert m.runops.launch_run({"prompt": "go", "chain": "loop", "confirm": True})[1] == 400
 
 
 def test_free_form_run_inside_a_project(m, hub):
     hub.add_registry_row("idea-p", state="active")
     pdir = hub.make_project("idea-p")
-    out, code = m.launch_run({"prompt": "check the last pilot", "target": "idea-p", "confirm": True})
+    out, code = m.runops.launch_run({"prompt": "check the last pilot", "target": "idea-p", "confirm": True})
     assert code == 200
     assert _manifest(m, hub, out["run_id"])["cwd"] == str(pdir)
 
@@ -87,9 +87,9 @@ def _ready_paper(hub, slug="idea-g"):
 
 def test_finalize_never_launches_without_the_signature(m, hub):
     _ready_paper(hub)
-    out, code = m.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True})
+    out, code = m.runops.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True})
     assert code == 400 and "Gate 3" in out["error"]
-    out, code = m.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True}, gate3=True)
+    out, code = m.runops.launch_run({"skill": "finalize", "target": "idea-g", "confirm": True}, gate3=True)
     assert code == 400 and "not signed" in out["error"]
 
 
@@ -132,7 +132,7 @@ def test_gate1_with_envelope_marker_and_revoke(m, hub):
     (hub.root / "studies" / "idea-1").mkdir(parents=True)
     prop = hub.root / "studies" / "idea-1" / "proposal.md"
     prop.write_text("# P\n", encoding="utf-8")
-    assert m.approve_gate("idea-1", 1, envelope=True)["ok"]
+    assert m.gates.approve_gate("idea-1", 1, envelope=True)["ok"]
     assert "· envelope approved -->" in prop.read_text(encoding="utf-8")
     out, code = m.gates.gate_revoke({"idea": "idea-1", "what": "gate1", "confirm": True})
     assert code == 200 and "Gate 1 approved" not in prop.read_text(encoding="utf-8")
@@ -147,11 +147,11 @@ def test_envelope_edit_sign_and_resign(m, hub):
                                         "values": {"full_runs": 4, "per_run_max_minutes": 90, "total_max_minutes": 360,
                                                    "expires": "2099-01-01"}})
     assert code == 200, out
-    env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
+    env = m.ctx.labfiles.load_yaml(pdir / "control.yaml")["gate2_envelope"]
     assert env["full_runs"] == 4 and env["pi_signed"] is True and str(env["signed_via"]).startswith("dashboard:")
     # changing values without re-signing withdraws the signature
     out, code = m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": 8}})
-    env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
+    env = m.ctx.labfiles.load_yaml(pdir / "control.yaml")["gate2_envelope"]
     assert code == 200 and env["full_runs"] == 8 and env["pi_signed"] is False and "withdrawn" in out["note"]
     assert m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"expires": "2001-01-01"}})[1] == 400
     assert m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": -1}})[1] == 400
@@ -182,7 +182,7 @@ def test_campaign_form_writes_a_signed_brief_the_guard_accepts(m, hub, monkeypat
     g = load("signature_guard")
     monkeypatch.setattr(g, "HUB", hub.root.resolve())
     assert g._campaign_signed(f.name)
-    spec_out, code = m.launch_run({"skill": "autopilot", "args": out["file"], "confirm": True})
+    spec_out, code = m.runops.launch_run({"skill": "autopilot", "args": out["file"], "confirm": True})
     assert code == 200, spec_out
 
 
@@ -219,7 +219,7 @@ def test_lab_settings_and_setup(m, hub):
     out, code = m.settings.lab_config_set({"confirm": True, "changes": {"name": "Moe lab", "max_concurrent_runs": 2,
                                                                         "venue": "neurips"}})
     assert code == 200, out
-    cfg = m.sources._load_yaml(hub.lab / "config.yaml")
+    cfg = m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")
     assert cfg["lab"]["name"] == "Moe lab" and cfg["compute"]["max_concurrent_runs"] == 2 and cfg["writing"]["venue"] == "neurips"
     assert m.settings.lab_config_set({"confirm": True, "changes": {"agents.x": 1}})[1] == 400
     assert not m.settings.setup_status()["completed"]
@@ -232,8 +232,8 @@ def test_lab_settings_and_setup(m, hub):
 
 def test_programmatic_switch_inserts_a_missing_key(m, hub):
     (hub.lab / "config.yaml").write_text("agents:\n  programmatic:\n    backend: claude\n", encoding="utf-8")
-    out, code = m.set_programmatic({"enabled": True, "confirm": True})
-    assert code == 200 and m.sources._load_yaml(hub.lab / "config.yaml")["agents"]["programmatic"]["enabled"] is True
+    out, code = m.runops.set_programmatic({"enabled": True, "confirm": True})
+    assert code == 200 and m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")["agents"]["programmatic"]["enabled"] is True
 
 
 # ── labs ──────────────────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ def test_create_open_and_switch_labs(m, hub, tmp_path):
     out, code = m.labs.labs_create({"confirm": True, "name": "Second lab", "path": str(dest), "open": False})
     assert code == 200, out
     assert (dest / "lab" / "config.yaml").exists() and not (dest / ".github").exists()
-    assert m.sources._load_yaml(dest / "lab" / "config.yaml")["lab"]["name"] == "Second lab"
+    assert m.ctx.labfiles.load_yaml(dest / "lab" / "config.yaml")["lab"]["name"] == "Second lab"
     listed, _ = m.labs.labs_list()
     assert any(l["path"] == str(dest) for l in listed["labs"])
     out, code = m.labs.labs_open({"path": str(dest)})
@@ -318,14 +318,14 @@ def test_system_probe_and_scheduler_block(m, hub):
                                                                    "setup": ["module load cuda/12.4"], "extra_args": ["--exclusive"]}}
     out, code = m.settings.system_scheduler_set({"scheduler": sc, "confirm": True})
     assert code == 200, out
-    cfg = m.sources._load_yaml(hub.lab / "config.yaml")
+    cfg = m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")
     got = cfg["compute"]["scheduler"]
     assert got["kind"] == "slurm" and got["slurm"]["gpus_per_run"] == 2 and got["slurm"]["setup"] == ["module load cuda/12.4"]
     assert cfg["compute"]["max_concurrent_runs"] == 1 and cfg["agents"]["programmatic"]["enabled"] is True   # the rest kept
     # a second save replaces the block in place (no duplicate key)
     assert m.settings.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
     text = (hub.lab / "config.yaml").read_text(encoding="utf-8")
-    assert text.count("scheduler:") == 1 and m.sources._load_yaml(hub.lab / "config.yaml")["compute"]["scheduler"]["kind"] == "local"
+    assert text.count("scheduler:") == 1 and m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")["compute"]["scheduler"]["kind"] == "local"
     bad = [{"kind": "pbs"}, {"kind": "slurm", "slurm": {"partition": "gpu; rm -rf /"}},
            {"kind": "slurm", "slurm": {"extra_args": ["exclusive"]}}, {"kind": "custom", "custom": {"submit": "qsub"}}]
     for b in bad:

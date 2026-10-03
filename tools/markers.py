@@ -64,3 +64,12 @@ def gate_signed(hub, slug: str, gate: int, project_dir=None) -> bool:
     if gate == 3:
         return bool(GATE3_RE.search(_text(hub / "studies" / slug / "paper" / "gate3-approval.md")))
     return False
+
+
+_GATE_MENTION = re.compile(r"\bgate\s*-?\s*([123])\b", re.I)
+
+
+def gate_waiting(next_action: str | None) -> int | None:
+    """The gate a registry row's next-action text says the study waits at ("Gate 1 — …"), or None."""
+    m = _GATE_MENTION.search(next_action or "")
+    return int(m.group(1)) if m else None
