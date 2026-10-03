@@ -1,4 +1,4 @@
-"""The dashboard as an end-to-end product (dashboard/product.py + the serve.py wiring).
+"""The dashboard as an end-to-end product (dashboard/labs.py, gates.py, campaign.py, settings.py, instructions.py + the serve.py wiring).
 
 Free-form runs, Gate 3 (typed confirmation → the one /finalize run it allows; chains never finalize),
 revoke, the envelope editor, LOOP_BRIEF and campaign signing, revive, research keys, lab settings,
@@ -95,11 +95,11 @@ def test_finalize_never_launches_without_the_signature(m, hub):
 
 def test_gate3_sign_then_finalize(m, hub):
     paper = _ready_paper(hub)
-    r = m.product.gate3_readiness("idea-g")
+    r = m.gates.gate3_readiness("idea-g")
     assert r["can_sign"] and all(c["ok"] for c in r["checks"] if c["id"] in ("state", "meta", "pdf"))
-    out, code = m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-x"})
+    out, code = m.gates.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-x"})
     assert code == 400 and "type the study name" in out["error"]
-    out, code = m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g", "launch": True})
+    out, code = m.gates.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g", "launch": True})
     assert code == 200, out
     note = (paper / "gate3-approval.md").read_text(encoding="utf-8")
     assert "signed_via: dashboard:" in note and "Gate 3 approved" in note and "sha256" in note
@@ -107,15 +107,15 @@ def test_gate3_sign_then_finalize(m, hub):
     assert man["skill"] == "finalize" and man["gate3_signed"] is True
     assert "this run IS the finalization" in (hub.lab / ".bus" / "agents" / f"{man['run_id']}.d" / "preamble.md").read_text(encoding="utf-8")
     assert _pi(hub)[-2]["gate"] == 3
-    assert m.product.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g"})[1] == 400   # once
+    assert m.gates.gate3_sign({"idea": "idea-g", "confirm": True, "typed": "idea-g"})[1] == 400   # once
     # revoke (not yet final) removes the note
-    assert m.product.gate_revoke({"idea": "idea-g", "what": "gate3", "confirm": True})[1] == 200
+    assert m.gates.gate_revoke({"idea": "idea-g", "what": "gate3", "confirm": True})[1] == 200
     assert not (paper / "gate3-approval.md").exists()
 
 
 def test_gate3_refuses_before_internal_review(m, hub):
     hub.add_registry_row("idea-w", state="writing")
-    out, code = m.product.gate3_sign({"idea": "idea-w", "confirm": True, "typed": "idea-w"})
+    out, code = m.gates.gate3_sign({"idea": "idea-w", "confirm": True, "typed": "idea-w"})
     assert code == 400 and "not ready" in out["error"]
 
 
@@ -134,7 +134,7 @@ def test_gate1_with_envelope_marker_and_revoke(m, hub):
     prop.write_text("# P\n", encoding="utf-8")
     assert m.approve_gate("idea-1", 1, envelope=True)["ok"]
     assert "· envelope approved -->" in prop.read_text(encoding="utf-8")
-    out, code = m.product.gate_revoke({"idea": "idea-1", "what": "gate1", "confirm": True})
+    out, code = m.gates.gate_revoke({"idea": "idea-1", "what": "gate1", "confirm": True})
     assert code == 200 and "Gate 1 approved" not in prop.read_text(encoding="utf-8")
 
 
@@ -143,18 +143,18 @@ def test_gate1_with_envelope_marker_and_revoke(m, hub):
 def test_envelope_edit_sign_and_resign(m, hub):
     hub.add_registry_row("idea-e", state="active")
     pdir = hub.make_project("idea-e")
-    out, code = m.product.envelope_set({"idea": "idea-e", "confirm": True, "sign": True,
+    out, code = m.gates.envelope_set({"idea": "idea-e", "confirm": True, "sign": True,
                                         "values": {"full_runs": 4, "per_run_max_minutes": 90, "total_max_minutes": 360,
                                                    "expires": "2099-01-01"}})
     assert code == 200, out
     env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
     assert env["full_runs"] == 4 and env["pi_signed"] is True and str(env["signed_via"]).startswith("dashboard:")
     # changing values without re-signing withdraws the signature
-    out, code = m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": 8}})
+    out, code = m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": 8}})
     env = m.sources._load_yaml(pdir / "control.yaml")["gate2_envelope"]
     assert code == 200 and env["full_runs"] == 8 and env["pi_signed"] is False and "withdrawn" in out["note"]
-    assert m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"expires": "2001-01-01"}})[1] == 400
-    assert m.product.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": -1}})[1] == 400
+    assert m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"expires": "2001-01-01"}})[1] == 400
+    assert m.gates.envelope_set({"idea": "idea-e", "confirm": True, "values": {"full_runs": -1}})[1] == 400
 
 
 # ── loop brief, campaign ──────────────────────────────────────────────────────
@@ -163,16 +163,16 @@ def test_loop_brief_sign(m, hub):
     hub.add_registry_row("idea-l", state="active")
     pdir = hub.make_project("idea-l")
     shutil.copy(REPO / "templates" / "loop" / "LOOP_BRIEF.md", pdir / "LOOP_BRIEF.md")
-    out, code = m.product.loopbrief_sign({"idea": "idea-l", "mode": "explore", "confirm": True})
+    out, code = m.gates.loopbrief_sign({"idea": "idea-l", "mode": "explore", "confirm": True})
     assert code == 200, out
     text = (pdir / "LOOP_BRIEF.md").read_text(encoding="utf-8")
     assert "- [x] Authorized as scoped above" in text and "signed_via: dashboard:" in text and "`explore`" in text
-    assert m.product.loopbrief_sign({"idea": "idea-l", "confirm": True})[1] == 400      # already signed
-    assert m.product.gate_revoke({"idea": "idea-l", "what": "loop", "confirm": True})[1] == 200
+    assert m.gates.loopbrief_sign({"idea": "idea-l", "confirm": True})[1] == 400      # already signed
+    assert m.gates.gate_revoke({"idea": "idea-l", "what": "loop", "confirm": True})[1] == 200
 
 
 def test_campaign_form_writes_a_signed_brief_the_guard_accepts(m, hub, monkeypatch):
-    out, code = m.product.campaign_create({"confirm": True, "fields": {
+    out, code = m.campaign.campaign_create({"confirm": True, "fields": {
         "direction": "sparse routing for small MoEs", "ideas": 2, "parallel": 1, "compute_total": "8 GPU-h",
         "full_runs": 3, "full_minutes": 60, "wall_clock": "tonight, 8h", "mode": "execute"}})
     assert code == 200, out
@@ -192,8 +192,8 @@ def test_revive(m, hub):
     hub.add_registry_row("idea-k", state="killed")
     (hub.root / "studies" / "idea-k").mkdir(parents=True)
     (hub.root / "studies" / "idea-k" / "IDEA.md").write_text("---\nstate: killed\n---\n# Idea\n", encoding="utf-8")
-    assert m.product.revive({"idea": "idea-k", "confirm": True})[1] == 400                 # a reason is required
-    out, code = m.product.revive({"idea": "idea-k", "confirm": True, "reason": "new data", "to": "triaged"})
+    assert m.gates.revive({"idea": "idea-k", "confirm": True})[1] == 400                 # a reason is required
+    out, code = m.gates.revive({"idea": "idea-k", "confirm": True, "reason": "new data", "to": "triaged"})
     assert code == 200
     row = next(r for r in m.sources.parse_registry() if r["id"] == "idea-k")
     assert row["state"] == "triaged"
@@ -203,31 +203,31 @@ def test_revive(m, hub):
 # ── keys, settings, setup, docs ───────────────────────────────────────────────
 
 def test_keys_are_stored_but_never_read_back(m, hub):
-    assert m.product.keys_set({"key": "S2_API_KEY", "value": "secret-123"})[1] == 200
+    assert m.settings.keys_set({"key": "S2_API_KEY", "value": "secret-123"})[1] == 200
     assert "S2_API_KEY=secret-123" in (hub.lab / ".env.local").read_text(encoding="utf-8")
-    st, _ = m.product.keys_status()
+    st, _ = m.settings.keys_status()
     assert "secret-123" not in json.dumps(st) and next(k for k in st["keys"] if k["key"] == "S2_API_KEY")["set"]
     assert "lab/.env.local" in (hub.root / ".gitignore").read_text(encoding="utf-8")
     assert "secret-123" not in json.dumps(_pi(hub))
-    assert m.product.keys_set({"key": "NEWTS_RUN_ID", "value": "x"})[1] == 400
+    assert m.settings.keys_set({"key": "NEWTS_RUN_ID", "value": "x"})[1] == 400
     sup = load("tools/executor/supervise.py") if False else None   # noqa: F841 — _env_local is tested below
     from executor.supervise import _env_local
     assert _env_local(m.executor.Lab(hub.root))["S2_API_KEY"] == "secret-123"
 
 
 def test_lab_settings_and_setup(m, hub):
-    out, code = m.product.lab_config_set({"confirm": True, "changes": {"name": "Moe lab", "max_concurrent_runs": 2,
+    out, code = m.settings.lab_config_set({"confirm": True, "changes": {"name": "Moe lab", "max_concurrent_runs": 2,
                                                                         "venue": "neurips"}})
     assert code == 200, out
     cfg = m.sources._load_yaml(hub.lab / "config.yaml")
     assert cfg["lab"]["name"] == "Moe lab" and cfg["compute"]["max_concurrent_runs"] == 2 and cfg["writing"]["venue"] == "neurips"
-    assert m.product.lab_config_set({"confirm": True, "changes": {"agents.x": 1}})[1] == 400
-    assert not m.product.setup_status()["completed"]
-    assert m.product.setup_complete({})[1] == 200
-    assert m.product.setup_status()["completed"]
-    assert m.product.doc_save({"doc": "system", "text": "# This machine\n1 GPU\n"})[1] == 200
-    assert m.product.doc_get("system")[0]["text"].startswith("# This machine")
-    assert m.product.doc_save({"doc": "../../etc", "text": "x"})[1] == 400
+    assert m.settings.lab_config_set({"confirm": True, "changes": {"agents.x": 1}})[1] == 400
+    assert not m.settings.setup_status()["completed"]
+    assert m.settings.setup_complete({})[1] == 200
+    assert m.settings.setup_status()["completed"]
+    assert m.settings.doc_save({"doc": "system", "text": "# This machine\n1 GPU\n"})[1] == 200
+    assert m.settings.doc_get("system")[0]["text"].startswith("# This machine")
+    assert m.settings.doc_save({"doc": "../../etc", "text": "x"})[1] == 400
 
 
 def test_programmatic_switch_inserts_a_missing_key(m, hub):
@@ -240,16 +240,16 @@ def test_programmatic_switch_inserts_a_missing_key(m, hub):
 
 def test_create_open_and_switch_labs(m, hub, tmp_path):
     dest = tmp_path / "labs" / "second"
-    out, code = m.product.labs_create({"confirm": True, "name": "Second lab", "path": str(dest), "open": False})
+    out, code = m.labs.labs_create({"confirm": True, "name": "Second lab", "path": str(dest), "open": False})
     assert code == 200, out
     assert (dest / "lab" / "config.yaml").exists() and not (dest / ".github").exists()
     assert m.sources._load_yaml(dest / "lab" / "config.yaml")["lab"]["name"] == "Second lab"
-    listed, _ = m.product.labs_list()
+    listed, _ = m.labs.labs_list()
     assert any(l["path"] == str(dest) for l in listed["labs"])
-    out, code = m.product.labs_open({"path": str(dest)})
+    out, code = m.labs.labs_open({"path": str(dest)})
     assert code == 200 and m.ctx.HUB == dest.resolve()
-    assert m.product.labs_open({"path": str(tmp_path)})[1] == 400                     # not a lab
-    assert m.product.labs_create({"confirm": True, "path": str(dest)})[1] == 400      # not empty
+    assert m.labs.labs_open({"path": str(tmp_path)})[1] == 400                     # not a lab
+    assert m.labs.labs_create({"confirm": True, "path": str(dest)})[1] == 400      # not empty
 
 
 # ── HTTP protection ───────────────────────────────────────────────────────────
@@ -296,14 +296,14 @@ def test_terminal_opens_only_fixed_commands(m, hub, monkeypatch):
     calls = []
     monkeypatch.setattr(terminal.subprocess, "Popen", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setattr(terminal.shutil, "which", lambda exe: exe if exe == "xterm" else None)
-    out, code = m.product.terminal_open({"purpose": "login", "backend": "claude"})
+    out, code = m.labs.terminal_open({"purpose": "login", "backend": "claude"})
     assert code == 200, out
     argv = calls[-1][0][0]
     flat = " ".join(map(str, argv))
     assert "auth login" in flat and "fake_claude.py" in flat          # the configured CLI, its own login
-    assert m.product.terminal_open({"purpose": "login", "backend": "rm -rf /"})[1] == 400
-    assert m.product.terminal_open({"purpose": "exec", "backend": "claude"})[1] == 400
-    out, code = m.product.terminal_open({"purpose": "install", "backend": "codex"})
+    assert m.labs.terminal_open({"purpose": "login", "backend": "rm -rf /"})[1] == 400
+    assert m.labs.terminal_open({"purpose": "exec", "backend": "claude"})[1] == 400
+    out, code = m.labs.terminal_open({"purpose": "install", "backend": "codex"})
     assert code == 200 and "@openai/codex" in " ".join(map(str, calls[-1][0][0]))
     assert _pi(hub)[-1]["action"] == "terminal.install"
 
@@ -311,25 +311,25 @@ def test_terminal_opens_only_fixed_commands(m, hub, monkeypatch):
 # ── System & compute ──────────────────────────────────────────────────────────
 
 def test_system_probe_and_scheduler_block(m, hub):
-    out, code = m.product.system_info({"fresh": "1"})
+    out, code = m.settings.system_info({"fresh": "1"})
     assert code == 200 and out["facts"]["cpus"] and "suggested_scheduler" in out["facts"]
     assert out["scheduler"]["kind"] == "local"
     sc = {"kind": "slurm", "stages": ["PILOT", "FULL"], "slurm": {"partition": "gpu", "gpus_per_run": 2, "mem": "32G",
                                                                    "setup": ["module load cuda/12.4"], "extra_args": ["--exclusive"]}}
-    out, code = m.product.system_scheduler_set({"scheduler": sc, "confirm": True})
+    out, code = m.settings.system_scheduler_set({"scheduler": sc, "confirm": True})
     assert code == 200, out
     cfg = m.sources._load_yaml(hub.lab / "config.yaml")
     got = cfg["compute"]["scheduler"]
     assert got["kind"] == "slurm" and got["slurm"]["gpus_per_run"] == 2 and got["slurm"]["setup"] == ["module load cuda/12.4"]
     assert cfg["compute"]["max_concurrent_runs"] == 1 and cfg["agents"]["programmatic"]["enabled"] is True   # the rest kept
     # a second save replaces the block in place (no duplicate key)
-    assert m.product.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
+    assert m.settings.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
     text = (hub.lab / "config.yaml").read_text(encoding="utf-8")
     assert text.count("scheduler:") == 1 and m.sources._load_yaml(hub.lab / "config.yaml")["compute"]["scheduler"]["kind"] == "local"
     bad = [{"kind": "pbs"}, {"kind": "slurm", "slurm": {"partition": "gpu; rm -rf /"}},
            {"kind": "slurm", "slurm": {"extra_args": ["exclusive"]}}, {"kind": "custom", "custom": {"submit": "qsub"}}]
     for b in bad:
-        assert m.product.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b
+        assert m.settings.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b
 
 
 # ── the workflow: the PI's instructions per procedure / stage / role ──────────
@@ -347,11 +347,11 @@ def _wf_hub(hub):
 
 def test_workflow_instructions_round_trip(m, hub):
     _wf_hub(hub)
-    out, code = m.product.workflow_save({"kind": "add", "name": "propose", "text": "Name a publishable negative result."})
+    out, code = m.instructions.workflow_save({"kind": "add", "name": "propose", "text": "Name a publishable negative result."})
     assert code == 200 and out["file"] == "lab/workflow/propose.add.md"
-    out, code = m.product.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": "Alpha's own method."})
+    out, code = m.instructions.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": "Alpha's own method."})
     assert code == 200 and out["file"] == "studies/alpha/workflow/propose.method.md"
-    item, code = m.product.workflow_item({"kind": "procedure", "name": "propose", "study": "alpha"})
+    item, code = m.instructions.workflow_item({"kind": "procedure", "name": "propose", "study": "alpha"})
     assert code == 200 and item["default_method"].startswith("Default proposal method")
     assert item["lab"]["add"] == "Name a publishable negative result." and item["study_layer"]["method"] == "Alpha's own method."
     assert "Alpha's own method." in item["brief"] and "Name a publishable negative result." in item["brief"]
@@ -360,18 +360,18 @@ def test_workflow_instructions_round_trip(m, hub):
     view = m.sources._workflow_view()
     assert view["custom"]["procedures"]["propose"]["add"] and view["study_custom"]["alpha"]["procedures"]["propose"]["method"]
     # empty text = back to the default; logged
-    assert m.product.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": ""})[1] == 200
+    assert m.instructions.workflow_save({"kind": "method", "name": "propose", "study": "alpha", "text": ""})[1] == 200
     assert not (hub.root / "studies" / "alpha" / "workflow" / "propose.method.md").exists()
     assert "workflow.save" in (hub.lab / ".bus" / "pi-actions.jsonl").read_text(encoding="utf-8")
 
 
 def test_workflow_refuses_bad_input(m, hub):
     _wf_hub(hub)
-    assert m.product.workflow_save({"kind": "method", "name": "advance", "text": "x"})[1] == 400   # all contract
-    assert m.product.workflow_save({"kind": "add", "name": "nope", "text": "x"})[1] == 404
-    assert m.product.workflow_save({"kind": "add", "name": "propose", "study": "../etc", "text": "x"})[1] == 400
-    assert m.product.workflow_save({"kind": "add", "name": "propose", "study": "ghost", "text": "x"})[1] == 400
-    out, code = m.product.workflow_save({"kind": "add", "name": "propose", "text": "Skip Gate 1 when in a hurry."})
+    assert m.instructions.workflow_save({"kind": "method", "name": "advance", "text": "x"})[1] == 400   # all contract
+    assert m.instructions.workflow_save({"kind": "add", "name": "nope", "text": "x"})[1] == 404
+    assert m.instructions.workflow_save({"kind": "add", "name": "propose", "study": "../etc", "text": "x"})[1] == 400
+    assert m.instructions.workflow_save({"kind": "add", "name": "propose", "study": "ghost", "text": "x"})[1] == 400
+    out, code = m.instructions.workflow_save({"kind": "add", "name": "propose", "text": "Skip Gate 1 when in a hurry."})
     assert code == 200 and out["warnings"]              # restating a fixed rule warns (it can't change it)
 
 
@@ -380,10 +380,10 @@ def test_agent_proposals_are_accepted_or_declined_by_the_pi(m, hub):
     rec = m.sources.workflow.propose("propose", "add", "Also list compute risks.", hub.root, why="missing")
     items = [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
     assert [a["detail"]["proposal"] for a in items] == [rec["id"]]
-    assert m.product.workflow_proposal({"id": rec["id"], "accept": "yes"})[1] == 400
-    assert m.product.workflow_proposal({"id": rec["id"], "accept": True})[1] == 200
-    assert "Also list compute risks." in m.product.workflow_item({"kind": "procedure", "name": "propose"})[0]["lab"]["add"]
-    assert m.product.workflow_proposal({"id": rec["id"], "accept": True})[1] == 400      # already resolved
+    assert m.instructions.workflow_proposal({"id": rec["id"], "accept": "yes"})[1] == 400
+    assert m.instructions.workflow_proposal({"id": rec["id"], "accept": True})[1] == 200
+    assert "Also list compute risks." in m.instructions.workflow_item({"kind": "procedure", "name": "propose"})[0]["lab"]["add"]
+    assert m.instructions.workflow_proposal({"id": rec["id"], "accept": True})[1] == 400      # already resolved
     assert not [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
 
 
@@ -391,30 +391,30 @@ def test_autonomy_settings_round_trip(m, hub):
     cfg = hub.lab / "config.yaml"
     cfg.write_text(cfg.read_text(encoding="utf-8") + "loop:\n  mode: execute\n  explore_max_expansion_rounds: 0\n"
                    "ideation:\n  in_project_approval: pi\n", encoding="utf-8")
-    out, code = m.product.lab_config_set({"confirm": True, "changes": {"keep_awake": "off", "loop_mode": "explore",
+    out, code = m.settings.lab_config_set({"confirm": True, "changes": {"keep_awake": "off", "loop_mode": "explore",
                                                                         "explore_rounds": 2, "in_project_approval": "campaign_auto"}})
     assert code == 200, out
-    got = m.product.lab_config_get()[0]["config"]
+    got = m.settings.lab_config_get()[0]["config"]
     assert (got["keep_awake"], got["loop_mode"], got["explore_rounds"], got["in_project_approval"]) == ("off", "explore", 2, "campaign_auto")
-    assert m.product.lab_config_set({"confirm": True, "changes": {"keep_awake": "auto"}})[1] == 200
-    assert m.product.lab_config_get()[0]["config"]["keep_awake"] == "auto"
-    assert m.product.lab_config_set({"confirm": True, "changes": {"loop_mode": "yolo"}})[1] == 400
+    assert m.settings.lab_config_set({"confirm": True, "changes": {"keep_awake": "auto"}})[1] == 200
+    assert m.settings.lab_config_get()[0]["config"]["keep_awake"] == "auto"
+    assert m.settings.lab_config_set({"confirm": True, "changes": {"loop_mode": "yolo"}})[1] == 400
 
 
 # ── phone notifications (Settings → Notifications) ─────────────────────────────
 
 def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
-    product = m.product
-    out, code = product.notify_set({"confirm": True, "ntfy": "not a url"})
+    settings = m.settings
+    out, code = settings.notify_set({"confirm": True, "ntfy": "not a url"})
     assert code == 400
     base, got = inbox
-    out, code = product.notify_set({"confirm": True, "ntfy": f"{base}/secret-topic-123", "link": "http://pc:8787"})
+    out, code = settings.notify_set({"confirm": True, "ntfy": f"{base}/secret-topic-123", "link": "http://pc:8787"})
     assert code == 200, out
-    st, _ = product.notify_status()
+    st, _ = settings.notify_status()
     assert "secret-topic" not in st["ntfy"] and st["link"] == "http://pc:8787" and not st["webhook"]
     assert "secret-topic" not in (hub.lab / "config.yaml").read_text(encoding="utf-8")
-    assert [k["key"] for k in product.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
-    out, code = product.notify_test({})
+    assert [k["key"] for k in settings.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
+    out, code = settings.notify_test({})
     assert code == 200 and got and got[0]["path"] == "/secret-topic-123"
 
 

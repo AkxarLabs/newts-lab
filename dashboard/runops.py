@@ -13,8 +13,9 @@ import threading
 import time
 
 import ctx  # noqa: E402
+import settings  # noqa: E402
+from bus import COMMAND_ACTIONS, append_command  # noqa: E402
 import sources  # noqa: E402
-from cfgwrite import _stamp_or_insert  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (observe-and-sign only)
 
@@ -42,7 +43,7 @@ def _run_ref(body: dict) -> str | None:
 def launch_run(body: dict, by: str = "dashboard", gate3: bool = False) -> tuple[dict, int]:
     """Queue one whitelisted procedure run — or, with `prompt`, the PI's free-form instruction. The
     scheduler thread starts it within ~2 s (or at once). `gate3` is never read from the request: only
-    product.gate3_sign passes it, right after the PI's typed Gate-3 signature."""
+    gates.gate3_sign passes it, right after the PI's typed Gate-3 signature."""
     if executor is None:
         return ctx.no_executor()
     if not body.get("confirm"):
@@ -160,21 +161,14 @@ def resolve_escalation(body: dict) -> tuple[dict, int]:
 
 
 def set_programmatic(body: dict) -> tuple[dict, int]:
-    """Flip agents.programmatic.enabled in lab/config.yaml (comment-preserving, via the same stamp
-    /configure uses). It widens autonomy, so it needs an explicit confirm and is logged."""
+    """Flip agents.programmatic.enabled in lab/config.yaml (settings.write_config). It widens autonomy, so
+    it needs an explicit confirm and is logged."""
     if not body.get("confirm"):
         return {"error": "changing the master switch needs explicit confirm"}, 400
     enabled = bool(body.get("enabled"))
-    profiles = ctx.tool("profiles")   # tools/profiles.stamp (the /configure writer)
-    cfg = ctx.LAB / "config.yaml"
-    try:
-        text = cfg.read_text(encoding="utf-8-sig")
-    except OSError:
-        return {"error": "no lab/config.yaml"}, 400
-    new, changed = _stamp_or_insert(profiles, text, ["agents", "programmatic", "enabled"], enabled)
-    if not changed:
-        return {"error": "lab/config.yaml has no agents.programmatic section — add it (see the template) first"}, 400
-    cfg.write_text(new, encoding="utf-8", newline="")
+    err = settings.write_config({("agents", "programmatic", "enabled"): enabled})
+    if err:
+        return {"error": err}, 400
     ctx.pi_log({"action": "executor.enable", "enabled": enabled})
     ctx.KICK.set()
     return {"ok": True, "enabled": enabled,
@@ -298,9 +292,13 @@ def run_log(run_id: str) -> tuple[dict, int]:
     return {"ok": True, "text": text}, 200
 
 
-def executor_health() -> tuple[dict, int]:
+def executor_health(fresh: bool = False) -> tuple[dict, int]:
     if executor is None:
         return {"available": False, "enabled": False}, 200
+    if fresh:   # "check again" after a sign-in
+        executor.backends._AUTH_CACHE.clear()
+        executor.backends._VERSION_CACHE.clear()
+        sources._EXEC_CACHE["ts"] = 0
     h = executor.health(_xlab())
     h["available"] = True
     h["thread_alive"] = bool(_SCHED.get("thread") and _SCHED["thread"].is_alive())
@@ -434,3 +432,22 @@ def handoff_scheduler() -> None:
                     print(f"  work is still queued for {hub.name} — a background scheduler keeps it going")
         except Exception:  # noqa: BLE001
             pass
+
+
+def command_post(body: dict) -> tuple[dict, int]:
+    """A structured command on a bus (bus.COMMAND_ACTIONS) — and, with `launch`, the run that consumes it."""
+    action = body.get("action")
+    if action not in COMMAND_ACTIONS:
+        return {"error": f"unknown action (allowed: {sorted(COMMAND_ACTIONS)})"}, 400
+    try:
+        rec = append_command(body.get("target", "hub"), action, body.get("args") or {}, body.get("text") or "")
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    out = {"ok": True, "command": rec}
+    if body.get("launch"):   # also START the procedure that consumes it (executor on)
+        if action == "stop_loop":
+            out["stopped"] = command_stop_loop(rec.get("target") or "hub")
+        else:
+            out["launch"] = command_launch(rec.get("target") or "hub", action, body.get("args") or {},
+                                           body.get("text") or "")
+    return out, 200

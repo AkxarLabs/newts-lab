@@ -204,7 +204,7 @@ def test_resolve_escalation_writes_on_the_raising_bus(hub, monkeypatch):
 def test_exact_routes_precede_prefix_routes(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     for r in ("/api/run", "/api/run/answer", "/api/run/stop", "/api/attention/ack", "/api/executor/enable"):
-        assert r in m.Handler._EXACT_POST
+        assert r in m.POST_ROUTES
 
 
 def test_sse_signature_ignores_the_clock(hub, monkeypatch):

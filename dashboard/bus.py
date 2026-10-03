@@ -144,3 +144,21 @@ def append_withdraw(target: str, ref: str, ts: str | None = None) -> None:
     if bus is None and ctx.safe_id(target) is None and target not in ("hub", "", None):
         bus = ctx.LAB / ".bus"   # unknown ref + a non-slug legacy target -> safe hub fallback, never a raise
     _append(target, {"kind": "withdraw", "ref": ref}, bus=bus)
+
+
+def directive_post(body: dict) -> tuple[dict, int]:
+    text = (body.get("text") or "").strip()
+    if not text:
+        return {"error": "empty directive"}, 400
+    try:
+        return {"ok": True, "directive": append_directive(body.get("target", "hub"), text)}, 200
+    except ValueError as e:
+        return {"error": str(e)}, 400
+
+
+def withdraw_post(body: dict) -> tuple[dict, int]:
+    try:
+        append_withdraw(body.get("target", "hub"), body.get("id", ""), body.get("ts"))
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    return {"ok": True}, 200

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import ctx  # noqa: E402
 import sources  # noqa: E402
+import labs  # noqa: E402
 import machines  # noqa: E402
 
 _CACHE: dict[str, tuple[float, dict]] = {}
@@ -48,8 +49,7 @@ def lab_summary(hub: Path) -> dict:
     out = {"path": str(hub), "name": None, "needs": 0, "top": [], "running": 0, "queued": 0, "waiting": 0,
            "active_runs": [], "campaigns": [], "studies": 0, "ok": True}
     try:
-        from product import lab_name  # noqa: PLC0415 — dashboard/ is on sys.path
-        out["name"] = lab_name(hub)
+        out["name"] = labs.lab_name(hub)
     except Exception:  # noqa: BLE001
         out["name"] = hub.name
     if ex is None:
@@ -157,8 +157,7 @@ def start_keeper() -> bool:
 
 def fleet() -> tuple[dict, int]:
     """Every lab: this computer's (from the lab list) and every remote one registered on a machine."""
-    import product  # noqa: PLC0415
-    local, _ = product.labs_list()
+    local, _ = labs.labs_list()
     remote_now = ctx.REMOTE
     out = []
     for lab in local.get("labs") or []:

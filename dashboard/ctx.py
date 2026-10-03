@@ -27,7 +27,7 @@ TOOLS = ROOT / "tools"
 HUB = ROOT
 LAB = HUB / "lab"
 REMOTE = None
-SERVER = None   # the running HTTP server (serve.main sets it; product.server_stop shuts it down)
+SERVER = None   # the running HTTP server (serve.main sets it; labs.server_stop shuts it down)
 KICK = threading.Event()
 _listeners: list = []
 
@@ -119,3 +119,33 @@ def tool(name: str):
     if str(TOOLS) not in sys.path:
         sys.path.insert(0, str(TOOLS))
     return importlib.import_module(name)
+
+
+def ts() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def read(p: Path) -> str | None:
+    """A text file as written (newlines kept), or None."""
+    try:
+        with p.open("r", encoding="utf-8-sig", newline="") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def write_keep_eol(p: Path, original: str, text: str) -> None:
+    """Write `text` with the line endings `original` used."""
+    eol = "\r\n" if "\r\n" in original else "\n"
+    with p.open("w", encoding="utf-8", newline="") as f:
+        f.write(text.replace("\r\n", "\n").replace("\n", eol))
+
+
+def row(slug: str) -> dict | None:
+    """The idea's registry row."""
+    import sources  # noqa: PLC0415
+    return next((r for r in sources.parse_registry() if r.get("id") == slug), None)
+
+
+def need_slug(body: dict, key: str = "idea") -> str | None:
+    return safe_id(body.get(key) or "")

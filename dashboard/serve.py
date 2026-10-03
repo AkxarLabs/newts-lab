@@ -1,52 +1,30 @@
-"""Vivarium — the Newts' Lab, rendered as a living terrarium. Optional, local-only.
+"""Vivarium — the Newts' Lab dashboard: the HTTP server. Optional, local-only.
 
     uv run --with pyyaml python dashboard/serve.py [--port 8787] [--hub <another lab's hub root>]
     (or just: uv run --with pyyaml python newts.py — starts this and opens the browser)
 
-A tiny stdlib HTTP server that READS the lab's files (registry, run records, the event
-bus, slots, in-flight liveness) and serves a no-build single-page scene. It is the PI's
-control surface — but it stays honest about what it can and can't do:
+A stdlib HTTP server for the no-build single-page app in static/. This module is the server and its
+wiring only: every JSON endpoint is one line in GET_ROUTES / POST_ROUTES (below), pointing at the
+module that owns that area —
 
-  WRITES (the only ones):
-    POST /api/directive   free-text note to an agent's inbox      -> directives.jsonl
-    POST /api/command     a STRUCTURED command (start_loop, …)    -> directives.jsonl
-                          the running agent executes it at its next checkpoint, in-protocol
-    POST /api/gate        record a PI gate approval (Gate 1 or 2) -> proposal / control.yaml
-                          local-only, explicit-confirm, logged. GATE 3 IS NEVER OFFERED.
-  RUNS (safe, read-only subprocesses, on demand):
-    POST /api/tool        a whitelisted read-only tool (check_lab/show_config/status/…)
-  LAUNCHES (headless agent sessions via tools/executor — PI-owned opt-in, OFF by default):
-    POST /api/run                  queue a whitelisted procedure (/propose x, /experiment p, …)
-    POST /api/run/answer|reply     answer a run's question / send it a follow-up (resumes the session)
-    POST /api/run/stop|resume|cancel
-    POST /api/run/permission       allow / deny a live run's pending permission request
-    POST /api/run/interrupt        interrupt a live run's current turn
-    POST /api/attention/ack        dismiss a "needs you" item
-    POST /api/executor/enable      flip agents.programmatic.enabled (explicit confirm, logged)
-    GET  /api/run?run_id= · /api/run/tail?run_id=&offset= · /api/run/log · /api/executor/health
-  READS (safe, read-only file views, on demand):
-    POST /api/read        a small whitelisted text view (lab knowledge; a gate's proposal/
-                          claims/envelope) from fixed roots + a sanitized slug. Never writes.
-    GET  /api/library     the Library tree — every research document (lab layer + per-study
-                          + the project repo's ledgers), organized for the reader tab
-    POST /api/libdoc      one document's text (fixed root per scope + containment + an
-                          extension whitelist — never a free path)
-    GET  /api/libfile     an image a document references (same containment) → inline figures
+    sources       reads the lab (the snapshot the page renders; nothing there writes)
+    ctx           the lab being shown (or the remote one proxied), the PI's audit log, shared helpers
+    runops        headless runs (tools/executor): launch, answer, reply, stop, tail; the scheduler thread
+    gates/review  signing Gates 1-3, revoke, envelope, loop brief, revive / what the PI reads to sign
+    campaign      campaigns: sign, control, preflight
+    settings      lab/config.yaml (one writer), keys, notifications, documents, the System page, setup
+    instructions  the Workflow page (the PI's instructions per procedure / stage / role)
+    bus · library · labs · machines · fleet · term   notes to agents · the library · labs on this
+                  computer · remote machines · the across-labs overview · in-browser terminals
 
-PRODUCT (dashboard/product.py — the rest of the PI's actions, same rules: explicit, validated, logged):
-    labs (open/create/switch) · a terminal window for a CLI's own sign-in/install · Gate 3 (typed
-    confirmation) + the one /finalize run it allows · envelope editor · LOOP_BRIEF / campaign signing ·
-    revive · revoke a signature · SYSTEM.md · Lab settings · research keys (lab/.env.local) · setup.
+  WRITES are PI actions only: explicit (a confirm), validated, and logged to lab/.bus/pi-actions.jsonl.
+  Gate 3 is signed only with a typed confirmation and allows exactly one /finalize run. Runs start only
+  through the executor (the unmodified agent CLI, as the logged-in user, in a detached supervisor that
+  outlives this server) and only when the PI has enabled programmatic launching; every gate and hard
+  rule binds a launched run exactly as in a session, and every run carries the signature guard.
   PROTECTION: 127.0.0.1 only; Host/Origin checks (DNS rebinding); a per-server SameSite=Strict session
-    cookie on every /api call (a cross-site page, a file:// page or a sandboxed frame never carries it);
-    JSON bodies only (no simple cross-site form POSTs).
-
-It launches procedures only through the executor (the unmodified agent CLI, as the logged-in user,
-in a detached supervisor that outlives this server) and only when the PI has enabled programmatic
-launching; every gate and hard rule binds a launched run exactly as in a session, and every run
-carries the signature guard (only the PI signs). Gate 3 is signed only by the PI (typed confirmation)
-and allows exactly one /finalize run; it never fakes a result. Binds 127.0.0.1 only. Delete the
-dashboard/ folder and the lab is unchanged (the executor has its own CLI: tools/executor_cli.py).
+  cookie on every /api call; JSON bodies only (no simple cross-site form POSTs). Delete dashboard/ and
+  the lab is unchanged (the executor has its own CLI: tools/executor_cli.py).
 """
 
 from __future__ import annotations
@@ -74,19 +52,26 @@ sys.path.insert(0, str(HERE))
 # imports this one. These re-exports keep `serve.<name>` working for tests and older callers.
 import ctx  # noqa: E402
 import sources  # noqa: E402
-import product  # noqa: E402
 import term  # noqa: E402
 import machines  # noqa: E402
+import bus  # noqa: E402
+import runops  # noqa: E402
+import labs  # noqa: E402
+import gates  # noqa: E402
+import campaign  # noqa: E402
+import settings  # noqa: E402
+import instructions  # noqa: E402
 import fleet  # noqa: E402
 from bus import COMMAND_ACTIONS, _BUS_LOCK, _next_id, _bus_dir, _append, _file_lock, append_directive, append_command, _find_ref_bus, append_withdraw  # noqa: E402,F401
-from gates import _sign_gate2_block, approve_gate, _DOC_CLIP, _read_clip, _filesec, _read_full, _HEADING, _md_section, _gate1_bundle, _pilot_evidence, _gate2_accounting, _gate2_bundle, _find_review_files, _meta_verdict, _gate3_bundle, _as_list, _within, _claim_project_dir, claims_map, read_doc  # noqa: E402,F401
+from gates import _sign_gate2_block, approve_gate  # noqa: E402,F401
+from review import _DOC_CLIP, _read_clip, _filesec, _read_full, _HEADING, _md_section, _gate1_bundle, _pilot_evidence, _gate2_accounting, _gate2_bundle, _find_review_files, _meta_verdict, _gate3_bundle, _as_list, _within, _claim_project_dir, claims_map, read_doc  # noqa: E402,F401
 from runops import COMMAND_TO_RUN, _xlab, _run_ref, launch_run, _run_op, permission_run, ack_attention, resolve_escalation, set_programmatic, run_detail, _tail_entry, run_tail, run_log, executor_health, command_launch, command_stop_loop, _SCHED, _SCHED_HUBS, start_scheduler, handoff_scheduler, SAFE_TOOLS, run_tool  # noqa: E402,F401
-from cfgwrite import _enum, _num, _model_val, EXEC_CONFIG, _stamp_or_insert, set_executor_config  # noqa: E402,F401
+from settings import EXEC_CONFIG, set_executor_config, write_config  # noqa: E402,F401
 from library import _LIB_EXTS, _LIB_CLIP, _LIB_SECTION_CAP, _lib_root, _lib_entry, _lib_docs, _lib_glob, _dated_first, _lab_group, _STUDY_CORE_ORDER, _PROJECT_DOC_ORDER, _study_group, lib_tree, lib_doc, lib_file, _FIG_EXTS, _FIG_CTYPE, _paper_dir, paper_pdf, figure_list, figure_file  # noqa: E402,F401
 
 executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
 TOKEN = secrets.token_urlsafe(24)    # this server process's session secret (the cookie below)
-SERVER = None                        # the running HTTP server (product.server_stop shuts it down)
+SERVER = None                        # the running HTTP server (labs.server_stop shuts it down)
 VERSION = "2.0"
 
 # The lab this dashboard shows: a local hub (ctx.HUB), or a lab on another machine reached through an SSH
@@ -136,7 +121,7 @@ def _snapshot_cached(with_sig: bool = False):
             return (_snap_cache["value"], _snap_cache["sig"]) if with_sig else _snap_cache["value"]
     snap = sources.snapshot()   # compute OUTSIDE the lock — never serialize the file reads
     try:
-        snap["lab_info"] = {"name": product.lab_name(ctx.HUB), "path": str(ctx.HUB), "setup": product.setup_status(),
+        snap["lab_info"] = {"name": labs.lab_name(ctx.HUB), "path": str(ctx.HUB), "setup": settings.setup_status(),
                             "desktop": term.desktop(), "pty": term.has_pty(), "platform": sys.platform}
     except Exception:  # noqa: BLE001
         snap["lab_info"] = {"name": ctx.HUB.name, "path": str(ctx.HUB)}
@@ -228,65 +213,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_index()
         if self.path.startswith("/api/ping"):   # the launcher's "is it up, and which lab?" (no session)
             return self._json({"ok": True, "app": "newts-lab", "version": VERSION, "lab": str(ctx.HUB),
-                               "name": product.lab_name(ctx.HUB), "pid": os.getpid()})
+                               "name": labs.lab_name(ctx.HUB), "pid": os.getpid()})
         if self.path.startswith("/api/") and not self._has_session():
             return self._json({"error": "no dashboard session — reload the page"}, 403)
-        route0 = self.path.split("?", 1)[0]
-        if route0.startswith("/api/machines"):
-            try:
-                body, code = machines.list_machines()
-            except Exception as e:  # noqa: BLE001
-                body, code = {"error": str(e)}, 500
-            return self._json(body, code)
-        if ctx.REMOTE is not None and route0.startswith("/api/") and not _is_local_route(route0):
-            return self._proxy("GET")
-        if route0 in self._PRODUCT_GET:
-            try:
-                body, code = self._PRODUCT_GET[route0](self._query())
-            except Exception as e:  # noqa: BLE001
-                body, code = {"error": str(e)}, 500
-            return self._json(body, code)
-        if self.path.startswith("/api/state"):
-            try:
-                return self._json(_snapshot_cached())
-            except Exception as e:  # noqa: BLE001
-                return self._json({"error": str(e)}, 500)
-        if self.path.startswith("/api/events"):
-            return self._serve_sse()
         route = self.path.split("?", 1)[0]
-        if route in ("/api/run", "/api/run/tail", "/api/run/log", "/api/executor/health"):
-            q = self._query()
+        if ctx.REMOTE is not None and route.startswith("/api/") and not _is_local_route(route):
+            return self._proxy("GET")
+        if route in GET_ROUTES:
             try:
-                if route == "/api/run":
-                    body, code = run_detail(q.get("run_id", ""))
-                elif route == "/api/run/tail":
-                    try:
-                        off = int(q.get("offset", "0") or 0)
-                    except ValueError:
-                        off = 0
-                    body, code = run_tail(q.get("run_id", ""), off)
-                elif route == "/api/run/log":
-                    body, code = run_log(q.get("run_id", ""))
-                else:
-                    if q.get("fresh") and executor is not None:   # "check again" after a sign-in
-                        executor.backends._AUTH_CACHE.clear()
-                        executor.backends._VERSION_CACHE.clear()
-                        sources._EXEC_CACHE["ts"] = 0
-                    body, code = executor_health()
+                body, code = GET_ROUTES[route](self._query())
             except Exception as e:  # noqa: BLE001
                 body, code = {"error": str(e)}, 500
             return self._json(body, code)
+        if route == "/api/events":
+            return self._serve_sse()
         if self.path.startswith("/api/paper"):
             return self._serve_paper()
         if self.path.startswith("/api/figs"):
             return self._serve_figs()
         if self.path.startswith("/api/figure"):
             return self._serve_figure()
-        if self.path.startswith("/api/library"):
-            try:
-                return self._json(lib_tree())
-            except Exception as e:  # noqa: BLE001
-                return self._json({"error": str(e)}, 500)
         if self.path.startswith("/api/libfile"):
             q = self._query()
             hit = lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", ""))
@@ -481,136 +427,114 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 — a handler bug / dirty input must never kill the thread
             return self._json({"error": f"internal error: {e}"}, 500)
 
-    _EXACT_POST = {
-        "/api/run": lambda b: launch_run(b),
-        "/api/run/answer": lambda b: _run_op("answer", b),
-        "/api/run/reply": lambda b: _run_op("reply", b),
-        "/api/run/interrupt": lambda b: _run_op("interrupt", b),
-        "/api/run/stop": lambda b: _run_op("stop", b),
-        "/api/run/resume": lambda b: _run_op("resume", b),
-        "/api/run/cancel": lambda b: _run_op("cancel", b),
-        "/api/run/permission": lambda b: permission_run(b),
-        "/api/attention/ack": lambda b: ack_attention(b),
-        "/api/escalation/resolve": lambda b: resolve_escalation(b),
-        "/api/executor/enable": lambda b: set_programmatic(b),
-        "/api/executor/config": lambda b: set_executor_config(b),
-        "/api/labs/open": lambda b: product.labs_open(b),
-        "/api/labs/create": lambda b: product.labs_create(b),
-        "/api/labs/forget": lambda b: product.labs_forget(b),
-        "/api/terminal": lambda b: product.terminal_open(b),
-        "/api/gate/revoke": lambda b: product.gate_revoke(b),
-        "/api/finalize": lambda b: product.finalize_start(b),
-        "/api/envelope": lambda b: product.envelope_set(b),
-        "/api/loopbrief/sign": lambda b: product.loopbrief_sign(b),
-        "/api/campaign": lambda b: product.campaign_create(b),
-        "/api/campaign/control": lambda b: product.campaign_control(b),
-        "/api/revive": lambda b: product.revive(b),
-        "/api/doc/save": lambda b: product.doc_save(b),
-        "/api/workflow/save": lambda b: product.workflow_save(b),
-        "/api/workflow/proposal": lambda b: product.workflow_proposal(b),
-        "/api/lab/config": lambda b: product.lab_config_set(b),
-        "/api/keys": lambda b: product.keys_set(b),
-        "/api/notify": lambda b: product.notify_set(b),
-        "/api/notify/test": lambda b: product.notify_test(b),
-        "/api/setup/complete": lambda b: product.setup_complete(b),
-        "/api/server/stop": lambda b: product.server_stop(b),
-        "/api/machines/add": lambda b: machines.add_machine(b),
-        "/api/machines/remove": lambda b: machines.remove_machine(b),
-        "/api/machines/probe": lambda b: machines.probe(b),
-        "/api/machines/add-lab": lambda b: machines.add_lab(b),
-        "/api/machines/create-lab": lambda b: machines.create_lab(b),
-        "/api/machines/open": lambda b: machines.open_lab(b),
-        "/api/machines/use": lambda b: machines.use_lab(b),
-        "/api/machines/disconnect": lambda b: machines.disconnect(b),
-        "/api/fleet/keep": lambda b: fleet.set_keep(b),
-        "/api/machines/local": lambda b: machines.local(b),
-        "/api/machines/install-uv": lambda b: machines.install_uv(b),
-        "/api/system/scheduler": lambda b: product.system_scheduler_set(b),
-        "/api/term/open": lambda b: term.open_session(b),
-        "/api/term/write": lambda b: term.write(b),
-        "/api/term/resize": lambda b: term.resize(b),
-        "/api/term/close": lambda b: term.close(b),
-    }
-
-    _PRODUCT_GET = {
-        "/api/labs": lambda q: product.labs_list(),
-        "/api/fleet": lambda q: fleet.fleet(),
-        "/api/summary": lambda q: ({"ok": True, **fleet.lab_summary(ctx.HUB)}, 200),
-        "/api/gate3/readiness": lambda q: (product.gate3_readiness(ctx.safe_id(q.get("idea", "")) or "-"), 200),
-        "/api/doc": lambda q: product.doc_get(q.get("which", "")),
-        "/api/workflow/item": lambda q: product.workflow_item(q),
-        "/api/campaign/preflight": lambda q: product.campaign_preflight(q),
-        "/api/workflow/proposal": lambda q: product.workflow_proposal_get(q),
-        "/api/lab/config": lambda q: product.lab_config_get(),
-        "/api/keys": lambda q: product.keys_status(),
-        "/api/notify": lambda q: product.notify_status(),
-        "/api/setup": lambda q: ({"ok": True, **product.setup_status()}, 200),
-        "/api/term/read": lambda q: term.read(q),
-        "/api/system": lambda q: product.system_info(q),
-    }
-
     def _dispatch_post(self):
         body = self._body()
         if not isinstance(body, dict):
             return self._json({"error": "body must be a JSON object"}, 400)
-        p = self.path
-        exact = self._EXACT_POST.get(p.split("?", 1)[0])
-        if exact:   # checked first: startswith routing below would let /api/run swallow /api/run/answer
-            out, code = exact(body)
-            return self._json(out, code)
-        if p.startswith("/api/directive"):
-            text = (body.get("text") or "").strip()
-            if not text:
-                return self._json({"error": "empty directive"}, 400)
-            try:
-                return self._json({"ok": True, "directive": append_directive(body.get("target", "hub"), text)})
-            except ValueError as e:
-                return self._json({"error": str(e)}, 400)
-        if p.startswith("/api/command"):
-            action = body.get("action")
-            if action not in COMMAND_ACTIONS:
-                return self._json({"error": f"unknown action (allowed: {sorted(COMMAND_ACTIONS)})"}, 400)
-            try:
-                rec = append_command(body.get("target", "hub"), action, body.get("args") or {}, body.get("text") or "")
-            except ValueError as e:
-                return self._json({"error": str(e)}, 400)
-            out = {"ok": True, "command": rec}
-            if body.get("launch"):   # also START the procedure that consumes it (executor on)
-                if action == "stop_loop":
-                    out["stopped"] = command_stop_loop(rec.get("target") or "hub")
-                else:
-                    out["launch"] = command_launch(rec.get("target") or "hub", action, body.get("args") or {},
-                                                   body.get("text") or "")
-            return self._json(out)
-        if p.startswith("/api/gate"):
-            if not body.get("confirm"):
-                return self._json({"error": "gate approval needs explicit confirm"}, 400)
-            try:
-                gate = int(body.get("gate", 0))
-            except (TypeError, ValueError):
-                return self._json({"error": "gate must be 1 or 2"}, 400)
-            if gate == 3:
-                out, code = product.gate3_sign(body)
-                return self._json(out, code)
-            if gate not in (1, 2):
-                return self._json({"error": "gate must be 1, 2 or 3"}, 400)
-            res = approve_gate(body.get("idea", ""), gate, envelope=bool(body.get("envelope")))
-            return self._json(res, 200 if res.get("ok") else 400)
-        if p.startswith("/api/tool"):
-            return self._json(run_tool(body.get("name", ""), body.get("idea")))
-        if p.startswith("/api/read"):
-            return self._json(read_doc(body.get("what", ""), body.get("idea"), body.get("gate"), body.get("run")))
-        if p.startswith("/api/libdoc"):
-            return self._json(lib_doc(body.get("scope", ""), body.get("slug"), body.get("rel", "")))
-        if p.startswith("/api/claims"):
-            return self._json(claims_map(body.get("idea")))
-        if p.startswith("/api/withdraw"):
-            try:
-                append_withdraw(body.get("target", "hub"), body.get("id", ""), body.get("ts"))
-            except ValueError as e:
-                return self._json({"error": str(e)}, 400)
-            return self._json({"ok": True})
-        self._send(404, b"not found", "text/plain")
+        fn = POST_ROUTES.get(self.path.split("?", 1)[0])
+        if fn is None:
+            return self._send(404, b"not found", "text/plain")
+        out, code = fn(body)
+        return self._json(out, code)
+
+
+# ── routes: every JSON endpoint, one line each — fn(query) / fn(body) → (body, http code) ───────────
+# (/api/events, the paper, figures and library files are streams / files, served in Handler.do_GET;
+# the local-only ones are never proxied to a remote lab: LOCAL_ONLY_*)
+
+def _res(out: dict) -> tuple[dict, int]:
+    return out, 400 if out.get("error") else 200
+
+
+def _int(v, default: int = 0) -> int:
+    try:
+        return int(v or default)
+    except (TypeError, ValueError):
+        return default
+
+
+GET_ROUTES = {
+    "/api/state": lambda q: (_snapshot_cached(), 200),
+    "/api/run": lambda q: run_detail(q.get("run_id", "")),
+    "/api/run/tail": lambda q: run_tail(q.get("run_id", ""), _int(q.get("offset"))),
+    "/api/run/log": lambda q: run_log(q.get("run_id", "")),
+    "/api/executor/health": lambda q: executor_health(fresh=bool(q.get("fresh"))),
+    "/api/library": lambda q: (lib_tree(), 200),
+    "/api/machines": lambda q: machines.list_machines(),
+    "/api/labs": lambda q: labs.labs_list(),
+    "/api/fleet": lambda q: fleet.fleet(),
+    "/api/summary": lambda q: ({"ok": True, **fleet.lab_summary(ctx.HUB)}, 200),
+    "/api/gate3/readiness": lambda q: (gates.gate3_readiness(ctx.safe_id(q.get("idea", "")) or "-"), 200),
+    "/api/doc": lambda q: settings.doc_get(q.get("which", "")),
+    "/api/workflow/item": lambda q: instructions.workflow_item(q),
+    "/api/campaign/preflight": lambda q: campaign.campaign_preflight(q),
+    "/api/workflow/proposal": lambda q: instructions.workflow_proposal_get(q),
+    "/api/lab/config": lambda q: settings.lab_config_get(),
+    "/api/keys": lambda q: settings.keys_status(),
+    "/api/notify": lambda q: settings.notify_status(),
+    "/api/setup": lambda q: ({"ok": True, **settings.setup_status()}, 200),
+    "/api/term/read": lambda q: term.read(q),
+    "/api/system": lambda q: settings.system_info(q),
+}
+
+POST_ROUTES = {
+    "/api/run": lambda b: launch_run(b),
+    "/api/run/answer": lambda b: _run_op("answer", b),
+    "/api/run/reply": lambda b: _run_op("reply", b),
+    "/api/run/interrupt": lambda b: _run_op("interrupt", b),
+    "/api/run/stop": lambda b: _run_op("stop", b),
+    "/api/run/resume": lambda b: _run_op("resume", b),
+    "/api/run/cancel": lambda b: _run_op("cancel", b),
+    "/api/run/permission": lambda b: permission_run(b),
+    "/api/attention/ack": lambda b: ack_attention(b),
+    "/api/escalation/resolve": lambda b: resolve_escalation(b),
+    "/api/executor/enable": lambda b: set_programmatic(b),
+    "/api/executor/config": lambda b: set_executor_config(b),
+    "/api/labs/open": lambda b: labs.labs_open(b),
+    "/api/labs/create": lambda b: labs.labs_create(b),
+    "/api/labs/forget": lambda b: labs.labs_forget(b),
+    "/api/terminal": lambda b: labs.terminal_open(b),
+    "/api/gate/revoke": lambda b: gates.gate_revoke(b),
+    "/api/finalize": lambda b: gates.finalize_start(b),
+    "/api/envelope": lambda b: gates.envelope_set(b),
+    "/api/loopbrief/sign": lambda b: gates.loopbrief_sign(b),
+    "/api/campaign": lambda b: campaign.campaign_create(b),
+    "/api/campaign/control": lambda b: campaign.campaign_control(b),
+    "/api/revive": lambda b: gates.revive(b),
+    "/api/doc/save": lambda b: settings.doc_save(b),
+    "/api/workflow/save": lambda b: instructions.workflow_save(b),
+    "/api/workflow/proposal": lambda b: instructions.workflow_proposal(b),
+    "/api/lab/config": lambda b: settings.lab_config_set(b),
+    "/api/keys": lambda b: settings.keys_set(b),
+    "/api/notify": lambda b: settings.notify_set(b),
+    "/api/notify/test": lambda b: settings.notify_test(b),
+    "/api/setup/complete": lambda b: settings.setup_complete(b),
+    "/api/server/stop": lambda b: labs.server_stop(b),
+    "/api/machines/add": lambda b: machines.add_machine(b),
+    "/api/machines/remove": lambda b: machines.remove_machine(b),
+    "/api/machines/probe": lambda b: machines.probe(b),
+    "/api/machines/add-lab": lambda b: machines.add_lab(b),
+    "/api/machines/create-lab": lambda b: machines.create_lab(b),
+    "/api/machines/open": lambda b: machines.open_lab(b),
+    "/api/machines/use": lambda b: machines.use_lab(b),
+    "/api/machines/disconnect": lambda b: machines.disconnect(b),
+    "/api/fleet/keep": lambda b: fleet.set_keep(b),
+    "/api/machines/local": lambda b: machines.local(b),
+    "/api/machines/install-uv": lambda b: machines.install_uv(b),
+    "/api/system/scheduler": lambda b: settings.system_scheduler_set(b),
+    "/api/term/open": lambda b: term.open_session(b),
+    "/api/term/write": lambda b: term.write(b),
+    "/api/term/resize": lambda b: term.resize(b),
+    "/api/term/close": lambda b: term.close(b),
+    "/api/directive": bus.directive_post,
+    "/api/withdraw": bus.withdraw_post,
+    "/api/command": runops.command_post,
+    "/api/gate": gates.gate_post,
+    "/api/tool": lambda b: _res(run_tool(b.get("name", ""), b.get("idea"))),
+    "/api/read": lambda b: _res(read_doc(b.get("what", ""), b.get("idea"), b.get("gate"), b.get("run"))),
+    "/api/libdoc": lambda b: _res(lib_doc(b.get("scope", ""), b.get("slug"), b.get("rel", ""))),
+    "/api/claims": lambda b: _res(claims_map(b.get("idea"))),
+}
 
 
 def _use_hub(path: str) -> None:
@@ -670,7 +594,7 @@ def main() -> int:
         print(f"port {args.port} is busy ({e}) — start with --port <another>, or use newts.py (it picks one)")
         return 3
     SERVER = ctx.SERVER = server
-    product.remember_lab(ctx.HUB)
+    labs.remember_lab(ctx.HUB)
     _SCHED_HUBS.add(ctx.HUB)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
     if executor is None:
