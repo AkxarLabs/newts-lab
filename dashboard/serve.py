@@ -952,7 +952,9 @@ _DOC_CLIP = 16000   # never stream a whole repo — clip each file
 
 
 def _slug(s: str) -> str:
-    return _SLUG_RE.sub("", (s or "").strip())[:80]
+    """A read-side slug: unsafe characters stripped, and never a path step (`..`, a leading dot)."""
+    s = _SLUG_RE.sub("", (s or "").strip())[:80]
+    return "" if (".." in s or s.startswith(".")) else s
 
 
 def _read_clip(path: Path) -> str:

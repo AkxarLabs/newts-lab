@@ -29,8 +29,8 @@ from pathlib import Path
 
 HUB = Path(__file__).resolve().parents[1]
 NOTE = "gate3-approval.md"
-AUTH_BOX_RE = re.compile(r"-\s*\[[xX]\]\s*Authorized", re.I)
-GATE3_BOX_RE = re.compile(r"-\s*\[[xX]\]\s*Papers may finalize without me", re.I)
+sys.path.insert(0, str(HUB / "tools"))
+from markers import AUTH_BOX_RE, GATE3_BOX_RE  # noqa: E402
 AUDITS = [
     ("claims", ["audit_claims.py", "{paper}", "--scan-novelty"]),
     ("multiseed", ["audit_multiseed.py", "{paper}"]),
@@ -213,7 +213,7 @@ def sign_delegated(hub: Path, slug: str, brief_rel: str, audits: dict, by: str) 
              f"- signed_via: campaign:{brief_rel}",
              f"- brief_sha256: {brief_sha(_read(hub / brief_rel))}",
              f"- delegated_by: {by} at {ts}",
-             f"- audits: " + ", ".join(f"{k}={v}" for k, v in audits.items()),
+             "- audits: " + ", ".join(f"{k}={v}" for k, v in audits.items()),
              f"- state at signing: {registry_state(hub, slug)}",
              f"- paper: studies/{slug}/paper/main.pdf" + (f" (sha256 {digest})" if digest else " (not compiled)"),
              "", "The PI can revoke this in the dashboard (the campaign card) until /finalize has run."]

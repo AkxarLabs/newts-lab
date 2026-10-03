@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -243,17 +244,11 @@ def _row_sig(lab: Lab, slug: str) -> str:
 
 def _signed_since(lab: Lab, slug: str, kind: str) -> bool:
     """Has the PI resolved what this study was waiting for?"""
-    hub = lab.hub
-    if kind == "gate1":
-        t = (hub / "studies" / slug / "proposal.md")
-        return t.is_file() and "PI Gate 1 approved" in t.read_text(encoding="utf-8", errors="replace")
-    if kind == "gate2":
-        pdir = lab.project_dir(slug)
-        c = (pdir / "control.yaml") if pdir else None
-        return bool(c and c.is_file() and re.search(r"pi_signed:\s*true", c.read_text(encoding="utf-8", errors="replace")))
-    if kind == "gate3":
-        return (hub / "studies" / slug / "paper" / "gate3-approval.md").is_file()
-    return False
+    if kind not in ("gate1", "gate2", "gate3"):
+        return False
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import markers  # noqa: PLC0415
+    return markers.gate_signed(lab.hub, slug, int(kind[-1]), lab.project_dir(slug))
 
 
 def _update_waits(lab: Lab, st: dict, mine: list) -> None:
@@ -375,7 +370,6 @@ def _open_escalation(lab: Lab, slug: str) -> bool:
 def _try_gate3(lab: Lab, st: dict, children: list, out: dict, enqueue) -> None:
     if not st.get("gate3_auto"):
         return
-    import sys   # noqa: PLC0415
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import gate3  # noqa: PLC0415
     ok, why = gate3.campaign_delegates(lab.hub, st["file"])

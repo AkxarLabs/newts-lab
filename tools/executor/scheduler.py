@@ -42,7 +42,7 @@ def _still(path: Path, status: str) -> dict | None:
 
 def reconcile_manifest(lab: Lab, workdir: Path, path: Path, m: dict) -> bool:
     """Mark one orphaned run failed. Schema-2 runs: the supervisor's OS lock is the liveness signal.
-    Legacy (agent_runner v1) manifests: pid liveness, as before. Returns True if it changed."""
+    Older (schema 1) manifests: pid liveness. Returns True if it changed."""
     st = m.get("status")
     if m.get("schema") == 2 and st in ACTIVE:
         rd = run_dir(Path(path).parent, m.get("run_id") or m.get("agent_id"))

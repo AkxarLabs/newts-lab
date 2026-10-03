@@ -418,3 +418,8 @@ def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
     assert [k["key"] for k in product.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
     out, code = product.notify_test({})
     assert code == 200 and got and got[0]["path"] == "/secret-topic-123"
+
+
+def test_read_side_slugs_never_step_out_of_a_folder(m):
+    assert m._slug("..") == "" and m._slug("../x") == "" and m._slug(".hidden") == "" and m._slug("a..b") == ""
+    assert m._slug("idea-1") == "idea-1" and m._slug("my idea!") == "myidea"

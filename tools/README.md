@@ -11,7 +11,6 @@ uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]
 uv run --with pyyaml python tools/run_slots.py acquire|touch|release|status       # cross-project compute slots
 uv run --with pyyaml python tools/s2.py search|bibtex|verify ...                  # literature API + citation audit
 uv run python tools/lab_bus.py emit|inbox|ack ...                                # event bus / PI directives (dashboard)
-uv run --with pyyaml python tools/agent_runner.py launch|list|kill ...           # optional headless programmatic agents
 uv run --with pyyaml python tools/executor_cli.py enqueue|serve|list|answer|stop ... # headless procedure runs (the dashboard's engine)
 uv run --with pyyaml python tools/upgrade_project.py --all [--check]   # sync tracing/hook files into spawned projects
 ```
@@ -37,9 +36,6 @@ uv run --with pyyaml python tools/upgrade_project.py --all [--check]   # sync tr
 - `executor_cli.py` + `executor/` — the executor: runs whitelisted procedures as headless sessions in
   detached supervisors (queue, caps, live transcript, pause-on-question + resume, stop, run ledger);
   the dashboard's *Run a procedure* uses it. PI-owned, OFF by default; Gate 3 never delegated.
-- `agent_runner.py` — optional, PI-owned, OFF by default: launches a headless top-level agent
-  (`claude` / `codex` / `opencode`) into a project repo for concurrent multi-project work; see
-  `docs/autonomy.md`.
 - **Write-back & finalization helpers** (run by the lifecycle skills, rarely by hand):
   `process_writebacks.py` / `hub_writeback.py` (reconcile project→hub write-backs), `sync_figures.py`
   + `lock_artifacts.py` (`/finalize` figure sync + cited-artifact locking), `trace_hook.py` (the

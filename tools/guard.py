@@ -43,6 +43,7 @@ LAB = HUB / "lab"
 _COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import workflow  # noqa: E402 — the one definition of the lifecycle (workflow/stages.yaml)
+from markers import GATE1_RE, GATE3_RE  # noqa: E402 — the one definition of the PI's marks
 
 LIFECYCLE = workflow.lifecycle(HUB)
 # documented back-edges (the paper-phase round-trip) + forward steps are legal; park/kill anytime.
@@ -134,7 +135,7 @@ def c_spawn(a) -> int:
                 return _verdict(0, f"target-driven Gate-1 (compute authorization) marker found — "
                                    f"clear to /spawn-project {a.slug}")
         return _verdict(1, f"no proposal at studies/{a.slug}/proposal.md — run /propose first")
-    if not re.search(r"gate ?1 approved|PI Gate 1|gate1_approved", prop.read_text(encoding="utf-8-sig"), re.I):
+    if not GATE1_RE.search(prop.read_text(encoding="utf-8-sig")):
         return _verdict(1, f"Gate 1 not recorded in studies/{a.slug}/proposal.md — needs PI sign-off before spawn")
     row = _row(a.slug)
     pd = _project_dir(a.slug, row)
@@ -588,9 +589,9 @@ def c_plan_trace(a) -> int:
     return _verdict(0, f"all {len(rows)} PLAN.md experiment row(s) trace to an authorized origin")
 
 
-# Gate-3 approval marker (mirrors the Gate-1 marker convention in proposal.md), recorded by the PI
-# in the meta-review after /review-paper accepts.
-_GATE3_RE = re.compile(r"gate ?3 approved|PI Gate 3|gate3_approved|Gate 3:\s*approved", re.I)
+# Gate-3 approval marker (markers.GATE3_RE), recorded by the PI in the meta-review after
+# /review-paper accepts.
+_GATE3_RE = GATE3_RE
 
 
 def _gate3_marker(slug: str) -> bool:

@@ -213,7 +213,6 @@ def test_parse_events_codex_singular_types_and_no_double_count():
     started = backends.parse_events("codex", {"type": "item.started", "item": {"type": "file_change"}})
     done = backends.parse_events("codex", {"type": "item.completed", "item": {"type": "file_change"}})
     assert started[0]["event"] == "begin" and done[0]["event"] == "action"
-    assert backends.parse_activity("codex", {"type": "item.started", "item": {"type": "command_execution"}}) is None
 
 
 # ── locks ────────────────────────────────────────────────────────────────────

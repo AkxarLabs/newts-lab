@@ -8,7 +8,7 @@
 
 <bus> is `lab/.bus` for hub-level runs and `<project>/.bus` for project runs. Sidecars live in a
 sub-directory (not `<id>.x.json` siblings) so every existing `agents/*.json` reader — the dashboard,
-`agent_runner list` — keeps seeing exactly one file per run.
+keeps seeing exactly one file per run.
 
 State machine (see docs/dashboard.md):
   queued → starting → running → completed | waiting_input | timeout | killed | failed
@@ -167,11 +167,6 @@ def transition(lab: Lab, path: Path, m: dict, to: str, *, by: str, reason: str |
 def scheduler_lock(lab: Lab, wait: float = 30.0):
     """Serializes every queue mutation (enqueue excepted) and every tick, across processes."""
     return excl_lock(lab.bus / ".scheduler.lock", wait=wait)
-
-
-def launch_lock(agents_dir: Path):
-    """The per-directory cap-check + reservation lock agent_runner.py has always used."""
-    return excl_lock(Path(agents_dir) / ".launch.lock")
 
 
 # ── lookup ───────────────────────────────────────────────────────────────────

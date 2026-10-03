@@ -36,14 +36,8 @@ def bind(serve_module) -> None:
 
 
 def _gate_signed(hub: Path, lab, slug: str, gate: int) -> bool:
-    if gate == 1:
-        p = hub / "studies" / slug / "proposal.md"
-        return p.is_file() and "PI Gate 1 approved" in p.read_text(encoding="utf-8", errors="replace")
-    if gate == 2:
-        pdir = lab.project_dir(slug)
-        c = (pdir / "control.yaml") if pdir else None
-        return bool(c and c.is_file() and re.search(r"pi_signed:\s*true", c.read_text(encoding="utf-8", errors="replace")))
-    return (hub / "studies" / slug / "paper" / "gate3-approval.md").is_file()
+    import markers  # noqa: PLC0415 — tools/ is on sys.path (sources puts it there)
+    return markers.gate_signed(hub, slug, gate, lab.project_dir(slug))
 
 
 def lab_summary(hub: Path) -> dict:

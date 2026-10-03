@@ -113,7 +113,7 @@ The rule of thumb is **volume × judgment**: high-volume, retrieval-shaped work 
 | experiment variants (`/improve`, `/experiment`, `/research-loop`) | `agents.runner_model` | `standard` |
 | overseer verification checks | `agents.overseer_model` | `standard` (`strong` under `oversight.level: strict`) |
 | ideation critics / scoping advocates (`/ideate`, `/scope`) | `agents.critic_model` | `standard` |
-| headless project agents (`tools/agent_runner.py`) | `agents.programmatic.backends.*` | task-dependent; pin full ids |
+| headless agents (the executor) | `agents.programmatic.backends.*` | task-dependent; pin full ids |
 | the orchestrating session itself (generation, analysis, drafting, `/discuss`) | — none; it runs at YOUR session model | your seat IS the expensive tier |
 
 Example (Anthropic ladder): `tiers: {strong: opus, standard: sonnet, fast: haiku}` with the session on fable/opus. Aliases drift to newer models over time; pin a full id (e.g. `claude-haiku-4-5-20251001`) when reproducibility across months matters — same rule as `agents.programmatic.backends.claude.model`.
@@ -131,7 +131,7 @@ A spawned project ships **real** role files — `<project>/.claude/agents/<role>
 
 ### Headless launch backends — `agents.programmatic.*` (optional, PI-owned, OFF by default)
 
-The "one headless session per project" launcher (`tools/agent_runner.py`; see [Autonomy](autonomy.md)). Stays off until the PI enables it. The per-backend comments in `lab/config.yaml` are the full reference — this is the map.
+The executor's headless sessions (the dashboard, `tools/executor_cli.py`; see [Autonomy](autonomy.md)). Stays off until the PI enables it. The per-backend comments in `lab/config.yaml` are the full reference — this is the map.
 
 | Key | Default | Owner | Effect |
 |---|---|---|---|

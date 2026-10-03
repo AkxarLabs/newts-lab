@@ -210,7 +210,7 @@ def _compact_run(m: dict) -> dict:
 
 
 def _launched_agents(project_dir: Path) -> list[dict]:
-    """Headless agents launched into this project (tools/executor runs or tools/agent_runner.py
+    """Headless agents launched into this project (tools/executor runs, or older launcher
     launches) — each is a <project>/.bus/agents/<id>.json manifest; the full transcript lives next to
     it as <id>.stream.jsonl. Best-effort, absent dir => []."""
     return _agents_in(project_dir / ".bus" / "agents")
@@ -456,7 +456,7 @@ def _gate_of(next_action: str) -> int | None:
 
 # The dashboard's Gate-1 signature marker (serve.approve_gate writes it; defined here so the
 # snapshot can detect "signed, waiting for the agent" without importing the server).
-GATE1_MARK = "PI Gate 1 approved via Vivarium dashboard"
+GATE1_MARK = "PI Gate 1 approved via Vivarium dashboard"   # (= markers.GATE1_DASHBOARD_MARK)
 
 
 def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
@@ -466,26 +466,10 @@ def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
     happened'. Detection rides on the on-disk signature (not the event bus), so it holds no
     matter which session/tool signed, and it clears itself the moment the agent transitions the
     registry row past the gate (the next-action text stops matching _GATE_RE, so gate -> None)."""
-    try:
-        if gate == 1:
-            p = HUB / "studies" / idea / "proposal.md"
-            return p.is_file() and GATE1_MARK in _read_text(p)
-        if gate == 2 and pdir is not None:
-            env = _load_yaml(pdir / "control.yaml").get("gate2_envelope") or {}
-            if not env.get("pi_signed"):
-                return False
-            # an EXPIRED signed envelope is not "waiting for the agent" — guard.py full-run and
-            # approve_gate both refuse it, so the PI must re-authorize; keep it an actionable gate.
-            expires = str(env.get("expires") or "").strip().lower()
-            if expires and expires not in ("null", "none", "~") and expires < time.strftime("%Y-%m-%d"):
-                return False
-            return True
-        if gate == 3:   # the PI's dashboard signature (product.gate3_sign) or a session's gate3-approval.md
-            p = HUB / "studies" / idea / "paper" / "gate3-approval.md"
-            return p.is_file() and bool(re.search(r"gate ?3 approved", _read_text(p), re.I))
-    except OSError:
-        pass
-    return False
+    # (an EXPIRED signed envelope is not "waiting for the agent": guard.py full-run and approve_gate
+    # both refuse it, so the PI must re-authorize — markers.gate_signed keeps it an actionable gate)
+    import markers  # noqa: PLC0415
+    return bool(gate) and markers.gate_signed(HUB, idea, gate, pdir)
 
 
 def _escalations(events: list[dict]) -> list[dict]:
@@ -909,7 +893,7 @@ def _join_runs(workers: list[dict], runs: list[dict]) -> None:
         r = by_run.get(w.get("run_id")) or by_run.get(w["worker_id"]) or by_sid.get(w["worker_id"]) or \
             (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
         if not r:
-            w["interactive"] = not w.get("is_subagent")   # a session the PI (or an agent_runner) started by hand
+            w["interactive"] = not w.get("is_subagent")   # a session the PI started by hand
             if w["interactive"] and not w.get("label"):
                 w["label"] = "Terminal session (started outside the dashboard)"
             continue

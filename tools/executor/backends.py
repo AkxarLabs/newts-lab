@@ -1,9 +1,8 @@
 """Backends: argv builders, CLI resolution, and stream parsing for claude / codex / opencode.
 
-`build_command` keeps the exact legacy contract agent_runner.py has always exposed (argv starting
-with the bare CLI name, prompt as argv). `build_run_command` is the executor's builder: resolved CLI
-path, prompt via stdin (dodges the ~32K Windows command-line limit), session pre-assignment / resume,
-the per-run settings + MCP permission host, and hub skill access for project runs.
+`build_run_command` is the executor's argv builder: resolved CLI path, a live session (live.py) or
+one-shot with the prompt via stdin (dodges the ~32K Windows command-line limit), session
+pre-assignment / resume, the per-run settings, and hub skill access for project runs.
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ def _guard_extra(backend: str, extra: str, forbidden: tuple[str, ...]) -> None:
     toks = extra.split()
     hit = sorted({f for f in forbidden for tok in toks if tok == f or tok.startswith(f + "=")})
     if hit:
-        raise SystemExit(f"[agent_runner] backends.{backend}.extra_args may not set {hit} — that "
+        raise SystemExit(f"[executor] backends.{backend}.extra_args may not set {hit} — that "
                          "would defeat the human-in-loop default; set the dedicated config key instead")
 
 
@@ -79,57 +78,6 @@ def _codex_opts(bcfg: dict, workdir, eff_model) -> list[str]:
     if eff_model and eff_model != "inherit":
         opts += ["-m", str(eff_model)]
     return opts
-
-
-def build_command(backend: str, prompt: str, pdir: Path, model: str,
-                  permission_mode: str, prog: dict) -> tuple[list[str], bool]:
-    """Legacy builder → (argv, fires_claude_hooks). The launcher only synthesizes a worker log when
-    the backend does NOT fire Claude Code hooks (claude does; codex / opencode / test backends don't)."""
-    bcfg = (prog.get("backends") or {}).get(backend) or {}
-    extra = str(bcfg.get("extra_args") or "")
-    eff_model = _eff_model(model, bcfg)
-
-    if backend == "claude":
-        _guard_extra(backend, extra, _CLAUDE_FORBID)
-        mode = bcfg.get("permission_mode") or permission_mode   # per-backend key overrides the launch default
-        cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose"]
-        if eff_model and eff_model != "inherit":
-            cmd += ["--model", str(eff_model)]
-        if mode:
-            cmd += ["--permission-mode", str(mode)]
-        if bcfg.get("effort"):
-            cmd += ["--effort", str(bcfg["effort"])]   # claude --effort: low|medium|high|xhigh|max
-        if extra:
-            cmd += extra.split()
-        return cmd, True
-    if backend == "codex":
-        _guard_extra(backend, extra, _CODEX_FORBID)
-        cmd = ["codex", "exec", prompt, *_codex_opts(bcfg, pdir, eff_model)]
-        if extra:
-            cmd += extra.split()
-        return cmd, False
-    if backend == "opencode":
-        # `opencode run <prompt> --format json` streams NDJSON and exits when idle. Autonomy rides the
-        # OPENCODE_PERMISSION env (set by the launcher), not a flag.
-        _guard_extra(backend, extra, _OPENCODE_FORBID)
-        cmd = ["opencode", "run", prompt, "--format", "json", "--dir", str(pdir)]
-        if eff_model and eff_model != "inherit":
-            cmd += ["--model", str(eff_model)]   # MUST be provider/model form, e.g. anthropic/claude-...
-        if bcfg.get("variant"):
-            cmd += ["--variant", str(bcfg["variant"])]
-        if bcfg.get("agent"):
-            cmd += ["--agent", str(bcfg["agent"])]
-        if bcfg.get("skip_permissions"):   # version-dependent flag; the stable control is the env
-            cmd += ["--dangerously-skip-permissions"]
-        if extra:
-            cmd += extra.split()
-        return cmd, False
-    if backend == "_dummy":  # test backend: a portable JSONL emitter configured in lab/config.yaml
-        c = bcfg.get("command")
-        if not c:
-            raise SystemExit("_dummy backend needs agents.programmatic.backends._dummy.command")
-        return (list(c) if isinstance(c, list) else str(c).split()), False
-    raise SystemExit(f"[agent_runner] unknown backend {backend!r} (claude | codex | opencode)")
 
 
 # ── CLI resolution ────────────────────────────────────────────────────────────
@@ -777,11 +725,3 @@ def _codex_collab(t: str, it: dict) -> list[dict]:
             out.append({"event": "tool_result", "tool_use_id": tid, "is_error": status != "completed",
                         "text": str((stt or {}).get("message") or status)[:2000]})
     return out
-
-
-def parse_activity(backend: str, obj: dict) -> dict | None:
-    """Legacy single-activity view (agent_runner.py): the first action/result/start in the object."""
-    for ev in parse_events(backend, obj):
-        if ev.get("event") in ("action", "result", "start"):
-            return ev
-    return None

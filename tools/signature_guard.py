@@ -47,9 +47,8 @@ except ImportError:  # pragma: no cover — the executor always has pyyaml
 HERE = Path(__file__).resolve().parent
 HUB = Path(os.environ.get("NEWTS_HUB") or HERE.parent).resolve()
 
-GATE1_RE = re.compile(r"gate ?1 approved|PI Gate 1|gate1_approved", re.I)
-GATE3_RE = re.compile(r"gate ?3 approved|PI Gate 3|gate3_approved|Gate 3:\s*approved", re.I)
-AUTH_BOX_RE = re.compile(r"-\s*\[[xX]\]\s*Authorized", re.I)
+sys.path.insert(0, str(HERE))
+from markers import AUTH_BOX_RE, GATE1_RE, GATE3_RE  # noqa: E402  (one definition of the PI's marks)
 FINAL_ROW_RE = re.compile(r"^\|\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*\|[^|\n]*\|\s*final\s*\|", re.M | re.I)
 CAMPAIGN_REF_RE = re.compile(r"lab/campaigns/([A-Za-z0-9][A-Za-z0-9._-]*\.md)")
 ENVELOPE_OK_RE = re.compile(r"PI Gate 1 approved[^>\n]*envelope", re.I)

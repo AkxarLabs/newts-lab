@@ -78,7 +78,7 @@ agents:                         # ── subagent settings · PI-owned ──
                                 # and /scope read it via `role_sync.py resolve critic` and pass it as
                                 # each critic's per-spawn Task effort. "" = inherit the session.
 
-  programmatic:                 # ── headless TOP-LEVEL agents launched by tools/agent_runner.py ──
+  programmatic:                 # ── headless TOP-LEVEL agents run by the executor (dashboard / executor_cli) ──
                                 # The hub orchestrator can spawn an independent headless session
                                 # (claude -p / codex exec) PER project, coordinated by the compute-
                                 # slot ledger — NOT a nested subagent. This WIDENS autonomy (N
@@ -89,7 +89,7 @@ agents:                         # ── subagent settings · PI-owned ──
     enabled: false              # MASTER SWITCH · ships OFF (the safe default). false = manual sessions +
                                 # in-session Task subagents only (no headless launching). Set true (via
                                 # /configure, or transitively under a signed /autopilot brief) to let
-                                # agent_runner launch headless top-level agents. Required for
+                                # the executor launch headless top-level agents. Required for
                                 # autopilot.max_concurrent_projects > 1.
     backend: claude             # default backend: claude | codex | opencode. Default ALL to claude.
                                 # (codex/opencode are OPTIONAL installs, needed only when selected — each

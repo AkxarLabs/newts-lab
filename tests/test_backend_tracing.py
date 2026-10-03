@@ -14,7 +14,6 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 
 import pytest
@@ -345,64 +344,6 @@ def test_claude_runs_get_unbounded_background_subagent_wait(hub, monkeypatch):
     m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
     env = calls(lab, m)[0]["env"]
     assert env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] == "0" and env["NEWTS_PYTHON"]
-
-
-def test_legacy_launch_honours_the_dashboard_stop(hub, monkeypatch):
-    ar = load("agent_runner")
-    emitter = hub.root / "slow.py"
-    emitter.write_text("import json,sys,time\nprint(json.dumps({'type':'thread.started','thread_id':'t'}),flush=True)\n"
-                       "time.sleep(30)\n", encoding="utf-8")
-    (hub.lab / "config.yaml").write_text(
-        'lab:\n  projects_root: "../projects"\nagents:\n  programmatic:\n    enabled: true\n    backend: _dummy\n'
-        f"    max_minutes: 5\n    max_concurrent: 2\n    max_depth: 1\n    backends:\n      _dummy:\n"
-        f"        command: {json.dumps([sys.executable, str(emitter)])}\n", encoding="utf-8")
-    proj = hub.make_project("demo")
-    hub.add_registry_row("demo", state="active", project=str(proj))
-    monkeypatch.setattr(ar, "HUB", hub.root)
-    monkeypatch.setattr(ar, "LAB", hub.lab)
-    import types
-    args = types.SimpleNamespace(project="demo", prompt="go", prompt_file=None, role="orchestrator", label=None,
-                                 backend=None, model=None)
-    t = threading.Thread(target=ar.cmd_launch, args=(args,), daemon=True)
-    t.start()
-    adir = proj / ".bus" / "agents"
-    deadline = time.time() + 20
-    man = None
-    while time.time() < deadline:
-        ms = list(adir.glob("*.json"))
-        if ms:
-            man = json.loads(ms[0].read_text(encoding="utf-8"))
-            if man.get("status") == "running" and man.get("session_id"):
-                break
-        time.sleep(0.2)
-    assert man and man["status"] == "running"
-    lab = executor.Lab(hub.root)
-    executor.stop(lab, man["run_id"])                          # what the dashboard's stop button calls
-    t.join(timeout=30)
-    man = json.loads((adir / f"{man['run_id']}.json").read_text(encoding="utf-8"))
-    assert man["status"] == "killed" and man["reason"] == "stopped by the PI"
-
-
-def test_campaign_workers_are_executor_runs(hub, monkeypatch):
-    from test_executor_e2e import setup
-    monkeypatch.setenv("FAKE_MODE", "complete")
-    setup(hub)
-    for slug in ("p1", "p2"):
-        hub.add_registry_row(slug, state="active", project=str(hub.make_project(slug)))
-    ar = load("agent_runner")
-    monkeypatch.setattr(ar, "HUB", hub.root)
-    monkeypatch.setattr(ar, "LAB", hub.lab)
-    monkeypatch.setattr(ar, "CAMPAIGN_POLL_S", 0.3)
-    man = ar.run_campaign(["p1", "p2"], "advance {{slug}} under {{campaign}}", campaign="camp.md")
-    assert {r["status"] for r in man["results"].values()} == {"completed"}, man
-    lab = executor.Lab(hub.root)
-    for slug, r in man["results"].items():
-        hit = executor.find_run(lab, r["agent_id"])
-        assert hit, r
-        run = hit[3]
-        assert run["parent"] == man["campaign_id"] and run["created_by"] == "campaign" and run["target"] == slug
-        stdin = calls(lab, run)[0]["stdin"]
-        assert f"advance {slug} under {man['campaign_id']}" in stdin
 
 
 # ── dashboard settings endpoint ───────────────────────────────────────────────

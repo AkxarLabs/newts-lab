@@ -125,7 +125,7 @@ newts-lab/
 ├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
-├── tools/               # guard.py (lifecycle guards), signature_guard.py (only the PI signs), executor/ + executor_cli.py (headless runs), new_lab.py, agent_runner.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
+├── tools/               # guard.py (lifecycle guards), signature_guard.py (only the PI signs), executor/ + executor_cli.py (headless runs), new_lab.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
 ├── dashboard/           # the dashboard — the lab's product surface (start it with newts.py); delete it and the lab works from a terminal
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```

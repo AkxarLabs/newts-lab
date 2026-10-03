@@ -3,6 +3,8 @@
     uv run --with pyyaml python tools/executor_cli.py enqueue --skill propose --target my-idea [--args "..."]
                                   [--backend claude|codex|opencode] [--model M] [--effort E]
                                   [--max-minutes N] [--chain off|next|loop] [--repeat-minutes N] [--wait]
+    uv run --with pyyaml python tools/executor_cli.py enqueue --prompt-file brief.md --target my-project [--wait]
+                                  (a free-form instruction instead of a procedure; {{slug}} is substituted)
     uv run --with pyyaml python tools/executor_cli.py serve [--interval 2]     # the scheduler loop (no dashboard needed)
     uv run --with pyyaml python tools/executor_cli.py tick                     # one scheduling pass
     uv run --with pyyaml python tools/executor_cli.py list [--all]
@@ -10,9 +12,10 @@
     uv run --with pyyaml python tools/executor_cli.py answer <run_id> --pick "<question>=<label>" ... | --text "..."
     uv run --with pyyaml python tools/executor_cli.py reply  <run_id> --text "..."
     uv run --with pyyaml python tools/executor_cli.py resume|cancel|stop <run_id>
+    uv run --with pyyaml python tools/executor_cli.py stop --target <slug> | --campaign <name>   # every live run
     uv run --with pyyaml python tools/executor_cli.py reconcile | attention | health | skills
 
-Every run is `/skill args` from the allowlist (`skills`), executed by the unmodified agent CLI as the
+Every run is `/skill args` from the allowlist (`skills`) or the PI's free-form instruction, executed by the unmodified agent CLI as the
 logged-in user, in a detached supervisor that survives the caller. Gates and hard rules bind exactly
 as in a session; Gate 3 is never delegated. Programmatic launching is PI-owned and OFF by default
 (agents.programmatic.enabled). Exit: 0 ok · 1 refused/error · 2 run ended non-cleanly (--wait).
@@ -41,7 +44,13 @@ def _p(obj) -> None:
 
 
 def cmd_enqueue(lab: Lab, a) -> int:
-    spec = RunSpec(skill=a.skill, target=a.target, args=a.args or "", backend=a.backend, model=a.model,
+    prompt = None
+    if a.prompt_file:
+        prompt = Path(a.prompt_file).read_text(encoding="utf-8").replace("{{slug}}", a.target)
+    elif not a.skill:
+        print("[executor] REFUSED: give --skill or --prompt-file")
+        return 1
+    spec = RunSpec(skill=a.skill or "", prompt=prompt, target=a.target, args=a.args or "", backend=a.backend, model=a.model,
                    effort=a.effort, max_minutes=a.max_minutes, max_turns=a.max_turns, chain=a.chain,
                    repeat_minutes=a.repeat_minutes, max_repeats=a.max_repeats, created_by="cli")
     try:
@@ -140,6 +149,25 @@ def _simple(fn_name: str):
     return run
 
 
+def cmd_stop(lab: Lab, a) -> int:
+    if a.run_id:
+        return _simple("stop")(lab, a)
+    if not (a.target or a.campaign):
+        print("[executor] REFUSED: give a run id, --target or --campaign")
+        return 1
+    hits = [m for m in executor.list_runs(lab) if m.get("status") not in executor.TERMINAL
+            and (not a.target or m.get("target") == a.target) and (not a.campaign or m.get("campaign") == a.campaign)]
+    for m in hits:
+        try:
+            executor.stop(lab, m["run_id"], by="cli")
+            print(f"[executor] stop: {m['run_id']}")
+        except SpecError as e:
+            print(f"[executor] {m['run_id']}: {e}")
+    if not hits:
+        print("[executor] nothing live to stop")
+    return 0
+
+
 def cmd_tick(lab: Lab, a) -> int:
     _p(executor.tick(lab, wait=5))
     return 0
@@ -205,7 +233,8 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     e = sub.add_parser("enqueue", help="queue a procedure run")
-    e.add_argument("--skill", required=True)
+    e.add_argument("--skill", default=None)
+    e.add_argument("--prompt-file", default=None, dest="prompt_file", help="a free-form instruction instead of --skill")
     e.add_argument("--target", default="hub", help="'hub' or an idea/project slug")
     e.add_argument("--args", default="")
     e.add_argument("--backend", default=None, choices=("claude", "codex", "opencode", "_dummy"))
@@ -245,10 +274,15 @@ def main(argv=None) -> int:
     rp.add_argument("run_id")
     rp.add_argument("--text", required=True)
     rp.set_defaults(fn=_simple("reply"))
-    for name in ("resume", "cancel", "stop"):
+    for name in ("resume", "cancel"):
         q = sub.add_parser(name)
         q.add_argument("run_id")
         q.set_defaults(fn=_simple(name))
+    st = sub.add_parser("stop", help="stop a run, or every live run of a target / campaign")
+    st.add_argument("run_id", nargs="?")
+    st.add_argument("--target", default=None)
+    st.add_argument("--campaign", default=None)
+    st.set_defaults(fn=cmd_stop)
 
     sv = sub.add_parser("supervise", help=argparse.SUPPRESS)
     sv.add_argument("--run", required=True)

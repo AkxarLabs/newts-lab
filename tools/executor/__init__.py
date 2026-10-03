@@ -1,7 +1,7 @@
 """Newts' Lab executor — launch, supervise, pause/answer, resume, and stop headless agent runs.
 
-The dashboard is one client of this package; `tools/executor_cli.py` is another; agent_runner.py's
-blocking `launch` reuses its drain loop. Deleting dashboard/ changes nothing here.
+The dashboard is one client of this package; `tools/executor_cli.py` is another. Deleting
+dashboard/ changes nothing here.
 
     from executor import Lab, RunSpec, enqueue, tick
     lab = Lab()                                   # this hub (or Lab(path) for another)

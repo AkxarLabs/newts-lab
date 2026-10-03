@@ -15,7 +15,7 @@ an agent — see "Under the campaign keeper" below). Nothing is ever sent outsid
 executor's **campaign keeper** carries it — it starts each `/autopilot continue` cycle, restarts after
 timeouts, usage limits and transient failures, runs the steps you dispatch, and stops at the deadline
 or budget. Follow **"Under the campaign keeper"** below. The authorization conversation (§1) and the
-`launch-many` path are for campaigns started by hand in a session.
+executor path in §2 are for campaigns started by hand in a session.
 
 ## 1. Authorization conversation (10 minutes, the only interactive part)
 
@@ -46,35 +46,29 @@ rules).
 
 **Concurrent multi-project** (`autopilot.max_concurrent_projects > 1` **and**
 `agents.programmatic.enabled: true`): do **not** cram many projects into this one context, and do
-**not** hand-background per-project shell commands. Instead this session becomes a
-**coordinator/dispatcher** and hands the whole fleet to ONE launcher call:
+**not** hand-background per-project shell commands. The usual way is a campaign started from the
+dashboard (its keeper dispatches each project's steps; see "Under the campaign keeper" below). From a
+session, this session becomes a **coordinator** and hands each project to the executor as its own run:
 
 ```bash
-uv run --with pyyaml python tools/agent_runner.py launch-many \
-  --projects <slug1,slug2,slug3> --role orchestrator \
-  --prompt-file <brief> --campaign lab/campaigns/<campaign>.md
+uv run --with pyyaml python tools/executor_cli.py enqueue --target <slug> --prompt-file <brief>   # one per project; {{slug}} is substituted
+uv run --with pyyaml python tools/executor_cli.py list                                            # what is queued / running / waiting
+uv run --with pyyaml python tools/executor_cli.py stop --target <slug>                            # stop one project's runs
 ```
 
-`launch-many` runs one independent headless top-level session per project (default backend `claude`;
-each fully operable because spawned projects ship their own `CLAUDE.md`/`AGENTS.md`), caps concurrency
-at `min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` **itself** (no shell
-backgrounding, platform-agnostic), isolates per-project failures, and writes a campaign manifest at
-`lab/.bus/campaign-agents/<id>.json` (per-project status, agent ids, escalation counts). The
-prompt-file's `{{slug}}`/`{{project}}`/`{{campaign}}` are substituted per project. Coordination is
-still purely through the **existing compute-slot ledger** (`tools/run_slots.py` — training stays
-capped at `compute.max_concurrent_runs`; CPU-light stages run in parallel across sessions). The
-coordinator's job is narrow: `launch-many`, then monitor each project's Campaign Log /
-`lab/REGISTRY.md` / `.bus` (and the campaign manifest / `agent_runner.py list/reconcile`) for
-completion or escalation, `kill-campaign` to stop the fleet, and write the unified morning report. Each launched
-session is **top-level** (it writes its OWN project ledgers — the parent-only-ledger rule is about
-*worktree subagents*, untouched), runs exactly the per-idea pipeline below, and **inherits every
-gate** — Gate 3 still never delegated, FULL runs still bound by the project's `gate2_envelope`, the
-launcher is depth-capped so a launched agent can't launch more. **Build the launch prompt-file to
-state the brakes explicitly** — "stop the pipeline at `internal-review`; **never `/finalize`** (Gate
-3 is the PI's); FULL runs only under the signed `gate2_envelope`; escalate via `lab_bus.py` rather
-than widening anything" — so the Gate-3 brake is asserted where the prompt is built, not only
-inherited from the project's `CLAUDE.md`. Programmatic launching is **PI-owned and OFF by default**;
-see `docs/autonomy.md` and `tools/agent_runner.py`.
+The executor caps concurrency itself (`agents.programmatic.max_concurrent*`), runs each project as a
+headless top-level session in its own repo (a detached supervisor with a durable record), and every
+run is traced and visible in the dashboard. Coordination is still purely through the **compute-slot
+ledger** (`tools/run_slots.py` — training stays capped at `compute.max_concurrent_runs`; CPU-light
+stages run in parallel across sessions). The coordinator's job is narrow: enqueue, then monitor each
+project's Campaign Log / `lab/REGISTRY.md` / `.bus` for completion or escalation, and write the
+unified morning report. Each launched session is **top-level** (it writes its OWN project ledgers),
+runs exactly the per-idea pipeline below, and **inherits every gate** — Gate 3 is never yours, FULL
+runs stay bound by the project's `gate2_envelope`, and the launch depth is capped so a launched agent
+can't launch more. **State the brakes in the prompt-file** — "stop the pipeline at
+`internal-review`; **never `/finalize`**; FULL runs only under the signed `gate2_envelope`; escalate
+via `lab_bus.py` rather than widening anything". Programmatic launching is **PI-owned and OFF by
+default**; see `docs/autonomy.md`.
 
 The per-idea pipeline (run by this session, or by each launched session):
 
@@ -143,10 +137,9 @@ not a fresh start — **skip §1 entirely** (never interview an absent PI at 3am
 3. **Reconcile the crashed session before launching anything:** `run_slots.py status` (a slot
    this campaign holds whose run already finished → release it); run `scripts/status.py` in each
    active project (in-flight run → re-attach monitoring instead of launching new work; dead run →
-   record it failed). **If the campaign launched headless agents** (`agents.programmatic.enabled`),
-   also run `tools/agent_runner.py reconcile --project <slug>` for each — it marks any launched
-   session whose process died (manifest stuck `running`) as failed and emits `agent_finished`, so
-   you don't relaunch over a phantom (`agent_runner.py list` shows what's still alive). Treat the
+   record it failed). **If the campaign launched headless runs** (`agents.programmatic.enabled`),
+   also run `uv run --with pyyaml python tools/executor_cli.py reconcile` — it marks any run whose supervisor died as failed and emits
+   `agent_finished`, so you don't relaunch over a phantom (`uv run --with pyyaml python tools/executor_cli.py list` shows what's still alive). Treat the
    last Campaign Log row as possibly half-done: confirm its artifacts exist before re-running the
    step.
 4. **If a stop condition already holds** (wall-clock expired, environment failure logged,
@@ -184,7 +177,7 @@ The run's preamble says `CAMPAIGN CYCLE n of <campaign>`. Then:
    every target idea is at internal-review / final / killed, or a stop condition holds). A cycle marked
    FINAL (deadline, budget, or the PI's Stop) dispatches nothing and writes the morning report (§3).
 
-The keeper is the scheduler: don't `/loop`, don't background yourself, don't `launch-many`.
+The keeper is the scheduler: don't `/loop`, don't background yourself, don't enqueue runs yourself.
 
 ## Keeping it running (a campaign started by hand in a session)
 

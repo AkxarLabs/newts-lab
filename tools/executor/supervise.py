@@ -1,7 +1,7 @@
 """Run one agent attempt and record everything it does.
 
 `run_process` is the drain loop (spawn → capture stdout → parse → watchdog / stop marker / heartbeat
-→ exit), shared by the detached per-run supervisor below and by agent_runner.py's blocking `launch`.
+→ exit).
 
 `supervise` is the body of `executor_cli.py supervise --run <id>`: a small process that owns exactly
 one run while it is active. It holds the run's OS lock (its liveness signal), keeps the manifest
