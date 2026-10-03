@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The research workflow: one definition (workflow/stages.yaml) + the PI's own instructions per stage.
+"""The research workflow: one definition (workflow/stages.yaml + each skill's own frontmatter) + the PI's own
+instructions per stage.
 
     uv run --with pyyaml python tools/workflow.py check                    # validate the manifest
     uv run --with pyyaml python tools/workflow.py brief <proc> [--study S] # what an agent reads for a stage
@@ -14,7 +15,9 @@ Layers, all PI-owned (agents read them, never edit them — they `propose`):
     lab/workflow/roles/<role>.add.md    instructions added to a subagent role (rendered by role_sync)
     studies/<slug>/workflow/…           the same names, for one study (they win over the lab's)
 
-A procedure's SKILL.md is its fixed contract (guard calls, ledgers, gates, stop points, the run footer) and
+A procedure is a skill folder, .claude/skills/<name>/: its SKILL.md frontmatter's `newts:` block defines it
+(kind, level, mode, args, launchable, replaceable, title, does, stops, outputs, …; a skill without one is a
+launchable utility), so adding a procedure is adding a folder. A procedure's SKILL.md is its fixed contract (guard calls, ledgers, gates, stop points, the run footer) and
 always binds; METHOD.md is how the work is done, and is what a replacement swaps out. Precedence on a
 conflict: the contract + AGENTS.md hard rules > the project's TYPE.md > study instructions > lab
 instructions > the method.
@@ -30,6 +33,7 @@ import hashlib
 import json
 import re
 import sys
+import textwrap
 import time
 from pathlib import Path
 
@@ -37,6 +41,11 @@ import yaml
 
 HUB = Path(__file__).resolve().parents[1]
 MANIFEST = Path("workflow") / "stages.yaml"
+SKILLS = Path(".claude") / "skills"
+# what a skill's `newts:` block may leave out (a skill with no block at all is a launchable utility)
+PROC_DEFAULTS = {"kind": "utility", "level": "hub", "mode": "headless", "args": "text?", "launchable": True,
+                 "replaceable": False}
+_KIND_ORDER = {"stage": 0, "driver": 1, "entry": 2, "utility": 3}
 MAX_CUSTOM = 20000          # characters per customisation file
 GATES = (1, 2, 3)            # fixed: the manifest must declare exactly these
 NEVER_LAUNCH = {"finalize"}  # never from a click / chain / campaign — a Gate 3 signature is the only door
@@ -49,20 +58,73 @@ def _hub(hub=None) -> Path:
     return Path(hub).resolve() if hub else HUB
 
 
+def _skill_files(root: Path) -> list[Path]:
+    return sorted(f for f in root.glob("*/SKILL.md") if f.is_file()) if root.is_dir() else []
+
+
 def load(hub=None) -> dict:
-    """The manifest as a dict (cached by mtime): the lab's own copy (it ships with the lab, like its
-    skills), else this code's. Raises yaml errors to the caller."""
-    p = _hub(hub) / MANIFEST
-    if not p.is_file():
-        p = HUB / MANIFEST
-    key = str(p)
-    mt = p.stat().st_mtime
+    """The manifest as a dict, with `procedures` built from the skills (cached until any of those files
+    changes): the lab's own copies (they ship with the lab), else this code's. Raises yaml errors."""
+    h = _hub(hub)
+    p = h / MANIFEST if (h / MANIFEST).is_file() else HUB / MANIFEST
+    root = h / SKILLS if (h / SKILLS).is_dir() else HUB / SKILLS
+    files = _skill_files(root)
+    sig = (p.stat().st_mtime, tuple((f.parent.name, f.stat().st_mtime) for f in files))
+    key = f"{p}|{root}"
     hit = _cache.get(key)
-    if hit and hit[0] == mt:
+    if hit and hit[0] == sig:
         return hit[1]
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    _cache[key] = (mt, data)
+    data["procedures"] = _procedures(files, data)
+    _cache[key] = (sig, data)
     return data
+
+
+def skill_meta(text: str) -> dict:
+    """A SKILL.md's frontmatter, read the way agent CLIs read it: top-level `key: value` lines taken as text
+    (descriptions need not be strict YAML), and the `newts:` block — the procedure definition — as YAML."""
+    m = _FM.match((text or "").replace("\r\n", "\n"))
+    out: dict = {}
+    if not m:
+        return out
+    key, buf = None, []
+
+    def flush():
+        if key == "newts":
+            try:
+                block = yaml.safe_load(textwrap.dedent("\n".join(buf[1:])))
+            except yaml.YAMLError:
+                block = None
+            out["newts"] = block if isinstance(block, dict) else {}
+        elif key:
+            out[key] = " ".join(x.strip() for x in buf).strip().strip("'\"")
+
+    for ln in m.group(1).split("\n"):
+        if ln[:1] not in ("", " ", "\t", "#") and ":" in ln:
+            flush()
+            key, _, val = ln.partition(":")
+            key, buf = key.strip(), [val]
+        else:
+            buf.append(ln)
+    flush()
+    return out
+
+
+def _procedures(files: list[Path], m: dict) -> dict[str, dict]:
+    """{name: definition} from each skill's frontmatter — the stages' procedures first, in stage order."""
+    found = {}
+    for f in files:
+        fm = skill_meta(_read(f))
+        block = fm.get("newts")
+        p = dict(PROC_DEFAULTS)
+        p.update(block if isinstance(block, dict) else {})
+        p.setdefault("title", fm.get("name") or f.parent.name)
+        p.setdefault("does", str(fm.get("description") or "").split(". ")[0][:200])
+        found[f.parent.name] = p
+    staged = [n for st in m.get("stages", []) for n in st.get("procedures", []) if n in found]
+    first = list(dict.fromkeys(staged))
+    rest = sorted((n for n in found if n not in first), key=lambda n: (_KIND_ORDER.get(found[n].get("kind"), 9), n))
+    return {n: found[n] for n in first + rest}
 
 
 # ── the lifecycle (guard.py's transition oracle reads these) ─────────────────────────────────────
@@ -190,13 +252,14 @@ def check(hub=None) -> list[str]:
                 if p not in procs:
                     probs.append(f"{table}[{st}]: unknown procedure {p!r}")
     for name, p in procs.items():
-        skill = hub / ".claude" / "skills" / name / "SKILL.md"
-        if not skill.is_file():
-            probs.append(f"procedure {name}: no .claude/skills/{name}/SKILL.md")
-        if p.get("launchable"):
-            for k in ("level", "mode"):
-                if k not in p:
-                    probs.append(f"procedure {name}: launchable but has no {k}")
+        skill = (hub / SKILLS if (hub / SKILLS).is_dir() else HUB / SKILLS) / name / "SKILL.md"
+        fm_name = skill_meta(_read(skill)).get("name")
+        if fm_name and fm_name != name:
+            probs.append(f"skill {name}: its frontmatter says name: {fm_name} (the folder name is the procedure)")
+        if p.get("kind") not in _KIND_ORDER:
+            probs.append(f"procedure {name}: kind must be one of {', '.join(_KIND_ORDER)}")
+        if p.get("level") not in ("hub", "project") or p.get("mode") not in ("headless", "interactive"):
+            probs.append(f"procedure {name}: level must be hub|project and mode headless|interactive")
         if name in NEVER_LAUNCH and p.get("launchable"):
             probs.append(f"procedure {name} must never be launchable (Gate 3 is the only door)")
         if p.get("replaceable"):
@@ -299,8 +362,13 @@ def sha(text: str) -> str:
     return hashlib.sha256((text or "").replace("\r\n", "\n").encode("utf-8")).hexdigest()[:12]
 
 
+def skill_dir(proc: str, hub=None) -> Path:
+    h = _hub(hub)
+    return (h / SKILLS if (h / SKILLS).is_dir() else HUB / SKILLS) / proc
+
+
 def default_method(proc: str, hub=None) -> str:
-    return _read(_hub(hub) / ".claude" / "skills" / proc / "METHOD.md")
+    return _read(skill_dir(proc, hub) / "METHOD.md")
 
 
 def write_custom(kind: str, name: str, text: str, hub=None, study: str | None = None) -> Path | None:
@@ -521,6 +589,53 @@ def resolve_proposal(pid: str, accept: bool, hub=None) -> dict:
     return r
 
 
+# ── the rules (workflow/rules.yaml) ──────────────────────────────────────────────────────────────
+RULES = Path("workflow") / "rules.yaml"
+_rules_cache: dict[str, tuple[float, dict]] = {}
+
+
+def rules(hub=None) -> dict:
+    """workflow/rules.yaml (the lab's own, else this code's) — {} when absent."""
+    h = _hub(hub)
+    p = h / RULES if (h / RULES).is_file() else HUB / RULES
+    if not p.is_file():
+        return {}
+    mt = p.stat().st_mtime
+    hit = _rules_cache.get(str(p))
+    if hit and hit[0] == mt:
+        return hit[1]
+    data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    _rules_cache[str(p)] = (mt, data)
+    return data
+
+
+def pi_owned(key: str, hub=None) -> bool:
+    """A config key only the PI changes (rules.yaml pi_owned_config: "x." = the whole tree, else exact)."""
+    for k in rules(hub).get("pi_owned_config") or []:
+        if key == k or (k.endswith(".") and key.startswith(k)) or key.startswith(k + "."):
+            return True
+    return False
+
+
+def rigor_violations(flat: dict, hub=None) -> list[str]:
+    """Why these {dotted.key: value} settings would lower a rigor floor (rules.yaml rigor_floors)."""
+    out = []
+    for key, value in flat.items():
+        f = (rules(hub).get("rigor_floors") or {}).get(key)
+        if not isinstance(f, dict):
+            continue
+        why = f.get("why", "a rigor floor")
+        if "min" in f:
+            try:
+                if float(value) < float(f["min"]):
+                    out.append(f"{key}={value} < {f['min']} ({why})")
+            except (TypeError, ValueError):
+                out.append(f"{key}={value!r} is not a number ({why})")
+        if "never" in f and (value == f["never"] or str(value).lower() == str(f["never"]).lower()):
+            out.append(f"{key}={value} ({why})")
+    return out
+
+
 # ── generated docs ───────────────────────────────────────────────────────────────────────────────
 DOC_BEGIN = "<!-- workflow:begin (generated by tools/workflow.py render-docs — edit workflow/stages.yaml) -->"
 DOC_END = "<!-- workflow:end -->"
@@ -542,6 +657,89 @@ def docs_table(hub=None) -> str:
 DOC_TARGETS = [Path("docs") / "workflow.md"]
 SKILLS_BEGIN, SKILLS_END = "<!-- skills:begin -->", "<!-- skills:end -->"   # inline: the lab's skill list
 SKILLS_TARGETS = [Path("AGENTS.md")]
+PROJECT_MANUAL = Path("templates") / "project" / "AGENTS.md"
+_GEN = "generated by tools/workflow.py render-docs from workflow/"
+
+
+def _numbered(items: list[dict]) -> str:
+    return "\n".join(f"{i}. {r.get('text', '').strip()}" for i, r in enumerate(items, 1))
+
+
+def lifecycle_line(hub=None) -> str:
+    """seed → … → proposal → [PI GATE] → active → … (the AGENTS.md lifecycle line)."""
+    m = load(hub)
+    before = {g.get("before"): g["n"] for g in m.get("gates", []) if g.get("before")}
+    out = []
+    for s in m.get("states", []):
+        if s["id"] in before:
+            out.append("[PI GATE]")
+        out.append(s["id"])
+    return "`" + " → ".join(out) + "`"
+
+
+def advance_table(hub=None) -> str:
+    """The state → next procedure table /advance and /lab-status follow (from next_for_state)."""
+    m = load(hub)
+    gate_at = {g.get("at"): g for g in m.get("gates", []) if g.get("at")}
+    rows = ["| Registry state | The next procedure | Stops at |", "|---|---|---|"]
+    for s in m.get("states", []) + m.get("side_states", []):
+        nxt = (m.get("next_for_state") or {}).get(s["id"])
+        if isinstance(nxt, dict):
+            proc = f"`/{nxt.get('unsigned')}` until Gate {gate_at[s['id']]['n']} is signed, then `/{nxt.get('signed')}`" \
+                if s["id"] in gate_at else ", ".join(f"`/{v}` ({k})" for k, v in nxt.items())
+        elif nxt == "advance":   # /advance on such a state is its own step for it (the prose below says which)
+            proc = "this procedure's own step for it (below)"
+        elif nxt:
+            proc = f"`/{nxt}`"
+        else:
+            proc = "nothing — report the state"
+        g = gate_at.get(s["id"])
+        stop = f"**Gate {g['n']}** — stop for the PI" if g and g.get("before") else ""
+        rows.append(f"| `{s['id']}` | {proc} | {stop} |")
+    return "\n".join(rows)
+
+
+def contract_block(proc: str, hub=None) -> str:
+    """The generated head of a procedure's SKILL.md: load the brief, what the method is, what it must produce."""
+    p = procedure(proc, hub) or {}
+    arg = " --study <slug>" if "slug" in str(p.get("args", "")) else " [--study <slug>]"
+    project = p.get("level") == "project"
+    tool = "<hub>/tools/workflow.py" if project else "tools/workflow.py"
+    lines = [f"**First, load this procedure's brief:** `uv run --with pyyaml python {tool} brief {proc}{arg}` "
+             + ("(`<hub>` = this project's `control.yaml` `hub_path`; " if project else "(")
+             + f"skip it if a `NEWTS STAGE BRIEF /{proc}` block is already in your context). "
+             + (str(p["brief_note"]).strip() + " " if p.get("brief_note") else "")
+             + "It carries "
+             + ("the method — this lab's default `METHOD.md` beside this file, or the PI's replacement — and "
+                if p.get("replaceable") else "")
+             + "the PI's own instructions for this procedure. This file is the procedure's **contract**: its "
+             "steps, guard calls, gates, stop points and records always bind, and win over the brief on any conflict."]
+    if p.get("outputs"):
+        lines.append("\n**Whatever the method, it must produce:**")
+        lines += [f"- {o}" for o in p["outputs"]]
+    if p.get("anchors"):
+        lines.append(f"\nOther procedures rely on these parts of this contract: {', '.join(p['anchors'])}.")
+    return "\n".join(lines)
+
+
+def _blocks(hub) -> list[tuple[Path, str, str]]:
+    """(file, block name, content) for every generated span — each file holds
+    <!-- newts:<name> (generated…) --> … <!-- /newts:<name> --> where its content goes."""
+    hub = _hub(hub)
+    rl = rules(hub)
+    out = [(Path("AGENTS.md"), "hard-rules", _numbered(rl.get("hard_rules") or [])),
+           (Path("AGENTS.md"), "subagent-rules", _numbered(rl.get("subagent_rules") or [])),
+           (Path("AGENTS.md"), "lifecycle", lifecycle_line(hub)),
+           (PROJECT_MANUAL, "project-rules", _numbered(rl.get("project_rules") or [])),
+           (SKILLS / "advance" / "SKILL.md", "next-table", advance_table(hub))]
+    for name in load(hub).get("procedures") or {}:
+        if not (load(hub)["procedures"][name].get("engineering")):
+            out.append((SKILLS / name / "SKILL.md", "contract", contract_block(name, hub)))
+    return out
+
+
+def _span(name: str) -> tuple[str, str]:
+    return f"<!-- newts:{name} ({_GEN}) -->", f"<!-- /newts:{name} -->"
 
 
 def skills_list(hub=None) -> str:
@@ -581,6 +779,19 @@ def render_docs(hub=None, check_only: bool = False) -> list[Path]:
             stale.append(rel)
             if not check_only:
                 p.write_text(new, encoding="utf-8", newline="\n")
+    for rel, name, content in _blocks(hub):
+        p = hub / rel
+        txt = _read(p)
+        begin, end = _span(name)
+        if begin not in txt or end not in txt:
+            continue
+        nl = "\r\n" if "\r\n" in txt else "\n"
+        body = content.replace("\n", nl)
+        new = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: f"{begin}{nl}{body}{nl}{end}", txt, flags=re.S)
+        if new != txt:
+            stale.append(rel)
+            if not check_only:
+                p.write_text(new, encoding="utf-8", newline="")
     skills = f"{SKILLS_BEGIN}{skills_list(hub)}{SKILLS_END}"
     for rel in SKILLS_TARGETS:
         p = hub / rel

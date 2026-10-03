@@ -23,15 +23,13 @@ def wf():
 
 @pytest.fixture
 def lab(tmp_path, wf):
-    """A throwaway hub: this repo's manifest + a replaceable procedure with a small default method."""
+    """A throwaway hub: this repo's manifest and skills, two of them with a small default method."""
     root = tmp_path / "hub"
     (root / "workflow").mkdir(parents=True)
     shutil.copy(REPO / "workflow" / "stages.yaml", root / "workflow" / "stages.yaml")
+    shutil.copytree(REPO / ".claude" / "skills", root / ".claude" / "skills")   # a lab ships its skills
     for proc in ("experiment", "propose"):
-        d = root / ".claude" / "skills" / proc
-        d.mkdir(parents=True)
-        (d / "SKILL.md").write_text(f"# {proc}\n1. Load this stage's brief: `tools/workflow.py brief {proc}`\n", encoding="utf-8")
-        (d / "METHOD.md").write_text(f"Default method for {proc}.\n", encoding="utf-8")
+        (root / ".claude" / "skills" / proc / "METHOD.md").write_text(f"Default method for {proc}.\n", encoding="utf-8")
     (root / "studies" / "alpha").mkdir(parents=True)
     (root / "studies" / "alpha" / "IDEA.md").write_text("---\nstate: active\n---\n# Alpha\n", encoding="utf-8")
     (root / "lab").mkdir()
@@ -69,12 +67,33 @@ def test_the_launch_allowlist_comes_from_the_manifest_and_never_holds_finalize(w
 
 
 def test_a_manifest_that_makes_finalize_launchable_is_rejected(lab, wf):
-    p = lab / "workflow" / "stages.yaml"
+    p = lab / ".claude" / "skills" / "finalize" / "SKILL.md"     # the skill defines itself
     txt = p.read_text(encoding="utf-8")
-    p.write_text(re.sub(r"(  finalize:\n    kind: stage\n    level: hub\n    mode: headless\n    args: slug\n    launchable: )false",
-                        r"\1true", txt), encoding="utf-8")
+    assert "  launchable: false\n" in txt
+    p.write_text(txt.replace("  launchable: false\n", "  launchable: true\n", 1), encoding="utf-8")
     assert any("finalize must never be launchable" in x for x in wf.check(lab))
     assert "finalize" not in wf.launch_registry(lab)
+
+
+def test_a_new_skill_folder_is_a_procedure_with_no_other_edit(lab, wf):
+    """Adding a procedure is adding a skill folder: no manifest entry, no code."""
+    d = lab / ".claude" / "skills" / "survey"
+    d.mkdir()
+    (d / "SKILL.md").write_text("---\nname: survey\ndescription: Survey the field: a quick look. Argument; a topic.\n---\n\n"
+                                "# Survey\n", encoding="utf-8")
+    assert "survey" in wf.launch_registry(lab)                 # a plain skill is a launchable utility
+    p = wf.procedure("survey", lab)
+    assert p["kind"] == "utility" and p["mode"] == "headless" and p["does"].startswith("Survey the field")
+    (d / "SKILL.md").write_text("---\nname: survey\ndescription: Survey.\nnewts:\n  kind: stage\n  level: hub\n"
+                                "  mode: interactive\n  args: slug\n  title: Survey the field\n---\n# Survey\n", encoding="utf-8")
+    p = wf.procedure("survey", lab)                           # its newts: block defines it
+    assert p["title"] == "Survey the field" and p["mode"] == "interactive" and p["args"] == "slug"
+    assert not [x for x in wf.check(lab) if "survey" in x]
+
+
+def test_a_skills_frontmatter_need_not_be_strict_yaml(wf):
+    meta = wf.skill_meta("---\nname: x\ndescription: With `--flag <v>`: does y: z.\nnewts:\n  kind: entry\n---\nbody")
+    assert meta["description"].startswith("With `--flag") and meta["newts"] == {"kind": "entry"}
 
 
 def test_gates_are_fixed(lab, wf):
@@ -153,20 +172,20 @@ def test_agent_proposals_need_the_pi(lab, wf):
 
 
 # ── the split: SKILL.md = contract, METHOD.md = method ───────────────────────────────────────────
-def test_splitting_the_skills_lost_no_system_rule(wf):
-    """Every tool call, gate, footer, hard rule and state transition the original SKILL.md carried is still
-    in the contract; no default METHOD.md carries one (so replacing a method can never remove a rule)."""
-    import json
-    base = json.loads((REPO / "tests" / "fixtures" / "skill_system_tokens.json").read_text(encoding="utf-8"))
-    procs = wf.load()["procedures"]
-    assert set(base) == {n for n, p in procs.items() if p.get("replaceable")}
-    for name, tokens in base.items():
+def test_every_procedure_opens_with_its_generated_contract_and_no_method_carries_a_rule(wf):
+    """Each SKILL.md starts from the contract head render-docs writes from its frontmatter (load the brief,
+    what it must produce); a replaceable procedure's default METHOD.md carries no system rule, so replacing a
+    method can never remove one."""
+    for name, p in wf.load()["procedures"].items():
         skill = (REPO / ".claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-        method = (REPO / ".claude" / "skills" / name / "METHOD.md").read_text(encoding="utf-8")
-        assert set(tokens) <= wf.system_tokens(skill), (name, set(tokens) - wf.system_tokens(skill))
-        assert wf.system_tokens(method) == set(), (name, wf.system_tokens(method))
-        assert skill.count("workflow.py brief") >= 1, name
-        assert f"NEWTS STAGE BRIEF /{name}" in skill, name
+        if p.get("engineering"):
+            continue
+        assert "<!-- newts:contract" in skill and f"workflow.py brief {name}" in skill, name
+        if p.get("replaceable"):
+            method = (REPO / ".claude" / "skills" / name / "METHOD.md").read_text(encoding="utf-8")
+            assert wf.system_tokens(method) == set(), (name, wf.system_tokens(method))
+            assert wf.system_tokens(skill), f"{name}: a contract with no guard call, gate or footer?"
+    assert wf.render_docs(check_only=True) == [], "run `tools/workflow.py render-docs`"
 
 
 def test_headless_runs_carry_the_brief_and_record_its_sha(tmp_path, wf):

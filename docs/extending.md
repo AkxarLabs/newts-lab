@@ -7,7 +7,8 @@ takes.
 | To add or change | Where it lives | Checked by |
 |---|---|---|
 | How a stage is done | the Workflow page → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
-| A procedure or a stage | `workflow/stages.yaml` + `.claude/skills/<name>/` | `tools/workflow.py check` (also in `check_lab`) |
+| A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
+| A stage, a state | `workflow/stages.yaml` | `tools/workflow.py check` |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
@@ -16,25 +17,43 @@ takes.
 
 ## A procedure
 
+A procedure is a skill folder, `.claude/skills/<name>/`. Adding one is adding the folder; nothing else is
+required.
+
 1. Write `.claude/skills/<name>/SKILL.md`: its **contract**, meaning inputs, outputs, guard calls,
    ledgers, stop points and the run footer.
-   - If its method should be replaceable, also write `METHOD.md` (how the work is done, with no tool
-     calls or gates), and make step 0 load the brief:
-     `uv run --with pyyaml python tools/workflow.py brief <name> --study <slug>`.
-2. Add it under `procedures:` in `workflow/stages.yaml`:
-   - `kind`, `level` (hub or project), `mode` (headless or interactive), `args`;
-   - `launchable` (may the dashboard start it?) and `replaceable`;
-   - `title`, `does`, `stops`, `outputs`.
-3. List it in a stage's `procedures` (so it shows on the Workflow page and in "Work on it…"), and in
-   `offer_for_state` / `next_for_state` if it should be offered or be the default next step. Set
-   `dispatchable: false` if a campaign pass must not start it as its own run.
-4. Run `uv run --with pyyaml python tools/workflow.py render-docs`, then `tools/workflow.py check`.
-5. If it has a `METHOD.md`, add its contract's system lines to `tests/fixtures/skill_system_tokens.json`
-   (the test that proves replacing a method can't drop a rule).
-6. Describe it for people: a row in the README's skill table and a section in `docs/skills.md`.
+   - Its frontmatter's `newts:` block defines the procedure for the lab. Without one, it is a launchable
+     utility (headless, hub-level, free-text argument), titled by its name. The keys:
 
-The executor's launch list, the dashboard's labels, the docs table and the skill list in `AGENTS.md`
-all follow from the manifest. `finalize` can never be made launchable: Gate 3 is its only door.
+     ```yaml
+     ---
+     name: survey
+     description: Survey the field for a topic.
+     newts:
+       kind: stage            # stage | driver | entry | utility
+       level: hub             # hub | project — where the session runs
+       mode: headless         # headless | interactive
+       args: slug             # "" | slug | slug? | text? | campaign | "slug text?"
+       launchable: true       # may the dashboard, a chain or a campaign start it?
+       replaceable: true      # may the PI replace its method? (then write METHOD.md)
+       dispatchable: true     # false: a campaign pass may not start it as its own run
+       title: Survey the field
+       does: One sentence for the launcher.
+       stops: where it stops for the PI
+       outputs: [what it must produce, whatever the method]
+     ---
+     ```
+   - If its method should be replaceable, also write `METHOD.md` (how the work is done, with no tool
+     calls or gates).
+2. Put a `<!-- newts:contract … --><!-- /newts:contract -->` pair under its title and run
+   `uv run --with pyyaml python tools/workflow.py render-docs`: it writes the procedure's head (load the
+   brief, what it must produce) from the frontmatter. Then `tools/workflow.py check`.
+3. To place it in the lifecycle, list it in a stage's `procedures` in `workflow/stages.yaml`, and in
+   `offer_for_state` / `next_for_state` if it should be offered or be the default next step.
+4. Describe it for people: a row in the README's skill table and a section in `docs/skills.md`.
+
+The executor's launch list, the dashboard's labels and launcher, the docs table and the skill list in
+`AGENTS.md` all follow from the skills. `finalize` can never be made launchable: Gate 3 is its only door.
 
 ## A stage
 

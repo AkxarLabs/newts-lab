@@ -24,7 +24,7 @@ from .lab import HUB_TARGET, Lab, pos_float, pos_int, read_jsonl
 from .manifest import (ACTIVE, TERMINAL, all_runs, emit, now, parse_ts, read_manifest, run_dir,
                        scheduler_lock, transition, write_manifest)
 from .procs import DETACHED, is_locked, kill_tree, pid_alive, python_exe
-from .spec import RunSpec, SpecError, SKILL_REGISTRY
+from .spec import RunSpec, SpecError, registry
 from . import backends, campaigns, notify
 
 CLI = Path(__file__).resolve().parents[1] / "executor_cli.py"
@@ -135,14 +135,14 @@ def read_report(lab: Lab, workdir: Path, run_id: str) -> dict | None:
             "source": "footer"}
 
 
-def parse_next(cmd: str | None, default_target: str = HUB_TARGET) -> RunSpec | None:
+def parse_next(cmd: str | None, default_target: str = HUB_TARGET, hub=None) -> RunSpec | None:
     """'/spawn-project my-idea' → RunSpec(skill='spawn-project', target='my-idea'). Only commands for
     whitelisted skills parse; anything else (prose, Gate-3 skills) returns None."""
     if not cmd or not cmd.strip().startswith("/"):
         return None
     toks = cmd.strip().split()
     skill = toks[0].lstrip("/")
-    cfg = SKILL_REGISTRY.get(skill)
+    cfg = registry(hub).get(skill)
     if not cfg or cfg.get("mode") != "headless":
         return None
     rest = toks[1:]
@@ -178,7 +178,7 @@ def post_process(lab: Lab, workdir: Path, path: Path, m: dict) -> None:
     clean = m.get("status") == "completed" and not rep.get("needs_pi")
     # chain: follow the run's own `next` command (once, or in a loop until a gate / cap)
     if clean and m.get("chain") in ("next", "loop") and not m.get("chain_child"):
-        spec = parse_next(rep.get("next"), m.get("subject") or HUB_TARGET)
+        spec = parse_next(rep.get("next"), m.get("subject") or HUB_TARGET, lab.hub)
         step = int(m.get("chain_step") or 0) + 1
         cap = pos_int(prog.get("chain_max_steps", 6), 6, 1)
         if spec and (m.get("chain") == "next" or step <= cap):

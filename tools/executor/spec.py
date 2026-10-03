@@ -1,8 +1,8 @@
 """What a run IS: a whitelisted skill + validated arguments + where it executes.
 
-`SKILL_REGISTRY` is an explicit allowlist, not "whatever is in .claude/skills": only procedures that
-are safe to launch from a click appear, each with its level (hub cwd vs project cwd), its mode, and
-an argument schema. `finalize` is absent on purpose — Gate 3 is never delegated: the only way a
+`registry(hub)` is an explicit allowlist: only the lab's skills that say `launchable` (their SKILL.md
+frontmatter `newts:` block) appear, each with its level (hub cwd vs project cwd), its mode, and an
+argument schema. `finalize` is absent on purpose — Gate 3 is never delegated: the only way a
 /finalize run exists is the PI signing Gate 3 in the dashboard, which launches exactly that one run
 (`gate3=True`, checked against the signed studies/<slug>/paper/gate3-approval.md). Chains, repeats,
 campaigns and free-form runs can never produce it.
@@ -26,17 +26,25 @@ from .manifest import safe_id
 # mode:  "headless"    — runs to completion; PI decisions arrive as AskUserQuestion / needs_pi footer
 #        "interactive" — an interview; works through the question card + reply box, one turn at a time
 # args:  "" (none) · "slug" · "slug?" · "text?" · "campaign" · "slug text?"
-# The allowlist is DERIVED from the workflow manifest (workflow/stages.yaml, `launchable: true`) — the one
-# definition of the lab's procedures; NEVER below is still enforced here regardless of what it says.
+# The allowlist is DERIVED from the lab's skills (each SKILL.md's `newts:` block, `launchable`), read
+# through tools/workflow.py; NEVER below is still enforced here regardless of what they say.
 _TOOLS = Path(__file__).resolve().parents[1]
 if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 import workflow as _workflow  # noqa: E402
 
-SKILL_REGISTRY: dict[str, dict] = _workflow.launch_registry(_TOOLS.parent)
 NEVER = _workflow.NEVER_LAUNCH   # never from a click / chain / campaign — only a Gate 3 signature launches it
-for _n in NEVER:
-    SKILL_REGISTRY.pop(_n, None)
+
+
+def registry(hub=None) -> dict[str, dict]:
+    """{skill: {level, mode, args, hint}} — what a click / chain / campaign may launch in this lab."""
+    reg = _workflow.launch_registry(hub or _TOOLS.parent)
+    for n in NEVER:
+        reg.pop(n, None)
+    return reg
+
+
+SKILL_REGISTRY = registry()   # this code's own lab (callers with a Lab use registry(lab.hub))
 ASK = "ask"            # the free-form run's pseudo-skill
 MAX_PROMPT = 8000
 
@@ -107,7 +115,7 @@ def validate(lab: Lab, spec: RunSpec) -> dict:
             return _validate_finalize(lab, spec)
         raise SpecError(f"/{skill} is Gate 3 territory — only the PI's Gate 3 signature (the dashboard's "
                         "Gate 3 sheet) launches it")
-    cfg = SKILL_REGISTRY.get(skill)
+    cfg = registry(lab.hub).get(skill)
     if not cfg and not spec.prompt_override:
         raise SpecError(f"unknown or non-launchable skill '/{skill}'")
     cfg = cfg or {"level": "project" if spec.target not in (HUB_TARGET, "", None) else "hub",

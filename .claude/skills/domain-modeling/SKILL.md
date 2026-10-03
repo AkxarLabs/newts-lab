@@ -1,6 +1,13 @@
 ---
 name: domain-modeling
 description: Build and sharpen a project's domain model. Use when the user wants to pin down domain terminology or a ubiquitous language, record an architectural decision, or when another skill needs to maintain the domain model.
+newts:
+  kind: utility
+  launchable: false
+  replaceable: false
+  engineering: true
+  title: Domain model
+  does: Pins down a project's domain language and records decisions.
 ---
 
 # Domain Modeling

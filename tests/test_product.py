@@ -338,10 +338,8 @@ def _wf_hub(hub):
     import shutil
     (hub.root / "workflow").mkdir(exist_ok=True)
     shutil.copy(REPO / "workflow" / "stages.yaml", hub.root / "workflow" / "stages.yaml")
-    d = hub.root / ".claude" / "skills" / "propose"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "SKILL.md").write_text("---\nname: propose\n---\n# Propose\n0. brief\n", encoding="utf-8")
-    (d / "METHOD.md").write_text("Default proposal method.\n", encoding="utf-8")
+    shutil.copytree(REPO / ".claude" / "skills", hub.root / ".claude" / "skills", dirs_exist_ok=True)   # a lab ships its skills
+    (hub.root / ".claude" / "skills" / "propose" / "METHOD.md").write_text("Default proposal method.\n", encoding="utf-8")
     (hub.root / "studies" / "alpha").mkdir(parents=True, exist_ok=True)
 
 

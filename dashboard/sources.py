@@ -510,7 +510,7 @@ def snapshot() -> dict:
         "hub_agents": hub_runs,
         "attention": attention.collect(items, esc, roster, runs),
         "executor": attention.executor_status(),
-        "skills": (executor.SKILL_REGISTRY if executor else {}),
+        "skills": (executor.registry(ctx.HUB) if executor else {}),
         "workflow": _workflow_view(),
         **_autonomy_view(),
     }
