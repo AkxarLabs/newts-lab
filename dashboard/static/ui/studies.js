@@ -16,7 +16,7 @@
       if (!await NL.confirm({ title: `Finalize “${it.title || it.id}”?`, ok: 'Start /finalize', body: 'The reproducibility pass, artifact locking and knowledge write-back — under your Gate 3 signature.' })) return;
       const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); } };
     const skill = NL.nextSkill(it.state, it.gate_signed);   // workflow/stages.yaml next_for_state
-    if (!skill) return it.state === 'final' ? null : (it.state === 'parked' || it.state === 'killed') ? { label: 'Revive it', icon: '↺', run: () => NL.revive(it) } : null;
+    if (!skill) return it.state === 'final' ? null : NL.isShelved(it.state) ? { label: 'Revive it', icon: '↺', run: () => NL.revive(it) } : null;
     if (((s.skills || {})[skill] || {}).level === 'project' && !it.has_project) return null;
     return { label: NL.procTitle(skill), icon: '▸', skill, run: () => NL.launch({ skill, target: it.id }) };
   };
@@ -68,7 +68,7 @@
   /* ── the lifecycle stepper (gates as doors) ─────────────────────────────── */
   const Stepper = ({ it }) => {
     const idx = NL.LIFECYCLE.indexOf(it.state);
-    const off = it.state === 'parked' || it.state === 'killed';
+    const off = NL.isShelved(it.state);
     return html`<ol class=${cls('stepper', off && 'off')}>${NL.LIFECYCLE.map((st, i) => {
       const gate = NL.GATE_AT[st];
       const done = !off && i < idx, cur = !off && i === idx;
@@ -213,7 +213,7 @@
       const r = await NL.act('/api/command', { target: it.id, action, args: args || {}, launch }, launch ? `${label} — started` : `${label} — the next agent picks it up at its next checkpoint`);
       if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
     };
-    const off = it.state === 'parked' || it.state === 'killed';
+    const off = NL.isShelved(it.state);
     return html`<div class="cols"><div class="col-main">
       ${it.has_project ? html`<${NL.Section} title="Loop and experiments"><div class="btn-grid">
         <${NL.Btn} onClick=${() => NL.open(NL.LoopBriefSheet, { slug: it.id }, { key: 'loop' })}>Research loop — brief & start</${NL.Btn}>
@@ -232,11 +232,6 @@
         ${it.has_project ? html`<${NL.Btn} onClick=${() => NL.openGate(it.id, 2)}>Gate 2 — FULL-run envelope</${NL.Btn}>` : null}
         ${['internal-review', 'final'].includes(it.state) ? html`<${NL.Btn} onClick=${() => NL.openGate(it.id, 3)}>Gate 3 — finalize</${NL.Btn}>` : null}</div></${NL.Section}>
       <${NL.Section} title="Elsewhere"><div class="stack">${it.project_dir ? html`<${NL.EditorLink} path=${it.project_dir}>Open the project repo ↗</${NL.EditorLink}>` : null}
-        <button class="link small" onClick=${() => NL.open(NoteLayer, { target: it.id }, { kind: 'dialog' })}>Leave a note for the next agent</button></div></${NL.Section}></aside></div>`;
-  };
-  const NoteLayer = ({ target, onClose }) => {
-    const [t, setT] = useState('');
-    return html`<div class="dialog"><h3>Leave a note for the next agent</h3><${NL.Textarea} rows="3" value=${t} onInput=${setT} autofocus />
-      <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${async () => { const r = await NL.act('/api/directive', { target, text: t.trim() }, 'Note pinned'); if (r.ok) onClose(); }}>Pin</${NL.Btn}></div></div>`;
+        <button class="link small" onClick=${() => NL.openNote(it.id)}>Leave a note for the next agent</button></div></${NL.Section}></aside></div>`;
   };
 })();

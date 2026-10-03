@@ -42,6 +42,13 @@
     })}</div>`;
   };
 
+  /* every settings form saves the same way: the changed keys, shown old → new, confirmed, then written */
+  const changed = (keys, v, orig) => keys.filter(k => String(v[k] ?? '') !== String(orig[k] ?? ''));
+  const saveChanges = async (title, path, keys, v, orig) => {
+    if (!keys.length || !await NL.confirm({ title, ok: 'Save', body: html`<ul class="diff">${keys.map(k => html`<li><span class="mono">${k}</span>: ${String(orig[k] ?? '—')} → <b>${String(v[k])}</b></li>`)}</ul>` })) return {};
+    return NL.act(path, { confirm: true, changes: Object.fromEntries(keys.map(k => [k, v[k]])) }, 'Saved');
+  };
+
   const EXEC = [
     ['max_minutes', 'Time limit per run', 'minutes', 5],
     ['max_concurrent_total', 'Runs at once, lab-wide', '', 1], ['hub_max_concurrent', 'Lab-level runs at once', 'keep 1 so two runs never edit the registry together', 1],
@@ -59,12 +66,8 @@
     const init = () => Object.fromEntries([...EXEC.map(([k]) => [k, cfg[k] ?? '']), ['backend', x.backend || 'claude'], ['model', cfg.model || ''], ['permission_mode', x.permission_mode || 'auto'], ['auto_spawn_on_gate1', !!x.auto_spawn_on_gate1], ['live', cfg.live !== false]]);
     const [v, setV] = useState(init);
     const orig = init();
-    const diff = Object.keys(v).filter(k => String(v[k]) !== String(orig[k]));
-    const save = async () => {
-      if (!diff.length) return;
-      const ok = await NL.confirm({ title: 'Save these settings?', ok: 'Save', body: html`<ul class="diff">${diff.map(k => html`<li><span class="mono">${k}</span>: ${String(orig[k] || '—')} → <b>${String(v[k])}</b></li>`)}</ul>` });
-      if (ok) NL.act('/api/executor/config', { confirm: true, changes: Object.fromEntries(diff.map(k => [k, v[k]])) }, 'Saved');
-    };
+    const diff = changed(Object.keys(v), v, orig);
+    const save = () => saveChanges('Save these settings?', '/api/executor/config', diff, v, orig);
     const set = (k, val) => setV(o => ({ ...o, [k]: val }));
     return html`<div class="form">
       <div class="grid2">
@@ -96,13 +99,9 @@
     if (!c) return html`<${NL.Spinner} />`;
     const keys = ['name', 'projects_root', 'max_concurrent_runs', 'oversight', 'venue', 'page_limit', 'max_concurrent_projects',
       'loop_mode', 'explore_rounds', 'in_project_approval', 'keep_awake'];
-    const diff = keys.filter(k => String(v[k] ?? '') !== String(c[k] ?? ''));
+    const diff = changed(keys, v, c);
     const set = (k, x) => setV(o => ({ ...o, [k]: x }));
-    const save = async () => {
-      if (!await NL.confirm({ title: 'Save lab settings?', ok: 'Save', body: html`<ul class="diff">${diff.map(k => html`<li><span class="mono">${k}</span>: ${String(c[k] ?? '—')} → <b>${String(v[k])}</b></li>`)}</ul>` })) return;
-      const r = await NL.act('/api/lab/config', { confirm: true, changes: Object.fromEntries(diff.map(k => [k, v[k]])) }, 'Saved');
-      if (r.ok) load();
-    };
+    const save = async () => { if ((await saveChanges('Save lab settings?', '/api/lab/config', diff, v, c)).ok) load(); };
     const tier = async t => { if (await NL.confirm({ title: `Apply the ${t} budget tier?`, ok: 'Apply', body: 'Sets how many ideas, critics and parallel agents each procedure uses (lab/profiles/' + t + '.yaml). Integrity floors are never lowered.' }))
       NL.act('/api/lab/config', { confirm: true, changes: { budget_tier: t } }, `Applied the ${t} tier`); };
     return html`<div class="form"><div class="grid2">
@@ -263,6 +262,7 @@
     { id: 'notifications', label: 'Notifications', C: Notifications },
     { id: 'about', label: 'About & server', C: About },
   ];
+  NL.SETTINGS_SECTIONS = SECTIONS;
   NL.SettingsPage = ({ args }) => {
     const cur = SECTIONS.find(x => x.id === args[0]) || SECTIONS[0];
     return html`<div class="page page-split">

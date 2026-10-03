@@ -36,6 +36,9 @@
   };
 
   /* ── command palette (/ or Ctrl+K) ─────────────────────────────────────── */
+  /* the pages you can go to: [route, label, in the top bar] — the top bar and the palette both read this */
+  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['workflow', 'Workflow', 1],
+    ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']];
   function paletteActions(s) {
     const A = [];
     const add = (label, hint, run, kw) => A.push({ label, hint, run, kw: (label + ' ' + (hint || '') + ' ' + (kw || '')).toLowerCase() });
@@ -43,9 +46,8 @@
     add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
     add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
-    [['', 'Home'], ['studies', 'Studies'], ['runs', 'Runs'], ['library', 'Library'], ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']]
-      .forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
-    ['agents', 'autonomy', 'lab', 'system', 'keys', 'appearance', 'notifications', 'about'].forEach(x => add('Settings: ' + x, 'go', () => NL.go('settings/' + x)));
+    NAV.forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
+    (NL.SETTINGS_SECTIONS || []).forEach(x => add('Settings: ' + x.label, 'go', () => NL.go('settings/' + x.id), x.id));
     (s.items || []).forEach(i => {
       add(i.title || i.id, NL.STATE_LABEL[i.state] + ' · study', () => NL.go('study/' + i.id), i.id);
       if (i.gate && !i.gate_signed) add(`Sign Gate ${i.gate} — ${i.title || i.id}`, 'review and sign', () => NL.openGate(i.id, i.gate), 'approve');
@@ -80,7 +82,7 @@
     const li = s.lab_info || {};
     const x = NL.exec(s);
     const slots = s.slots || {};
-    const nav = [['home', '', 'Home'], ['studies', 'studies', 'Studies'], ['runs', 'runs', 'Runs'], ['library', 'library', 'Library'], ['workflow', 'workflow', 'Workflow']];
+    const nav = NAV.filter(x => x[2]).map(([to, label]) => [to || 'home', to, label]);
     const running = x.active || 0;
     const fl = NL.useFleet ? NL.useFleet() : null;
     useEffect(() => { const el = document.querySelector('.mainnav .navlink.on'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [page]);

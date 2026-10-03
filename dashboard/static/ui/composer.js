@@ -32,8 +32,6 @@
     if (o.chain && o.chain !== 'off') b.chain = o.chain;
     return b;
   };
-  NL.LaunchOptions = LaunchOptions;
-  NL.optBody = optBody;
 
   const StudyPicker = ({ value, onChange, filter, allowLab, label }) => {
     const s = NL.useLab();
@@ -42,7 +40,6 @@
       options=${[...(allowLab ? [{ value: 'hub', label: 'The whole lab' }] : [{ value: '', label: 'Choose a study…' }]),
         ...items.map(i => ({ value: i.id, label: `${i.title || i.id} · ${NL.STATE_LABEL[i.state] || i.state}` }))]} /></${NL.Field}>`;
   };
-  NL.StudyPicker = StudyPicker;
 
   /* ── intents ───────────────────────────────────────────────────────────── */
   const INTENTS = [
@@ -102,7 +99,7 @@
         <span class="intent-ico" aria-hidden="true">${i.icon}</span><span class="intent-t">${i.title}</span></button>`)}</div>
       ${it && it.campaign ? html`<${CampaignForm} onDone=${onClose} />` : null}
       ${it && !it.campaign ? html`<div class="intent-detail">
-        ${(it.study || it.target) ? html`<${StudyPicker} value=${target} onChange=${setTarget} allowLab=${it.target === 'study?'} filter=${i => !['final', 'killed', 'parked'].includes(i.state)} />` : null}
+        ${(it.study || it.target) ? html`<${StudyPicker} value=${target} onChange=${setTarget} allowLab=${it.target === 'study?'} filter=${i => !NL.isTerminal(i.state)} />` : null}
         ${it.study && study ? html`<${NL.Field} label="What to do"><div class="procs">${procs.length ? procs.map(p => html`<button type="button" class=${cls('proc', skill === p && 'on')} onClick=${() => setSkill(p)}>
           <b>${NL.procTitle(p)}</b><small>${(NL.PROC[p] || {}).does || ''}</small></button>`) : html`<span class="muted">Nothing to start for a study in “${NL.STATE_LABEL[study.state]}”.</span>`}</div></${NL.Field}>` : null}
         ${theSkill && !(it.study && !study) ? html`<div class="explain">
@@ -131,7 +128,7 @@
       <span class="askbar-newt" aria-hidden="true">🦎</span>
       <input class="askbar-in" value=${v} onInput=${e => setV(e.target.value)} onKeyDown=${e => e.key === 'Enter' && (e.preventDefault(), send())}
         placeholder=${study ? `Ask Newt about ${NL.clip(study.title || study.id, 30)} — or tell it what to do…` : 'Ask Newt anything — or tell it what to do…'} aria-label="Ask Newt" />
-      <button class="askbar-more" title="leave a note for the next agent instead" onClick=${() => NL.open(NoteDialog, { target: target || 'hub', text: v }, { kind: 'dialog' })}>✉</button>
+      <button class="askbar-more" title="leave a note for the next agent instead" onClick=${() => NL.openNote(target, v)}>✉</button>
       <button class="askbar-go" disabled=${!v.trim()} onClick=${send} aria-label="send">➤</button></div>`;
   };
   const AskConfirm = ({ text, target, onSent, onClose }) => {
@@ -214,5 +211,4 @@
       <${NL.Section} title="Before you walk away"><${NL.Preflight} onReady=${setReady} /></${NL.Section}>
       <div class="row end"><${NL.Btn} onClick=${() => sign(false)}>Sign only</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!ready} title=${ready ? '' : 'fix the checks above first'} onClick=${() => sign(true)}>Sign and start</${NL.Btn}></div></div>`;
   };
-  NL.CampaignForm = CampaignForm;
 })();

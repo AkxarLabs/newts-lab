@@ -35,7 +35,6 @@
         <span class="inrow-t"><b>${it.title}</b>${it.body ? html`<small>${NL.clip(it.body, compact ? 110 : 260)}</small>` : null}</span></button>
       ${acts.length ? html`<span class="inrow-acts">${acts.map(a => html`<${NL.Btn} small kind=${PRIMARY.has(a.id) ? 'primary' : ''} onClick=${() => NL.attAct(it, a)}>${a.label}</${NL.Btn}>`)}</span>` : null}</div>`;
   };
-  NL.InboxRow = InboxRow;
   const sortInbox = xs => xs.slice().sort((a, b) => ({ block: 0, warn: 1, info: 2 }[a.sev] - { block: 0, warn: 1, info: 2 }[b.sev]) || String(b.ts || '').localeCompare(String(a.ts || '')));
   NL.inboxItems = s => {
     const att = sortInbox(((s && s.attention) || []));
@@ -73,7 +72,7 @@
   const UpNext = () => {
     const s = NL.useLab();
     const busy = new Set(NL.runs(s, r => NL.RUN_ACTIVE.has(r.status) || r.status === 'queued' || r.status === 'waiting_input').map(r => r.subject).filter(Boolean));
-    const list = (s.items || []).filter(i => !busy.has(i.id) && !['final', 'parked', 'killed'].includes(i.state) && !(i.gate && !i.gate_signed))
+    const list = (s.items || []).filter(i => !busy.has(i.id) && !NL.isTerminal(i.state) && !(i.gate && !i.gate_signed))
       .map(i => ({ it: i, nx: NL.nextFor(s, i) })).filter(x => x.nx).slice(0, 5);
     if (!list.length) return null;
     return html`<${NL.Section} title="Up next" className="rail-sec">${list.map(({ it, nx }) => html`<div class="upnext">

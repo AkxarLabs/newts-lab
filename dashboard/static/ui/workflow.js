@@ -17,7 +17,6 @@
     const st = study ? ((custom(s, study).procedures || {})[proc] || {}) : {};
     return { add: lab.add || st.add, method: lab.method || st.method, stale: lab.stale || st.stale, studyOwn: !!(st.add || st.method) };
   };
-  NL.wfFlags = flagsOf;
 
   const Chips = ({ f }) => html`${f.method ? html`<${NL.Pill} tone="ask" title="the PI replaced this procedure's method">method replaced</${NL.Pill}>` : null}
     ${f.add ? html`<${NL.Pill} tone="state" title="the PI added instructions">+ your instructions</${NL.Pill}>` : null}
@@ -38,7 +37,6 @@
     const d = useMemo(() => lineDiff(a, b), [a, b]);
     return html`<pre class="diff">${d.map(x => html`<div class=${cls('dl', x.t === '+' && 'add', x.t === '-' && 'del')}><i>${x.t === '=' ? ' ' : x.t}</i>${x.s || ' '}</div>`)}</pre>`;
   };
-  NL.Diff = Diff;
 
   /* the editor for one layer (lab-wide or one study's) of one kind */
   const LayerEditor = ({ kind, name, study, value, placeholder, onSaved, rows, hint }) => {

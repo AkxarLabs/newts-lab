@@ -14,7 +14,6 @@
     return html`<button type=${type || 'button'} class=${cls('btn', kind && 'btn-' + kind, small && 'btn-sm', (busy || working) && 'is-busy')}
       disabled=${disabled || busy || working} title=${title} onClick=${click}>${icon ? html`<span class="btn-ico" aria-hidden="true">${icon}</span>` : null}${children}</button>`;
   };
-  NL.Link = ({ to, children, title }) => html`<a class="link" href=${'#/' + to} title=${title}>${children}</a>`;
 
   NL.Pill = ({ tone, children, title }) => html`<span class=${cls('pill', tone && 'pill-' + tone)} title=${title}>${children}</span>`;
   NL.RunPill = ({ r }) => r ? html`<${NL.Pill} tone=${NL.RUN_TONE[r.status] || 'muted'}>${NL.RUN_TONE[r.status] === 'live' ? html`<i class="dot-live"></i>` : null}${NL.RUN_WORD[r.status] || r.status}</${NL.Pill}>` : null;
@@ -30,8 +29,6 @@
     ${title ? html`<div class="empty-title">${title}</div>` : null}<div class="empty-body">${children}</div></div>`;
   NL.Spinner = () => html`<span class="spinner" aria-label="loading"></span>`;
   NL.Bar = ({ value, max, tone }) => { const p = max ? Math.max(0, Math.min(1, value / max)) : 0; return html`<span class=${cls('bar', tone && 'bar-' + tone)}><i style=${{ width: (p * 100).toFixed(1) + '%' }}></i></span>`; };
-  NL.Kbd = ({ children }) => html`<kbd class="kbd">${children}</kbd>`;
-  NL.Detail = ({ children }) => html`<div class="detail-line">${children}</div>`;
 
   /* ── fields ─────────────────────────────────────────────────────────────── */
   NL.Field = ({ label, hint, children, error }) => html`<label class=${cls('field', error && 'field-error')}><span class="field-label">${label}</span>${children}${hint ? html`<span class="field-hint">${hint}</span>` : null}${error ? html`<span class="field-err">${error}</span>` : null}</label>`;
@@ -93,7 +90,6 @@
 
   /* ── markdown (marked + DOMPurify + KaTeX; offline) ─────────────────────── */
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  NL.esc = esc;
   function mathHtml(src) {
     if (!window.katex) return esc(src);
     let body = src, display = false;

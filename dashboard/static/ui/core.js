@@ -12,7 +12,6 @@
   /* ── small helpers ─────────────────────────────────────────────────────── */
   NL.cls = (...xs) => xs.filter(Boolean).join(' ');
   NL.hhmm = ts => (ts || '').slice(11, 16);
-  NL.day = ts => (ts || '').slice(0, 10);
   NL.plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
   NL.mins = s => s == null ? '' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`;
   NL.ago = ts => {
@@ -62,7 +61,9 @@
     return true;
   };
   NL.applyWorkflow(window.__WORKFLOW_DEFAULT__);
-  NL.roomOf = st => (NL.ROOMS.find(r => r.states.includes(st)) || NL.ROOMS[0] || { key: 'incubator' }).key;
+  const stateOf = st => (NL.WF.states || []).concat(NL.WF.side_states || []).find(y => y.id === st);
+  NL.isTerminal = st => !!(stateOf(st) || {}).terminal;   // final, parked, killed: nothing more runs
+  NL.isShelved = st => (NL.WF.side_states || []).some(y => y.id === st);   // parked or killed: revivable from here
   NL.stageOf = st => { const x = (NL.WF.states || []).find(y => y.id === st); return x ? NL.STAGES.find(g => g.id === x.stage) : null; };
   // where a state stands in the world (room + station), for the painted and the diorama worlds
   NL.wfStateRoom = () => { const o = {}; (NL.WF.states || []).concat(NL.WF.side_states || []).forEach(x => { if (x.room) o[x.id] = x.room; }); return o; };
@@ -100,17 +101,14 @@
   NL.getState = () => store.state;
   function emit() { for (const f of store.listeners) { try { f(store.state); } catch (e) { console.error(e); } } }
   NL.setState = s => { const prev = store.state; store.state = s; if (s && s.workflow) NL.applyWorkflow(s.workflow); NL.onSnapshot && NL.onSnapshot(prev, s); emit(); };
-  /** Subscribe a component to the lab snapshot (re-renders on every change). */
-  NL.useLab = () => {
+  /** Re-render the calling component whenever a listener set fires (the one subscription pattern). */
+  const useSub = set => {
     const [, force] = H.useReducer(x => x + 1, 0);
-    H.useEffect(() => { store.listeners.add(force); return () => store.listeners.delete(force); }, []);
-    return store.state || {};
+    H.useEffect(() => { set.add(force); return () => set.delete(force); }, []);
   };
-  NL.useConn = () => {
-    const [c, setC] = H.useState(store.conn);
-    H.useEffect(() => { const f = () => setC(store.conn); store.listeners.add(f); return () => store.listeners.delete(f); }, []);
-    return c;
-  };
+  /** Subscribe a component to the lab snapshot (re-renders on every change). */
+  NL.useLab = () => { useSub(store.listeners); return store.state || {}; };
+  NL.useConn = () => { useSub(store.listeners); return store.conn; };
 
   NL.DEMO = location.search.includes('demo') && (window.__VIV_DEMO__ === true || location.protocol === 'file:');
   NL.STATIC = location.search.includes('static');
@@ -186,11 +184,7 @@
   NL.prefs = prefs;
   const prefListeners = new Set();
   NL.setPref = (k, v) => { prefs[k] = v; ls.set('nl-prefs', prefs); NL.applyTheme(); for (const f of prefListeners) f(prefs); };
-  NL.usePrefs = () => {
-    const [, force] = H.useReducer(x => x + 1, 0);
-    H.useEffect(() => { prefListeners.add(force); return () => prefListeners.delete(force); }, []);
-    return prefs;
-  };
+  NL.usePrefs = () => { useSub(prefListeners); return prefs; };
   NL.themeNow = () => {
     const q = new URLSearchParams(location.search).get('lamp');
     if (q === 'day' || q === 'light') return 'day';
@@ -215,17 +209,12 @@
     toasts.listeners.forEach(f => f());
     setTimeout(() => { toasts.list = toasts.list.filter(x => x !== t); toasts.listeners.forEach(f => f()); }, tone === 'bad' ? 7000 : 4200);
   };
-  NL.useToasts = () => {
-    const [, force] = H.useReducer(x => x + 1, 0);
-    H.useEffect(() => { toasts.listeners.add(force); return () => toasts.listeners.delete(force); }, []);
-    return toasts.list;
-  };
+  NL.useToasts = () => { useSub(toasts.listeners); return toasts.list; };
 
   /* ── layers: sheets and dialogs, stacked; Escape closes the top one ──────
      NL.open(Component, props) → id · NL.close(id) · NL.confirm({...}) → Promise<boolean|string>
      A dialog opened from a sheet sits ABOVE it and never closes it. */
   const layers = { list: [], listeners: new Set(), n: 0 };
-  NL.layers = layers;
   const bump = () => layers.listeners.forEach(f => f());
   NL.open = (Comp, props, opts) => {
     const key = opts && opts.key;
@@ -236,16 +225,11 @@
     return id;
   };
   NL.close = id => { const l = layers.list.find(x => x.id === id); layers.list = layers.list.filter(x => x.id !== id); if (l && l.props && l.props.onClose) l.props.onClose(); bump(); };
-  NL.closeKey = key => { const l = layers.list.find(x => x.key === key); if (l) NL.close(l.id); };
   NL.closeTop = () => { const top = layers.list[layers.list.length - 1]; if (top) { NL.close(top.id); return true; } return false; };
   NL.isOpen = key => layers.list.some(l => l.key === key);
   // going to another page closes its side sheets (a dialog waiting for an answer stays)
   NL.closeSheets = () => { layers.list.filter(l => l.kind === 'sheet').forEach(l => NL.close(l.id)); };
-  NL.useLayers = () => {
-    const [, force] = H.useReducer(x => x + 1, 0);
-    H.useEffect(() => { layers.listeners.add(force); return () => layers.listeners.delete(force); }, []);
-    return layers.list;
-  };
+  NL.useLayers = () => { useSub(layers.listeners); return layers.list; };
   NL.confirm = (o) => new Promise(resolve => {
     let done = false;
     const id = NL.open(NL.ConfirmDialog, { ...o, resolve: v => { if (done) return; done = true; NL.close(id); resolve(v); }, onClose: () => { if (!done) { done = true; resolve(false); } } }, { kind: 'dialog' });
@@ -265,10 +249,8 @@
   NL.run = (s, id) => ((s && s.runs) || []).find(r => r.run_id === id);
   NL.runsOf = (s, slug) => NL.runs(s, r => r.target === slug || r.subject === slug);
   NL.workersOf = (s, slug) => ((s && s.workers) || []).filter(w => w.project === slug || w.idea === slug);
-  NL.inbox = s => ((s && s.attention) || []).filter(a => a.sev !== 'info' || a.kind === 'report');
   NL.needsYou = s => ((s && s.attention) || []).filter(a => a.sev !== 'info');
   NL.backends = s => { const c = (NL.exec(s).clis) || {}; return ['claude', 'codex', 'opencode'].map(b => ({ id: b, ...(c[b] || {}) })); };
-  NL.readyBackend = s => NL.backends(s).find(b => b.found && b.logged_in !== false && b.id === (NL.exec(s).backend || 'claude')) || NL.backends(s).find(b => b.found && b.logged_in);
 
   /* ── launching (every "start" button ends here) ────────────────────────── */
   NL.launch = async (body, opts) => {

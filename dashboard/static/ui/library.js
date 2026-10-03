@@ -19,7 +19,6 @@
     return t;
   };
   const docHref = d => `#/library/${encodeURIComponent(d.scope)}/${encodeURIComponent(d.slug || '_')}/${d.rel.split('/').map(encodeURIComponent).join('/')}`;
-  NL.docHref = docHref;
   NL.openDoc = (scope, slug, rel) => { location.hash = docHref({ scope, slug, rel }); };
 
   NL.DocReader = ({ scope, slug, rel, bare, fallback }) => {
