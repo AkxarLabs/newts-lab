@@ -25,7 +25,7 @@ from .manifest import (ACTIVE, TERMINAL, all_runs, emit, now, parse_ts, read_man
                        scheduler_lock, transition, write_manifest)
 from .procs import DETACHED, is_locked, kill_tree, pid_alive, python_exe
 from .spec import RunSpec, SpecError, SKILL_REGISTRY
-from . import campaigns
+from . import campaigns, notify
 
 CLI = Path(__file__).resolve().parents[1] / "executor_cli.py"
 STARTING_GRACE_S = 60
@@ -340,6 +340,10 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
                     report["post_processed"] += 1
                 except OSError:
                     pass
+        try:
+            notify.check_in_background(lab)   # what needs the PI → their phone (works with the dashboard closed)
+        except Exception:  # noqa: BLE001
+            pass
         prog = lab.prog()
         report["enabled"] = bool(prog.get("enabled"))
         depth = pos_int(os.environ.get("AUTOSCIENTIST_AGENT_DEPTH", "0") or 0, 0, 0)

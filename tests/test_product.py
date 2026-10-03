@@ -401,3 +401,20 @@ def test_autonomy_settings_round_trip(m, hub):
     assert m.product.lab_config_set({"confirm": True, "changes": {"keep_awake": "auto"}})[1] == 200
     assert m.product.lab_config_get()[0]["config"]["keep_awake"] == "auto"
     assert m.product.lab_config_set({"confirm": True, "changes": {"loop_mode": "yolo"}})[1] == 400
+
+
+# ── phone notifications (Settings → Notifications) ─────────────────────────────
+
+def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
+    product = m.product
+    out, code = product.notify_set({"confirm": True, "ntfy": "not a url"})
+    assert code == 400
+    base, got = inbox
+    out, code = product.notify_set({"confirm": True, "ntfy": f"{base}/secret-topic-123", "link": "http://pc:8787"})
+    assert code == 200, out
+    st, _ = product.notify_status()
+    assert "secret-topic" not in st["ntfy"] and st["link"] == "http://pc:8787" and not st["webhook"]
+    assert "secret-topic" not in (hub.lab / "config.yaml").read_text(encoding="utf-8")
+    assert [k["key"] for k in product.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
+    out, code = product.notify_test({})
+    assert code == 200 and got and got[0]["path"] == "/secret-topic-123"

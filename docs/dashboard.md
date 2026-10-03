@@ -115,6 +115,13 @@ The same list as *Needs you* sits behind the 🔔 in the top bar. The tab title 
 are waiting, and **desktop notifications** (⚙ Settings → Notifications) tell you when an agent asks
 something, a gate opens, or a run finishes or fails.
 
+**On your phone.** In the same place, give an [ntfy](https://ntfy.sh) topic and/or a webhook (Slack,
+Discord, Teams). The lab's scheduler sends each thing that blocks it once: a question, an approval, a
+gate, a stalled campaign. It works with the dashboard closed. Only the title and one line are sent,
+never files or transcripts. The addresses are kept in the git-ignored `lab/.env.local` and never given
+to agents; a topic name works like a password, so pick a long random one. Add the address your phone
+can reach the dashboard at (for example a Tailscale address) and each notification opens the item.
+
 <figure markdown>
 ![Home in the day theme](assets/dashboard-home-light.png){ .as-shot }
 <figcaption>The same Home by day — the parchment atelier. Theme follows your system, or pick one in Settings → Appearance.</figcaption>
@@ -315,11 +322,11 @@ Gate 3 safe to offer.
   | Section | What it holds |
   |---|---|
   | Agents & sign-in | the CLI cards from the wizard |
-  | Autonomy & limits | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; how long to wait for your allow/deny; create the project when Gate 1 is signed |
+  | Autonomy & limits | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
   | Lab | name, where projects go, training runs at once, projects per campaign, oversight, venue, page limit, budget tier; anything else goes to an agent via `/configure` |
   | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
   | Appearance | theme day / night / system, density, world diorama / classic, motion, narration |
-  | Notifications | desktop notifications |
+  | Notifications | desktop notifications; on your phone (ntfy topic, webhook, the dashboard's address), with *Send a test* |
   | System & compute | what the lab's machine offers (CPUs, memory, GPUs, disk, schedulers, SLURM partitions), where training runs (here / SLURM / another scheduler, with `compute.scheduler` prefilled from what was detected), SYSTEM.md |
   | About & server | the lab, a terminal in the lab folder, the setup wizard, **stop the server** |
 

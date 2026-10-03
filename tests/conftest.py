@@ -158,3 +158,26 @@ def hub(tmp_path) -> FakeHub:
     h = FakeHub(root)
     h.projects_root.mkdir(parents=True, exist_ok=True)
     return h
+
+
+@pytest.fixture
+def inbox():
+    """A local HTTP server that records every POST (stands in for ntfy / a webhook)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    got = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+            got.append({"path": self.path, "headers": dict(self.headers), "body": body})
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", got
+    srv.shutdown()

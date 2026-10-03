@@ -160,7 +160,30 @@
       <${NL.Toggle} on=${p.notify && perm === 'granted'} onChange=${async v => { if (v && window.Notification && Notification.permission !== 'granted') { const r = await Notification.requestPermission(); if (r !== 'granted') return NL.toast('The browser blocked notifications', 'warn'); } NL.setPref('notify', v); }}
         label="Desktop notifications" sub="when an agent asks you something, a gate opens, or a run finishes or fails — even with this tab in the background" />
       ${perm === 'denied' ? html`<div class="note note-warn">Notifications are blocked for this page in your browser's site settings.</div>` : null}
-      <p class="muted small">The tab title always shows how many things are waiting on you.</p></div>`;
+      <p class="muted small">The tab title always shows how many things are waiting on you.</p>
+      <${NL.Section} title="On your phone"><${PhoneNotify} /></${NL.Section}></div>`;
+  };
+
+  /* questions, approvals and gates → ntfy / a webhook, sent by the lab's scheduler (works with this page closed) */
+  const PhoneNotify = () => {
+    const [c, setC] = useState(null);
+    const [v, setV] = useState({ ntfy: '', webhook: '', link: '' });
+    const load = () => NL.get('/api/notify').then(x => { setC(x); setV({ ntfy: '', webhook: '', link: x.link || '' }); });
+    useEffect(() => { load(); }, []);
+    if (!c) return html`<${NL.Spinner} />`;
+    const changes = Object.fromEntries(Object.entries(v).filter(([k, x]) => k === 'link' ? x !== (c.link || '') : x.trim()));
+    const save = async () => { const r = await NL.act('/api/notify', { confirm: true, ...changes }); if (r.ok) load(); };
+    const clear = async k => { if (await NL.confirm({ title: `Stop sending to ${k}?`, ok: 'Stop' })) { const r = await NL.act('/api/notify', { confirm: true, [k]: '' }); if (r.ok) load(); } };
+    const row = (k, label, hint, ph) => html`<${NL.Field} label=${label} hint=${hint}>
+      ${c[k] && k !== 'link' ? html`<div class="row"><span class="mono small">${c[k]}</span><button class="link small" onClick=${() => clear(k)}>remove</button></div>` : null}
+      <${NL.Input} value=${v[k]} onInput=${x => setV(o => ({ ...o, [k]: x }))} placeholder=${c[k] && k !== 'link' ? 'replace with…' : ph} mono /></${NL.Field}>`;
+    return html`<div class="form">
+      <p class="muted small">The lab sends what needs you — a question, an approval, a gate, a stalled campaign — once each, even when this page is closed. Only the title and one line are sent, never files or transcripts. These addresses are kept in the lab's <span class="mono">.env.local</span> (not committed, not given to agents): anyone who knows an ntfy topic can read it, so pick a long random one.</p>
+      ${row('ntfy', 'ntfy topic', 'install the ntfy app and subscribe to the same topic', 'https://ntfy.sh/your-long-random-topic')}
+      ${row('webhook', 'Webhook', 'Slack, Discord, Teams — any incoming webhook', 'https://hooks.slack.com/services/…')}
+      ${row('link', 'Dashboard address from your phone', 'each notification opens the item here — e.g. your Tailscale address; leave empty for no link', 'http://my-computer:8787')}
+      <div class="row end"><${NL.Btn} onClick=${() => NL.act('/api/notify/test', {})} disabled=${!(c.ntfy || c.webhook)}>Send a test</${NL.Btn}>
+        <${NL.Btn} kind="primary" disabled=${!Object.keys(changes).length} onClick=${save}>Save</${NL.Btn}></div></div>`;
   };
 
   const About = () => {
