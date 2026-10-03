@@ -1,4 +1,4 @@
-"""Tests for tools/s2.py — the literature helper.
+"""Tests for .claude/skills/lit-review/tools/s2.py — the literature helper.
 
 Network paths (S2/doi.org/Crossref/OpenAlex) are NOT hit; we test the pure logic: DOI/key
 parsing, the keyless bibtex fallback CHAIN (with http_get/http_get_text monkeypatched), the

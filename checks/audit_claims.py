@@ -3,7 +3,7 @@ r"""Mechanically audit a paper's claims.yaml against run artifacts.
     uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3]
         [--check-commits] [--verify-hashes]
 
-Artifacts resolve from the hub archive (studies/<slug>/paper/artifacts/, locked by tools/lock_artifacts.py
+Artifacts resolve from the hub archive (studies/<slug>/paper/artifacts/, locked by .claude/skills/finalize/tools/lock_artifacts.py
 at /finalize) first, then the live project — so a finalized paper audits from the hub alone.
 --verify-hashes checks each artifact against the claim's locked artifact_sha256.
 

@@ -1,7 +1,7 @@
 """Sync a paper's figures from its project repo into the hub, with a verifiable manifest.
 
-    uv run --with pyyaml python tools/sync_figures.py <slug>          # copy + record manifest
-    uv run --with pyyaml python tools/sync_figures.py <slug> --check  # verify, exit!=0 on drift
+    uv run --with pyyaml python .claude/skills/make-figures/tools/sync_figures.py <slug>          # copy + record manifest
+    uv run --with pyyaml python .claude/skills/make-figures/tools/sync_figures.py <slug> --check  # verify, exit!=0 on drift
 
 Figures are GENERATED in the project (`<projects_root>/<slug>/figures/` by `scripts/figures/*.py`)
 and CONSUMED by the paper in the hub (`studies/<slug>/paper/figures/`). This copies the `*.pdf/*.tex/*.png`
@@ -24,13 +24,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-HUB = Path(__file__).resolve().parents[1]
+HUB = Path(__file__).resolve().parents[4]
 EXTS = (".pdf", ".tex", ".png")
 
 
@@ -108,7 +108,7 @@ def main() -> int:
             print(f"## Figure sync check — {args.slug}: {len(problems)} issue(s)")
             for p in problems:
                 print(f"- {p}")
-            print(f"\nRe-run `tools/sync_figures.py {args.slug}` after regenerating; never "
+            print(f"\nRe-run `.claude/skills/make-figures/tools/sync_figures.py {args.slug}` after regenerating; never "
                   f"hand-edit hub figures.")
             return 1
         print(f"figure sync OK — {len(manifest)} file(s) match their project sources ({args.slug})")

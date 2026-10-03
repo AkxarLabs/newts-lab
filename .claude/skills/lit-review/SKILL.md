@@ -32,7 +32,7 @@ Input: an idea in state `triaged`. Output: `studies/<slug>/lit-review.md` (from 
 
 1. Read `studies/<slug>/IDEA.md`. Set state → `lit-review` (frontmatter + registry).
 2. **Search** as the method describes. The rules:
-   - Use `tools/s2.py search "<query>" [--year 2022:]` for replayable, logged Semantic Scholar queries (OpenAlex fallback built in).
+   - Use `.claude/skills/lit-review/tools/s2.py search "<query>" [--year 2022:]` for replayable, logged Semantic Scholar queries (OpenAlex fallback built in).
    - Log EVERY query in the search log table.
    - The live search phase stops at `litreview.max_minutes` (`lab/config.yaml`; 0 = unbounded) even if the method's own stopping rule hasn't fired. If the cap stops you, **log what was NOT covered** in the search log.
    - **A query that errors or exits 3 (both backends unreachable — see s2.py) does not count** toward any "nothing new" stopping rule. An empty result from it is not evidence of absence.

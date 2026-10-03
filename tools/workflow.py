@@ -355,7 +355,7 @@ def check_rules(hub=None) -> list[str]:
 # procedure's SKILL.md contract. A default METHOD.md contains none of these (a test enforces it), so
 # replacing a method can never remove a system rule; the dashboard warns when PI text restates them.
 SYSTEM_PATTERNS = [
-    r"(?:tools|scripts)/[\w.-]+\.py(?: (?!-)[a-z][\w-]*)?",
+    r"(?:tools|scripts|checks)/[\w.-]+\.py(?: (?!-)[a-z][\w-]*)?",
     r"\bguard\.py [a-z][\w-]*",
     r"\blab_bus\.py (?:emit|inbox|escalate|ack)(?: [a-z_]+)?",
     r"\bneeds_pi=\w+",

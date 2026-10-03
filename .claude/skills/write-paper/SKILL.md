@@ -51,7 +51,7 @@ with compiling LaTeX, complete `claims.yaml`, verified bibliography. Knobs:
    contributions) as you write them, each annotated `% C00N` in the LaTeX. A number with
    no entry is invisible to the blocking audit — so it must not exist.
 3. **Seed the bibliography**: pull the load-bearing entries from
-   `studies/<slug>/lit-review.md` via `tools/s2.py bibtex <id> --append references.bib` —
+   `studies/<slug>/lit-review.md` via `.claude/skills/lit-review/tools/s2.py bibtex <id> --append references.bib` —
    mechanical BibTeX appended straight into the bib (dedup'd) with the `cite-key` printed
    back; the resolver falls back **keylessly** S2 → doi.org → Crossref → OpenAlex, so it
    works without any API key. **Never hand-type a BibTeX entry.** Sparse bibliographies tell
@@ -87,7 +87,7 @@ Run reflection rounds as the method describes. Each round, in order:
    `writing.page_limit`. **No LaTeX toolchain on this machine?** Record
    it, run every non-compile check, and flag the paper as *not-compiled* — Gate 3 cannot
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
-2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
+2. **Figures + claims re-audit**: `.claude/skills/make-figures/tools/sync_figures.py <slug> --check` (hub figures still
    match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
    `checks/audit_claims.py studies/<slug>/paper --scan-novelty --rel-tol <critique.claim_rel_tol>` (completeness scan —
    every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check,
@@ -106,7 +106,7 @@ Run reflection rounds as the method describes. Each round, in order:
 
 ## 4. Bibliography verification (blocking)
 
-`tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>`
+`.claude/skills/lit-review/tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>`
 — every entry checked against the real record (title match ≥ threshold, year, retraction
 via OpenAlex). **Any nonzero exit blocks** — NOT-FOUND, RETRACTED, *and* MISMATCH
 (below-threshold title or wrong year — the near-miss-fabrication case) are re-resolved via

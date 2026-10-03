@@ -63,9 +63,9 @@ label / figure file), the run ids from `consumed_runs`, and the derivation. This
 `checks/audit_claims.py` entirely.
 
 Run every script; commit the scripts in the project repo; then sync the outputs into the hub:
-`uv run --with pyyaml python tools/sync_figures.py <slug>` — it copies `figures/*.{pdf,tex,png}`
+`uv run --with pyyaml python .claude/skills/make-figures/tools/sync_figures.py <slug>` — it copies `figures/*.{pdf,tex,png}`
 into `studies/<slug>/paper/figures/` and records a manifest (sha256 + project commit) so a later
-`tools/sync_figures.py <slug> --check` catches a stale (project regenerated) or hand-edited hub
+`.claude/skills/make-figures/tools/sync_figures.py <slug> --check` catches a stale (project regenerated) or hand-edited hub
 figure. Never hand-copy figures.
 
 ## 3. Self-review

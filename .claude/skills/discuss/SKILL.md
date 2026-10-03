@@ -64,7 +64,7 @@ addition:
 - **If a question can be answered by reading the artifacts/codebase, do that instead of asking.**
 - **Research on demand (the addition).** When an answer hinges on a literature or empirical fact
   ("is X saturated?", "the SOTA baseline?", "did anyone try Y?"), research it *before* posing the
-  next question — `uv run --with pyyaml python tools/s2.py search "..."` (replayable Semantic
+  next question — `uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py search "..."` (replayable Semantic
   Scholar), web, or arXiv — bounded by `discuss.max_research_minutes` (`lab/config.yaml`). **Log
   every query** to the **Research log** table and surface what it *actually shows* in the next
   question's preamble. Never assert a literature claim you didn't log (the `/lit-review`

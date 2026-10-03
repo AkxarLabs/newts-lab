@@ -1,6 +1,6 @@
 """Lock a finalized paper's cited run artifacts INTO the hub, so it stays auditable forever.
 
-    uv run --with pyyaml python tools/lock_artifacts.py <slug>
+    uv run --with pyyaml python .claude/skills/finalize/tools/lock_artifacts.py <slug>
 
 For every artifact cited in `studies/<slug>/paper/claims.yaml` (the small `runs/<id>/metrics.json` —
 metrics only, never checkpoints), copy it into committed `studies/<slug>/paper/artifacts/<rel>` and
@@ -22,13 +22,13 @@ import sys
 from pathlib import Path
 
 import yaml
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-HUB = Path(__file__).resolve().parents[1]
+HUB = Path(__file__).resolve().parents[4]
 
 
 def projects_root() -> Path:

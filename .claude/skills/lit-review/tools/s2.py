@@ -1,10 +1,10 @@
 """Literature API helper — Semantic Scholar primary, with keyless DOI fallbacks + OpenAlex.
 
-    uv run --with pyyaml python tools/s2.py search "small language model distillation" [--limit 10] [--year 2023:] [--bulk]
-    uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
-    uv run --with pyyaml python tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
-    uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
-    uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper          # every \\cite traces to bib + lit-review
+    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py search "small language model distillation" [--limit 10] [--year 2023:] [--bulk]
+    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
+    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
+    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
+    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py citecheck studies/<slug>/paper          # every \\cite traces to bib + lit-review
 
 Why: replayable, logged literature searches for /lit-review and /scope; mechanical BibTeX from
 paper ids for /write-paper (no hand-typed entries); zero-assumption citation verification for
@@ -248,7 +248,7 @@ def cmd_bibtex(args) -> int:
         print(f"no bibtex for {args.paper_id} via S2 / doi.org / Crossref / OpenAlex", file=sys.stderr)
         if not doi:
             print("  → no DOI in the id. AGENTIC FALLBACK: web-search the paper title for its DOI, then\n"
-                  "    uv run --with pyyaml python tools/s2.py bibtex DOI:<doi> --append <references.bib>",
+                  "    uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex DOI:<doi> --append <references.bib>",
                   file=sys.stderr)
         return 1
     bib = bib.strip()

@@ -32,9 +32,9 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
 
 ## Part A — Claims audit (mechanical, blocking)
 
-1. **Figures in sync:** `uv run --with pyyaml python tools/sync_figures.py <slug> --check` —
+1. **Figures in sync:** `uv run --with pyyaml python .claude/skills/make-figures/tools/sync_figures.py <slug> --check` —
    a stale (project regenerated, not re-synced) or hand-edited hub figure is a blocking FAIL;
-   re-run `tools/sync_figures.py <slug>` then re-check before continuing.
+   re-run `.claude/skills/make-figures/tools/sync_figures.py <slug>` then re-check before continuing.
 2. Run `uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper --check-commits --scan-novelty --rel-tol <critique.claim_rel_tol>`.
    - Any **FAIL** → return to `/write-paper` with the failure table. Part B does not run.
      (FAIL now includes the completeness scan: any numeral in main.tex body prose with no
@@ -56,11 +56,11 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
        held-out test and no headline claim reports a validation-selected metric (hard rule 5).
      Exit **1 = FAIL** (→ `/write-paper`, Part B does not run) · **2 = MANUAL** (resolve by hand;
      unresolved = FAIL) · 0 = clean.
-3. Run `uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>` —
+3. Run `uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py verify studies/<slug>/paper/references.bib --threshold <writing.citation_match_threshold>` —
    **any nonzero exit blocks**: NOT-FOUND, RETRACTED, *and* MISMATCH (below-threshold title
    or wrong year — the near-miss-fabrication case).
 4. **Cite-from-lit-review (mechanical):**
-   `uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper --threshold <writing.cite_grounding_threshold>` — every `\cite`
+   `uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py citecheck studies/<slug>/paper --threshold <writing.cite_grounding_threshold>` — every `\cite`
    must resolve to a `references.bib` entry (**DANGLING** → exit 1, blocks, LaTeX would fail too)
    and to a `studies/<slug>/lit-review.md` note (**UNGROUNDED** → exit 2, the by-hand confirm list:
    add the paper to the lit review with a note, or cut the citation).

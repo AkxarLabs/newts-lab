@@ -99,8 +99,8 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
 | `writing.venue` | `neurips` | PI | paper format `/write-paper` builds from. `neurips` \| `icml` \| `iclr` \| `aclarr` \| `aaai` \| `generic`; picks `templates/paper/venues/<venue>/main.tex` + fetches that venue's style file (URLs/limits in that dir's `README.md`). Project `control.yaml` may override per-project |
 | `writing.max_reflection_rounds` | 3 | agent-readable | verifier-gated revision rounds in `/write-paper` (gains plateau ~3) |
-| `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
-| `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
+| `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `.claude/skills/lit-review/tools/s2.py verify` |
+| `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `.claude/skills/lit-review/tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
 | `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
 
 ### Which tier for which task

@@ -1,6 +1,6 @@
 # Tools
 
-Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's ephemeral env (nothing to install); project helpers ship inside every spawned project.
+Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's ephemeral env (nothing to install); project helpers ship inside every spawned project. A helper that belongs to one method lives with its skill (`.claude/skills/<name>/tools/`), and the lab's mechanical rules are `checks/`.
 
 ## Checks (`checks/`)
 
@@ -64,14 +64,14 @@ uv run --with pyyaml python tools/run_slots.py status
 
 Within a project, the experiment loop controls its own runs; the hub-level risk is two projects (or a loop plus an interactive session) launching training on the same GPU. One slot = one training campaign (a run **or** a sweep — the sweep manages its own internal parallelism); the cap is `compute.max_concurrent_runs`. Slots are files under `lab/.slots/` (atomic create, stale-reclaimed after `compute.stale_slot_minutes`). Hard rule 13: acquire before any PILOT/FULL campaign, release when the ledger entry is written; SMOKE is exempt; subagents never manage slots — the parent does. **`scripts/run.py`/`sweep.py` now acquire/release a slot automatically** for direct PILOT/FULL runs (a sweep holds one campaign slot its children inherit via `AUTOSCIENTIST_SLOT_HELD`), so the ledger can't be bypassed by calling the runner directly; the manual commands remain for status checks and hand-run campaigns.
 
-### `s2.py` — literature search, BibTeX, citation verification, cite-from-lit-review lint
+### `s2.py` (in `.claude/skills/lit-review/tools/`) — literature search, BibTeX, citation verification, cite-from-lit-review lint
 
 ```bash
-uv run --with pyyaml python tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
-uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
-uv run --with pyyaml python tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
-uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
-uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py citecheck studies/<slug>/paper
 ```
 
 Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit); it exits **3** when *both* backends are unreachable, so an empty result is never mistaken for "no prior work".

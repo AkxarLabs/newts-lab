@@ -11,7 +11,7 @@
 # bare float 71.30 parses to 71.3 and audits 10x looser at ±0.05.
 # metric: (optional) restricts the match to artifact leaves with this final key name, so a
 # number can't pass on a coincidental match against an unrelated value.
-# artifact_sha256: (optional) added by tools/lock_artifacts.py at /finalize — it copies each
+# artifact_sha256: (optional) added by .claude/skills/finalize/tools/lock_artifacts.py at /finalize — it copies each
 # cited metrics.json into studies/<slug>/paper/artifacts/<rel> and records its sha256 here. After that,
 # audit_claims.py resolves artifacts from the hub archive first and `--verify-hashes` checks
 # them, so the finalized paper is auditable from the hub alone (the project repo may be gone).
@@ -27,7 +27,7 @@
 #     - runs/exp-004-r1-s0/metrics.json
 #     - runs/exp-004-r2-s1/metrics.json
 #     - runs/exp-004-r3-s2/metrics.json
-#   artifact_sha256:                       # filled by tools/lock_artifacts.py at /finalize
+#   artifact_sha256:                       # filled by .claude/skills/finalize/tools/lock_artifacts.py at /finalize
 #     runs/exp-004-r1-s0/metrics.json: "<sha256>"
 #   derivation: "mean over 3 seeds of (baseline.val_bpb - ours.val_bpb)/baseline.val_bpb"
 

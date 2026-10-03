@@ -21,7 +21,7 @@ pipeline still runs without it; a session just makes the entry point better-info
 
 What makes it more than a plain interview: **the agent researches your questions live.** When an
 answer hinges on a literature or empirical fact ("is this already saturated?", "what's the SOTA
-baseline?"), it runs a logged web / arXiv / Semantic-Scholar search (`tools/s2.py search`, capped
+baseline?"), it runs a logged web / arXiv / Semantic-Scholar search (`.claude/skills/lit-review/tools/s2.py search`, capped
 by `discuss.max_research_minutes`) and surfaces what it *actually shows* in the next question —
 never asserting an unlogged claim (the same discipline as `/lit-review`).
 
