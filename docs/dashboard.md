@@ -178,14 +178,16 @@ Open any run (from Home, Runs, a study, or a notification) and it reads like a c
 - **Questions become forms.** When a procedure needs you (the project type at `/spawn-project`, an
   interview question), the run pauses on the question. Pick an option or type your own answer, and
   the same session continues where it stopped.
-- **Permission requests** show *Allow once / Deny* inline, when `permission_wait_seconds` is set.
-  Otherwise a blocked action is denied and listed under *Needs you*.
+- **Permission requests** show *Allow once / Deny* inline, and in *Needs you*. A live run waits for
+  your decision (up to `live.permission_minutes`, then it's denied); a campaign's runs are denied at
+  once, and the denial is listed under *Needs you*.
 - **The report** comes at the end: a summary, whether it stopped at a gate or a kill criterion, and
   its next command as a button (**Review and sign** when it stopped at a gate).
 
 At the bottom:
 
 - **Reply** in your own words to a paused or finished run; it continues the same conversation.
+  A question answered while the run is live goes straight to the running agent.
 - **Stop** ends it but leaves it resumable, and **Resume** continues it (claude `--resume`, codex
   `exec resume`, opencode `-s`).
 - A queued run can be cancelled.

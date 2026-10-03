@@ -1,8 +1,10 @@
 """End-to-end executor tests: real detached supervisor processes driving tests/fake_claude.py.
 
 These exercise the whole path a dashboard click takes — enqueue → tick → detached supervisor →
-agent CLI (fake) → stream capture → manifest/bus/ledger — including the AskUserQuestion defer hook,
-the MCP permission host, stop, crash + resume, reply, subagent tracking, and the run_report footer.
+agent CLI (fake) → stream capture → manifest/bus/ledger — including the live session (questions,
+permissions, messages and interrupts delivered while the agent runs, parking, the one-shot fallback),
+the one-shot AskUserQuestion defer hook and MCP permission host, stop, crash + resume, reply, subagent
+tracking, and the run_report footer.
 No real model, no network, no ports.
 """
 
@@ -23,6 +25,7 @@ from executor import RunSpec, SpecError  # noqa: E402
 
 FAKE = REPO / "tests" / "fake_claude.py"
 LIVE = {"queued", "starting", "resuming", "running"}
+DONE = {"completed", "failed", "timeout", "killed"}
 
 
 def setup(hub, *, enabled=True, extra_prog: str = "", backend_cmd=None, max_minutes=5):
@@ -92,11 +95,12 @@ def test_hub_run_completes_and_records_everything(hub, monkeypatch):
     assert trans[-1][1] == "completed"
     # the CLI was invoked as designed: slash command on stdin, session pre-assigned, gates env set
     c = calls(lab, m)[0]
-    assert c["stdin"] == "/lab-status"
+    assert c["stdin"] == "/lab-status" and m["transport"] == "live"
     assert "--session-id" in c["argv"] and c["argv"][c["argv"].index("--session-id") + 1] == m["session_id"]
     assert c["argv"][c["argv"].index("--permission-mode") + 1] == "auto"
     assert "--append-system-prompt-file" in c["argv"] and "--settings" in c["argv"]
-    assert c["argv"][c["argv"].index("--permission-prompt-tool") + 1] == "mcp__newts__permission"
+    assert c["argv"][c["argv"].index("--input-format") + 1] == "stream-json"
+    assert c["argv"][c["argv"].index("--permission-prompt-tool") + 1] == "stdio" and "--mcp-config" not in c["argv"]
     assert c["env"]["AUTOSCIENTIST_NO_GATE3"] == "1" and c["env"]["AUTOSCIENTIST_AGENT_DEPTH"] == "1"
     assert c["env"]["NEWTS_RUN_ID"] == m["run_id"]
     assert Path(c["cwd"]).resolve() == hub.root.resolve()
@@ -124,9 +128,9 @@ def test_project_run_uses_project_cwd_and_hub_add_dir(hub, monkeypatch):
 
 # ── the question round-trip ───────────────────────────────────────────────────
 
-def test_defer_answer_resume_round_trip(hub, monkeypatch):
+def test_oneshot_defer_answer_resume_round_trip(hub, monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "defer")
-    lab = setup(hub)
+    lab = setup(hub, extra_prog="    live: false\n")
     m = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-x", created_by="test"))
     m = wait_for(lab, m["run_id"])
     assert m["status"] == "waiting_input", m
@@ -153,9 +157,9 @@ def test_defer_answer_resume_round_trip(hub, monkeypatch):
     assert (run_dir(lab, m) / "answer.used.json").exists()
 
 
-def test_free_text_reply_to_a_question(hub, monkeypatch):
+def test_oneshot_free_text_reply_to_a_question(hub, monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "defer")
-    lab = setup(hub)
+    lab = setup(hub, extra_prog="    live: false\n")
     m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-y"))["run_id"])
     assert m["status"] == "waiting_input"
     executor.reply(lab, m["run_id"], "neither — it's a theory project")
@@ -174,6 +178,120 @@ def test_prose_question_then_reply_resumes_with_text(hub, monkeypatch):
     assert m["status"] == "completed" and "Use dataset B" in m["last_message"]
     c = calls(lab, m)
     assert c[1]["stdin"] == "Use dataset B" and "--resume" in c[1]["argv"]
+
+
+# ── live sessions: the agent keeps running while you answer ───────────────────
+
+def _live_cfg(**kw):
+    return "    live:\n" + "".join(f"      {k}: {v}\n" for k, v in kw.items())
+
+
+def test_live_question_is_answered_in_place(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "defer")
+    lab = setup(hub)
+    rid = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-x"))["run_id"]
+    m = wait_for(lab, rid, statuses={"waiting_input", "completed", "failed"})
+    assert m["status"] == "waiting_input" and m["pending_question"]["live"] and m["pid"], m
+    items = executor.attention.collect(lab)
+    assert any(it["kind"] == "question" and it["run_id"] == rid for it in items)
+    executor.answer(lab, rid, {"Which project type?": "empirical"})
+    m = wait_for(lab, rid, statuses=DONE)
+    assert m["status"] == "completed", m
+    assert 'answers={"Which project type?": "empirical"}' in m["last_message"]
+    assert m["attempt"] == 1 and len(calls(lab, m)) == 1          # no resume: the same process
+    assert m["qa"][0]["answers"] == {"Which project type?": "empirical"} and m["qa"][0]["by"] == "PI"
+
+
+def test_live_free_text_answer(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "defer")
+    lab = setup(hub)
+    rid = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-y"))["run_id"]
+    wait_for(lab, rid, statuses={"waiting_input"})
+    executor.reply(lab, rid, "neither — it's a theory project")
+    m = wait_for(lab, rid, statuses=DONE)
+    assert m["status"] == "completed" and "response=neither — it's a theory project" in m["last_message"]
+
+
+def test_live_question_parks_then_the_answer_resumes(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "defer")
+    lab = setup(hub, extra_prog=_live_cfg(park_minutes=0.03))
+    rid = executor.enqueue(lab, RunSpec(skill="spawn-project", target="idea-z"))["run_id"]
+    m = wait_for(lab, rid, statuses={"waiting_input"})
+    deadline = time.time() + 30
+    while m.get("pid") and time.time() < deadline:   # parked: the process ends, the question stays
+        time.sleep(0.5)
+        m = executor.find_run(lab, rid)[3]
+    assert m["status"] == "waiting_input" and not m.get("pid") and m["pending_question"]["live"], m
+    monkeypatch.setenv("FAKE_MODE", "complete")
+    executor.answer(lab, rid, {"Which project type?": "ml"})
+    m = executor.find_run(lab, rid)[3]
+    assert m["status"] == "queued" and m["resume"]["mode"] == "reply"
+    m = wait_for(lab, rid)
+    assert m["status"] == "completed" and m["attempt"] == 2
+    c = calls(lab, m)[1]
+    assert "--resume" in c["argv"] and "The PI answered your question" in c["stdin"] and "ml" in c["stdin"]
+
+
+def test_live_permission_waits_for_the_pi(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "mcp")
+    lab = setup(hub)
+    rid = executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"]
+    deadline = time.time() + 30
+    m = {}
+    while time.time() < deadline and not m.get("pending_permissions"):
+        executor.tick(lab, wait=1)
+        m = executor.find_run(lab, rid)[3]
+        time.sleep(0.2)
+    req = m["pending_permissions"][0]
+    assert m["status"] == "running" and req["tool"] == "Bash" and "rm -rf" in req["input"]["command"]
+    items = [it for it in executor.attention.collect(lab) if it["kind"] == "permission" and it["run_id"] == rid]
+    assert items and items[0]["detail"]["n"] == req["id"]
+    executor.permission_decision(lab, rid, req["id"], True)
+    m = wait_for(lab, rid)
+    assert m["status"] == "completed" and "permission=allow" in m["last_message"]
+    assert not m.get("pending_permissions")
+    log = (run_dir(lab, m) / "permissions.jsonl").read_text(encoding="utf-8")
+    assert '"decision": "allow"' in log and '"by": "PI"' in log
+
+
+def test_live_permission_is_denied_at_its_deadline(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "mcp")
+    lab = setup(hub, extra_prog=_live_cfg(permission_minutes=0.02))
+    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
+    assert m["status"] == "completed" and "permission=deny" in m["last_message"]
+    assert any(it["kind"] == "denied" and it["run_id"] == m["run_id"] for it in executor.attention.collect(lab))
+
+
+def test_live_message_and_interrupt_reach_a_working_session(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "complete")
+    monkeypatch.setenv("FAKE_STEER", "20")
+    lab = setup(hub)
+    rid = executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"]
+    wait_for(lab, rid, statuses={"running"})
+    time.sleep(1.5)
+    executor.reply(lab, rid, "use dataset B")      # while it works: no resume, the same turn reads it
+    m = wait_for(lab, rid)
+    assert m["status"] == "completed" and "steered: use dataset B" in m["last_message"], m
+    assert m["attempt"] == 1
+    rid = executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"]
+    wait_for(lab, rid, statuses={"running"})
+    time.sleep(1.5)
+    executor.interrupt(lab, rid)
+    m = wait_for(lab, rid)
+    assert m["status"] == "completed" and "interrupted" in m["last_message"], m
+
+
+def test_live_start_failure_falls_back_to_one_shot(hub, monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "complete")
+    monkeypatch.setenv("FAKE_LIVE_FAIL", "1")
+    lab = setup(hub)
+    m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
+    assert m["status"] == "completed" and m["transport"] == "oneshot" and m["no_live"], m
+    assert m["attempt"] == 1 and len(m["attempts"]) == 1
+    c = calls(lab, m)   # (the failing live start exits before the fake logs its call)
+    assert len(c) == 1 and "--input-format" not in c[0]["argv"]
+    assert c[0]["argv"][c[0]["argv"].index("--permission-prompt-tool") + 1] == "mcp__newts__permission"
+    assert "retrying one-shot" in (lab.bus / "agents" / m["stream"]).read_text(encoding="utf-8")
 
 
 # ── stop, crash, resume, timeout ──────────────────────────────────────────────
@@ -225,9 +343,9 @@ def test_cancel_queued_run(hub, monkeypatch):
 
 # ── permission host + subagents ───────────────────────────────────────────────
 
-def test_permission_host_denies_and_logs(hub, monkeypatch):
+def test_oneshot_permission_host_denies_and_logs(hub, monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "mcp")
-    lab = setup(hub)
+    lab = setup(hub, extra_prog="    live: false\n")
     m = wait_for(lab, executor.enqueue(lab, RunSpec(skill="lab-status"))["run_id"])
     assert m["status"] == "completed" and "permission=deny" in m["last_message"]
     log = (run_dir(lab, m) / "permissions.jsonl").read_text(encoding="utf-8")

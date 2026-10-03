@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,7 +39,8 @@ def _guard_extra(backend: str, extra: str, forbidden: tuple[str, ...]) -> None:
 
 
 _CLAUDE_FORBID = ("--permission-mode", "--dangerously-skip-permissions")
-_CLAUDE_EXECUTOR_OWNED = ("--settings", "--mcp-config", "--permission-prompt-tool", "--resume",
+_CLAUDE_EXECUTOR_OWNED = ("--settings", "--mcp-config", "--permission-prompt-tool", "--resume", "--input-format",
+                          "--replay-user-messages",
                           "--session-id", "--add-dir", "--continue", "--fork-session",
                           "--append-system-prompt", "--append-system-prompt-file",
                           "--allow-dangerously-skip-permissions")
@@ -152,13 +154,33 @@ def _candidates(name: str) -> list[Path]:
     return [r / name for r in roots]
 
 
+def _app_bundled(name: str) -> list[Path]:
+    """CLIs that ship inside a desktop app (the Codex app carries the full `codex` CLI, signed in with
+    the app's account). Newest app version first — the path changes with every app update."""
+    if name != "codex":
+        return []
+    if os.name == "nt":
+        pf = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WindowsApps"
+        hits = list(pf.glob("OpenAI.Codex_*/app/resources/codex.exe"))
+
+        def ver(p: Path) -> tuple:
+            v = p.parts[-4].split("_")[1] if "_" in p.parts[-4] else ""
+            return tuple(int(x) for x in v.split(".") if x.isdigit())
+        return sorted(hits, key=ver, reverse=True)
+    if sys.platform == "darwin":
+        return [Path(r) / "Codex.app" / "Contents" / "Resources" / "codex"
+                for r in ("/Applications", str(Path.home() / "Applications"))]
+    return []
+
+
 def resolve_cli(backend: str, bcfg: dict | None = None) -> list[str] | None:
     """The argv PREFIX that runs a backend CLI, or None if it can't be found.
 
     `backends.<b>.command` wins: a string is one executable path (never split — Windows paths have
     spaces), a list is a full prefix (e.g. [python, fake_cli.py] in tests). Then PATH, then the usual
     per-platform install locations (the Claude installer puts claude.exe in ~/.local/bin, which is
-    often not on a GUI-launched process's PATH). `.exe` beats a `.cmd` shim on Windows.
+    often not on a GUI-launched process's PATH), then a desktop app's bundled copy (the Codex app).
+    `.exe` beats a `.cmd` shim on Windows.
     """
     bcfg = bcfg or {}
     explicit = bcfg.get("command")
@@ -178,7 +200,7 @@ def resolve_cli(backend: str, bcfg: dict | None = None) -> list[str] | None:
         found = str(exe) if exe.exists() else found
     if found:
         return [found]
-    for c in _candidates(backend):
+    for c in _candidates(backend) + _app_bundled(backend):
         if c.is_file():
             return [str(c)]
     return None
@@ -358,9 +380,10 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
                       mcp_config_path: Path | None = None, permission_tool: str | None = None,
                       system_prompt_file: Path | None = None, preamble: str | None = None,
                       cli_ver: tuple | None = None, codex_hooks: list[str] | None = None,
-                      opencode_traced: bool = False) -> RunCommand:
+                      opencode_traced: bool = False, live: bool = False) -> RunCommand:
     """The executor's argv for one attempt. `prompt=None` on a claude resume means "continue the
-    deferred turn" (the answer rides the AskUserQuestion hook, not a new user message)."""
+    deferred turn" (the answer rides the AskUserQuestion hook, not a new user message). `live`: the
+    session stays open on stdin (tools/executor/live.py sends the prompt and everything after it)."""
     bcfg = (prog.get("backends") or {}).get(backend) or {}
     extra = str(bcfg.get("extra_args") or "")
     eff_model = _eff_model(model or prog.get("model"), bcfg)
@@ -372,7 +395,10 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
         mode = bcfg.get("permission_mode") or permission_mode or prog.get("permission_mode") or "auto"
         argv = [*cli, "-p"]
         stdin_text = None
-        if prompt:
+        if live:
+            argv += ["--input-format", "stream-json", "--replay-user-messages",
+                     "--permission-prompt-tool", "stdio"]
+        elif prompt:
             if via == "argv":
                 argv.append(prompt)   # MUST sit right after -p: --add-dir/--mcp-config are variadic
             else:
@@ -394,7 +420,7 @@ def build_run_command(backend: str, *, prompt: str | None, workdir: Path, prog: 
             argv += ["--append-system-prompt-file", str(system_prompt_file)]
         if settings_path:
             argv += ["--settings", str(settings_path)]
-        if mcp_config_path and permission_tool:
+        if mcp_config_path and permission_tool and not live:
             argv += ["--mcp-config", str(mcp_config_path), "--permission-prompt-tool", permission_tool]
         for d in add_dirs or []:
             argv += ["--add-dir", str(d)]

@@ -21,7 +21,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import backends
+from . import backends, live
 from .lab import Lab, pos_float, pos_int
 from .manifest import (append_jsonl, emit, now, read_manifest, run_dir, transition, worker_line,
                        write_manifest)
@@ -43,6 +43,8 @@ class ProcResult:
     breached: bool = False
     stopped: bool = False
     cli_missing: bool = False
+    parked: bool = False                # live: a question nobody answered — the process was ended to wait
+    started: bool = False               # the CLI reported its session (it got past start-up)
     session_id: str | None = None
     last_message: str | None = None
     result: dict | None = None          # the backend's final result event (claude: stop_reason, deferred_tool_use, cost)
@@ -54,14 +56,17 @@ class ProcResult:
 def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, backend: str,
                 max_seconds: float, max_bytes: int = 200 * 1024 * 1024, stdin_text: str | None = None,
                 on_spawn=None, on_event=None, stop_file: Path | None = None, heartbeat=None,
-                heartbeat_every: float = 10.0, grace: float = 10.0, popen_flags: dict | None = None) -> ProcResult:
+                heartbeat_every: float = 10.0, grace: float = 10.0, popen_flags: dict | None = None,
+                live=None, conv=None) -> ProcResult:
     """Spawn `cmd`, stream its stdout into `stream_path` (capped at `max_bytes`), parse every line,
-    and enforce the wall clock. Never raises for child failures — the result says what happened."""
+    and enforce the wall clock. Never raises for child failures — the result says what happened.
+    `live` (a live.Session) keeps stdin open and turns protocol lines into events; `conv` (its
+    live.Conversation) is ticked by the monitor, and the clock stops while the agent waits on the PI."""
     res = ProcResult()
     t0 = time.time()
     try:
         proc = subprocess.Popen(cmd, cwd=str(cwd), env=env,
-                                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
+                                stdin=subprocess.PIPE if (stdin_text is not None or live) else subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace",
                                 **(popen_flags if popen_flags is not None else NEW_GROUP))
@@ -70,7 +75,9 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
         return res
     if on_spawn:
         on_spawn(proc.pid)
-    if stdin_text is not None:
+    if live:
+        live.open(proc)
+    elif stdin_text is not None:
         def _feed():
             try:
                 proc.stdin.write(stdin_text)
@@ -84,7 +91,18 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
     def _monitor():
         deadline = t0 + max_seconds
         next_beat = time.time() + heartbeat_every
+        last = time.time()
         while not done.wait(0.5):
+            if conv is not None:
+                if conv.waiting():
+                    deadline += time.time() - last   # waiting on the PI doesn't count
+                try:
+                    if conv.tick() and not res.parked:
+                        res.parked = True
+                        kill_tree(proc.pid)
+                except Exception:  # noqa: BLE001 — the conversation must never kill the drain
+                    pass
+            last = time.time()
             if time.time() >= deadline and not res.breached and not res.stopped:
                 res.breached = True
                 kill_tree(proc.pid)
@@ -119,8 +137,13 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
                 obj = json.loads(s)
             except json.JSONDecodeError:
                 continue
-            for ev in backends.parse_events(backend, obj):
+            evs = backends.parse_events(backend, obj)
+            if live:
+                evs += live.handle(obj)
+            for ev in evs:
                 e = ev.get("event")
+                if e == "start":
+                    res.started = True
                 if ev.get("session_id") and not res.session_id:   # the FIRST session id wins (opencode
                     res.session_id = ev["session_id"]              # child sessions must not overwrite it)
                 if e == "result":
@@ -135,6 +158,8 @@ def run_process(cmd: list[str], *, cwd: Path, env: dict, stream_path: Path, back
                     except Exception:  # noqa: BLE001
                         pass
     done.set()
+    if live:
+        live.close()
     proc.wait()
     mon.join(timeout=grace + 2)
     res.rc = proc.returncode
@@ -147,7 +172,7 @@ def classify(res: ProcResult) -> str:
     stop reason, never by the exit code."""
     if res.cli_missing:
         return "failed"
-    if (res.result or {}).get("stop_reason") == "tool_deferred":
+    if res.parked or (res.result or {}).get("stop_reason") == "tool_deferred":
         return "waiting_input"
     if res.stopped and res.rc != 0:
         return "killed"
@@ -185,13 +210,14 @@ TRACE_HOOK = Path(__file__).resolve().parents[1] / "trace_hook.py"
 TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
 
 
-def _claude_sidecars(rd: Path, env_extra: dict) -> tuple[Path, Path]:
-    """Per-run settings (the AskUserQuestion hook, the signature guard and the tracer — never permissions)
-    + the MCP host config. The tracer runs here with this interpreter's absolute path; the repo's own
-    `.claude/settings.json` hooks (`--from-repo`) stand down for the run (NEWTS_TRACE_FLAGS=1), so a
-    machine with only `python3` — or a repo whose tracing files are stale — is still traced, once."""
+def _claude_sidecars(rd: Path, env_extra: dict, is_live: bool = False) -> tuple[Path, Path | None]:
+    """Per-run settings (the signature guard and the tracer — never permissions; one-shot runs also get
+    the AskUserQuestion hook) + the one-shot MCP permission host config. The tracer runs here with this
+    interpreter's absolute path; the repo's own `.claude/settings.json` hooks (`--from-repo`) stand down
+    for the run (NEWTS_TRACE_FLAGS=1), so a machine with only `python3` — or a repo whose tracing files
+    are stale — is still traced, once. A live session answers questions and permissions itself."""
     py = python_exe()
-    pre = [{"matcher": "AskUserQuestion", "hooks": [
+    pre = [] if is_live else [{"matcher": "AskUserQuestion", "hooks": [
         {"type": "command", "command": f'"{py}" "{ASK_HOOK}"', "timeout": 15}]}]
     if SIGNATURE_GUARD.is_file():
         pre.append({"matcher": GUARD_MATCHER, "hooks": [
@@ -205,6 +231,8 @@ def _claude_sidecars(rd: Path, env_extra: dict) -> tuple[Path, Path]:
     settings = {"hooks": hooks}
     sp = rd / "settings.json"
     sp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    if is_live:
+        return sp, None
     mcp = {"mcpServers": {"newts": {"command": py, "args": [str(PERMISSION_HOST)], "env": env_extra}}}
     mp = rd / "mcp.json"
     mp.write_text(json.dumps(mcp, indent=2), encoding="utf-8")
@@ -232,6 +260,18 @@ def _env_local(lab: Lab) -> dict:
 
 _CONTINUE = ("This session was interrupted before it finished ({why}). Check what was already done "
              "(the ledgers and git are the memory), then continue the procedure from where it stopped.")
+
+
+def _late_text(item: dict) -> str:
+    """An answer or message that arrived after the session ended, as the resumed session's first turn."""
+    if item.get("kind") == "message":
+        return str(item.get("text") or "")
+    lines = ["The PI answered your question:"]
+    for k, v in (item.get("answers") or {}).items():
+        lines.append(f"- {k}: {', '.join(v) if isinstance(v, list) else v}")
+    if item.get("response"):
+        lines.append(str(item["response"]))
+    return "\n".join(lines)
 
 
 def _say(msg: str) -> None:
@@ -286,7 +326,12 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     bcfg = (prog.get("backends") or {}).get(backend) or {}
     st = _State(lab, mpath, m)
     resume = m.get("resume") or None
-    resuming = m.get("status") == "resuming"
+    entry_status = m.get("status")
+    resuming = entry_status == "resuming"
+    # live by default; one-shot when the backend has no live session, the PI turned it off, it failed
+    # to start on this machine before, or an old one-shot run is answered (its hook holds the answer)
+    is_live = (live.available(backend, prog) and not m.get("no_live")
+               and not (resuming and (resume or {}).get("mode") == "answer"))
     attempt = int(m.get("attempt") or 0) + 1
     run_id = m["run_id"]
     bus_source = lab.source_of(workdir)
@@ -350,7 +395,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
 
     settings_path = mcp_path = sys_prompt = None
     if backend == "claude":
-        settings_path, mcp_path = _claude_sidecars(rd, env_extra)
+        settings_path, mcp_path = _claude_sidecars(rd, env_extra, is_live)
         if TRACE_HOOK.is_file():
             env["NEWTS_TRACE_FLAGS"] = "1"   # the repo's own trace hooks (--from-repo) stand down: one line per event
         if preamble_text:
@@ -375,7 +420,7 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
             max_turns=m.get("max_turns"), add_dirs=add_dirs, settings_path=settings_path,
             mcp_config_path=mcp_path, permission_tool=PERMISSION_TOOL if mcp_path else None,
             system_prompt_file=sys_prompt, preamble=preamble_text, cli_ver=ver,
-            codex_hooks=codex_hooks, opencode_traced=oc_traced)
+            codex_hooks=codex_hooks, opencode_traced=oc_traced, live=is_live)
     except SystemExit as e:
         st.transition("failed", reason=str(e), finished=now(), last_message=str(e))
         emit(lab, workdir, "agent_finished", detail=run_id, status="failed", data={"run_id": run_id})
@@ -403,7 +448,14 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
                           "resume": (resume or {}).get("mode")})
     m["attempt"] = attempt
     m["pending_question"] = None
+    m.pop("pending_permissions", None)
+    m["transport"] = "live" if is_live else "oneshot"
     subagents: dict = m.setdefault("subagents", {})
+    sess = conv = None
+    if is_live:
+        sess = live.make(backend, prompt or "", m.get("session_id"))
+        conv = live.Conversation(sess, st, rd, prog, note=lambda kind, detail=None, **d: emit(
+            lab, workdir, kind, detail=detail or run_id, idea=m.get("subject"), data={"run_id": run_id, **d}))
 
     def on_spawn(pid):
         m["attempts"][-1]["pid"] = pid
@@ -422,6 +474,10 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
 
     def _on_event(ev):
         e = ev.get("event")
+        if e in ("request", "cancelled", "turn_end", "limits"):
+            if conv:
+                conv.on_event(ev)
+            return
         if e == "start":
             if ev.get("session_id") and not m.get("session_id"):
                 m["session_id"] = ev["session_id"]
@@ -497,9 +553,26 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     res = run_process(rc_cmd.argv, cwd=workdir, env=env, stream_path=stream, backend=backend,
                       max_seconds=budget, max_bytes=max_bytes, stdin_text=rc_cmd.stdin_text,
                       on_spawn=on_spawn, on_event=on_event, stop_file=stop_file,
-                      heartbeat=lambda: st.write(force=True), popen_flags=NO_WINDOW)
+                      heartbeat=lambda: st.write(force=True), popen_flags=NO_WINDOW, live=sess, conv=conv)
+
+    if is_live and not (res.started or res.stopped or res.parked or res.breached) and res.rc and res.wall < 60:
+        # the live session never got going on this machine (an old CLI, a flag it doesn't know): this
+        # run continues one-shot, from the same starting point
+        _say(f"live session ended at start-up (exit {res.rc}) — retrying this attempt one-shot")
+        m["attempts"].pop()
+        m["attempt"] = attempt - 1
+        m["no_live"] = f"exit {res.rc} at start-up"
+        m["status"] = entry_status
+        append_jsonl(stream, {"_note": "live session failed at start-up; retrying one-shot", "ts": now()})
+        return _attempt(lab, workdir, adir, mpath, m, rd)
 
     status = classify(res)
+    late = []
+    if conv:
+        late = conv.leftover + [i for i in live.take(rd) if i.get("kind") in ("answer", "message")]
+        m.pop("pending_permissions", None)
+        if status in ("failed", "waiting_input") and any(r["kind"] == "question" for r in conv.pending.values()):
+            status = "waiting_input"   # it ended (or was parked) while asking — the answer resumes it
     a = m["attempts"][-1]
     a.update(finished=now(), exit_code=res.rc, wall_seconds=res.wall,
              stop_reason=(res.result or {}).get("stop_reason"))
@@ -552,6 +625,19 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
     if wlog and status != "waiting_input":
         worker_line(wlog, worker_id=run_id, role=role, event="stop", status="done", idea=idea)
 
+    if status == "waiting_input" and late and m.get("pending_question"):
+        status = "completed"   # answered just as it was parked: resume with the answer (below)
+    if late and status in ("completed", "waiting_input"):
+        text = "\n\n".join(_late_text(i) for i in late)
+        st.transition("queued", by="supervisor", reason="PI message after the session ended",
+                      resume={"mode": "reply", "text": text}, pending_question=None,
+                      wall_seconds=total_wall, exit_code=res.rc, pid=None, post_processed=False, not_before=None)
+        return 0
+
+    if status == "waiting_input" and (m.get("pending_question") or {}).get("live"):
+        st.transition("waiting_input", reason="asking the PI (parked)", wall_seconds=total_wall,
+                      exit_code=res.rc, pid=None)
+        return 0
     if status == "waiting_input":
         q = (res.result or {}).get("deferred_tool_use") or {}
         qfile = rd / "question.json"

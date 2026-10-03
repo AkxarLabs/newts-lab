@@ -146,7 +146,8 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | `agents.programmatic.hub_max_concurrent` | 1 | PI | hub-level runs at once — 1 keeps two sessions from racing `lab/REGISTRY.md` |
 | `agents.programmatic.daily_max_runs` · `daily_max_minutes` | 0 · 0 | PI | usage brake: run attempts / agent-minutes per day (0 = no cap) |
 | `agents.programmatic.chain_max_steps` | 6 | PI | a *keep going until a gate* run chains at most this many steps (it always stops at a gate) |
-| `agents.programmatic.permission_wait_seconds` | 0 | PI | a headless run's permission prompts: 0 = deny + log at once; >0 = wait for the PI's allow/deny |
+| `agents.programmatic.live` | on | PI | runs are live sessions: questions, permission prompts and your messages reach the running agent. `false` = one-shot runs only. `live.park_minutes` (60): an unanswered question ends the process (your answer resumes it) · `live.permission_minutes` (30): an undecided permission request is denied · `live.campaign_question_minutes` (30): a campaign run takes the recommended option of an unanswered question and marks it assumed |
+| `agents.programmatic.permission_wait_seconds` | 0 | PI | a one-shot run's permission prompts: 0 = deny + log at once; >0 = wait for the PI's allow/deny |
 | `agents.programmatic.backends.<b>.command` | "" | PI | the CLI to run (blank = PATH, then the usual install dirs — e.g. `~/.local/bin/claude.exe`) |
 | `agents.programmatic.backends.<b>.prompt_via` | stdin | PI | how the prompt reaches the CLI: `stdin` (no Windows command-line limit) or `argv` |
 | `dashboard.executor` | true | PI | run the executor's scheduler inside the dashboard (launching still needs `programmatic.enabled`) |

@@ -504,10 +504,9 @@ def permission_run(body: dict) -> tuple[dict, int]:
     rid = _run_ref(body)
     if not rid:
         return {"error": "invalid run id"}, 400
-    try:
-        n = int(body.get("n"))
-    except (TypeError, ValueError):
-        return {"error": "n must be the request number"}, 400
+    n = body.get("n")
+    if isinstance(n, bool) or not isinstance(n, (int, str)) or not str(n).strip() or len(str(n)) > 80:
+        return {"error": "n must be the request id"}, 400
     try:
         executor.permission_decision(_xlab(), rid, n, bool(body.get("allow")), str(body.get("message") or ""))
     except executor.SpecError as e:

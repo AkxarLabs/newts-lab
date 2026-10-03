@@ -5,6 +5,13 @@ Speaks the flag surface tools/executor/backends.build_run_command emits and prin
 `--settings` (tools/executor/ask_hook.py) and talks to the real MCP permission host from
 `--mcp-config`, so the defer → answer → resume round-trip is tested end to end without a model.
 
+With `--input-format stream-json` (the executor's live session) it speaks the stdio control protocol
+instead: the prompt is the first user line on stdin, AskUserQuestion and permission prompts go out as
+`control_request can_use_tool` and wait for the `control_response`, user lines are echoed back
+(--replay-user-messages), and after the scripted turn every further user line is answered with
+"got: <text>" until stdin closes. FAKE_LIVE_FAIL=1 exits at start-up (an old CLI), FAKE_STEER=<s>
+keeps the first turn open that long for a mid-turn message.
+
 Behaviour is picked by env FAKE_MODE:
   complete   init → Bash tool_use → tool_result → text → result(success)
   defer      first attempt: AskUserQuestion → hook → result(stop_reason=tool_deferred)
@@ -25,9 +32,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shlex
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -46,7 +55,7 @@ def parse(argv: list[str]) -> tuple[dict, list[str]]:
     pos: list[str] = []
     takes = {"--output-format", "--session-id", "--resume", "--model", "--permission-mode", "--effort",
              "--max-turns", "--append-system-prompt-file", "--settings", "--mcp-config",
-             "--permission-prompt-tool", "--add-dir"}
+             "--permission-prompt-tool", "--add-dir", "--input-format"}
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -125,6 +134,63 @@ def ask_host(mcp_path: str, tool_name: str, tool_input: dict) -> dict:
     return json.loads(res["result"]["content"][0]["text"])
 
 
+class Live:
+    """The CLI side of the live channel: stdin lines → user messages (queue) and control responses."""
+
+    def __init__(self):
+        self.msgs: queue.Queue = queue.Queue()
+        self.responses: dict = {}
+        self.cv = threading.Condition()
+        self.eof = False
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in sys.stdin:
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            t = o.get("type")
+            if t == "control_request":
+                out({"type": "control_response", "response": {"subtype": "success",
+                                                              "request_id": o.get("request_id"), "response": {}}})
+                if (o.get("request") or {}).get("subtype") == "interrupt":
+                    self.msgs.put({"interrupt": True})
+            elif t == "control_response":
+                r = o.get("response") or {}
+                with self.cv:
+                    self.responses[r.get("request_id")] = r.get("response") or {}
+                    self.cv.notify_all()
+            elif t == "user":
+                self.msgs.put(o)
+        with self.cv:
+            self.eof = True
+            self.cv.notify_all()
+        self.msgs.put(None)
+
+    def next_message(self, timeout=None):
+        try:
+            o = self.msgs.get(timeout=timeout)
+        except queue.Empty:
+            return None
+        if o is None:
+            return None
+        if o.get("interrupt"):
+            return o
+        out({**o, "isReplay": True})
+        c = (o.get("message") or {}).get("content")
+        return {"text": c if isinstance(c, str) else json.dumps(c)}
+
+    def ask(self, tool: str, tool_input: dict, tu: str) -> dict:
+        rid = f"req-{uuid.uuid4().hex[:8]}"
+        out({"type": "control_request", "request_id": rid, "request": {
+            "subtype": "can_use_tool", "tool_name": tool, "input": tool_input, "tool_use_id": tu}})
+        with self.cv:
+            while rid not in self.responses and not self.eof:
+                self.cv.wait(0.5)
+            return self.responses.get(rid) or {"behavior": "deny", "message": "stdin closed"}
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv[:1] == ["--version"]:
@@ -135,7 +201,15 @@ def main() -> int:
         return 0
     opts, pos = parse(argv)
     stdin_text = ""
-    if not sys.stdin.isatty():
+    lv = None
+    if "stream-json" in (opts.get("--input-format") or []):
+        if os.environ.get("FAKE_LIVE_FAIL") == "1":
+            sys.stderr.write("error: unknown option '--input-format'\n")
+            return 1
+        lv = Live()
+        first = lv.next_message(timeout=30)
+        stdin_text = (first or {}).get("text") or ""
+    elif not sys.stdin.isatty():
         try:
             stdin_text = sys.stdin.read()
         except (OSError, ValueError):
@@ -181,12 +255,32 @@ def main() -> int:
                 f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "source": "x", "kind": "run_report",
                                     "run_id": os.environ["NEWTS_RUN_ID"], "data": d}) + "\n")
 
-    def finish(text: str, rc: int = 0):
-        report()
+    def result(text: str, rc: int = 0):
         out({"type": "result", "subtype": "success" if rc == 0 else "error", "is_error": rc != 0,
              "result": text, "session_id": sid, "stop_reason": "end_turn", "total_cost_usd": 0.0123,
              "num_turns": 3, "usage": {"input_tokens": 100, "output_tokens": 50}})
-        return rc
+
+    def finish(text: str, rc: int = 0):
+        report()
+        steer = float(os.environ.get("FAKE_STEER") or 0)
+        if lv and steer:   # a long first turn: a message sent meanwhile is read in the same turn
+            got = lv.next_message(timeout=steer)
+            if got and not got.get("interrupt"):
+                text += f" | steered: {got['text'][:80]}"
+            elif got:
+                text += " | interrupted"
+        result(text, rc)
+        if not lv or rc:
+            return rc
+        while True:   # the live session stays open: every further user line is a new turn
+            got = lv.next_message()
+            if got is None:
+                return rc
+            if got.get("interrupt"):
+                continue
+            out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
+                {"type": "text", "text": f"got: {got['text'][:200]}"}]}})
+            result(f"got: {got['text'][:200]}")
 
     if mode == "complete":
         out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
@@ -207,6 +301,15 @@ def main() -> int:
         tu = "toolu_q1"
         out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [
             {"type": "tool_use", "id": tu, "name": "AskUserQuestion", "input": q}]}})
+        if lv:
+            d = lv.ask("AskUserQuestion", q, tu)
+            if d.get("behavior") != "allow":
+                return finish(f"question declined: {d.get('message')}")
+            ans = (d.get("updatedInput") or {}).get("answers") or {}
+            resp = (d.get("updatedInput") or {}).get("response")
+            out({"type": "user", "parent_tool_use_id": None, "message": {"content": [
+                {"type": "tool_result", "tool_use_id": tu, "content": json.dumps(ans)}]}})
+            return finish(f"answers={json.dumps(ans, sort_keys=True)} response={resp}")
         payload = {"session_id": sid, "hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion",
                    "tool_input": q, "tool_use_id": tu, "cwd": os.getcwd()}
         decision = run_hook(settings, payload) or {}
@@ -296,6 +399,10 @@ def main() -> int:
                 {"type": "tool_result", "tool_use_id": "tu_agent", "content": "RESULT PACKET ok"}]}})
         ev("SessionEnd")
         return finish("traced session done")
+    if mode == "mcp" and lv:
+        assert (opts.get("--permission-prompt-tool") or [None])[0] == "stdio"
+        d = lv.ask("Bash", {"command": "rm -rf /tmp/x"}, "toolu_perm")
+        return finish(f"permission={d['behavior']}")
     if mode == "mcp":
         mcp = (opts.get("--mcp-config") or [None])[0]
         tool = (opts.get("--permission-prompt-tool") or [None])[0]

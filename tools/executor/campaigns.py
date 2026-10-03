@@ -34,11 +34,17 @@ import time
 from pathlib import Path
 
 from .lab import HUB_TARGET, Lab, pos_float, pos_int, read_jsonl
-from .manifest import ACTIVE, TERMINAL, all_runs, now, parse_ts, read_manifest, transition
+from .manifest import ACTIVE, TERMINAL, all_runs, now, parse_ts, read_manifest, run_dir, transition
+from .procs import is_locked
 from .spec import NEVER, RunSpec, SpecError, SKILL_REGISTRY
 
 BACKOFF_MIN = [2, 5, 15, 30, 60]
 LIVE = ACTIVE | {"queued", "waiting_input"}
+
+
+def _session_up(path, m: dict) -> bool:
+    """A live session is still open for this run (its supervisor holds the run's lock)."""
+    return m.get("transport") == "live" and is_locked(run_dir(Path(path).parent, m["run_id"]) / "lock")
 RETRYABLE = {"timeout", "usage_limit", "transient"}
 MAX_CHILD_RETRIES = 3
 DISPATCHABLE_NOT = {"autopilot", "setup-lab", "configure", "discuss", "compete"} | set(NEVER)
@@ -495,7 +501,9 @@ def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
     live = [m for *_x, m in cycles if m.get("status") in LIVE]
     if live:
         c = live[0]
-        if c.get("status") == "waiting_input" and time.time() - (parse_ts(c.get("status_ts")) or time.time()) > 300:
+        if (c.get("status") == "waiting_input" and time.time() - (parse_ts(c.get("status_ts")) or time.time()) > 300
+                and not _session_up(next(p for *_y, p, m in cycles if m is c), c)):
+            # (a live session still asking is left to its own deadline: it takes the recommended answer)
             q = ((c.get("pending_question") or {}).get("input") or {}).get("questions") or []
             text = q[0].get("question") if q and isinstance(q[0], dict) else "a question"
             st.setdefault("questions", []).append({"ts": now(), "run_id": c["run_id"], "question": text})

@@ -18,7 +18,7 @@ import os
 from . import attention, backends
 from .lab import HUB_TARGET, Lab
 from .manifest import ACTIVE, PAUSED, RESUMABLE, STATUSES, TERMINAL, all_runs, find_run, ledger
-from .runs import (answer, cancel, check_enabled, enqueue, list_runs, permission_decision,
+from .runs import (answer, cancel, check_enabled, enqueue, interrupt, list_runs, permission_decision,
                    queue_position, reply, resume, stop)
 from .scheduler import brake, caps, daily_usage, last_tick, reconcile, tick, tick_loop
 from .spec import NEVER, SKILL_REGISTRY, RunSpec, SpecError
@@ -73,7 +73,7 @@ CONFIG_KEYS = ("backend", "model", "permission_mode", "max_minutes", "max_concur
 __all__ = [
     "Lab", "HUB_TARGET", "RunSpec", "SpecError", "SKILL_REGISTRY", "NEVER",
     "enqueue", "answer", "reply", "resume", "cancel", "stop", "list_runs", "queue_position",
-    "check_enabled", "permission_decision", "CONFIG_KEYS", "tick", "tick_loop", "reconcile", "run_supervisor",
+    "check_enabled", "permission_decision", "interrupt", "CONFIG_KEYS", "tick", "tick_loop", "reconcile", "run_supervisor",
     "caps", "brake", "daily_usage", "last_tick", "health", "attention", "backends",
     "find_run", "all_runs", "ledger", "ACTIVE", "PAUSED", "RESUMABLE", "TERMINAL", "STATUSES",
 ]

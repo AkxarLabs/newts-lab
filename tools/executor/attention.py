@@ -51,11 +51,22 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
             pq = m["pending_question"]
             qs = (pq.get("input") or {}).get("questions") or []
             first = qs[0].get("question") if qs and isinstance(qs[0], dict) else "The agent asked a question"
+            waiting_live = pq.get("live") and m.get("pid")
             out.append(_item("question", "block", f"question:{rid}:{att}", m, first,
-                             body=f"{label} is paused until you answer.",
+                             body=f"{label} is waiting for your answer." if waiting_live else
+                             f"{label} is paused until you answer.",
                              detail={"questions": qs, "tool_use_id": pq.get("tool_use_id")},
                              actions=[{"id": "answer", "label": "answer"}, {"id": "stop", "label": "stop run"}]))
-        # pending permission requests (only when permission_wait_seconds > 0)
+        # a live session's permission requests (it waits for your decision, up to its deadline)
+        for req in m.get("pending_permissions") or []:
+            inp = req.get("input") or {}
+            what = inp.get("command") or inp.get("file_path") or inp.get("url") or ""
+            out.append(_item("permission", "block", f"perm:{rid}:{req.get('id')}", m,
+                             f"Allow {req.get('tool')}?", body=str(what)[:300],
+                             detail={"n": req.get("id"), "tool": req.get("tool"), "input": inp, "why": req.get("why")},
+                             actions=[{"id": "allow", "label": "allow once"}, {"id": "deny", "label": "deny"}],
+                             ts=req.get("ts")))
+        # a one-shot run's pending permission requests (only when permission_wait_seconds > 0)
         for req in sorted(rd.glob("perm-*.json")) if rd.is_dir() else []:
             if req.name.endswith(".decision.json"):
                 continue

@@ -1,8 +1,10 @@
 """The run queue — every PI-facing mutation of a run.
 
   enqueue(lab, RunSpec)            validate + write a queued manifest (the scheduler starts it)
-  answer(lab, run_id, answers)     answer a pending AskUserQuestion → queued (resume, mode=answer)
-  reply(lab, run_id, text)         free-text follow-up → queued (resume, mode=reply)
+  answer(lab, run_id, answers)     answer a pending question: straight to a live session, else → queued (resume)
+  reply(lab, run_id, text)         a message: into a live session while it works, else → queued (resume, mode=reply)
+  interrupt(lab, run_id)           interrupt a live session's current turn (it then waits for your message)
+  permission_decision(...)         allow / deny a pending permission request
   resume(lab, run_id)              continue an interrupted/finished session → queued (mode=continue)
   cancel(lab, run_id)              a queued run → killed (cancelled)
   stop(lab, run_id)                stop a live run (the supervisor does a graceful stop), or cancel
@@ -17,7 +19,7 @@ import os
 import time
 from pathlib import Path
 
-from . import backends
+from . import backends, live
 from .lab import HUB_TARGET, Lab, pos_float, pos_int
 from .manifest import (ACTIVE, PAUSED, RESUMABLE, SCHEMA, TERMINAL, all_runs, emit, find_run,
                        new_run_id, now, parse_ts, run_dir, safe_id, scheduler_lock, transition)
@@ -125,6 +127,15 @@ def _locate(lab: Lab, run_id: str):
     return hit
 
 
+def _live(path, m: dict) -> Path | None:
+    """The run's directory when its live session is up (its supervisor holds the lock) — PI input
+    then goes to the session's inbox instead of a resume."""
+    if m.get("transport") != "live" or m.get("status") not in ACTIVE | PAUSED:
+        return None
+    rd = run_dir(Path(path).parent, m["run_id"])
+    return rd if is_locked(rd / "lock") else None
+
+
 def _validate_answers(answers) -> dict:
     if not isinstance(answers, dict) or not answers:
         raise SpecError("answers must be a non-empty {question text: answer} object")
@@ -158,6 +169,13 @@ def answer(lab: Lab, run_id: str, answers: dict | None = None, response: str | N
         response = (response or "").strip()[:MAX_REPLY_CHARS]
         if not clean and not response:
             raise SpecError("give an answer (pick options or type a reply)")
+        pq = m["pending_question"]
+        rd = _live(path, m) if pq.get("live") else None
+        if rd:
+            live.post(rd, {"kind": "answer", "request_id": pq.get("tool_use_id"), "answers": clean,
+                           "response": response or None, "by": "PI"})
+            emit(lab, workdir, "note", detail=f"PI answered {run_id}", data={"run_id": run_id, "kind": "answer"})
+            return m
         rd = run_dir(Path(path).parent, run_id)
         pq = m["pending_question"]
         rec = {"ts": now(), "tool_use_id": pq.get("tool_use_id"), "answers": clean}
@@ -173,7 +191,7 @@ def answer(lab: Lab, run_id: str, answers: dict | None = None, response: str | N
         m["qa"] = history[-20:]
         mode = "answer"
         text = None
-        if m.get("backend") != "claude":   # no defer hook: the answer rides a plain reply
+        if m.get("backend") != "claude" or pq.get("live"):   # no defer hook: the answer rides a plain reply
             mode, text = "reply", _answers_as_text(pq, clean, response)
         _clear_stop(path, run_id)
         transition(lab, path, m, "queued", by=by, reason="answered", pending_question=None,
@@ -203,6 +221,10 @@ def reply(lab: Lab, run_id: str, text: str, by: str = "dashboard") -> dict:
     hit = _locate(lab, run_id)
     if hit[3].get("status") in PAUSED and hit[3].get("pending_question"):
         return answer(lab, run_id, None, text, by=by)
+    rd = _live(hit[2], hit[3])
+    if rd and hit[3].get("status") in ACTIVE:
+        live.post(rd, {"kind": "message", "text": text, "by": by})
+        return hit[3]
     check_enabled(lab)
     with scheduler_lock(lab):
         target, workdir, path, m = _locate(lab, run_id)
@@ -249,11 +271,12 @@ def stop(lab: Lab, run_id: str, by: str = "dashboard") -> dict:
     with scheduler_lock(lab):
         target, workdir, path, m = _locate(lab, run_id)
         st = m.get("status")
-        if st in PAUSED:
+        alive = _live(path, m)
+        if st in PAUSED and not alive:
             transition(lab, path, m, "killed", by=by, reason="stopped while waiting for the PI",
                        finished=now(), pending_question=None)
             return m
-        if st not in ACTIVE:
+        if st not in ACTIVE and not alive:
             raise SpecError(f"run {run_id} is not running (status {st})")
         rd = run_dir(Path(path).parent, run_id)
         rd.mkdir(parents=True, exist_ok=True)
@@ -275,10 +298,32 @@ def list_runs(lab: Lab, limit: int | None = None) -> list[dict]:
     return runs[:limit] if limit else runs
 
 
-def permission_decision(lab: Lab, run_id: str, n: int, allow: bool, message: str = "",
-                        by: str = "dashboard") -> dict:
-    """The PI's decision on a pending permission request (only when permission_wait_seconds > 0)."""
+def interrupt(lab: Lab, run_id: str, by: str = "dashboard") -> dict:
+    """Interrupt a live session's current turn; the session stays open for your next message."""
     target, workdir, path, m = _locate(lab, run_id)
+    rd = _live(path, m)
+    if not rd:
+        raise SpecError(f"run {run_id} has no live session to interrupt — stop it instead")
+    live.post(rd, {"kind": "interrupt", "by": by})
+    return m
+
+
+def permission_decision(lab: Lab, run_id: str, n, allow: bool, message: str = "",
+                        by: str = "dashboard") -> dict:
+    """The PI's decision on a pending permission request: a live session's (`n` = its request id),
+    or a one-shot run's (`n` = the request number; only when permission_wait_seconds > 0)."""
+    target, workdir, path, m = _locate(lab, run_id)
+    if any(str(p.get("id")) == str(n) for p in m.get("pending_permissions") or []):
+        rd = _live(path, m)
+        if not rd:
+            raise SpecError("that session has ended — the request lapsed")
+        live.post(rd, {"kind": "permission", "request_id": str(n), "allow": bool(allow),
+                       "message": message[:500] or None, "by": "PI"})
+        return {"ok": True}
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        raise SpecError("no such permission request") from None
     rd = run_dir(Path(path).parent, run_id)
     req = rd / f"perm-{int(n)}.json"
     if not req.exists():
@@ -291,5 +336,5 @@ def permission_decision(lab: Lab, run_id: str, n: int, allow: bool, message: str
     return {"ok": True}
 
 
-__all__ = ["enqueue", "answer", "reply", "resume", "cancel", "stop", "list_runs", "queue_position",
+__all__ = ["enqueue", "answer", "reply", "interrupt", "resume", "cancel", "stop", "list_runs", "queue_position",
            "check_enabled", "permission_decision", "SKILL_REGISTRY", "HUB_TARGET", "safe_id"]

@@ -382,11 +382,26 @@ uv run --with pyyaml python tools/executor_cli.py reply|resume|stop|cancel <run>
 - **States:** `queued → starting → running → completed | waiting_input | failed | timeout | killed`;
   a paused (`waiting_input`) or ended run resumes **the same session** on an answer, a reply, or
   *resume* (`claude -p --resume <session>`).
-- **Questions without a terminal.** `claude -p` only offers `AskUserQuestion` when a *permission host*
-  exists, so every run gets a tiny local MCP host plus a per-run `PreToolUse` hook: the hook
-  **defers** the question (the process exits with `stop_reason: tool_deferred`, the question saved),
-  the PI answers, and the resumed attempt's hook returns the answer — the model continues as if the
-  PI had typed it. Other permission prompts are **denied and logged** (or wait for the PI when
+- **Live sessions: the agent keeps running while it waits for you.** A claude run is a *live
+  session* (`claude -p --input-format stream-json --permission-prompt-tool stdio`, the channel the
+  Agent SDK uses; `tools/executor/live.py`):
+  - a question (`AskUserQuestion`) or a permission prompt reaches the supervisor, shows in *Needs
+    you*, and your answer goes straight back to the running agent — no exit, no resume;
+  - a message you send while it works is read in the same turn; *interrupt* stops the current turn;
+  - the dashboard never talks to the process: it drops a file into the run's inbox
+    (`<run>.d/inbox/`), which the supervisor delivers within a second, so a dashboard restart or a
+    remote lab changes nothing;
+  - the run's clock stops while it waits on you.
+
+  Deadlines (`agents.programmatic.live.*`): a question nobody answers is **parked** after
+  `park_minutes` (60): the process ends, the question stays in *Needs you*, and your answer resumes
+  the same session. A permission request nobody decides is denied after `permission_minutes` (30).
+  In a campaign run the PI is away, so a permission request is denied at once.
+- **The fallback: one-shot runs.** When a live session can't start (an old CLI), the attempt
+  re-runs one-shot (`claude -p`, the prompt on stdin), and `live: false` makes that the default.
+  There, a per-run `PreToolUse` hook **defers** a question (the process exits with
+  `stop_reason: tool_deferred`), the PI answers, and the resumed attempt's hook returns the answer;
+  other permission prompts go to a small MCP host that denies and logs them (or waits for the PI when
   `permission_wait_seconds > 0`). codex/opencode runs ask by escalating and ending their turn; the
   PI's reply resumes them.
 - **Caps and brakes:** `max_concurrent_total`, `hub_max_concurrent` (1 — hub sessions share the
