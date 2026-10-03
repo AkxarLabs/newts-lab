@@ -9,7 +9,7 @@
   /* ── the world ─────────────────────────────────────────────────────────── */
   NL.viewListeners = new Set();
   NL.Scene = window.VivScene ? window.VivScene.create({
-    world: NL.prefs.world, motion: NL.prefs.motion, toast: m => NL.toast(m),
+    motion: NL.prefs.motion, toast: m => NL.toast(m),
     runTool: async (name, idea) => { const r = await NL.api('/api/tool', { name, idea }); NL.open(NL.TextSheet, { title: name, text: r.output || r.error || '(no output)' }); },
   }) : null;
   if (NL.Scene) {

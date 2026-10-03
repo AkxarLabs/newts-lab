@@ -142,5 +142,4 @@ Reuse before adding.
 - **Culling:** rooms outside the view aren't drawn.
 - **Reduced motion:** the ticker stops and frames render only when something changes. There is no
   parallax, pop-up or drifting.
-- **No WebGL?** The dashboard falls back to the classic painted world. ⚙ Settings → *World*, or
-  `?world=classic`, switches to it on purpose.
+- **No WebGL?** The dashboard works the same without the world; the stand-in says why.

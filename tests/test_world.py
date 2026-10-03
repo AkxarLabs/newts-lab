@@ -90,8 +90,8 @@ def test_rooms_keep_the_station_contract(world):
             assert any(pr["c"] == "door" and pr["props"].get("gate") == r["gate"] for pr in r["props"]), f"{key}: gate {r['gate']} has no door"
 
 
-def test_the_painted_worlds_station_keys_survive(world):
-    """Workers are placed by role → station key; the keys the painted world knows must exist in the new rooms."""
+def test_role_default_stations_exist(world):
+    """Workers stand at their room's roleStation, else the role's default station (scene.js ROLE_STATION)."""
     app = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
     role_station = dict(re.findall(r"'([\w-]+)':\s*'([\w-]+)'", re.search(r"const ROLE_STATION = \{(.*?)\};", app).group(1)))
     for key, r in world["rooms"].items():
@@ -143,7 +143,7 @@ def test_world_scripts_load_before_the_app():
     assert (STATIC / "vendor" / "pixi" / "LICENSE-pixi").exists()
 
 
-def test_the_scene_falls_back_to_the_painted_world():
+def test_the_scene_has_a_quiet_stand_in_without_webgl():
     sc = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
-    assert "createPixiWorld" in sc and "createWorld(c2, o)" in sc
-    assert "const worldMode" in sc and "'classic'" in sc
+    assert "createPixiWorld" in sc and "quietWorld(" in sc
+    assert "createWorld" not in sc and "classic" not in sc

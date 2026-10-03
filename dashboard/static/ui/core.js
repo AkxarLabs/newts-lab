@@ -176,10 +176,10 @@
   };
 
   /* ── preferences ───────────────────────────────────────────────────────── */
-  const PREF_DEFAULTS = { theme: 'auto', world: 'diorama', motion: true, rail: true, notify: false, density: 'comfortable', narrate: false };
+  const PREF_DEFAULTS = { theme: 'auto', motion: true, rail: true, notify: false, density: 'comfortable', narrate: false };
   const prefs = Object.assign({}, PREF_DEFAULTS, ls.get('nl-prefs', {}));
   // carry over the old dashboard's choices once
-  (() => { const old = ls.get('viv-prefs', null); if (old && !ls.get('nl-prefs', null)) { if (old.world) prefs.world = old.world; if (old.ambient === false) prefs.motion = false; }
+  (() => { const old = ls.get('viv-prefs', null); if (old && !ls.get('nl-prefs', null)) { if (old.ambient === false) prefs.motion = false; }
     try { const lamp = localStorage.getItem('lamp'); if (lamp && !ls.get('nl-prefs', null)) prefs.theme = lamp === 'light' ? 'day' : lamp === 'dark' ? 'night' : 'auto'; } catch (e) { /* ignore */ } })();
   NL.prefs = prefs;
   const prefListeners = new Set();

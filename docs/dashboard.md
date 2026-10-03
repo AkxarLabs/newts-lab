@@ -325,7 +325,7 @@ Gate 3 safe to offer.
   | Autonomy & limits | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
   | Lab | name, where projects go, training runs at once, projects per campaign, oversight, venue, page limit, budget tier; anything else goes to an agent via `/configure` |
   | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
-  | Appearance | theme day / night / system, density, world diorama / classic, motion, narration |
+  | Appearance | theme day / night / system, density, motion, narration |
   | Notifications | desktop notifications; on your phone (ntfy topic, webhook, the dashboard's address), with *Send a test* |
   | System & compute | what the lab's machine offers (CPUs, memory, GPUs, disk, schedulers, SLURM partitions), where training runs (here / SLURM / another scheduler, with `compute.scheduler` prefilled from what was detected), SYSTEM.md |
   | About & server | the lab, a terminal in the lab folder, the setup wizard, **stop the server** |
@@ -463,7 +463,7 @@ chain, a repeat, a campaign pass) and what it started.
   - Hash routes: `#/`, `#/studies`, `#/study/<slug>/<tab>`, `#/runs`, `#/run/<id>`,
     `#/library/<scope>/<slug>/<file>`, `#/settings/<section>`, `#/history`, `#/labs`, `#/setup`.
   - Old deep links (`?open=<slug>`, `?read=<scope>:<slug>:<rel>`) still work.
-- **The world.** `static/world/scene.js` holds the one `Scene` wrapper and the classic painted world.
+- **The world.** `static/world/scene.js` holds the one `Scene` wrapper around the diorama (and a quiet stand-in when the browser has no WebGL).
   The diorama is `engine.js` with its tokens, painter, components and rooms, and
   `static/world/gallery.html` shows every component and room in both themes.
 - **Vendored libraries** (offline, with licences in `static/vendor/`): PixiJS, Preact, htm, marked,

@@ -145,8 +145,6 @@
     return html`<div class="form">
       <${NL.Field} label="Theme"><${NL.Seg} value=${p.theme} onChange=${v => NL.setPref('theme', v)} options=${[{ value: 'auto', label: 'Match my system' }, { value: 'day', label: 'Day — the atelier' }, { value: 'night', label: 'Night — the cave' }]} /></${NL.Field}>
       <${NL.Field} label="Density"><${NL.Seg} value=${p.density} onChange=${v => NL.setPref('density', v)} options=${[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></${NL.Field}>
-      <${NL.Field} label="World" hint="takes effect when the page reloads"><div class="row"><${NL.Seg} value=${p.world} onChange=${v => NL.setPref('world', v)} options=${[{ value: 'diorama', label: 'Paper diorama' }, { value: 'classic', label: 'Classic painted' }]} />
-        <button class="link small" onClick=${() => location.reload()}>reload now</button></div></${NL.Field}>
       <${NL.Toggle} on=${p.motion} onChange=${v => { NL.setPref('motion', v); NL.Scene && NL.Scene.setAmbient(v); }} label="Ambient motion" sub="drifting motes, swaying plants (off also when your system asks for reduced motion)" />
       <${NL.Toggle} on=${p.rail} onChange=${v => NL.setPref('rail', v)} label="Show the Today rail on Home" />
       <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Newt narrates" sub="short speech bubbles quoting what just happened" /></div>`;
