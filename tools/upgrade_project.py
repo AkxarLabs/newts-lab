@@ -11,7 +11,8 @@ template-owned plumbing, never research content:
   .opencode/plugins/newts-trace.js · .opencode/.gitignore   (opencode tracer plugin)
   .claude/agents · .codex/agents · .opencode/agents (role files, resolved from the hub tiers)
   the RUNNER (scripts/run.py · _scheduler.py · _runner_guards.py · status.py · reconcile.py ·
-  src/project_pkg/tracking.py) — job-scheduler support; a file is replaced only while it still equals
+  src/project_pkg/tracking.py) — job-scheduler support — and .codex/config.toml (its top-level keys once
+  sat inside [agents], which codex ≥ 0.160 refuses); a file is replaced only while it still equals
   SOME past version of the template's (git history), so a project's own edits are never overwritten —
   a customized file is reported to merge by hand
 
@@ -49,7 +50,7 @@ def _norm(b: bytes) -> bytes:
 
 
 RUNNER = ("scripts/run.py", "scripts/_scheduler.py", "scripts/_runner_guards.py", "scripts/status.py",
-          "scripts/reconcile.py", "src/project_pkg/tracking.py")
+          "scripts/reconcile.py", "src/project_pkg/tracking.py", ".codex/config.toml")
 _HISTORY: dict[str, set[bytes]] = {}
 CUSTOMIZED: list[str] = []
 

@@ -94,6 +94,17 @@ def test_codex_argv_carries_hooks_and_resume_order(tmp_path):
     assert rc.argv[-3:] == ["resume", "thr-9", "-"]
 
 
+@needs_toml
+def test_codex_config_keys_sit_above_the_agents_table():
+    # TOML puts every key after `[agents]` inside it; codex >= 0.160 reads agents.<name> as a role and
+    # refuses the whole file (seen live: "invalid type: string \"never\", expected struct AgentRoleToml")
+    import tomllib
+    for rel in (".codex/config.toml", "templates/project/.codex/config.toml"):
+        d = tomllib.loads((REPO / rel).read_text(encoding="utf-8"))
+        assert d["approval_policy"] == "never" and d["sandbox_mode"] == "workspace-write", rel
+        assert set(d["agents"]) <= {"max_threads", "max_depth", "job_max_runtime_seconds"}, rel
+
+
 def test_auth_probes_parse_each_cli():
     cp = lambda rc, out="", err="": subprocess.CompletedProcess([], rc, out, err)  # noqa: E731
     assert backends._auth_from("claude", cp(0, '{"loggedIn": false, "authMethod": "none"}'))["logged_in"] is False

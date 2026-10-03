@@ -222,11 +222,14 @@ TRACE_HOOK = Path(__file__).resolve().parents[1] / "trace_hook.py"
 TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
 
 
-def _claude_sidecars(rd: Path) -> Path:
-    """Per-run settings: the signature guard and the tracer (never permissions). The tracer runs here
-    with this interpreter's absolute path; the repo's own `.claude/settings.json` hooks (`--from-repo`)
-    stand down for the run (NEWTS_TRACE_FLAGS=1), so a machine with only `python3` — or a repo whose
-    tracing files are stale — is still traced, once."""
+def _claude_sidecars(rd: Path, bus: Path) -> Path:
+    """Per-run settings: the signature guard, the tracer, and ONE permission — the lab's own bus
+    commands (`lab_bus.py emit|escalate`: the run footer, a campaign's dispatch). Those only append an
+    event to the lab's record, and the run can't report back without them; claude's `auto` classifier
+    was seen refusing the footer. Everything else stays with the PI's permission mode. The tracer runs
+    here with this interpreter's absolute path; the repo's own `.claude/settings.json` hooks
+    (`--from-repo`) stand down for the run (NEWTS_TRACE_FLAGS=1), so a machine with only `python3` — or
+    a repo whose tracing files are stale — is still traced, once."""
     py = python_exe()
     pre = []
     if SIGNATURE_GUARD.is_file():
@@ -238,7 +241,10 @@ def _claude_sidecars(rd: Path) -> Path:
         for ev in TRACE_EVENTS:
             entry = {"matcher": "*", "hooks": [trace]} if ev in ("PreToolUse", "PostToolUse") else {"hooks": [trace]}
             hooks.setdefault(ev, []).append(entry)
-    settings = {"hooks": hooks}
+    b = bus.as_posix()
+    allow = [f"Bash({exe} {path} {sub}:*)" for exe in ("python", "python3", f'"{py}"', py)
+             for path in (b, f'"{b}"') for sub in ("emit", "escalate")]
+    settings = {"hooks": hooks, "permissions": {"allow": allow}}
     sp = rd / "settings.json"
     sp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     return sp
@@ -396,7 +402,8 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
 
     settings_path = sys_prompt = None
     if backend == "claude":
-        settings_path = _claude_sidecars(rd)
+        settings_path = _claude_sidecars(rd, (lab.hub / "tools" / "lab_bus.py") if m.get("level") == "hub"
+                                         else (workdir / "scripts" / "lab_bus.py"))
         if TRACE_HOOK.is_file():
             env["NEWTS_TRACE_FLAGS"] = "1"   # the repo's own trace hooks (--from-repo) stand down: one line per event
         if preamble_text:

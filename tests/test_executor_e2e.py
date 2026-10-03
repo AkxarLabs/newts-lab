@@ -102,6 +102,10 @@ def test_hub_run_completes_and_records_everything(hub, monkeypatch):
     assert c["argv"][c["argv"].index("--input-format") + 1] == "stream-json"
     assert c["argv"][c["argv"].index("--permission-prompt-tool") + 1] == "stdio" and "--mcp-config" not in c["argv"]
     assert c["env"]["AUTOSCIENTIST_NO_GATE3"] == "1" and c["env"]["AUTOSCIENTIST_AGENT_DEPTH"] == "1"
+    # the run's own settings pre-approve exactly the lab's bus commands (footer, dispatch) — nothing else
+    st = json.loads((run_dir(lab, m) / "settings.json").read_text(encoding="utf-8"))
+    allow = st["permissions"]["allow"]
+    assert allow and all("lab_bus.py" in a and (" emit:*)" in a or " escalate:*)" in a) for a in allow)
     assert c["env"]["NEWTS_RUN_ID"] == m["run_id"]
     assert Path(c["cwd"]).resolve() == hub.root.resolve()
     # the next tick post-processes: the footer becomes the report

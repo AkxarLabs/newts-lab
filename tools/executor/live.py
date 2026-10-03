@@ -667,6 +667,7 @@ class Conversation:
         return reqs[0] if len(reqs) == 1 else None
 
     def _answer(self, req: dict, item: dict, by: str) -> None:
+        asked_at = (self.st.m.get("pending_question") or {}).get("asked_at")
         self.s.respond(req, item)
         self.log({"_pi": "answer" if req["kind"] == "question" else "permission", "by": by, "ts": now(),
                   "answers": item.get("answers"), "response": item.get("response"), "allow": item.get("allow"),
@@ -674,7 +675,7 @@ class Conversation:
         self._drop(req["id"])
         m = self.st.m
         if req["kind"] == "question":
-            m.setdefault("qa", []).append({"asked_at": (m.get("pending_question") or {}).get("asked_at"),
+            m.setdefault("qa", []).append({"asked_at": asked_at,
                                            "question": req.get("input"), "answers": item.get("answers"),
                                            "response": item.get("response"), "answered_at": now(), "by": by})
             m["qa"] = m["qa"][-20:]
