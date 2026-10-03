@@ -36,11 +36,11 @@ def env(hub, tmp_path, monkeypatch):
     (local / "lab" / "REGISTRY.md").write_text("# Lab Registry\n", encoding="utf-8")
     (hub.lab / "config.yaml").write_text('lab:\n  name: "Remote lab"\n  projects_root: "../projects"\n', encoding="utf-8")
     m = load("dashboard/serve")
-    for tgt in (m, m.sources):
+    for tgt in (m.ctx,):
         monkeypatch.setattr(tgt, "HUB", local)
         monkeypatch.setattr(tgt, "LAB", local / "lab")
     yield m, hub, tmp_path
-    m.set_remote(None)
+    m.ctx.set_remote(None)
     for c in list(m.machines.CONNS.values()):
         c.disconnect()
     subprocess.run([sys.executable, str(REPO / "newts.py"), "--hub", str(hub.root), "--stop"], capture_output=True, timeout=60)
@@ -109,7 +109,7 @@ def test_connect_proxy_and_lose_the_tunnel(env):
     try:
         res, code = m.machines.open_lab({"id": "box", "path": hub.root.as_posix()})
         assert code == 200 and res["state"] == "connected", res
-        assert m.REMOTE is not None
+        assert m.ctx.REMOTE is not None
         # reads go to the remote lab, tagged with where they came from
         st, raw = _req(port, cookie, "GET", "/api/state")
         snap = json.loads(raw)
@@ -132,7 +132,7 @@ def test_connect_proxy_and_lose_the_tunnel(env):
         assert b'"remote"' in line
         c.close()
         # lose the tunnel → a clear 502, not a hang
-        conn = m.REMOTE
+        conn = m.ctx.REMOTE
         conn.want = False
         conn.tunnel.kill()
         conn.tunnel.wait(10)
@@ -144,9 +144,9 @@ def test_connect_proxy_and_lose_the_tunnel(env):
         st, raw = _req(port, cookie, "GET", "/api/state")
         assert st == 200 and "remote" not in json.loads(raw)
         # disconnecting the lab on screen falls back to this computer (and says so, for the page to reload)
-        m.set_remote(conn)
+        m.ctx.set_remote(conn)
         res, _ = m.machines.disconnect({"id": "box", "path": hub.root.as_posix()})
-        assert res["was_current"] and m.REMOTE is None
+        assert res["was_current"] and m.ctx.REMOTE is None
     finally:
         srv.shutdown()
 

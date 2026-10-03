@@ -488,7 +488,7 @@ def test_needs_you_shows_the_campaign_not_its_retried_runs(camp, monkeypatch):
     assert campaigns.load(lab, "2026-09-27-test")["status"] == "stalled"
     from conftest import load
     sources = load("dashboard/sources")
-    monkeypatch.setattr(sources, "HUB", lab.hub)
-    monkeypatch.setattr(sources, "LAB", lab.lab)
+    monkeypatch.setattr(sources.ctx, "HUB", lab.hub)
+    monkeypatch.setattr(sources.ctx, "LAB", lab.lab)
     items = sources._attention([], [], [], [])
     assert any(i["kind"] == "campaign" and i["sev"] == "block" for i in items)

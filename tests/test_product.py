@@ -35,10 +35,8 @@ def m(hub, monkeypatch, tmp_path):
     monkeypatch.setenv("NEWTS_HOME", str(tmp_path / "home"))
     monkeypatch.syspath_prepend(str(REPO / "dashboard"))
     mod = load("dashboard/serve")
-    monkeypatch.setattr(mod, "HUB", hub.root)
-    monkeypatch.setattr(mod, "LAB", hub.lab)
-    monkeypatch.setattr(mod.sources, "HUB", hub.root)
-    monkeypatch.setattr(mod.sources, "LAB", hub.lab)
+    monkeypatch.setattr(mod.ctx, "HUB", hub.root)
+    monkeypatch.setattr(mod.ctx, "LAB", hub.lab)
     return mod
 
 
@@ -249,7 +247,7 @@ def test_create_open_and_switch_labs(m, hub, tmp_path):
     listed, _ = m.product.labs_list()
     assert any(l["path"] == str(dest) for l in listed["labs"])
     out, code = m.product.labs_open({"path": str(dest)})
-    assert code == 200 and m.HUB == dest.resolve() and m.sources.HUB == dest.resolve()
+    assert code == 200 and m.ctx.HUB == dest.resolve()
     assert m.product.labs_open({"path": str(tmp_path)})[1] == 400                     # not a lab
     assert m.product.labs_create({"confirm": True, "path": str(dest)})[1] == 400      # not empty
 
@@ -421,5 +419,5 @@ def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
 
 
 def test_read_side_slugs_never_step_out_of_a_folder(m):
-    assert m._slug("..") == "" and m._slug("../x") == "" and m._slug(".hidden") == "" and m._slug("a..b") == ""
-    assert m._slug("idea-1") == "idea-1" and m._slug("my idea!") == "myidea"
+    assert m.ctx.slug("..") == "" and m.ctx.slug("../x") == "" and m.ctx.slug(".hidden") == "" and m.ctx.slug("a..b") == ""
+    assert m.ctx.slug("idea-1") == "idea-1" and m.ctx.slug("my idea!") == "myidea"

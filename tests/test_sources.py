@@ -9,8 +9,8 @@ from conftest import load
 
 def _mod(hub, monkeypatch):
     m = load("dashboard/sources")
-    monkeypatch.setattr(m, "HUB", hub.root)
-    monkeypatch.setattr(m, "LAB", hub.lab)
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
     return m
 
 

@@ -2,8 +2,7 @@
 
 serve.py does `import sources` at module load (it inserts dashboard/ on sys.path). We call the
 pure functions directly. serve resolves project/control paths through `sources`, so we override
-BOTH serve.HUB/serve.LAB AND the sources module object serve actually imported
-(serve.sources.HUB / .LAB). No socket is ever bound.
+the dashboard's shared state (ctx.HUB / ctx.LAB), which serve and sources both read. No socket is ever bound.
 """
 
 from __future__ import annotations
@@ -15,11 +14,11 @@ def _mod(hub, monkeypatch):
     # Ensure `import sources` inside serve.py resolves to the real dashboard/sources.py.
     monkeypatch.syspath_prepend(str(REPO / "dashboard"))
     m = load("dashboard/serve")
-    monkeypatch.setattr(m, "HUB", hub.root)
-    monkeypatch.setattr(m, "LAB", hub.lab)
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
     # serve holds a reference to the sources module — patch its globals too.
-    monkeypatch.setattr(m.sources, "HUB", hub.root)
-    monkeypatch.setattr(m.sources, "LAB", hub.lab)
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
     return m
 
 

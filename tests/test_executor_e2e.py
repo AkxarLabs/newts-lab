@@ -413,8 +413,8 @@ def test_the_trace_is_recorded_once_joined_to_its_run_and_nested(hub, monkeypatc
     sub1, sub2 = _worker_lines(hub, "sub-1"), _worker_lines(hub, "sub-2")
     assert sub1[0]["session_id"] == m["session_id"] and sub2[0]["role"] == "overseer"
     sources = load("dashboard/sources")
-    monkeypatch.setattr(sources, "HUB", hub.root)
-    monkeypatch.setattr(sources, "LAB", hub.lab)
+    monkeypatch.setattr(sources.ctx, "HUB", hub.root)
+    monkeypatch.setattr(sources.ctx, "LAB", hub.lab)
     snap = sources.snapshot()
     ws = {w["worker_id"]: w for w in snap["workers"]}
     assert ws[m["session_id"]]["run_id"] == m["run_id"]

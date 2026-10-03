@@ -22,7 +22,7 @@ def m(hub, monkeypatch):
         f"        command: {json.dumps([sys.executable, str(FAKE)])}\n", encoding="utf-8")
     monkeypatch.syspath_prepend(str(REPO / "dashboard"))
     mod = load("dashboard/serve")
-    for tgt in (mod, mod.sources):
+    for tgt in (mod.ctx,):
         monkeypatch.setattr(tgt, "HUB", hub.root)
         monkeypatch.setattr(tgt, "LAB", hub.lab)
     return mod

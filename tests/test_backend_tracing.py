@@ -353,9 +353,9 @@ def test_claude_runs_get_unbounded_background_subagent_wait(hub, monkeypatch):
 
 def test_executor_config_endpoint_whitelists_validates_and_stamps(hub, monkeypatch):
     serve = load("dashboard/serve")
-    monkeypatch.setattr(serve, "LAB", hub.lab)
-    monkeypatch.setattr(serve, "HUB", hub.root)
-    monkeypatch.setattr(serve, "_pi_log", lambda rec: None)
+    monkeypatch.setattr(serve.ctx, "LAB", hub.lab)
+    monkeypatch.setattr(serve.ctx, "HUB", hub.root)
+    monkeypatch.setattr(serve.ctx, "pi_log", lambda rec: None)
     cfg = hub.lab / "config.yaml"
     cfg.write_text("agents:\n  programmatic:\n    enabled: false   # master\n    backend: claude   # which CLI\n"
                    "    max_minutes: 240\n    daily_max_runs: 0\ndashboard:\n  auto_spawn_on_gate1: false\n", encoding="utf-8")
@@ -378,8 +378,8 @@ def test_launch_passes_repeat_and_rejects_bad_model(hub, monkeypatch):
     from test_executor_e2e import setup
     serve = load("dashboard/serve")
     setup(hub)
-    monkeypatch.setattr(serve, "HUB", hub.root)
-    monkeypatch.setattr(serve, "_pi_log", lambda rec: None)
+    monkeypatch.setattr(serve.ctx, "HUB", hub.root)
+    monkeypatch.setattr(serve.ctx, "pi_log", lambda rec: None)
     out, code = serve.launch_run({"skill": "lab-status", "model": "-p", "confirm": True})
     assert code == 400 and "model" in out["error"]
     out, code = serve.launch_run({"skill": "lab-status", "repeat_minutes": "30", "max_repeats": "4",
@@ -448,8 +448,8 @@ def test_check_lab_flags_projects_with_stale_tracing(hub, monkeypatch):
 
 def test_executor_config_inserts_keys_missing_from_an_older_config(hub, monkeypatch):
     serve = load("dashboard/serve")
-    monkeypatch.setattr(serve, "LAB", hub.lab)
-    monkeypatch.setattr(serve, "_pi_log", lambda rec: None)
+    monkeypatch.setattr(serve.ctx, "LAB", hub.lab)
+    monkeypatch.setattr(serve.ctx, "pi_log", lambda rec: None)
     cfg = hub.lab / "config.yaml"
     cfg.write_text("agents:\n  programmatic:\n    enabled: true   # master\n    backends:\n      claude:\n"
                    "        model: opus\n\n# ── next section ──\nautopilot:\n  max_concurrent_projects: 1\n",

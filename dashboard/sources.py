@@ -23,8 +23,8 @@ from pathlib import Path
 
 import yaml
 
-HUB = Path(__file__).resolve().parents[1]
-LAB = HUB / "lab"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ctx  # noqa: E402 — the lab being shown (ctx.HUB / ctx.LAB): one place, re-pointed live
 
 # The executor (tools/executor) is optional for the dashboard: import it from THIS repo's tools/
 # (never from a monkeypatched HUB), and degrade to observe-and-sign if it's missing.
@@ -91,7 +91,7 @@ def _load_yaml(path: Path) -> dict:
 
 def parse_registry() -> list[dict]:
     rows = []
-    for line in _read_text(LAB / "REGISTRY.md").splitlines():
+    for line in _read_text(ctx.LAB / "REGISTRY.md").splitlines():
         if not line.strip().startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -102,8 +102,8 @@ def parse_registry() -> list[dict]:
 
 
 def projects_root() -> Path:
-    lab_cfg = (_load_yaml(LAB / "config.yaml").get("lab") or {})
-    return (HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
+    lab_cfg = (_load_yaml(ctx.LAB / "config.yaml").get("lab") or {})
+    return (ctx.HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
 
 
 def _project_path(row: dict) -> Path | None:
@@ -111,7 +111,7 @@ def _project_path(row: dict) -> Path | None:
     raw = (row.get("project") or "").strip().strip("`")
     if raw and raw not in ("—", "-"):
         p = Path(raw)
-        return p if p.is_absolute() else (HUB / p).resolve()
+        return p if p.is_absolute() else (ctx.HUB / p).resolve()
     cand = projects_root() / row["id"]
     return cand if cand.exists() else None
 
@@ -184,7 +184,7 @@ def _compact_run(m: dict) -> dict:
     out["last_message"] = (m.get("last_message") or "")[:1200] or None
     out["last_text"] = (m.get("last_text") or "")[:400] or None
     la = m.get("last_action")
-    out["last_action"] = {"tool": la.get("tool"), "summary": (la.get("summary") or "")[:200], "ts": la.get("ts")} \
+    out["last_action"] = {"tool": la.get("tool"), "summary": (la.get("summary") or "")[:200], "ts": la.get("ts")}\
         if isinstance(la, dict) else None
     now = time.time()
     st = m.get("status")
@@ -246,11 +246,11 @@ def _best_metric(rows: list[dict]) -> dict | None:
 # ── slots & campaigns ─────────────────────────────────────────────────────────
 
 def _stale_slot_minutes() -> float:
-    return _to_float((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("stale_slot_minutes"), 360.0)
+    return _to_float((_load_yaml(ctx.LAB / "config.yaml").get("compute") or {}).get("stale_slot_minutes"), 360.0)
 
 
 def slots() -> list[dict]:
-    sdir = LAB / ".slots"
+    sdir = ctx.LAB / ".slots"
     if not sdir.exists():
         return []
     now = time.time()
@@ -277,7 +277,7 @@ def slots() -> list[dict]:
 
 
 def slot_cap() -> int:
-    return _to_int((_load_yaml(LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs"), 1)
+    return _to_int((_load_yaml(ctx.LAB / "config.yaml").get("compute") or {}).get("max_concurrent_runs"), 1)
 
 
 # ── Gate-2 envelope accounting (ONE source of truth, mirrors tools/guard.py c_full_run) ───────────
@@ -343,7 +343,7 @@ def _notebook_status() -> dict:
     Age is derived from the entry's DATED FILENAME, not st_mtime: a `git clone`/`checkout`/`pull`
     resets mtimes, which would make a lab that stopped recording weeks ago read as fresh. Selecting by
     the filename string also means no stat() in the hot path (no glob→stat TOCTOU race)."""
-    nb = LAB / "notebook"
+    nb = ctx.LAB / "notebook"
     if not nb.exists():
         return {}
     dated = [f for f in nb.glob("*.md") if f.name.lower() != "readme.md"]
@@ -363,7 +363,7 @@ def _notebook_status() -> dict:
 def editor_scheme() -> str:
     """URI scheme for the 'open in editor' deep-links (vscode|cursor|…|none). The dashboard is
     local-only, so a `<scheme>://file/<abs-path>` opens the PI's own editor. Default vscode."""
-    return str((_load_yaml(LAB / "config.yaml").get("dashboard") or {}).get("editor", "vscode")).strip().lower()
+    return str((_load_yaml(ctx.LAB / "config.yaml").get("dashboard") or {}).get("editor", "vscode")).strip().lower()
 
 
 # ── paper artifacts (the compiled PDF a back-half session produced) ────────────
@@ -373,7 +373,7 @@ def editor_scheme() -> str:
 # the viewer's button shows and the snapshot diff (hence the SSE push) auto-refreshes it on recompile.
 
 def _paper_status(slug: str) -> dict | None:
-    pdir = HUB / "studies" / slug / "paper"
+    pdir = ctx.HUB / "studies" / slug / "paper"
     pdf = pdir / "main.pdf"
     try:
         if not pdf.is_file():
@@ -390,7 +390,7 @@ def _paper_status(slug: str) -> dict | None:
 def _claims_count(slug: str) -> int:
     """How many claims studies/<slug>/paper/claims.yaml holds (0 if absent/empty). Drives the
     'claims (N)' button — claims.yaml can exist before the PDF, so this is independent of _paper_status."""
-    f = HUB / "studies" / slug / "paper" / "claims.yaml"
+    f = ctx.HUB / "studies" / slug / "paper" / "claims.yaml"
     if not f.is_file():
         return 0
     doc = _load_yaml(f)
@@ -468,8 +468,7 @@ def _gate_signed(idea: str, gate: int | None, pdir: Path | None) -> bool:
     registry row past the gate (the next-action text stops matching _GATE_RE, so gate -> None)."""
     # (an EXPIRED signed envelope is not "waiting for the agent": guard.py full-run and approve_gate
     # both refuse it, so the PI must re-authorize — markers.gate_signed keeps it an actionable gate)
-    import markers  # noqa: PLC0415
-    return bool(gate) and markers.gate_signed(HUB, idea, gate, pdir)
+    return bool(gate) and ctx.tool("markers").gate_signed(ctx.HUB, idea, gate, pdir)
 
 
 def _escalations(events: list[dict]) -> list[dict]:
@@ -595,7 +594,7 @@ def _workers(bus_dir: Path, project: str | None = None, projects: set | None = N
         age = now - st.st_mtime
         key = str(f)
         hit = _WORKER_CACHE.get(key)
-        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S) and f.stem not in _LIVE_IDS and \
+        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S) and f.stem not in _LIVE_IDS and\
                 not (hit and hit[2].get("open_tool") and age < _WORKER_IN_TOOL_MAX_S):
             continue   # never parsed: roster cost stays O(recent) before trace_hook's retention sweep
         if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
@@ -677,8 +676,8 @@ def _link_workers(workers: list[dict]) -> list[dict]:
         free = [(o, s) for o in owners for s in (o.get("spawned") or [])]
         for c in children:
             before = [(o, s) for (o, s) in free if o is not c and (s.get("ts") or "") <= (c.get("started") or "~")]
-            match = next(((o, s) for (o, s) in free if s.get("child") == c["worker_id"]), None) or \
-                next(((o, s) for (o, s) in before if s["type"] == c["role"] and not s.get("child")), None) or \
+            match = next(((o, s) for (o, s) in free if s.get("child") == c["worker_id"]), None) or\
+                next(((o, s) for (o, s) in before if s["type"] == c["role"] and not s.get("child")), None) or\
                 (next(((o, s) for (o, s) in before if s["type"] == "general-purpose"), None)
                  if c["role"] == "general-purpose" else None)
             owner = root
@@ -734,7 +733,7 @@ def _excerpt(text: str, n: int = 240) -> str:
 def campaigns(rows: list[dict] | None = None) -> list[dict]:
     rows = rows if rows is not None else parse_registry()
     cmap: dict[str, dict] = {}
-    cdir = LAB / "campaigns"
+    cdir = ctx.LAB / "campaigns"
     for f in (sorted(cdir.glob("*.md")) if cdir.exists() else []):
         text = _read_text(f)
         meta = {}
@@ -780,7 +779,7 @@ def campaigns(rows: list[dict] | None = None) -> list[dict]:
 
 def snapshot() -> dict:
     rows = parse_registry()
-    hub_bus = LAB / ".bus"
+    hub_bus = ctx.LAB / ".bus"
     items, all_events = [], []
     proj_ids = {r["id"] for r in rows if _project_path(r) is not None}
     workers = _workers(hub_bus, None, proj_ids)
@@ -869,7 +868,7 @@ def _autonomy_view() -> dict:
     if executor is None:
         return {"campaign_states": [], "scheduler": {}, "awake": {}}
     try:
-        lab = executor.Lab(HUB)
+        lab = executor.Lab(ctx.HUB)
         from executor import awake, campaigns as _camps  # noqa: PLC0415
         return {"campaign_states": _camps.summary(lab), "scheduler": executor.scheduler.lease(lab),
                 "awake": awake.status()}
@@ -879,7 +878,7 @@ def _autonomy_view() -> dict:
 
 def _workflow_view() -> dict:
     try:
-        return workflow.ui_view(HUB)
+        return workflow.ui_view(ctx.HUB)
     except Exception as e:  # noqa: BLE001 — a broken manifest shows as a problem, never a blank dashboard
         return {"error": str(e)}
 
@@ -890,7 +889,7 @@ def _join_runs(workers: list[dict], runs: list[dict]) -> None:
     by_sid = {r["session_id"]: r for r in runs if r.get("session_id")}
     by_run = {r["run_id"]: r for r in runs if r.get("run_id")}
     for w in workers:
-        r = by_run.get(w.get("run_id")) or by_run.get(w["worker_id"]) or by_sid.get(w["worker_id"]) or \
+        r = by_run.get(w.get("run_id")) or by_run.get(w["worker_id"]) or by_sid.get(w["worker_id"]) or\
             (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
         if not r:
             w["interactive"] = not w.get("is_subagent")   # a session the PI started by hand
@@ -928,7 +927,7 @@ def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -
                             "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}",
                             "detail": r, "actions": [{"id": "dismiss", "label": "dismiss"}]})
     try:
-        for pr in workflow.proposals(HUB):
+        for pr in workflow.proposals(ctx.HUB):
             what = ("replace the method of /" if pr.get("kind") == "method" else "add instructions to "
                     + ("stage " if pr.get("kind") == "stage" else "role " if pr.get("kind") == "role" else "/"))
             out.append({"id": f"proposal:{pr['id']}", "kind": "proposal", "sev": "warn", "ts": pr.get("ts"),
@@ -961,7 +960,7 @@ def _attention(items, events, workers, runs) -> list[dict]:
     extra = _lab_attention(items, events, workers)
     try:   # a campaign that stopped and needs the PI (stalled, paused on a sign-in problem) — one item for it
         from executor import campaigns as _camps  # noqa: PLC0415
-        for c in _camps.all_states(executor.Lab(HUB)) if executor else []:
+        for c in _camps.all_states(executor.Lab(ctx.HUB)) if executor else []:
             if c.get("status") in ("stalled", "paused") and c.get("paused_reason") and c.get("paused_reason") != "paused by the PI":
                 extra.append({"id": f"campaign:{c['name']}:{c.get('status')}:{len(c.get('cycles') or [])}", "kind": "campaign",
                               "sev": "block", "ts": (c.get("events") or [{}])[-1].get("ts"), "target": "hub", "idea": None,
@@ -988,7 +987,7 @@ def _attention(items, events, workers, runs) -> list[dict]:
     if executor is None:
         return extra
     try:
-        lab = executor.Lab(HUB)
+        lab = executor.Lab(ctx.HUB)
         manifests = []
         for _t, _w, path, m in executor.all_runs(lab):
             manifests.append((path, m))
@@ -999,13 +998,14 @@ def _attention(items, events, workers, runs) -> list[dict]:
 
 
 _EXEC_CACHE: dict = {"ts": 0.0, "key": None, "value": None}
+ctx.on_change(lambda _old, _new: _EXEC_CACHE.update(ts=0))
 
 
 def executor_status() -> dict:
     """Launching possible? Which CLIs exist? Caps and load. The CLI probe (a subprocess) is cached 30 s."""
     if executor is None:
         return {"available": False, "enabled": False, "reason": "tools/executor is missing"}
-    lab = executor.Lab(HUB)
+    lab = executor.Lab(ctx.HUB)
     key = str(lab.hub)
     if _EXEC_CACHE["key"] == key and time.time() - _EXEC_CACHE["ts"] < 30 and _EXEC_CACHE["value"]:
         base = dict(_EXEC_CACHE["value"])

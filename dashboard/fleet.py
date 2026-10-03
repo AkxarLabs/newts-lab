@@ -22,7 +22,10 @@ import threading
 import time
 from pathlib import Path
 
-S = None          # the serve module (bound at import)
+import ctx  # noqa: E402
+import sources  # noqa: E402
+import machines  # noqa: E402
+
 _CACHE: dict[str, tuple[float, dict]] = {}
 _LOCAL_TTL = 10.0
 POLL_S = 15.0
@@ -30,14 +33,8 @@ _GATE_RE = re.compile(r"\bgate\s*-?\s*([123])\b", re.I)
 _state = {"thread": None, "stop": None, "attempts": {}}
 
 
-def bind(serve_module) -> None:
-    global S
-    S = serve_module
-
-
 def _gate_signed(hub: Path, lab, slug: str, gate: int) -> bool:
-    import markers  # noqa: PLC0415 — tools/ is on sys.path (sources puts it there)
-    return markers.gate_signed(hub, slug, gate, lab.project_dir(slug))
+    return ctx.tool("markers").gate_signed(hub, slug, gate, lab.project_dir(slug))
 
 
 def lab_summary(hub: Path) -> dict:
@@ -47,7 +44,7 @@ def lab_summary(hub: Path) -> dict:
     hit = _CACHE.get(key)
     if hit and time.time() - hit[0] < _LOCAL_TTL:
         return hit[1]
-    ex = S.sources.executor if S else None
+    ex = sources.executor
     out = {"path": str(hub), "name": None, "needs": 0, "top": [], "running": 0, "queued": 0, "waiting": 0,
            "active_runs": [], "campaigns": [], "studies": 0, "ok": True}
     try:
@@ -117,7 +114,7 @@ def _fetch(conn) -> dict | None:
 
 
 def _keep_once() -> None:
-    m = S.machines
+    m = machines
     for mach in m._load():
         for lab in mach.get("labs") or []:
             if not lab.get("keep_connected"):
@@ -162,7 +159,7 @@ def fleet() -> tuple[dict, int]:
     """Every lab: this computer's (from the lab list) and every remote one registered on a machine."""
     import product  # noqa: PLC0415
     local, _ = product.labs_list()
-    remote_now = getattr(S, "REMOTE", None)
+    remote_now = ctx.REMOTE
     out = []
     for lab in local.get("labs") or []:
         if not lab.get("exists"):
@@ -171,9 +168,9 @@ def fleet() -> tuple[dict, int]:
         out.append({"kind": "local", "key": "local::" + lab["path"], "path": lab["path"], "name": lab.get("name") or summ.get("name"),
                     "machine": "This computer", "current": bool(lab.get("current")) and not remote_now,
                     "state": "here", "summary": summ})
-    for mach in S.machines._load():
+    for mach in machines._load():
         for lab in mach.get("labs") or []:
-            c = S.machines.CONNS.get(f"{mach['id']}::{lab['path']}")
+            c = machines.CONNS.get(f"{mach['id']}::{lab['path']}")
             summ = getattr(c, "summary", None) if c else None
             age = (time.time() - c.summary_ts) if (c and getattr(c, "summary_ts", None)) else None
             out.append({"kind": "remote", "key": f"{mach['id']}::{lab['path']}", "machine_id": mach["id"], "path": lab["path"],
@@ -192,7 +189,7 @@ def fleet() -> tuple[dict, int]:
 def set_keep(body: dict) -> tuple[dict, int]:
     """Keep a remote lab connected in the background (the overview reads it), or stop."""
     mid, path = str(body.get("id") or ""), str(body.get("path") or "")
-    mach = S.machines._get(mid)
+    mach = machines._get(mid)
     if not mach:
         return {"error": "no such machine"}, 404
     hit = False
@@ -202,5 +199,5 @@ def set_keep(body: dict) -> tuple[dict, int]:
             hit = True
     if not hit:
         return {"error": "no such lab on that machine"}, 404
-    S.machines._put(mach)
+    machines._put(mach)
     return {"ok": True, "note": "kept connected in the background" if body.get("keep") else "no longer kept connected"}, 200

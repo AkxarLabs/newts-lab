@@ -26,17 +26,12 @@ import shlex
 import shutil
 import socket
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
 
-S = None   # the serve module (bound at import)
+import ctx  # noqa: E402
 
-
-def bind(serve_module) -> None:
-    global S
-    S = serve_module
 
 
 def _home() -> Path:
@@ -275,8 +270,7 @@ class Conn:
                                        stderr=subprocess.PIPE, creationflags=flags)
 
     def _connect_window(self) -> dict:
-        sys.path.insert(0, str(Path(S.__file__).resolve().parents[1] / "tools"))
-        import terminal   # noqa: E402
+        terminal = ctx.tool("terminal")
         keep = "echo; echo 'Connected — keep this window open while you use this lab.'; while true; do sleep 3600; done"
         argv = [*ssh_cmd(), *_opts(False), "-t", "-o", "ExitOnForwardFailure=yes",
                 "-L", f"{self.lport}:127.0.0.1:{self.rport}", self.machine["host"],
@@ -408,7 +402,7 @@ def list_machines() -> tuple[dict, int]:
             c = CONNS.get(f"{m['id']}::{lab['path']}")
             labs.append({**lab, **({"state": c.state, "error": c.error, "lab_name": c.name} if c else {"state": "idle"})})
         out.append({**m, "labs": labs})
-    cur = S.REMOTE.info() if getattr(S, "REMOTE", None) else None
+    cur = ctx.REMOTE.info() if ctx.REMOTE else None
     return {"ok": True, "machines": out, "suggestions": [h for h in ssh_hosts() if not any(x["host"] == h for x in out)],
             "current": cur}, 200
 
@@ -423,7 +417,7 @@ def add_machine(body: dict) -> tuple[dict, int]:
         return {"error": f"a machine named {name} already exists"}, 400
     m = {"id": mid, "name": name, "host": host, "labs": [], "facts": None, "added": time.strftime("%Y-%m-%dT%H:%M:%S")}
     _put(m)
-    S._pi_log({"action": "machine.add", "id": mid, "host": host})
+    ctx.pi_log({"action": "machine.add", "id": mid, "host": host})
     res, _ = probe({"id": mid})
     return {"ok": True, "machine": _get(mid), "probe": res}, 200
 
@@ -485,9 +479,9 @@ def open_lab(body: dict) -> tuple[dict, int]:
     interactive = bool(body.get("interactive")) or (c.machine.get("reach") or {}).get("kind") == "auth"
     res = c.connect(interactive)
     if res.get("ok") and res.get("state") == "connected":
-        S.set_remote(c)
+        ctx.set_remote(c)
         _remember(mid, path, True)    # opened once → kept connected in the background (the overview reads it)
-        S._pi_log({"action": "lab.open_remote", "machine": mid, "path": path})
+        ctx.pi_log({"action": "lab.open_remote", "machine": mid, "path": path})
     return res, 200 if (res.get("ok") or res.get("needs_interactive")) else 400
 
 
@@ -506,7 +500,7 @@ def use_lab(body: dict) -> tuple[dict, int]:
     c = CONNS.get(f"{body.get('id')}::{body.get('path')}")
     if not c or c.state != "connected":
         return {"error": "not connected yet", "state": c.state if c else "idle"}, 400
-    S.set_remote(c)
+    ctx.set_remote(c)
     return {"ok": True}, 200
 
 
@@ -514,9 +508,9 @@ def disconnect(body: dict) -> tuple[dict, int]:
     c = CONNS.get(f"{body.get('id')}::{body.get('path')}")
     if not c:
         return {"ok": True}, 200
-    current = getattr(S, "REMOTE", None) is c
+    current = ctx.REMOTE is c
     if current:
-        S.set_remote(None)          # the dashboard falls back to this computer's lab
+        ctx.set_remote(None)          # the dashboard falls back to this computer's lab
     _remember(str(body.get("id") or ""), str(body.get("path") or ""), False)   # Disconnect means: stop keeping it
     c.disconnect(stop_remote=bool(body.get("stop_remote")))
     return {"ok": True, "was_current": current, "note": "disconnected — agents on that machine keep running"}, 200
@@ -524,7 +518,7 @@ def disconnect(body: dict) -> tuple[dict, int]:
 
 def local(body: dict) -> tuple[dict, int]:
     """Back to a lab on this computer."""
-    S.set_remote(None)
+    ctx.set_remote(None)
     return {"ok": True}, 200
 
 
@@ -535,7 +529,7 @@ def create_lab(body: dict) -> tuple[dict, int]:
     name = re.sub(r"[\"'`$\\]", "", str(body.get("name") or "").strip())[:80]
     if not m or not dest or not body.get("confirm"):
         return {"error": "a machine, a folder and confirm"}, 400
-    tpl = Path(S.__file__).resolve().parents[1]
+    tpl = ctx.ROOT
     try:
         tar = subprocess.run(["git", "-C", str(tpl), "archive", "--format=tar", "HEAD"], capture_output=True, timeout=120).stdout
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -554,7 +548,7 @@ def create_lab(body: dict) -> tuple[dict, int]:
     if r.returncode != 0:
         return {"error": (out.strip().splitlines() or ["could not create the lab"])[-1]}, 400
     add_lab({"id": m["id"], "path": dest, "name": name})
-    S._pi_log({"action": "lab.create_remote", "machine": m["id"], "path": dest})
+    ctx.pi_log({"action": "lab.create_remote", "machine": m["id"], "path": dest})
     return {"ok": True, "note": f"created {name or dest} on {m.get('name')}"}, 200
 
 
@@ -563,8 +557,7 @@ def install_uv(body: dict) -> tuple[dict, int]:
     m = _get(str(body.get("id") or ""))
     if not m:
         return {"error": "no such machine"}, 404
-    sys.path.insert(0, str(Path(S.__file__).resolve().parents[1] / "tools"))
-    import terminal   # noqa: E402
+    terminal = ctx.tool("terminal")
     argv = [*ssh_cmd(), *_opts(False), "-t", m["host"], "bash -lc " + shlex.quote("curl -LsSf https://astral.sh/uv/install.sh | sh")]
     res = terminal.open_terminal(argv, title=f"Install uv on {m.get('name')}")
     return (res, 200) if res.get("ok") else (res, 500)

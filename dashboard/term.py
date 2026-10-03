@@ -23,17 +23,13 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
+
+import ctx  # noqa: E402
+import sources  # noqa: E402
 
 MAX_BUF = 1 << 20        # keep the last 1 MB of output per session
 MAX_SESSIONS = 8
 REAP_AFTER_S = 600       # forget a finished session this long after it ends
-S = None                 # the serve module (bound at import)
-
-
-def bind(serve_module) -> None:
-    global S
-    S = serve_module
 
 
 def has_pty() -> bool:
@@ -144,8 +140,7 @@ class Session:
     def close(self) -> None:
         if not self.exited:
             try:
-                sys.path.insert(0, str(Path(S.__file__).resolve().parents[1] / "tools"))
-                from executor.procs import kill_tree
+                kill_tree = ctx.tool("executor.procs").kill_tree
                 kill_tree(self.proc.pid)
             except Exception:  # noqa: BLE001
                 try:
@@ -167,9 +162,7 @@ def _reap() -> None:
 
 def command_for(purpose: str, backend: str | None) -> tuple[list[str] | None, str | None]:
     """The fixed argv for a purpose — (argv, error)."""
-    tools = Path(S.__file__).resolve().parents[1] / "tools"
-    sys.path.insert(0, str(tools))
-    import terminal   # noqa: E402
+    terminal = ctx.tool("terminal")
     if purpose == "shell":
         if os.name == "posix":
             return [os.environ.get("SHELL") or "/bin/bash", "-l"], None
@@ -182,10 +175,10 @@ def command_for(purpose: str, backend: str | None) -> tuple[list[str] | None, st
             return None, f"no install command known for {backend}"
         return (["bash", "-lc", cmd] if os.name == "posix" else ["cmd.exe", "/c", cmd]), None
     if purpose == "login":
-        if S.executor is None:
+        if sources.executor is None:
             return None, "the executor is not available"
-        prog = (S.sources._load_yaml(S.LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}
-        cli = S.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
+        prog = (sources._load_yaml(ctx.LAB / "config.yaml").get("agents") or {}).get("programmatic") or {}
+        cli = sources.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
         argv = terminal.login_argv(backend, cli or [])
         return (argv, None) if argv else (None, f"{backend} is not installed yet — install it first")
     return None, "unknown purpose"
@@ -206,17 +199,17 @@ def open_session(body: dict) -> tuple[dict, int]:
         except (TypeError, ValueError):
             cols, rows = 100, 28
         try:
-            s = Session(argv, str(S.HUB), purpose, cols, rows)
+            s = Session(argv, str(ctx.HUB), purpose, cols, rows)
         except OSError as e:
             return {"error": f"could not start it: {e}"}, 500
         SESSIONS[s.id] = s
-    S._pi_log({"action": f"term.{purpose}", "backend": backend, "argv": argv[:4]})
-    if S.executor is not None:
+    ctx.pi_log({"action": f"term.{purpose}", "backend": backend, "argv": argv[:4]})
+    if sources.executor is not None:
         try:
-            S.executor.backends._AUTH_CACHE.clear()
+            sources.executor.backends._AUTH_CACHE.clear()
         except AttributeError:
             pass
-    S.sources._EXEC_CACHE["ts"] = 0
+    sources._EXEC_CACHE["ts"] = 0
     title = {"login": f"Sign in to {backend}", "install": f"Install {backend}", "shell": "Terminal"}[purpose]
     return {"ok": True, "id": s.id, "title": title, "pty": has_pty(), "command": " ".join(shlex.quote(a) for a in argv)}, 200
 

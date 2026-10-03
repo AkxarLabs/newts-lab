@@ -31,20 +31,19 @@ import threading
 import time
 from pathlib import Path
 
-S = None   # the serve module (bound at import)
+import ctx  # noqa: E402
+import sources  # noqa: E402
+import runops  # noqa: E402
+import cfgwrite  # noqa: E402
 
-
-def bind(serve_module) -> None:
-    global S
-    S = serve_module
 
 
 def _hub() -> Path:
-    return S.HUB
+    return ctx.HUB
 
 
 def _lab() -> Path:
-    return S.LAB
+    return ctx.LAB
 
 
 def _ts() -> str:
@@ -66,15 +65,15 @@ def _write_keep_eol(p: Path, original: str, text: str) -> None:
 
 
 def _tools():
-    sys.path.insert(0, str(Path(S.__file__).resolve().parents[1] / "tools"))
+    ctx.tool("workflow")   # puts tools/ on sys.path (once) for the imports that follow
 
 
 def _row(slug: str) -> dict | None:
-    return next((r for r in S.sources.parse_registry() if r.get("id") == slug), None)
+    return next((r for r in sources.parse_registry() if r.get("id") == slug), None)
 
 
 def _need_slug(body: dict, key: str = "idea") -> str | None:
-    return S._safe_id(body.get(key) or "")
+    return ctx.safe_id(body.get(key) or "")
 
 
 # ── labs ─────────────────────────────────────────────────────────────────────
@@ -101,7 +100,7 @@ def _labs_save(labs: list[dict]) -> None:
 
 
 def lab_name(hub: Path) -> str:
-    cfg = S.sources._load_yaml(hub / "lab" / "config.yaml")
+    cfg = sources._load_yaml(hub / "lab" / "config.yaml")
     return str(((cfg.get("lab") or {}).get("name")) or hub.name)
 
 
@@ -140,7 +139,7 @@ def labs_list() -> tuple[dict, int]:
         cur = _lab_summary(_hub())
         cur["current"] = True
         out.insert(0, cur)
-    return {"ok": True, "labs": out, "current": str(_hub()), "template": str(Path(S.__file__).resolve().parents[1])}, 200
+    return {"ok": True, "labs": out, "current": str(_hub()), "template": str(ctx.ROOT)}, 200
 
 
 def labs_open(body: dict) -> tuple[dict, int]:
@@ -154,10 +153,10 @@ def labs_open(body: dict) -> tuple[dict, int]:
         return {"error": f"can't read {raw}"}, 400
     if not (hub / "lab").is_dir() or not (hub / "lab" / "config.yaml").exists():
         return {"error": f"{hub} is not a Newts' Lab (no lab/config.yaml there)"}, 400
-    S.set_remote(None)
-    S.switch_hub(hub)
+    ctx.set_remote(None)
+    ctx.switch_hub(hub)
     remember_lab(hub)
-    S._pi_log({"action": "lab.open", "path": str(hub)})
+    ctx.pi_log({"action": "lab.open", "path": str(hub)})
     return {"ok": True, "lab": _lab_summary(hub), "note": f"opened {lab_name(hub)}"}, 200
 
 
@@ -171,15 +170,15 @@ def labs_create(body: dict) -> tuple[dict, int]:
     _tools()
     import new_lab   # noqa: E402
     res = new_lab.create_lab(where, name or None, (str(body.get("projects_root") or "").strip() or None),
-                             template=Path(S.__file__).resolve().parents[1])
+                             template=ctx.ROOT)
     if not res.get("ok"):
         return res, 400
     hub = Path(res["path"])
     remember_lab(hub)
     if body.get("open", True):
-        S.set_remote(None)
-        S.switch_hub(hub)
-    S._pi_log({"action": "lab.create", "path": str(hub), "name": name})
+        ctx.set_remote(None)
+        ctx.switch_hub(hub)
+    ctx.pi_log({"action": "lab.create", "path": str(hub), "name": name})
     return {"ok": True, "lab": _lab_summary(hub), "git": res.get("git"),
             "note": f"created {res.get('name')} at {hub}"}, 200
 
@@ -200,7 +199,7 @@ def terminal_open(body: dict) -> tuple[dict, int]:
     if purpose == "shell":
         res = terminal.open_terminal("echo Newts' Lab — this is your lab folder", _hub())
     elif purpose in ("login", "install"):
-        if backend not in S.sources.executor.backends.BACKENDS if S.sources.executor else ("claude", "codex", "opencode"):
+        if backend not in sources.executor.backends.BACKENDS if sources.executor else ("claude", "codex", "opencode"):
             return {"error": "unknown backend"}, 400
         if purpose == "install":
             cmd = terminal.install_command(backend)
@@ -208,10 +207,10 @@ def terminal_open(body: dict) -> tuple[dict, int]:
                 return {"error": f"no install command known for {backend}"}, 400
             res = terminal.open_terminal(cmd, _hub())
         else:
-            if S.executor is None:
-                return S._no_executor()
-            prog = (S.sources._load_yaml(_lab() / "config.yaml").get("agents") or {}).get("programmatic") or {}
-            cli = S.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
+            if sources.executor is None:
+                return ctx.no_executor()
+            prog = (sources._load_yaml(_lab() / "config.yaml").get("agents") or {}).get("programmatic") or {}
+            cli = sources.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
             argv = terminal.login_argv(backend, cli or [])
             if not argv:
                 return {"error": f"{backend} is not installed yet — install it first"}, 400
@@ -220,13 +219,13 @@ def terminal_open(body: dict) -> tuple[dict, int]:
         return {"error": "unknown purpose"}, 400
     if not res.get("ok"):
         return res, 500
-    S.sources._EXEC_CACHE["ts"] = 0
-    if S.executor is not None:
+    sources._EXEC_CACHE["ts"] = 0
+    if sources.executor is not None:
         try:
-            S.executor.backends._AUTH_CACHE.clear()
+            sources.executor.backends._AUTH_CACHE.clear()
         except AttributeError:
             pass
-    S._pi_log({"action": f"terminal.{purpose}", "backend": backend or None})
+    ctx.pi_log({"action": f"terminal.{purpose}", "backend": backend or None})
     what = {"login": "sign-in", "install": "install", "shell": "shell"}[purpose]
     return {"ok": True, "note": f"opened {res['how']} for the {backend + ' ' if backend else ''}{what} — "
                                 "finish there; this page updates by itself"}, 200
@@ -281,12 +280,12 @@ def gate3_sign(body: dict) -> tuple[dict, int]:
     if note:
         lines += ["", "PI note:", "", note]
     (paper / "gate3-approval.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    S._emit_hub("gate_resolved", idea=slug, detail="Gate 3 signed (PI via dashboard)")
-    S._pi_log({"action": "approve_gate", "gate": 3, "idea": slug, "paper_sha256": digest, "warnings": warn or None})
+    ctx.emit_hub("gate_resolved", idea=slug, detail="Gate 3 signed (PI via dashboard)")
+    ctx.pi_log({"action": "approve_gate", "gate": 3, "idea": slug, "paper_sha256": digest, "warnings": warn or None})
     out = {"ok": True, "gate": 3, "idea": slug, "warnings": warn or None,
            "note": "Gate 3 signed. /finalize can now run for this study."}
     if body.get("launch"):
-        res, code = S.launch_run({"skill": "finalize", "target": slug, "confirm": True,
+        res, code = runops.launch_run({"skill": "finalize", "target": slug, "confirm": True,
                                   "backend": body.get("backend")}, by="gate3", gate3=True)
         out["launch"] = res
         if code == 200:
@@ -305,7 +304,7 @@ def finalize_start(body: dict) -> tuple[dict, int]:
         return {"error": "starting /finalize needs explicit confirm"}, 400
     if not (_paper(slug) / "gate3-approval.md").exists():
         return {"error": "sign Gate 3 first"}, 400
-    res, code = S.launch_run({"skill": "finalize", "target": slug, "confirm": True, "backend": body.get("backend")},
+    res, code = runops.launch_run({"skill": "finalize", "target": slug, "confirm": True, "backend": body.get("backend")},
                              by="gate3", gate3=True)
     return res, code
 
@@ -324,7 +323,7 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
         text = _read(prop)
         if text is None:
             return {"error": "no proposal"}, 400
-        new = re.sub(r"\n*<!-- " + re.escape(S.sources.GATE1_MARK) + r"[^>]*-->\n?", "\n", text)
+        new = re.sub(r"\n*<!-- " + re.escape(sources.GATE1_MARK) + r"[^>]*-->\n?", "\n", text)
         if new == text:
             return {"error": "no dashboard Gate-1 signature on this proposal"}, 400
         _write_keep_eol(prop, text, new)
@@ -332,7 +331,7 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
         warn = ["the project is already spawned — revoking Gate 1 does not undo that"] \
             if row and (row.get("state") or "") not in ("proposal", "scoping") else None
     elif what in ("2", "gate2"):
-        pdir = S._pdir(slug)
+        pdir = ctx.pdir(slug)
         ctl = (pdir / "control.yaml") if pdir else None
         text = _read(ctl) if ctl else None
         if text is None:
@@ -351,7 +350,7 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
         note.unlink()
         warn = None
     elif what == "loop":
-        pdir = S._pdir(slug)
+        pdir = ctx.pdir(slug)
         brief = (pdir / "LOOP_BRIEF.md") if pdir else None
         text = _read(brief) if brief else None
         if text is None:
@@ -360,11 +359,11 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
         if new == text:
             return {"error": "the loop brief is not authorized"}, 400
         _write_keep_eol(brief, text, new)
-        warn = ["a running loop keeps going until you stop it"] if S.executor else None
+        warn = ["a running loop keeps going until you stop it"] if sources.executor else None
     else:
         return {"error": "what must be gate1 | gate2 | gate3 | loop"}, 400
-    S._emit_hub("gate_revoked", idea=slug, detail=f"{what} signature revoked (PI via dashboard)")
-    S._pi_log({"action": "revoke", "what": what, "idea": slug})
+    ctx.emit_hub("gate_revoked", idea=slug, detail=f"{what} signature revoked (PI via dashboard)")
+    ctx.pi_log({"action": "revoke", "what": what, "idea": slug})
     return {"ok": True, "warnings": warn, "note": "signature revoked"}, 200
 
 
@@ -408,7 +407,7 @@ def envelope_set(body: dict) -> tuple[dict, int]:
         return {"error": "invalid idea slug"}, 400
     if not body.get("confirm"):
         return {"error": "changing the envelope needs explicit confirm"}, 400
-    pdir = S._pdir(slug)
+    pdir = ctx.pdir(slug)
     ctl = (pdir / "control.yaml") if pdir else None
     text = _read(ctl) if ctl else None
     if text is None:
@@ -431,7 +430,7 @@ def envelope_set(body: dict) -> tuple[dict, int]:
             out["expires"] = e or "null"
     except (TypeError, ValueError) as e:
         return {"error": f"{e}: must be a whole number ≥ 0 (expires: YYYY-MM-DD)"}, 400
-    before = (S.sources._load_yaml(ctl).get("gate2_envelope") or {})
+    before = (sources._load_yaml(ctl).get("gate2_envelope") or {})
     sign = bool(body.get("sign"))
     ts = _ts()
     changed_values = any(str(before.get(k) if before.get(k) is not None else "null") != out[k] for k in out)
@@ -450,9 +449,9 @@ def envelope_set(body: dict) -> tuple[dict, int]:
         if k in out and int(env.get(k) or 0) != int(out[k]):
             return {"error": "refused: the edited envelope does not read back correctly"}, 400
     _write_keep_eol(ctl, text, new)
-    S._emit_hub("gate_resolved" if sign else "envelope_changed", idea=slug,
+    ctx.emit_hub("gate_resolved" if sign else "envelope_changed", idea=slug,
                 detail="Gate 2 envelope " + ("signed" if sign else "updated") + " (PI via dashboard)")
-    S._pi_log({"action": "envelope.set", "idea": slug, "before": before, "after": env, "signed": sign})
+    ctx.pi_log({"action": "envelope.set", "idea": slug, "before": before, "after": env, "signed": sign})
     note = ("envelope saved and signed — FULL runs within it are authorized" if sign else
             "envelope saved (not signed)" + (" — its old signature was withdrawn because the values changed"
                                              if changed_values and before.get("pi_signed") else ""))
@@ -470,7 +469,7 @@ def loopbrief_sign(body: dict) -> tuple[dict, int]:
     mode = str(body.get("mode") or "execute")
     if mode not in ("execute", "explore"):
         return {"error": "mode must be execute or explore"}, 400
-    pdir = S._pdir(slug)
+    pdir = ctx.pdir(slug)
     brief = (pdir / "LOOP_BRIEF.md") if pdir else None
     text = _read(brief) if brief else None
     if text is None:
@@ -485,11 +484,11 @@ def loopbrief_sign(body: dict) -> tuple[dict, int]:
                  f"**PI:** signed in the dashboard (signed_via: dashboard:{ts}) · **Date:** {ts[:10]}", new, count=1)
     new = re.sub(r"(\*\*Mode:\*\*\s*)`(execute|explore)`", rf"\1`{mode}`", new, count=1)
     _write_keep_eol(brief, text, new)
-    S._emit_hub("gate_resolved", idea=slug, detail=f"LOOP_BRIEF authorized, mode {mode} (PI via dashboard)")
-    S._pi_log({"action": "loopbrief.sign", "idea": slug, "mode": mode})
+    ctx.emit_hub("gate_resolved", idea=slug, detail=f"LOOP_BRIEF authorized, mode {mode} (PI via dashboard)")
+    ctx.pi_log({"action": "loopbrief.sign", "idea": slug, "mode": mode})
     out = {"ok": True, "note": f"loop authorized ({mode})"}
     if body.get("launch"):
-        res, code = S.launch_run({"skill": "research-loop", "target": slug, "confirm": True,
+        res, code = runops.launch_run({"skill": "research-loop", "target": slug, "confirm": True,
                                   "backend": body.get("backend")}, by="loopbrief")
         out["launch"] = res
         if code == 200:
@@ -578,14 +577,14 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(t, encoding="utf-8")
     rel = f"lab/campaigns/{name}"
-    S._emit_hub("campaign_signed", detail=f"campaign {rel} signed (PI via dashboard)")
-    S._pi_log({"action": "campaign.sign", "file": rel, "fields": f})
+    ctx.emit_hub("campaign_signed", detail=f"campaign {rel} signed (PI via dashboard)")
+    ctx.pi_log({"action": "campaign.sign", "file": rel, "fields": f})
     out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate3_auto": gate3_auto}
     if body.get("launch"):
         try:
             from executor import campaigns  # noqa: PLC0415 — tools/ is on sys.path via sources
-            lab = S.sources.executor.Lab(_hub())
-            S.sources.executor.check_enabled(lab)
+            lab = sources.executor.Lab(_hub())
+            sources.executor.check_enabled(lab)
             st = campaigns.create(lab, rel, hours=hours, agent_minutes=agent_hours * 60, cycle_minutes=cycle_minutes,
                                   repeat_minutes=repeat_minutes, gate3_auto=gate3_auto,
                                   backend=body.get("backend") or None)
@@ -593,7 +592,7 @@ def campaign_create(body: dict) -> tuple[dict, int]:
             out["note"] = f"campaign signed ({rel}) but not started: {e}"
             out["warnings"] = [str(e)]
             return out, 200
-        S._pi_log({"action": "campaign.start", "file": rel, "hours": hours, "agent_hours": agent_hours,
+        ctx.pi_log({"action": "campaign.start", "file": rel, "hours": hours, "agent_hours": agent_hours,
                    "cycle_minutes": cycle_minutes, "repeat_minutes": repeat_minutes, "gate3_auto": gate3_auto})
         out.update(campaign=st["name"], note=f"campaign signed and started — the lab keeps it going until {deadline}")
     return out, 200
@@ -611,11 +610,11 @@ def campaign_control(body: dict) -> tuple[dict, int]:
         return {"error": "confirm first"}, 400
     try:
         from executor import campaigns  # noqa: PLC0415
-        st = campaigns.control(S.sources.executor.Lab(_hub()), name, action, study=body.get("study") or None,
+        st = campaigns.control(sources.executor.Lab(_hub()), name, action, study=body.get("study") or None,
                                text=body.get("text"), index=body.get("index"))
     except (ValueError, OSError) as e:
         return {"error": str(e)}, 400
-    S._pi_log({"action": f"campaign.{action}", "campaign": name, "study": body.get("study")})
+    ctx.pi_log({"action": f"campaign.{action}", "campaign": name, "study": body.get("study")})
     words = {"pause": "paused", "resume": "resumed", "stop": "stopping — it writes its final report",
              "revoke_gate3": "Gate 3 is yours again for this campaign", "hold": "held from auto-finalizing",
              "unhold": "released", "answer": "answered — the next pass gets it"}
@@ -624,13 +623,13 @@ def campaign_control(body: dict) -> tuple[dict, int]:
 
 def campaign_preflight(q: dict) -> tuple[dict, int]:
     """Can the lab run on its own right now? What a walk-away start needs, checked."""
-    ex = S.sources.executor
+    ex = sources.executor
     if ex is None:
         return {"ok": True, "ready": False, "checks": [{"id": "executor", "ok": False, "label": "The executor is available",
                                                         "detail": "tools/executor is missing"}]}, 200
     lab = ex.Lab(_hub())
     prog = lab.prog()
-    status = S.sources.executor_status()
+    status = sources.executor_status()
     backend = prog.get("backend") or "claude"
     cli = (status.get("clis") or {}).get(backend) or {}
     checks = [{"id": "launch", "ok": bool(prog.get("enabled")), "label": "Agents may be started from the dashboard",
@@ -674,7 +673,7 @@ def campaign_preflight(q: dict) -> tuple[dict, int]:
 # ── revive ───────────────────────────────────────────────────────────────────
 
 def _revive_to() -> tuple:
-    return tuple(S.sources.workflow.revivable_states(_hub()))   # workflow/stages.yaml `revivable: true`
+    return tuple(sources.workflow.revivable_states(_hub()))   # workflow/stages.yaml `revivable: true`
 
 
 def revive(body: dict) -> tuple[dict, int]:
@@ -717,8 +716,8 @@ def revive(body: dict) -> tuple[dict, int]:
         new = re.sub(r"^(state:\s*)\S+", rf"\g<1>{to}", it, count=1, flags=re.M)
         new = new.rstrip("\n") + f"\n- {time.strftime('%Y-%m-%d')}: {was} → {to} — revived by the PI (dashboard): {reason}\n"
         _write_keep_eol(idea, it, new)
-    S._emit_hub("state_change", idea=slug, detail=f"{was} → {to} (revived by the PI: {reason})")
-    S._pi_log({"action": "revive", "idea": slug, "from": was, "to": to, "reason": reason})
+    ctx.emit_hub("state_change", idea=slug, detail=f"{was} → {to} (revived by the PI: {reason})")
+    ctx.pi_log({"action": "revive", "idea": slug, "from": was, "to": to, "reason": reason})
     return {"ok": True, "note": f"{slug} is back in {to}"}, 200
 
 
@@ -750,14 +749,14 @@ def doc_save(body: dict) -> tuple[dict, int]:
     old = _read(p) or ""
     p.parent.mkdir(parents=True, exist_ok=True)
     _write_keep_eol(p, old, text)
-    S._pi_log({"action": "doc.save", "doc": rel, "chars": len(text)})
+    ctx.pi_log({"action": "doc.save", "doc": rel, "chars": len(text)})
     return {"ok": True, "note": f"saved {rel}"}, 200
 
 
 # ── The workflow: the PI's instructions per procedure / stage / role (tools/workflow.py) ─────────
 
 def _wf():
-    return S.sources.workflow
+    return sources.workflow
 
 
 def _study_arg(v) -> str | None:
@@ -853,7 +852,7 @@ def workflow_save(body: dict) -> tuple[dict, int]:
         if r.returncode != 0:
             warnings.append("saved, but re-rendering the role files failed: " + (r.stderr or r.stdout)[-300:])
     rel = path.relative_to(hub).as_posix() if path else None
-    S._pi_log({"action": "workflow.save", "kind": kind, "name": name, "study": study, "chars": len(text.strip()),
+    ctx.pi_log({"action": "workflow.save", "kind": kind, "name": name, "study": study, "chars": len(text.strip()),
                "file": rel})
     where = f"for {study}" if study else "lab-wide"
     return {"ok": True, "note": (f"saved {where}" if path else f"reset to the default ({where})"), "file": rel,
@@ -873,8 +872,8 @@ def workflow_proposal(body: dict) -> tuple[dict, int]:
     if rec["kind"] == "role" and accept:
         subprocess.run([sys.executable, str(_hub() / "tools" / "role_sync.py"), "render"], cwd=str(_hub()),
                        capture_output=True, timeout=120)
-    S._emit_hub("instruction_resolved", idea=rec.get("study"), detail=f"{rec['status']}: {rec['kind']} {rec['name']}")
-    S._pi_log({"action": "workflow.proposal", "id": pid, "accept": accept, "kind": rec["kind"], "name": rec["name"],
+    ctx.emit_hub("instruction_resolved", idea=rec.get("study"), detail=f"{rec['status']}: {rec['kind']} {rec['name']}")
+    ctx.pi_log({"action": "workflow.proposal", "id": pid, "accept": accept, "kind": rec["kind"], "name": rec["name"],
                "study": rec.get("study")})
     return {"ok": True, "note": "added to the instructions" if accept else "declined"}, 200
 
@@ -931,7 +930,7 @@ def _enum_s(v, allowed):
 
 
 def lab_config_get() -> tuple[dict, int]:
-    cfg = S.sources._load_yaml(_lab() / "config.yaml")
+    cfg = sources._load_yaml(_lab() / "config.yaml")
     out = {}
     for k, (path, _p) in LAB_CONFIG.items():
         node = cfg
@@ -979,7 +978,7 @@ def lab_config_set(body: dict) -> tuple[dict, int]:
         cfg = _lab() / "config.yaml"
         text = cfg.read_text(encoding="utf-8-sig")
         for k, v in parsed.items():
-            text, ok = S._stamp_or_insert(profiles, text, LAB_CONFIG[k][0], v)
+            text, ok = cfgwrite._stamp_or_insert(profiles, text, LAB_CONFIG[k][0], v)
             if not ok:
                 text = _insert_section(text, LAB_CONFIG[k][0], v)
         try:
@@ -995,8 +994,8 @@ def lab_config_set(body: dict) -> tuple[dict, int]:
             return {"error": f"refused: lab/config.yaml would not read back correctly ({e})"}, 400
         cfg.write_text(text, encoding="utf-8", newline="")
         notes.append(f"saved {len(parsed)} setting(s)")
-    S._pi_log({"action": "lab.config", "changes": parsed, "budget_tier": tier})
-    S.sources._EXEC_CACHE["ts"] = 0
+    ctx.pi_log({"action": "lab.config", "changes": parsed, "budget_tier": tier})
+    sources._EXEC_CACHE["ts"] = 0
     return {"ok": True, "changes": parsed, "note": "; ".join(notes) or "nothing changed"}, 200
 
 
@@ -1051,7 +1050,7 @@ def keys_set(body: dict) -> tuple[dict, int]:
     else:
         have.pop(key, None)
     _env_write(have)
-    S._pi_log({"action": "keys.set", "key": key, "set": bool(value)})   # never the value
+    ctx.pi_log({"action": "keys.set", "key": key, "set": bool(value)})   # never the value
     return {"ok": True, "note": f"{key} {'saved' if value else 'removed'}"}, 200
 
 
@@ -1076,7 +1075,7 @@ def _mask(url: str) -> str:
 
 def notify_status() -> tuple[dict, int]:
     from executor import notify   # noqa: PLC0415
-    cfg = notify.config(S.sources.executor.Lab(_hub()))
+    cfg = notify.config(sources.executor.Lab(_hub()))
     return {"ok": True, "ntfy": _mask(cfg.get("ntfy", "")), "webhook": _mask(cfg.get("webhook", "")),
             "link": cfg.get("link", "")}, 200
 
@@ -1102,13 +1101,13 @@ def notify_set(body: dict) -> tuple[dict, int]:
     if not changed:
         return {"error": "nothing to change"}, 400
     _env_write(have)
-    S._pi_log({"action": "notify.set", "changed": changed})   # never the URLs
+    ctx.pi_log({"action": "notify.set", "changed": changed})   # never the URLs
     return {"ok": True, "note": "saved — new items that need you are sent from now on"}, 200
 
 
 def notify_test(body: dict) -> tuple[dict, int]:
     from executor import notify   # noqa: PLC0415
-    cfg = notify.config(S.sources.executor.Lab(_hub()))
+    cfg = notify.config(sources.executor.Lab(_hub()))
     if not (cfg.get("ntfy") or cfg.get("webhook")):
         return {"error": "set an ntfy topic or a webhook first"}, 400
     failed = notify.send(cfg, {"title": "Newts' Lab: notifications work", "kind": "test",
@@ -1129,9 +1128,9 @@ def _ensure_gitignored() -> None:
 # ── first-run setup ──────────────────────────────────────────────────────────
 
 def setup_status() -> dict:
-    cfg = S.sources._load_yaml(_lab() / "config.yaml")
+    cfg = sources._load_yaml(_lab() / "config.yaml")
     done = (cfg.get("dashboard") or {}).get("setup_completed")
-    rows = [r for r in S.sources.parse_registry() if r.get("id")]
+    rows = [r for r in sources.parse_registry() if r.get("id")]
     return {"completed": bool(done), "completed_at": str(done) if done else None,
             "fresh": not rows, "lab": {"name": lab_name(_hub()), "path": str(_hub())}}
 
@@ -1142,11 +1141,11 @@ def setup_complete(body: dict) -> tuple[dict, int]:
     cfg = _lab() / "config.yaml"
     text = cfg.read_text(encoding="utf-8-sig")
     stamp = time.strftime("%Y-%m-%d")
-    new, ok = S._stamp_or_insert(profiles, text, ["dashboard", "setup_completed"], stamp if body.get("done", True) else None)
+    new, ok = cfgwrite._stamp_or_insert(profiles, text, ["dashboard", "setup_completed"], stamp if body.get("done", True) else None)
     if not ok:
         new = _insert_section(text, ["dashboard", "setup_completed"], stamp)
     cfg.write_text(new, encoding="utf-8", newline="")
-    S._pi_log({"action": "setup.complete", "done": bool(body.get("done", True))})
+    ctx.pi_log({"action": "setup.complete", "done": bool(body.get("done", True))})
     return {"ok": True}, 200
 
 
@@ -1155,15 +1154,15 @@ def setup_complete(body: dict) -> tuple[dict, int]:
 def server_stop(body: dict) -> tuple[dict, int]:
     if not body.get("confirm"):
         return {"error": "stopping the server needs explicit confirm"}, 400
-    srv = getattr(S, "SERVER", None)
+    srv = ctx.SERVER
     if srv is None:
         return {"error": "no server handle"}, 500
-    S._pi_log({"action": "server.stop"})
+    ctx.pi_log({"action": "server.stop"})
     threading.Timer(0.5, srv.shutdown).start()
     note = "the dashboard server is stopping — running agents keep going"
     try:
         from executor import campaigns  # noqa: PLC0415
-        live = [c for c in campaigns.all_states(S.sources.executor.Lab(_hub())) if c.get("status") in ("active", "finishing")]
+        live = [c for c in campaigns.all_states(sources.executor.Lab(_hub())) if c.get("status") in ("active", "finishing")]
         if live:
             note += f", and a background scheduler keeps {len(live)} campaign(s) going"
     except Exception:  # noqa: BLE001
@@ -1181,13 +1180,13 @@ def system_info(q: dict) -> tuple[dict, int]:
     """tools/system_probe.py run on the machine this lab lives on (cached 10 min) + the scheduler block."""
     fresh = bool(q.get("fresh"))
     if fresh or _SYS_CACHE["hub"] != str(_hub()) or time.time() - _SYS_CACHE["at"] > 600 or not _SYS_CACHE["facts"]:
-        r = subprocess.run([sys.executable, str(Path(S.__file__).resolve().parents[1] / "tools" / "system_probe.py"),
+        r = subprocess.run([sys.executable, str(ctx.TOOLS / "system_probe.py"),
                             "--hub", str(_hub())], capture_output=True, text=True, timeout=90)
         try:
             _SYS_CACHE.update(hub=str(_hub()), at=time.time(), facts=json.loads(r.stdout))
         except ValueError:
             return {"error": f"the system probe failed: {(r.stderr or r.stdout)[-300:]}"}, 500
-    cfg = S.sources._load_yaml(_lab() / "config.yaml")
+    cfg = sources._load_yaml(_lab() / "config.yaml")
     sched = ((cfg.get("compute") or {}).get("scheduler")) or {"kind": "local"}
     return {"ok": True, "facts": _SYS_CACHE["facts"], "scheduler": sched,
             "system_md": (_lab() / "SYSTEM.md").exists()}, 200
@@ -1290,6 +1289,6 @@ def system_scheduler_set(body: dict) -> tuple[dict, int]:
     except Exception as e:  # noqa: BLE001
         return {"error": f"refused: lab/config.yaml would not read back correctly ({e})"}, 400
     _write_keep_eol(cfg, text, new)
-    S._pi_log({"action": "system.scheduler", "scheduler": block})
+    ctx.pi_log({"action": "system.scheduler", "scheduler": block})
     return {"ok": True, "scheduler": block,
             "note": "training runs locally" if block["kind"] == "local" else f"PILOT/FULL runs now go through {block['kind']}"}, 200

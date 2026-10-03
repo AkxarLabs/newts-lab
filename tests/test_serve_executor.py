@@ -28,10 +28,8 @@ def _mod(hub, monkeypatch, *, enabled=True, dashboard_extra: str = ""):
         encoding="utf-8")
     monkeypatch.syspath_prepend(str(REPO / "dashboard"))
     m = load("dashboard/serve")
-    monkeypatch.setattr(m, "HUB", hub.root)
-    monkeypatch.setattr(m, "LAB", hub.lab)
-    monkeypatch.setattr(m.sources, "HUB", hub.root)
-    monkeypatch.setattr(m.sources, "LAB", hub.lab)
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
     return m
 
 
@@ -48,7 +46,7 @@ def test_launch_queues_a_run_and_logs(hub, monkeypatch):
     assert code == 200 and out["status"] == "queued" and out["command"] == "/propose idea-a"
     assert (hub.lab / ".bus" / "agents" / f"{out['run_id']}.json").exists()
     assert _pi_actions(hub)[-1]["action"] == "run.launch"
-    assert m._KICK.is_set()                                     # the scheduler is woken at once
+    assert m.ctx.KICK.is_set()                                     # the scheduler is woken at once
 
 
 def test_launch_refusals(hub, monkeypatch):
