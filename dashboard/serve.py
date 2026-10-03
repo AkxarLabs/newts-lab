@@ -374,7 +374,7 @@ class Handler(BaseHTTPRequestHandler):
                  ".txt": "text/plain"}.get(target.suffix, "application/octet-stream")
         charset = "; charset=utf-8" if ctype.startswith(("text/", "application/j", "image/svg")) else ""
         body = target.read_bytes()
-        if target.name == "gallery.html":       # the component/room gallery loads the room files the same way
+        if target.suffix == ".html" and target.parent.name == "world":   # the world's authoring pages load the room files the same way
             body = _with_rooms(body.decode("utf-8"), "rooms/", lab_rooms=False).encode("utf-8")
         self._send(200, body, f"{ctype}{charset}")
 
