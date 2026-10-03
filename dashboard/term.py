@@ -174,7 +174,7 @@ def command_for(purpose: str, backend: str | None) -> tuple[list[str] | None, st
         if os.name == "posix":
             return [os.environ.get("SHELL") or "/bin/bash", "-l"], None
         return [os.environ.get("COMSPEC") or "cmd.exe"], None
-    if backend not in ("claude", "codex", "opencode"):
+    if backend not in ("claude", "codex", "opencode"):   # (= executor.backends.BACKENDS)
         return None, "unknown backend"
     if purpose == "install":
         cmd = terminal.install_command(backend)

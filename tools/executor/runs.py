@@ -52,9 +52,9 @@ def check_enabled(lab: Lab) -> dict:
 def enqueue(lab: Lab, spec: RunSpec) -> dict:
     prog = check_enabled(lab)
     v = validate(lab, spec)
-    backend = spec.backend or prog.get("backend") or "claude"
-    if backend not in backends.BACKENDS and backend != "_dummy":
-        raise SpecError(f"unknown backend '{backend}' (claude | codex | opencode)")
+    backend = spec.backend or prog.get("backend") or backends.DEFAULT
+    if backend not in backends.REGISTRY:
+        raise SpecError(f"unknown backend '{backend}' ({' | '.join(backends.BACKENDS)})")
     bcfg = (prog.get("backends") or {}).get(backend) or {}
     if not backends.resolve_cli(backend, bcfg):
         raise SpecError(f"the {backend} CLI was not found on this machine — install it, or point "

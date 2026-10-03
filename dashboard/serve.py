@@ -600,7 +600,7 @@ def _model_val(v):
 
 
 EXEC_CONFIG = {
-    "backend": (["agents", "programmatic", "backend"], _enum("claude", "codex", "opencode")),
+    "backend": (["agents", "programmatic", "backend"], _enum(*(executor.backends.BACKENDS if executor else ("claude",)))),
     "model": (["agents", "programmatic", "model"], _model_val),
     # bypassPermissions is deliberately absent: it would remove the human-in-loop floor
     "permission_mode": (["agents", "programmatic", "permission_mode"],

@@ -200,7 +200,7 @@ def terminal_open(body: dict) -> tuple[dict, int]:
     if purpose == "shell":
         res = terminal.open_terminal("echo Newts' Lab — this is your lab folder", _hub())
     elif purpose in ("login", "install"):
-        if backend not in ("claude", "codex", "opencode"):
+        if backend not in S.sources.executor.backends.BACKENDS if S.sources.executor else ("claude", "codex", "opencode"):
             return {"error": "unknown backend"}, 400
         if purpose == "install":
             cmd = terminal.install_command(backend)

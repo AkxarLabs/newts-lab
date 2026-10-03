@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 
-from . import attention, backends
+from . import attention, backends, live
 from .lab import HUB_TARGET, Lab
 from .manifest import ACTIVE, PAUSED, RESUMABLE, STATUSES, TERMINAL, all_runs, find_run, ledger
 from .runs import (answer, cancel, check_enabled, enqueue, interrupt, list_runs, permission_decision,
@@ -23,11 +23,6 @@ from .runs import (answer, cancel, check_enabled, enqueue, interrupt, list_runs,
 from .scheduler import brake, caps, daily_usage, last_tick, reconcile, tick, tick_loop
 from .spec import NEVER, SKILL_REGISTRY, RunSpec, SpecError
 from .supervise import supervise as run_supervisor
-
-
-_ENV_AUTH = {"claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
-                         "CLAUDE_CODE_USE_FOUNDRY"),
-             "codex": ("CODEX_API_KEY", "OPENAI_API_KEY")}
 
 
 def health(lab: Lab) -> dict:
@@ -44,11 +39,11 @@ def health(lab: Lab) -> dict:
         if pre:
             auth = backends.cli_auth(pre, backend=b)
             # an API key / cloud provider in the environment also works without an interactive login
-            env_auth = any(os.environ.get(k) for k in _ENV_AUTH.get(b, ()))
+            env_auth = any(os.environ.get(k) for k in backends.get(b).env_auth)
             clis[b]["logged_in"] = None if auth is None else (auth["logged_in"] or env_auth)
     return {
         "enabled": bool(prog.get("enabled")),
-        "backend": prog.get("backend") or "claude",
+        "backend": prog.get("backend") or backends.DEFAULT,
         "permission_mode": prog.get("permission_mode") or "auto",
         "clis": clis,
         "caps": caps(lab),
@@ -61,8 +56,7 @@ def health(lab: Lab) -> dict:
         "config": {**{k: prog.get(k) for k in CONFIG_KEYS if k in prog},
                    **{k: v for k, v in (prog.get("live") if isinstance(prog.get("live"), dict) else {}).items()
                       if k in LIVE_KEYS},
-                   "live": prog.get("live") is not False and (prog.get("live") or {}).get("enabled", True)
-                   if isinstance(prog.get("live"), (dict, type(None))) else bool(prog.get("live"))},
+                   "live": live.enabled(prog)},
         "auto_spawn_on_gate1": bool((lab.dashboard_cfg() or {}).get("auto_spawn_on_gate1")),
     }
 

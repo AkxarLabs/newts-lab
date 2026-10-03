@@ -346,7 +346,6 @@ def test_snapshot_survives_non_mapping_control_yaml(hub, monkeypatch):
 def test_notebook_age_from_dated_filename_not_mtime(hub, monkeypatch):
     # age comes from the ISO-dated filename (git-stable), not st_mtime which git ops reset
     import os
-    import time
     m = _mod(hub, monkeypatch)
     old = hub.lab / "notebook" / "2020-01-01-ancient.md"
     old.write_text("# old\n", encoding="utf-8")

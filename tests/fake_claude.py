@@ -1,6 +1,6 @@
 """A stand-in for the `claude` CLI, for hermetic executor tests.
 
-Speaks the flag surface tools/executor/backends.build_run_command emits and prints `claude -p
+Speaks the flag surface tools/executor/backends/claude.py emits and prints `claude -p
 --output-format stream-json` shaped lines, and EXECUTES the hooks from `--settings` and the repo's
 .claude/settings.json (the tracer, the signature guard), so tracing is tested end to end without a model.
 

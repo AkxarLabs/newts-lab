@@ -18,6 +18,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from . import backends
 from .lab import HUB_TARGET, Lab
 from .manifest import safe_id
 
@@ -232,11 +233,11 @@ def slash_command(v: dict) -> str:
 
 
 def render_prompt(lab: Lab, v: dict, backend: str) -> str:
-    """The user prompt. Hub runs on claude use the native slash command (Claude Code expands it in
-    -p). Project runs — and every non-claude backend — name the procedure file explicitly, because
+    """The user prompt. Hub runs on a backend with native slash commands (claude expands them) use the
+    command itself. Project runs — and every other backend — name the procedure file explicitly, because
     project repos don't ship the lifecycle skills (their AGENTS.md points at the hub's copies)."""
     cmd = slash_command(v)
-    if backend == "claude" and v["level"] == "hub":
+    if backends.get(backend).native_slash and v["level"] == "hub":
         return cmd
     skill_file = (lab.hub / ".claude" / "skills" / v["skill"] / "SKILL.md").as_posix()
     rest = cmd.split(" ", 1)[1] if " " in cmd else ""
@@ -322,8 +323,7 @@ def preamble(lab: Lab, run_id: str, v: dict, backend: str) -> str:
     bus = (lab.hub / "tools" / "lab_bus.py") if v["level"] == "hub" else (Path(v["workdir"]) / "scripts" / "lab_bus.py")
     bus = bus.as_posix()
     interactive = v["cfg"].get("mode") == "interactive"
-    tool = {"claude": "AskUserQuestion", "codex": "request_user_input", "opencode": "question"}.get(backend, "")
-    ask = (f"ask it with your question tool ({tool}): ONE call, concrete options, your recommended "
+    ask = (f"ask it with your question tool ({backends.get(backend).ask_tool or 'if you have one'}): ONE call, concrete options, your recommended "
            "answer FIRST. The PI's answer comes back to you in this same session. If that tool isn't "
            "available, state the question as your final message and end your turn; the PI's reply "
            "resumes this session.")

@@ -5,7 +5,6 @@ interrupts reach the running agent; a reply after the session ended resumes the 
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 import time

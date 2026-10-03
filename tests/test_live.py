@@ -12,6 +12,9 @@ from conftest import REPO
 
 sys.path.insert(0, str(REPO / "tools"))
 from executor import live  # noqa: E402
+from executor.backends.claude import ClaudeSession  # noqa: E402
+from executor.backends.codex import CodexSession  # noqa: E402
+from executor.backends.opencode import OpencodeSession  # noqa: E402
 
 Q = {"questions": [{"question": "Which dataset?", "header": "Data", "multiSelect": False,
                     "options": [{"label": "B (recommended)", "description": ""}, {"label": "A", "description": ""}]}]}
@@ -169,7 +172,7 @@ def test_ask_newt_stays_open_for_the_next_message(tmp_path):
 
 
 def test_claude_session_translates_the_protocol():
-    sess = live.ClaudeSession("hi")
+    sess = ClaudeSession("hi")
     obj = {"type": "control_request", "request_id": "r9", "request": {
         "subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": Q, "tool_use_id": "tu"}}
     lines, evs = sess.handle(obj)
@@ -205,7 +208,7 @@ class _Proc:
 
 def test_codex_session_translates_app_server_to_exec_events():
     from executor import backends
-    sess = live.CodexSession("go", thread={"cwd": "/w"})
+    sess = CodexSession("go", thread={"cwd": "/w"})
     proc = _Proc()
     sess.open(proc)
     assert proc.stdin.lines[0]["method"] == "initialize"
@@ -234,7 +237,7 @@ def test_codex_session_translates_app_server_to_exec_events():
 
 def test_opencode_session_translates_server_events_to_run_lines():
     from executor import backends
-    sess = live.OpencodeSession("go", workdir="/w")
+    sess = OpencodeSession("go", workdir="/w")
     sess.session_id = "ses_r"
     tool = {"id": "p1", "sessionID": "ses_r", "type": "tool", "tool": "bash", "callID": "c1",
             "state": {"status": "completed", "input": {"command": "ls"}, "title": "ls"}}

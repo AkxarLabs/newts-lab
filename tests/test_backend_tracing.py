@@ -23,6 +23,8 @@ from conftest import REPO, load
 sys.path.insert(0, str(REPO / "tools"))
 import executor  # noqa: E402
 from executor import RunSpec, backends, spec  # noqa: E402
+from executor.backends import codex, opencode  # noqa: E402
+from test_executor import cmd  # noqa: E402
 from test_executor_e2e import calls, wait_for  # noqa: E402
 
 FAKE_CODEX = REPO / "tests" / "fake_codex.py"
@@ -70,7 +72,7 @@ def test_codex_hook_overrides_are_valid_toml_and_bypass_trust(tmp_path):
     tomllib = pytest.importorskip("tomllib")
     (tmp_path / "tools").mkdir()
     (tmp_path / "tools" / "trace_hook.py").write_text("", encoding="utf-8")
-    flags = backends.codex_hook_overrides(tmp_path, {}, python=r"C:\Py 3\python.exe")
+    flags = codex.hook_overrides(tmp_path, {}, python=r"C:\Py 3\python.exe")
     assert flags[0] == "--dangerously-bypass-hook-trust"
     kv = dict(f.split("=", 1) for f in flags[2::2])
     assert set(kv) == {f"hooks.{e}" for e in backends.TRACE_EVENTS}
@@ -80,14 +82,14 @@ def test_codex_hook_overrides_are_valid_toml_and_bypass_trust(tmp_path):
         assert h["type"] == "command" and h["command"].startswith('"C:\\Py 3\\python.exe" "')
         assert h["command"].endswith('trace_hook.py"')
         assert groups[0].get("matcher") == ("*" if key in ("hooks.PreToolUse", "hooks.PostToolUse") else None)
-    assert backends.codex_hook_overrides(tmp_path, {"trace_hooks": False}) is None
-    assert backends.codex_hook_overrides(tmp_path / "nowhere", {}) is None
+    assert codex.hook_overrides(tmp_path, {"trace_hooks": False}) is None
+    assert codex.hook_overrides(tmp_path / "nowhere", {}) is None
 
 
 def test_codex_argv_carries_hooks_and_resume_order(tmp_path):
     hooks = ["--dangerously-bypass-hook-trust", "-c", 'hooks.SessionStart=[{hooks=[{command="py trace_hook.py"}]}]']
-    rc = backends.build_run_command("codex", prompt="p", workdir=tmp_path, prog={}, cli=["cx"],
-                                    resume_sid="thr-9", codex_hooks=hooks)
+    rc = cmd("codex", tmp_path, prompt="p", cli=["cx"], m={"session_id": "thr-9"}, resuming=True, hooks=hooks,
+             traced=True)
     assert rc.fires_hooks is True
     assert rc.argv.index("--dangerously-bypass-hook-trust") < rc.argv.index("resume")
     assert rc.argv[-3:] == ["resume", "thr-9", "-"]
@@ -106,13 +108,14 @@ def test_codex_config_keys_sit_above_the_agents_table():
 
 def test_auth_probes_parse_each_cli():
     cp = lambda rc, out="", err="": subprocess.CompletedProcess([], rc, out, err)  # noqa: E731
-    assert backends._auth_from("claude", cp(0, '{"loggedIn": false, "authMethod": "none"}'))["logged_in"] is False
-    assert backends._auth_from("codex", cp(0, "", "Logged in using ChatGPT\n")) == {"logged_in": True, "method": "ChatGPT"}
-    assert backends._auth_from("codex", cp(1, "", "Not logged in\n"))["logged_in"] is False
+    auth = lambda name, out: backends.get(name).auth(out)  # noqa: E731
+    assert auth("claude", cp(0, '{"loggedIn": false, "authMethod": "none"}'))["logged_in"] is False
+    assert auth("codex", cp(0, "", "Logged in using ChatGPT\n")) == {"logged_in": True, "method": "ChatGPT"}
+    assert auth("codex", cp(1, "", "Not logged in\n"))["logged_in"] is False
     oc = "\x1b[90m┌\x1b[39m  Credentials\n└  0 credentials\n\n┌  Environment\n●  OpenAI OPENAI_API_KEY\n└  1 environment variable\n"
-    assert backends._auth_from("opencode", cp(0, oc))["logged_in"] is True
-    assert backends._auth_from("opencode", cp(0, "└  0 credentials\n"))["logged_in"] is False
-    assert backends._auth_from("opencode", cp(0, "garbage")) is None
+    assert auth("opencode", cp(0, oc))["logged_in"] is True
+    assert auth("opencode", cp(0, "└  0 credentials\n"))["logged_in"] is False
+    assert auth("opencode", cp(0, "garbage")) is None
 
 
 # ── opencode: stream ──────────────────────────────────────────────────────────
@@ -135,10 +138,10 @@ def test_opencode_traced_walks_up_to_git_root(tmp_path):
     (tmp_path / ".git").mkdir()
     sub = tmp_path / "a" / "b"
     sub.mkdir(parents=True)
-    assert backends.opencode_traced(sub) is False
+    assert opencode.traced(sub) is False
     (tmp_path / ".opencode" / "plugins").mkdir(parents=True)
     (tmp_path / ".opencode" / "plugins" / "newts-trace.js").write_text("", encoding="utf-8")
-    assert backends.opencode_traced(sub) is True
+    assert opencode.traced(sub) is True
 
 
 # ── the tracer: codex + opencode payloads fold onto one vocabulary ─────────────

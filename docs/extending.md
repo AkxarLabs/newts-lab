@@ -11,7 +11,7 @@ takes.
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A kind of project | `templates/project-types/<type>/TYPE.md` | [Project types](project-types.md) |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
-| An agent CLI (backend) | `tools/executor/backends.py` | `tests/test_backend_tracing.py` |
+| An agent CLI (backend) | one module in `tools/executor/backends/` | `tests/test_live_backends.py` |
 | A machine | the dashboard → Labs & machines | — |
 
 ## A procedure
@@ -57,14 +57,18 @@ add an adapter class next to `Slurm` and `Custom` in `templates/project/scripts/
 
 ## A backend (another agent CLI)
 
-`tools/executor/backends.py` holds everything backend-specific:
+One module in `tools/executor/backends/` (`claude.py`, `codex.py` and `opencode.py` are the examples)
+with a `Backend` subclass, plus its line in `REGISTRY` (`backends/__init__.py`). The class says
+everything about its CLI, and nothing outside the package branches on a backend's name:
 
-- `build_run_command`: the argv, and how the prompt and the standing instructions are passed;
-- `parse_events`: the CLI's stream → messages, tool calls, subagents;
-- how the tracer and the signature guard are installed (hooks, a plugin);
-- `failure_kind` / `limit_reset`: how its errors read, so campaigns wait out a usage limit instead of
-  failing.
+- `prepare(a)`: its env and per-run sidecars (how the tracer and the signature guard are installed:
+  hooks, flags, a plugin);
+- `command(a)`: the argv for an attempt, live or one-shot;
+- `session(a)`: the live session, a `live.Session` subclass speaking the CLI's own protocol and
+  translating it to the one-shot line shape (omit it for a one-shot-only backend);
+- `parse(obj)`: one stream line → the normalized events;
+- `auth(out)` with `auth_args`, and `sign_in_hint`, `ask_tool`, `env_auth`, `forbid` (flags
+  `extra_args` may not set).
 
-Everything else is backend-neutral: the supervisor, the scheduler, campaigns, the dashboard. The tests in
-`tests/test_backend_tracing.py` show the contract each backend meets, including tracing a subagent end
-to end.
+The supervisor, the scheduler, campaigns and the dashboard stay as they are. `tests/test_live_backends.py`
+and `tests/test_backend_tracing.py` show the contract each backend meets, with a fake CLI per backend.

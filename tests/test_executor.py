@@ -121,31 +121,38 @@ def test_prompt_forms(hub):
 
 # ── backends: argv, resolution, parsing ──────────────────────────────────────
 
+def cmd(name, workdir, *, prompt="x", prog=None, cli=("c",), m=None, live=False, ver=None, resuming=False,
+        preamble="", **fields):
+    """A backend's argv for one attempt, built the way the supervisor builds it (no side effects)."""
+    a = backends.Attempt(lab=None, m={"backend": name, **(m or {})}, workdir=Path(workdir), rd=Path(workdir),
+                         prog=prog or {}, cli=list(cli), prompt=prompt, preamble=preamble, resuming=resuming,
+                         live=live, env={}, python="py", ver=ver)
+    for k, v in fields.items():
+        setattr(a, k, v)
+    return backends.get(name).command(a)
+
+
 def test_run_command_claude_first_attempt_and_resume(hub):
     cli = ["claude.exe"]
-    rc = backends.build_run_command("claude", prompt="/lab-status", workdir=hub.root, prog={}, cli=cli,
-                                    session_id="S1", settings_path=Path("s.json"),
-                                    system_prompt_file=Path("p.md"), add_dirs=[Path("/hub")], cli_ver=(2, 1, 300))
+    rc = cmd("claude", hub.root, prompt="/lab-status", cli=cli, m={"session_id": "S1"}, ver=(2, 1, 300),
+             settings=Path("s.json"), system_prompt_file=Path("p.md"), add_dirs=[Path("/hub")])
     a = rc.argv
     assert a[:2] == ["claude.exe", "-p"] and rc.stdin_text == "/lab-status"   # one-shot: prompt via stdin
     assert a[a.index("--session-id") + 1] == "S1" and "--resume" not in a
     assert a[a.index("--permission-mode") + 1] == "auto" and "--forward-subagent-text" in a
     assert "--permission-prompt-tool" not in a and "--input-format" not in a
-    lv = backends.build_run_command("claude", prompt="/lab-status", workdir=hub.root, prog={}, cli=cli,
-                                    session_id="S1", live=True, cli_ver=(2, 1, 300)).argv
+    lv = cmd("claude", hub.root, prompt="/lab-status", cli=cli, m={"session_id": "S1"}, live=True, ver=(2, 1, 300)).argv
     assert lv[lv.index("--input-format") + 1] == "stream-json" and "--replay-user-messages" in lv
     assert lv[lv.index("--permission-prompt-tool") + 1] == "stdio"
-    rc2 = backends.build_run_command("claude", prompt=None, workdir=hub.root, prog={}, cli=cli,
-                                     resume_sid="S1", cli_ver=(2, 1, 100))
+    rc2 = cmd("claude", hub.root, prompt="", cli=cli, m={"session_id": "S1"}, resuming=True, ver=(2, 1, 100))
     assert rc2.argv[rc2.argv.index("--resume") + 1] == "S1" and rc2.stdin_text is None
     assert "--forward-subagent-text" not in rc2.argv            # version-gated flag skipped on old CLIs
     assert "--permission-mode" in rc2.argv                      # re-passed: a -p resume doesn't restore it
 
 
 def test_run_command_argv_mode_keeps_prompt_before_variadic_flags(hub):
-    rc = backends.build_run_command("claude", prompt="hello", workdir=hub.root,
-                                    prog={"backends": {"claude": {"prompt_via": "argv"}}}, cli=["c"],
-                                    add_dirs=[Path("/hub")])
+    rc = cmd("claude", hub.root, prompt="hello", prog={"backends": {"claude": {"prompt_via": "argv"}}},
+             add_dirs=[Path("/hub")])
     assert rc.argv[2] == "hello" and rc.stdin_text is None
 
 
@@ -153,26 +160,32 @@ def test_run_command_argv_mode_keeps_prompt_before_variadic_flags(hub):
                                   "--permission-mode bypassPermissions", "--dangerously-skip-permissions"])
 def test_executor_owned_flags_refused_in_extra_args(hub, flag):
     with pytest.raises(SystemExit):
-        backends.build_run_command("claude", prompt="x", workdir=hub.root, cli=["c"],
-                                   prog={"backends": {"claude": {"extra_args": flag}}})
+        cmd("claude", hub.root, prog={"backends": {"claude": {"extra_args": flag}}})
 
 
 def test_run_command_other_backends(hub):
-    rc = backends.build_run_command("opencode", prompt="do it", workdir=hub.root, prog={}, cli=["oc"],
-                                    resume_sid="ses_1", preamble="RULES")
+    rc = cmd("opencode", hub.root, prompt="do it", cli=["oc"], m={"session_id": "ses_1"}, resuming=True, preamble="RULES")
     assert rc.argv[:3] == ["oc", "run", "do it\n\n---\nRULES"] and rc.argv[rc.argv.index("-s") + 1] == "ses_1"
     assert rc.stdin_text is None and rc.fires_hooks is False
-    rc = backends.build_run_command("codex", prompt="go", workdir=hub.root, prog={}, cli=["cx"])
+    rc = cmd("codex", hub.root, prompt="go", cli=["cx"])
     assert rc.argv[:2] == ["cx", "exec"] and rc.argv[-1] == "-" and rc.stdin_text == "go"
     assert "--json" in rc.argv and "-a" not in rc.argv and "resume" not in rc.argv
     assert rc.fires_hooks is False                       # no tracer hooks passed → synthesized worker log
-    # resume (codex ≥0.35): exec-level options BEFORE the subcommand, then `resume <thread> -`
-    rc = backends.build_run_command("codex", prompt="more", workdir=hub.root, prog={}, cli=["cx"], resume_sid="t-1")
+    # resume: exec-level options BEFORE the subcommand, then `resume <thread> -`
+    rc = cmd("codex", hub.root, prompt="more", cli=["cx"], m={"session_id": "t-1"}, resuming=True)
     assert rc.argv[-3:] == ["resume", "t-1", "-"] and rc.stdin_text == "more"
     assert rc.argv.index("-C") < rc.argv.index("resume") and rc.argv.index("--sandbox") < rc.argv.index("resume")
     with pytest.raises(SystemExit, match="resume"):
-        backends.build_run_command("codex", prompt="go", workdir=hub.root, cli=["cx"],
-                                   prog={"backends": {"codex": {"extra_args": "resume --last"}}})
+        cmd("codex", hub.root, cli=["cx"], prog={"backends": {"codex": {"extra_args": "resume --last"}}})
+
+
+def test_every_backend_is_one_registered_class():
+    for name in backends.BACKENDS:
+        b = backends.get(name)
+        assert b.name == name and b.has_live and b.ask_tool and b.sign_in_hint and b.auth_args
+    assert not backends.get("_dummy").has_live and "_dummy" not in backends.BACKENDS
+    with pytest.raises(SystemExit):
+        backends.get("nope")
 
 
 def test_resolve_cli(tmp_path, monkeypatch):

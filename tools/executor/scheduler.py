@@ -25,7 +25,7 @@ from .manifest import (ACTIVE, TERMINAL, all_runs, emit, now, parse_ts, read_man
                        scheduler_lock, transition, write_manifest)
 from .procs import DETACHED, is_locked, kill_tree, pid_alive, python_exe
 from .spec import RunSpec, SpecError, SKILL_REGISTRY
-from . import campaigns, notify
+from . import backends, campaigns, notify
 
 CLI = Path(__file__).resolve().parents[1] / "executor_cli.py"
 STARTING_GRACE_S = 60
@@ -173,7 +173,7 @@ def post_process(lab: Lab, workdir: Path, path: Path, m: dict) -> None:
                "source": "last_message"}
     m["report"] = rep
     if m.get("failure_kind") == "usage_limit":   # hold this backend's queue until the limit lifts
-        _note_limit(lab, m.get("backend") or "claude", pos_float(m.get("limit_reset"), 0.0) or time.time() + 1800)
+        _note_limit(lab, m.get("backend") or backends.DEFAULT, pos_float(m.get("limit_reset"), 0.0) or time.time() + 1800)
     prog = lab.prog()
     clean = m.get("status") == "completed" and not rep.get("needs_pi")
     # chain: follow the run's own `next` command (once, or in a loop until a gate / cap)
@@ -374,7 +374,7 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
             nb = parse_ts(m.get("not_before"))
             if nb and nb > tnow:
                 continue
-            if held.get(m.get("backend") or "claude"):
+            if held.get(m.get("backend") or backends.DEFAULT):
                 continue   # that backend's usage limit hasn't lifted yet
             key = cap_key(m, _t)
             cap = 1 if key.startswith("campaign:") else c["hub"] if key == HUB_TARGET else c["per_project"]

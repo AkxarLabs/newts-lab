@@ -487,7 +487,7 @@ def test_lib_doc_reads_markdown_with_meta(hub, monkeypatch):
 
 def test_lib_doc_blocks_traversal_and_absolute(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    sdir = _lib_hub(hub)
+    _lib_hub(hub)
     (hub.root / "secret.md").write_text("no\n", encoding="utf-8")
     assert "outside" in m.lib_doc("study", "demo", "../../secret.md")["error"]
     assert "outside" in m.lib_doc("lab", None, "../secret.md")["error"]

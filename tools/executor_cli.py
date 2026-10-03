@@ -237,7 +237,7 @@ def main(argv=None) -> int:
     e.add_argument("--prompt-file", default=None, dest="prompt_file", help="a free-form instruction instead of --skill")
     e.add_argument("--target", default="hub", help="'hub' or an idea/project slug")
     e.add_argument("--args", default="")
-    e.add_argument("--backend", default=None, choices=("claude", "codex", "opencode", "_dummy"))
+    e.add_argument("--backend", default=None, choices=tuple(executor.backends.REGISTRY))
     e.add_argument("--model", default=None)
     e.add_argument("--effort", default=None)
     e.add_argument("--max-minutes", type=float, default=None, dest="max_minutes")

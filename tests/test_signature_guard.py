@@ -248,11 +248,11 @@ NODE = __import__("shutil").which("node")
 @pytest.mark.skipif(not NODE, reason="node is needed to load the opencode plugin")
 def test_opencode_guard_plugin_blocks_under_node(hub, tmp_path):
     sys.path.insert(0, str(REPO / "tools"))
-    from executor import backends
+    from executor.backends import opencode
     (hub.root / "studies" / "idea-a").mkdir(parents=True)
     p = hub.root / "studies" / "idea-a" / "proposal.md"
     p.write_text("pending\n", encoding="utf-8")
-    d = backends.opencode_guard_dir(tmp_path / "run.d", REPO / "tools" / "signature_guard.py", sys.executable)
+    d = opencode.guard_dir(tmp_path / "run.d", REPO / "tools" / "signature_guard.py", sys.executable)
     plugin = (d / "plugins" / "newts-guard.js").as_uri()
     js = f"""
 const {{ NewtsGuard }} = await import({json.dumps(plugin)})
