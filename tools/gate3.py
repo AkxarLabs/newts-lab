@@ -31,6 +31,7 @@ HUB = Path(__file__).resolve().parents[1]
 NOTE = "gate3-approval.md"
 sys.path.insert(0, str(HUB / "tools"))
 from markers import AUTH_BOX_RE, GATE3_BOX_RE  # noqa: E402
+import workflow  # noqa: E402
 AUDITS = [
     ("claims", ["audit_claims.py", "{paper}", "--scan-novelty"]),
     ("multiseed", ["audit_multiseed.py", "{paper}"]),
@@ -95,12 +96,13 @@ def readiness(hub: Path, slug: str) -> dict:
     hub = Path(hub)
     paper = paper_dir(hub, slug)
     state = registry_state(hub, slug)
+    at = workflow.gate_state(3, hub)
     meta = ""
     for f in sorted(paper.glob("reviews/**/meta-review*.md")) if paper.is_dir() else []:
         meta = _read(f) or meta
     verdict = meta_verdict(meta)
     checks = [
-        {"id": "state", "label": "Internal review is complete (state: internal-review)", "ok": state == "internal-review",
+        {"id": "state", "label": f"Internal review is complete (state: {at})", "ok": state == at,
          "blocking": True, "detail": f"state is '{state or 'unknown'}'"},
         {"id": "meta", "label": "The meta-review recommends accepting", "ok": accepts(verdict), "blocking": False,
          "detail": (verdict[:300] or "no meta-review found")},

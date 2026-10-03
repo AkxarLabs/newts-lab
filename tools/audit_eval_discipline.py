@@ -29,7 +29,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-_SPLIT_ANALOGUE_TYPES = {"theory", "simulation"}   # no literal held-out test split
+_SPLIT_ANALOGUE = "newts: split=analogue"   # in a type's TYPE.md: it has no literal held-out test split
 
 
 def _load_yaml(path: Path) -> dict:
@@ -71,7 +71,7 @@ def audit(paper_dir: Path) -> int:
         text = proposal.read_text(encoding="utf-8-sig")
         val = _line_filled(text, "Validation")
         test = _line_filled(text, "Held-out test")
-        if ptype in _SPLIT_ANALOGUE_TYPES:
+        if _SPLIT_ANALOGUE in labfiles.project_types(HUB).get(ptype, ""):
             print(f"- protocol: project_type={ptype} — val/test split is analogue-defined in TYPE.md "
                   "(MANUAL: verify the type's selection discipline).")
             have_manual = True

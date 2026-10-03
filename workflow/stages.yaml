@@ -273,33 +273,33 @@ procedures:
      hint: "what exists: idea, design, or repo path", title: Bring in what I have,
      does: "Enters the lifecycle mid-stream from an idea, a design, a repo or a draft."}
   autopilot:
-    {kind: driver, level: hub, mode: headless, args: campaign, launchable: true, replaceable: false,
+    {dispatchable: false, kind: driver, level: hub, mode: headless, args: campaign, launchable: true, replaceable: false,
      hint: signed campaign brief in lab/campaigns/, title: Run a campaign,
      does: "Carries several ideas end-to-end within a signed campaign brief."}
   discuss:
-    {kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+    {dispatchable: false, kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
      hint: "purpose [target], e.g. direction", title: Talk it through,
      does: "A one-question-at-a-time conversation with live research. Crosses no gate."}
   compete:
-    {kind: entry, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+    {dispatchable: false, kind: entry, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
      hint: slug or task, title: Compete on a target,
      does: "An interview for a fixed-target task (a benchmark, a score)."}
   setup-lab:
-    {kind: utility, level: hub, mode: interactive, args: "", launchable: true, replaceable: false,
+    {dispatchable: false, kind: utility, level: hub, mode: interactive, args: "", launchable: true, replaceable: false,
      hint: first-run interview, title: Set up the lab,
      does: "The first-run interview: research areas, budgets, compute, venue, models."}
   configure:
-    {kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
+    {dispatchable: false, kind: utility, level: hub, mode: interactive, args: "text?", launchable: true, replaceable: false,
      hint: "e.g. <slug> or set key=value", title: Change lab settings,
      does: "Views or edits the lab configuration with you."}
   domain-modeling:
-    {kind: utility, launchable: false, replaceable: false, title: Domain model,
+    {engineering: true, kind: utility, launchable: false, replaceable: false, title: Domain model,
      does: "Pins down a project's domain language and records decisions."}
   grilling:
-    {kind: utility, launchable: false, replaceable: false, title: Grill a plan,
+    {engineering: true, kind: utility, launchable: false, replaceable: false, title: Grill a plan,
      does: "Stress-tests a plan or design, one question at a time."}
   grill-with-docs:
-    {kind: utility, launchable: false, replaceable: false, title: Grill a plan (with docs),
+    {engineering: true, kind: utility, launchable: false, replaceable: false, title: Grill a plan (with docs),
      does: "Stress-tests a plan and writes ADRs and a glossary as it goes."}
 
 # the subagent roles (agent-roles/<role>.md) — the PI may ADD instructions to each (lab-wide)

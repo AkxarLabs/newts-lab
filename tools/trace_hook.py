@@ -20,6 +20,9 @@ Contract — this NEVER blocks a tool call:
     the subagent, so hard rule 3 ("shared ledgers are parent-only") is untouched.
 Delete the dashboard and this still writes a disposable local log; delete this and the
 lab is unchanged.
+
+One source: templates/project/scripts/trace_hook.py is a byte-identical copy (tests enforce it), so
+spawned projects and tools/upgrade_project.py carry exactly this file.
 """
 
 import json

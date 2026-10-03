@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
-"""Fail-safe activity tracer for a spawned Newts' Lab project (a Claude Code hook).
+"""Fail-safe activity tracer for the Newts' Lab (a Claude Code hook).
 
-Registered in this project's `.claude/settings.json` on SessionStart, SubagentStart,
-PreToolUse(*), PostToolUse(*), SubagentStop(*) and SessionEnd. It reads one hook JSON
-object on stdin and appends ONE compact line to a per-worker log:
+Registered in `.claude/settings.json` on SessionStart, SubagentStart, PreToolUse(*),
+PostToolUse(*), SubagentStop(*) and SessionEnd. It reads one hook JSON object on stdin
+and appends ONE compact line to a per-worker log:
 
-    <project>/.bus/workers/<worker_id>.jsonl
+    <bus>/workers/<worker_id>.jsonl
 
-(a git worktree `<proj>-wt-*` maps back to the main project so its `experiment-runner`
-workers land where the dashboard reads). One file per worker = clean, separated logs the
-optional Vivarium dashboard renders as one sprite + one action history per agent/subagent.
+`<bus>` is resolved from the hook's `cwd`: the hub's `lab/.bus` for a hub session, a
+project's `.bus` for a project session (a git worktree `<proj>-wt-*` maps back to the
+main project so its workers land where the dashboard reads). One file per worker =
+clean, separated logs the optional Vivarium dashboard renders as one sprite + one
+action history per agent/subagent.
 
-Contract — this NEVER blocks a tool call: any error -> silent `exit 0`, nothing on
-stdout; stdlib only; one append; no network. The log is best-effort and NON-canonical
-(not a ledger): the harness writes it, not the subagent, so the parent-only-ledgers rule
-is untouched. This is a verbatim copy of the hub's `tools/trace_hook.py`.
+Contract — this NEVER blocks a tool call:
+  * any error  -> silent `exit 0`, nothing on stdout (so the model never sees it);
+  * stdlib only (no deps), one append, no network;
+  * the log is best-effort and NON-canonical (not a ledger). The harness writes it, not
+    the subagent, so hard rule 3 ("shared ledgers are parent-only") is untouched.
+Delete the dashboard and this still writes a disposable local log; delete this and the
+lab is unchanged.
+
+One source: templates/project/scripts/trace_hook.py is a byte-identical copy (tests enforce it), so
+spawned projects and tools/upgrade_project.py carry exactly this file.
 """
 
 import json

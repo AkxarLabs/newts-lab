@@ -213,7 +213,7 @@ def main() -> int:
     ap.add_argument("--slug", required=True)
     ap.add_argument("--title", required=True)
     ap.add_argument("--project-type", default="ml", dest="project_type",
-                    choices=["ml", "empirical", "simulation", "theory", "target-driven"])
+                    choices=sorted(labfiles.project_types(HUB)))
     ap.add_argument("--domain", default=None, help="a domain profile (e.g. econ) → DOMAIN.md")
     ap.add_argument("--overlay", default=None, help="an overlay dir under templates/ (e.g. compete)")
     ap.add_argument("--date", default=None)

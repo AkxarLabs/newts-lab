@@ -1,5 +1,7 @@
 # Project type: `theory`
 
+<!-- newts: split=analogue — no literal held-out test split; tools/audit_eval_discipline.py reports the selection discipline as MANUAL -->
+
 Mathematical / theoretical work: proofs, derivations, models on paper (e.g. math-econ theory,
 mechanism design, algorithms with guarantees). **The paper lifecycle applies fully; the
 experiment *engine* is redefined or N/A — read this card before assuming the ML loop.**

@@ -8,6 +8,7 @@ anywhere. pyyaml is used for YAML; the rest is stdlib.
     projects_root(hub)                 lab.projects_root, resolved against the hub
     registry_project_path(hub, slug)   the row's Project column (an /adopt-ed repo can live anywhere)
     project_dir(hub, slug)             that, or projects_root/<slug> when it exists
+    project_types(hub)                 {type: its TYPE.md} — every folder in templates/project-types/
 """
 
 from __future__ import annotations
@@ -68,3 +69,14 @@ def project_dir(hub, slug: str, r: dict | None = None) -> Path | None:
         return p
     cand = projects_root(hub) / slug
     return cand if cand.exists() else None
+
+
+def project_types(hub) -> dict[str, str]:
+    """Every project type (templates/project-types/<type>/TYPE.md): adding one is adding that folder."""
+    root = Path(hub) / "templates" / "project-types"
+    out = {}
+    for d in sorted(root.iterdir()) if root.is_dir() else []:
+        f = d / "TYPE.md"
+        if f.is_file():
+            out[d.name] = f.read_text(encoding="utf-8", errors="replace")
+    return out

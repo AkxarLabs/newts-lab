@@ -9,7 +9,7 @@ takes.
 | How a stage is done | the Workflow page → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure or a stage | `workflow/stages.yaml` + `.claude/skills/<name>/` | `tools/workflow.py check` (also in `check_lab`) |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
-| A kind of project | `templates/project-types/<type>/TYPE.md` | [Project types](project-types.md) |
+| A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
 | An agent CLI (backend) | one module in `tools/executor/backends/` | `tests/test_live_backends.py` |
 | A machine | the dashboard → Labs & machines | — |
@@ -26,11 +26,15 @@ takes.
    - `launchable` (may the dashboard start it?) and `replaceable`;
    - `title`, `does`, `stops`, `outputs`.
 3. List it in a stage's `procedures` (so it shows on the Workflow page and in "Work on it…"), and in
-   `offer_for_state` / `next_for_state` if it should be offered or be the default next step.
+   `offer_for_state` / `next_for_state` if it should be offered or be the default next step. Set
+   `dispatchable: false` if a campaign pass must not start it as its own run.
 4. Run `uv run --with pyyaml python tools/workflow.py render-docs`, then `tools/workflow.py check`.
+5. If it has a `METHOD.md`, add its contract's system lines to `tests/fixtures/skill_system_tokens.json`
+   (the test that proves replacing a method can't drop a rule).
+6. Describe it for people: a row in the README's skill table and a section in `docs/skills.md`.
 
-The executor's launch list, the dashboard's labels and the docs table all follow from the manifest.
-`finalize` can never be made launchable: Gate 3 is its only door.
+The executor's launch list, the dashboard's labels, the docs table and the skill list in `AGENTS.md`
+all follow from the manifest. `finalize` can never be made launchable: Gate 3 is its only door.
 
 ## A stage
 
@@ -53,7 +57,17 @@ in the manifest so the PI can add instructions to it.
 A site scheduler (PBS, LSF, a wrapper) needs no code. Describe it with command templates in
 `compute.scheduler.custom` (`submit`, `state`, `cancel`, `header`, `setup`), as
 [Machines & compute](compute.md) shows. Code is only needed for a scheduler with a genuinely new model:
-add an adapter class next to `Slurm` and `Custom` in `templates/project/scripts/_scheduler.py`.
+add an adapter class next to `Slurm` and `Custom` in `templates/project/scripts/_scheduler.py` and
+register it in `ADAPTERS`; to set it from the dashboard too, give it a section in Settings → System
+(`_clean_scheduler` in `dashboard/settings.py`, the form in `static/ui/settings.js`).
+
+## A kind of project
+
+Add a folder `templates/project-types/<type>/` with its `TYPE.md` (what an experiment is, its runner,
+its staged scale, its selection discipline), as [Project types](project-types.md) describes.
+`/spawn-project` offers every folder there. A type with no literal held-out test split says so in its
+`TYPE.md` with `<!-- newts: split=analogue -->`, and the eval-discipline audit then reports that check as
+manual.
 
 ## A backend (another agent CLI)
 

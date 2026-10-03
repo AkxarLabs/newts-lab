@@ -34,7 +34,7 @@ if str(_TOOLS) not in sys.path:
 import workflow as _workflow  # noqa: E402
 
 SKILL_REGISTRY: dict[str, dict] = _workflow.launch_registry(_TOOLS.parent)
-NEVER = {"finalize"}   # never from a click / chain / campaign — only a Gate 3 signature launches it
+NEVER = _workflow.NEVER_LAUNCH   # never from a click / chain / campaign — only a Gate 3 signature launches it
 for _n in NEVER:
     SKILL_REGISTRY.pop(_n, None)
 ASK = "ask"            # the free-form run's pseudo-skill

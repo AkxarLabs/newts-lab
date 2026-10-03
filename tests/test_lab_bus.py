@@ -32,6 +32,12 @@ def test_template_lab_bus_byte_identical_to_hub():
     assert hub == tpl, "tools/lab_bus.py and templates/project/scripts/lab_bus.py have drifted"
 
 
+def test_template_trace_hook_byte_identical_to_hub():
+    hub = (REPO / "tools" / "trace_hook.py").read_text(encoding="utf-8")
+    tpl = (REPO / "templates" / "project" / "scripts" / "trace_hook.py").read_text(encoding="utf-8")
+    assert hub == tpl, "tools/trace_hook.py and templates/project/scripts/trace_hook.py have drifted"
+
+
 def test_kinds_include_escalation_and_approach_ideate(hub, monkeypatch):
     m, _ = _mod(hub, monkeypatch)
     assert "escalation" in m.KINDS

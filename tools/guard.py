@@ -117,8 +117,9 @@ def c_spawn(a) -> int:
     pd = _project_dir(a.slug, row)
     if pd and any(p.is_dir() for p in pd.glob("runs/*")):   # a run is a dir; ignore the template's runs/README.md
         return _verdict(1, f"{pd.name} already has runs — refusing to overwrite (reused slug?)")
-    if row and row["state"] != "proposal":
-        return _verdict(2, f"Gate 1 present, but registry state is '{row['state']}' (expected 'proposal')")
+    at = workflow.gate_state(1, HUB)
+    if row and row["state"] != at:
+        return _verdict(2, f"Gate 1 present, but registry state is '{row['state']}' (expected '{at}')")
     return _verdict(0, f"Gate 1 recorded — clear to /spawn-project {a.slug}")
 
 
@@ -612,8 +613,8 @@ def c_finalization(a) -> int:
     if target_driven:
         if state != "active":
             return _verdict(1, f"target-driven {a.slug} is '{state}', not 'active' — nothing to finalize")
-    elif state != "internal-review":
-        return _verdict(1, f"{a.slug} is '{state}', not 'internal-review' — /review-paper must accept first")
+    elif state != workflow.gate_state(3, HUB):
+        return _verdict(1, f"{a.slug} is '{state}', not '{workflow.gate_state(3, HUB)}' — /review-paper must accept first")
     if getattr(a, "pi_approved", False):
         return _verdict(0, f"Gate 3 authorized by --pi-approved for {a.slug} — clear to /finalize")
     if target_driven:

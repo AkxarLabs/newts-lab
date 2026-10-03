@@ -39,7 +39,8 @@ HUB = Path(__file__).resolve().parents[1]
 MANIFEST = Path("workflow") / "stages.yaml"
 MAX_CUSTOM = 20000          # characters per customisation file
 GATES = (1, 2, 3)            # fixed: the manifest must declare exactly these
-NEVER_LAUNCH = {"finalize"}  # mirrors executor.spec.NEVER — Gate 3 is the only door
+NEVER_LAUNCH = {"finalize"}  # never from a click / chain / campaign — a Gate 3 signature is the only door
+                             # (the executor's spec.NEVER is this set; `check` refuses a manifest that disagrees)
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
 _cache: dict[str, tuple[float, dict]] = {}
 
@@ -97,6 +98,16 @@ def launch_registry(hub=None) -> dict[str, dict]:
         if p.get("launchable") and name not in NEVER_LAUNCH:
             out[name] = {"level": p["level"], "mode": p["mode"], "args": p.get("args", ""), "hint": p.get("hint", "")}
     return out
+
+
+def not_dispatchable(hub=None) -> set[str]:
+    """Procedures a campaign pass may not dispatch as their own runs (`dispatchable: false`, plus finalize)."""
+    return {n for n, p in (load(hub).get("procedures") or {}).items() if p.get("dispatchable") is False} | NEVER_LAUNCH
+
+
+def gate_state(n: int, hub=None) -> str | None:
+    """The registry state a gate is signed at (Gate 1: proposal · Gate 3: internal-review)."""
+    return next((g.get("at") for g in load(hub).get("gates", []) if g.get("n") == n), None)
 
 
 def stages_of(proc: str, hub=None) -> list[dict]:
@@ -529,6 +540,13 @@ def docs_table(hub=None) -> str:
 
 
 DOC_TARGETS = [Path("docs") / "workflow.md"]
+SKILLS_BEGIN, SKILLS_END = "<!-- skills:begin -->", "<!-- skills:end -->"   # inline: the lab's skill list
+SKILLS_TARGETS = [Path("AGENTS.md")]
+
+
+def skills_list(hub=None) -> str:
+    """`a`, `b`, … — every lab procedure in manifest order (the vendored engineering helpers aside)."""
+    return ", ".join(f"`{n}`" for n, p in (load(hub).get("procedures") or {}).items() if not p.get("engineering"))
 UI_DEFAULT = Path("dashboard") / "static" / "ui" / "workflow-default.js"
 
 
@@ -563,6 +581,17 @@ def render_docs(hub=None, check_only: bool = False) -> list[Path]:
             stale.append(rel)
             if not check_only:
                 p.write_text(new, encoding="utf-8", newline="\n")
+    skills = f"{SKILLS_BEGIN}{skills_list(hub)}{SKILLS_END}"
+    for rel in SKILLS_TARGETS:
+        p = hub / rel
+        txt = _read(p)
+        if SKILLS_BEGIN not in txt or SKILLS_END not in txt:
+            continue
+        new = re.sub(re.escape(SKILLS_BEGIN) + r".*?" + re.escape(SKILLS_END), lambda _m: skills, txt, flags=re.S)
+        if new != txt:
+            stale.append(rel)
+            if not check_only:
+                p.write_text(new, encoding="utf-8", newline="\n" if "\r\n" not in txt else "\r\n")
     return stale
 
 

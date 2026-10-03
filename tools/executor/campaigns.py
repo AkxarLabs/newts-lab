@@ -37,7 +37,7 @@ from pathlib import Path
 from .lab import HUB_TARGET, Lab, pos_float, pos_int, read_jsonl
 from .manifest import ACTIVE, TERMINAL, all_runs, now, parse_ts, read_manifest, run_dir, transition
 from .procs import is_locked
-from .spec import NEVER, RunSpec, SpecError, SKILL_REGISTRY
+from .spec import RunSpec, SpecError, SKILL_REGISTRY, _workflow as workflow
 
 BACKOFF_MIN = [2, 5, 15, 30, 60]
 LIVE = ACTIVE | {"queued", "waiting_input"}
@@ -48,7 +48,7 @@ def _session_up(path, m: dict) -> bool:
     return m.get("transport") == "live" and is_locked(run_dir(Path(path).parent, m["run_id"]) / "lock")
 RETRYABLE = {"timeout", "usage_limit", "transient"}
 MAX_CHILD_RETRIES = 3
-DISPATCHABLE_NOT = {"autopilot", "setup-lab", "configure", "discuss", "compete"} | set(NEVER)
+DISPATCHABLE_NOT = workflow.not_dispatchable()   # `dispatchable: false` in workflow/stages.yaml, + finalize
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
 
 

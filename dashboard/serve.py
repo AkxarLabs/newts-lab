@@ -167,16 +167,25 @@ class Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
-    def _body(self) -> dict:
+    def _raw_body(self) -> bytes:
         try:
             length = int(self.headers.get("Content-Length", 0))
         except (TypeError, ValueError):
             length = 0
         length = max(0, min(length, 1 << 20))   # ignore a non-numeric/absurd Content-Length; cap at 1 MB
+        return self.rfile.read(length) if length else b""
+
+    def _body(self) -> dict:
         try:
-            return json.loads(self.rfile.read(length) or b"{}")
+            return json.loads(self._raw_body() or b"{}")
         except json.JSONDecodeError:
             return {}
+
+    def _refuse(self, body: dict, code: int):
+        """Refuse a POST — after reading its body: closing a socket with unread data resets the
+        connection (Windows), and the client may never see the refusal."""
+        self._raw_body()
+        return self._json(body, code)
 
     _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
@@ -413,12 +422,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._local_only():
-            return self._json({"error": "refused: cross-origin/non-localhost POST"}, 403)
+            return self._refuse({"error": "refused: cross-origin/non-localhost POST"}, 403)
         if not self._has_session():
-            return self._json({"error": "no dashboard session — reload the page"}, 403)
+            return self._refuse({"error": "no dashboard session — reload the page"}, 403)
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if ctype != "application/json":
-            return self._json({"error": "requests must be JSON (Content-Type: application/json)"}, 415)
+            return self._refuse({"error": "requests must be JSON (Content-Type: application/json)"}, 415)
         route = self.path.split("?", 1)[0]
         if ctx.REMOTE is not None and not _is_local_route(route):
             return self._proxy("POST")
