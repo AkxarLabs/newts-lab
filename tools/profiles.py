@@ -47,10 +47,8 @@ PROFILE_KEYS = [
     "loop.explore_max_expansion_rounds", "loop.explore_max_new_lines_per_round",
     "discuss.max_research_minutes", "oversight.level",
     "agents.tiers.strong", "agents.tiers.standard", "agents.tiers.fast",
-    "agents.reviewer_model", "agents.runner_model", "agents.overseer_model",
-    "agents.reviewer_effort", "agents.runner_effort", "agents.overseer_effort",
     "agents.programmatic.backend", "agents.programmatic.max_concurrent",
-]
+] + sorted({f"agents.{k}" for pair in role_sync.role_keys().values() for k in pair})   # every role's model + effort
 
 
 # ── yaml + dict helpers ───────────────────────────────────────────────────────

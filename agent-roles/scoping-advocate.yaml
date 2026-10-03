@@ -1,4 +1,5 @@
 name: scoping-advocate
+label: Scoping advocate                 # how the dashboard names it
 description: "Fresh-context advocate for ONE option of ONE project design decision — argues its strongest case and names its likeliest failure modes. Spawned by /scope in parallel, one per option."
 model_key: critic_model            # lab/config.yaml agents.critic_model sets the Claude model
 tools_claude: "Read, Glob, Grep, WebFetch, WebSearch"

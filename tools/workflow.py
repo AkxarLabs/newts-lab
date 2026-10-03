@@ -214,6 +214,26 @@ def campaign_driver(hub=None) -> str | None:
     return next((n for n, p in (load(hub).get("procedures") or {}).items() if p.get("args") == "campaign"), None)
 
 
+def roles(hub=None) -> list[str]:
+    """The subagent roles: agent-roles/<role>.yaml (the lab's own, else this code's)."""
+    h = _hub(hub)
+    d = h / "agent-roles" if (h / "agent-roles").is_dir() else HUB / "agent-roles"
+    return sorted(p.stem for p in d.glob("*.yaml"))
+
+
+def role_labels(hub=None) -> dict[str, str]:
+    h = _hub(hub)
+    d = h / "agent-roles" if (h / "agent-roles").is_dir() else HUB / "agent-roles"
+    out = {}
+    for r in roles(hub):
+        try:
+            meta = yaml.safe_load((d / f"{r}.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            meta = {}
+        out[r] = str(meta.get("label") or r.replace("-", " ").capitalize())
+    return out
+
+
 def stages_of(proc: str, hub=None) -> list[dict]:
     return [s for s in load(hub).get("stages", []) if proc in s.get("procedures", [])]
 
@@ -236,7 +256,7 @@ def ui_view(hub=None) -> dict:
         "states": m.get("states", []), "side_states": m.get("side_states", []), "gates": m.get("gates", []),
         "stages": m.get("stages", []), "rooms": m.get("rooms", []), "tracks": m.get("tracks", {}),
         "next_for_state": m.get("next_for_state", {}), "offer_for_state": m.get("offer_for_state", {}),
-        "back_edges": m.get("back_edges", []), "roles": m.get("roles", []), "procedures": procs,
+        "back_edges": m.get("back_edges", []), "roles": roles(hub), "role_labels": role_labels(hub), "procedures": procs,
         "revive_to": revive_default(hub),
         "custom": status(hub), "study_custom": studies_customised(hub),
         "proposals": [{k: r.get(k) for k in ("id", "kind", "name", "study", "why", "by", "ts")} for r in pend],
@@ -310,9 +330,10 @@ def check(hub=None) -> list[str]:
                 probs.append(f"procedure {name}: replaceable but has no METHOD.md")
             elif skill.is_file() and "workflow.py brief" not in skill.read_text(encoding="utf-8"):
                 probs.append(f"procedure {name}: SKILL.md has no `workflow.py brief` step")
-    for r in m.get("roles", []):
-        if not (hub / "agent-roles" / f"{r}.md").is_file():
-            probs.append(f"role {r}: no agent-roles/{r}.md")
+    rdir = hub / "agent-roles" if (hub / "agent-roles").is_dir() else HUB / "agent-roles"
+    for r in roles(hub):
+        if not (rdir / f"{r}.md").is_file():
+            probs.append(f"role {r}: no agent-roles/{r}.md beside its .yaml")
     return probs + check_rules(hub)
 
 
@@ -486,7 +507,7 @@ def status(hub=None, study: str | None = None) -> dict:
         if custom_file("stage", st["id"], hub, study).is_file():
             out["stages"][st["id"]] = True
     if not study:
-        for r in m.get("roles", []):
+        for r in roles(hub):
             if custom_file("role", r, hub).is_file():
                 out["roles"][r] = True
     return out
@@ -623,7 +644,7 @@ def propose(proc: str, mode: str, text: str, hub=None, study: str | None = None,
         raise ValueError(f"/{proc}'s method is not replaceable (its SKILL.md is all contract)")
     if kind == "stage" and proc not in {s["id"] for s in m.get("stages", [])}:
         raise ValueError(f"unknown stage {proc!r}")
-    if kind == "role" and proc not in m.get("roles", []):
+    if kind == "role" and proc not in roles(hub):
         raise ValueError(f"unknown role {proc!r}")
     custom_file(kind, proc, hub, study)            # validates names
     text = (text or "").replace("\r\n", "\n").strip()

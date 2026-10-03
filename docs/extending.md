@@ -83,11 +83,12 @@ can't be removed; every other check can be.
 
 ## A subagent role
 
-Add `agent-roles/<role>.yaml` (description, `tools_claude`, model tier, codex settings) and
-`agent-roles/<role>.md` (its instructions). Then run
+Add `agent-roles/<role>.yaml` (its `label`, description, `tools_claude`, a `model_key` naming its
+`agents.<x>_model` config key, codex settings) and `agent-roles/<role>.md` (its instructions). Then run
 `uv run --with pyyaml python tools/role_sync.py render`. The role is rendered for Claude Code
-(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`). List it under `roles:`
-in the manifest so the PI can add instructions to it.
+(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`), listed on the Workflow
+page (where the PI can add instructions to it), and `role_sync.py resolve <role>` gives its model and
+effort. Set its model in `lab/config.yaml` (`agents.<x>_model: standard`). Then a skill spawns it.
 
 ## A scheduler
 

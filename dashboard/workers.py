@@ -13,6 +13,7 @@ import json
 import time
 from pathlib import Path
 
+import ctx
 from ctx import labfiles
 
 # ── workers (per-agent activity from .bus/workers/*.jsonl — the traceability feed) ──
@@ -111,8 +112,6 @@ SUBAGENT_STUCK_S = 1200     # an idle, unfinished subagent this long is surfaced
 _MAX_RECENT = 40
 
 
-_KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
-                "overseer", "ideation-critic", "scoping-advocate"}
 
 
 _WORKER_CACHE: dict[str, tuple] = {}
@@ -178,6 +177,7 @@ def _fold_worker(lines: list[dict]) -> dict:
 
 
 def scan(bus_dir: Path, project: str | None = None, projects: set | None = None) -> list[dict]:
+    known = {"orchestrator", *ctx.tool("workflow").roles(ctx.HUB)}   # the lab's roles (agent-roles/*.yaml)
     wdir = bus_dir / "workers"
     if not wdir.exists():
         return []
@@ -227,7 +227,7 @@ def scan(bus_dir: Path, project: str | None = None, projects: set | None = None)
         out.append({
             "worker_id": wid,
             "role": fold["role"],
-            "role_known": fold["role"] in _KNOWN_ROLES,
+            "role_known": fold["role"] in known,
             "status": status,
             "project": proj,
             "idea": fold["idea"] or (proj if proj != project else None),

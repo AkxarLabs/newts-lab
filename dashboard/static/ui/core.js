@@ -37,9 +37,13 @@
   NL.LIFECYCLE = []; NL.STATE_LABEL = {}; NL.ROOMS = []; NL.GATE_AT = {}; NL.PROC = {}; NL.PROCS_FOR_STATE = {};
   NL.NEXT_FOR_STATE = {}; NL.STAGES = []; NL.GATES = []; NL.WF = {};
   let wfSig = '';
+  // the subagent roles: labels from agent-roles/<role>.yaml (via the workflow), colours from the theme
+  const ROLE_COLOR = { orchestrator: 'var(--r-orch)', 'experiment-runner': 'var(--r-run)', 'fresh-context-reviewer': 'var(--r-rev)',
+    overseer: 'var(--r-over)', 'ideation-critic': 'var(--r-crit)', 'scoping-advocate': 'var(--r-scope)' };
+  NL.ROLE = { orchestrator: { label: 'Orchestrator', color: ROLE_COLOR.orchestrator } };
   NL.applyWorkflow = wf => {
     if (!wf || wf.error || !Array.isArray(wf.states)) return false;
-    const sig = JSON.stringify([wf.states, wf.side_states, wf.rooms, wf.gates, wf.stages, wf.procedures, wf.next_for_state, wf.offer_for_state]);
+    const sig = JSON.stringify([wf.states, wf.side_states, wf.rooms, wf.gates, wf.stages, wf.procedures, wf.next_for_state, wf.offer_for_state, wf.roles, wf.role_labels]);
     NL.WF = wf;
     if (sig === wfSig) return false;
     wfSig = sig;
@@ -58,6 +62,8 @@
     all.forEach(x => { NL.PROCS_FOR_STATE[x.id] = (wf.offer_for_state || {})[x.id] || []; });
     for (const k of Object.keys(NL.NEXT_FOR_STATE)) delete NL.NEXT_FOR_STATE[k];
     Object.assign(NL.NEXT_FOR_STATE, wf.next_for_state || {});
+    for (const k of Object.keys(NL.ROLE)) if (k !== 'orchestrator') delete NL.ROLE[k];
+    (wf.roles || []).forEach(r => { NL.ROLE[r] = { label: (wf.role_labels || {})[r] || r, color: ROLE_COLOR[r] || 'var(--ink-soft)' }; });
     return true;
   };
   NL.applyWorkflow(window.__WORKFLOW_DEFAULT__);
@@ -87,14 +93,6 @@
   NL.RUN_DONE = new Set(['completed', 'failed', 'timeout', 'killed']);
   NL.runTitle = r => r ? (r.kind === 'ask' ? (r.label || r.prompt_summary || 'Instruction') : (r.command || r.label || r.prompt_summary || r.run_id)) : '';
 
-  NL.ROLE = {
-    orchestrator: { label: 'Orchestrator', color: 'var(--r-orch)' },
-    'experiment-runner': { label: 'Experiment runner', color: 'var(--r-run)' },
-    'fresh-context-reviewer': { label: 'Reviewer', color: 'var(--r-rev)' },
-    overseer: { label: 'Overseer', color: 'var(--r-over)' },
-    'ideation-critic': { label: 'Ideation critic', color: 'var(--r-crit)' },
-    'scoping-advocate': { label: 'Scoping advocate', color: 'var(--r-scope)' },
-  };
   NL.roleOf = r => NL.ROLE[r] || { label: r || 'Agent', color: 'var(--ink-soft)' };
 
   NL.procTitle = s => (NL.PROC[s] && NL.PROC[s].title) || ('/' + s);

@@ -82,12 +82,17 @@ def resolve_model(val: str, agents_cfg: dict) -> str:
 # role name -> (model_key, effort_key) in lab/config.yaml agents.*. The three NAMED roles also have
 # an agent-roles/<name>.yaml (rendered role files); `critic` is the INLINE ideation-critic / scoping-
 # advocate — no role file, resolved on demand by resolve_role() for a per-spawn Task model/effort.
-_ROLE_KEYS = {
-    "reviewer": ("reviewer_model", "reviewer_effort"),
-    "runner": ("runner_model", "runner_effort"),
-    "overseer": ("overseer_model", "overseer_effort"),
-    "critic": ("critic_model", "critic_effort"),
-}
+def role_keys() -> dict[str, tuple[str, str]]:
+    """Each role — by its name, and by its config key's short name (reviewer, runner, critic, …) — → its
+    agents.<x>_model / agents.<x>_effort keys, from the role's own `model_key` (agent-roles/<role>.yaml)."""
+    out = {}
+    for name in _role_names():
+        mk = str(labfiles.load_yaml(_roles_dir() / f"{name}.yaml").get("model_key") or "")
+        if mk.endswith("_model"):
+            pair = (mk, mk[: -len("_model")] + "_effort")
+            out[name] = pair
+            out.setdefault(mk[: -len("_model")], pair)
+    return out
 
 
 def _model_for(meta: dict, agents_cfg: dict) -> str:
@@ -110,7 +115,9 @@ def resolve_role(role: str, agents_cfg: dict | None = None) -> tuple[str, str]:
     ladder, effort as a direct value. The token-free path skills use to spawn INLINE subagents
     (critics/advocates) with the right model/effort, instead of the agent re-deriving it from config."""
     cfg = _cfg_agents() if agents_cfg is None else agents_cfg
-    mkey, ekey = _ROLE_KEYS[role]
+    mkey, ekey = role_keys().get(role) or ("", "")      # a role with no model_key runs at the standard tier
+    if not mkey:
+        return resolve_model("standard", cfg), ""
     model = resolve_model(cfg.get(mkey), cfg)
     effort = cfg.get(ekey)
     return model, (str(effort).strip() if effort is not None else "")
@@ -288,7 +295,7 @@ def main() -> int:
     rp = sub.add_parser("render-project", help="resolve the live hub tiers into a project's role files")
     rp.add_argument("project_dir")
     rv = sub.add_parser("resolve", help="print a role's resolved model/effort (token-free spawn helper)")
-    rv.add_argument("role", choices=sorted(_ROLE_KEYS))
+    rv.add_argument("role", choices=sorted(role_keys()))
     a = ap.parse_args()
     if a.cmd == "render":
         return render()

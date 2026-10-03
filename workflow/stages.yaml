@@ -110,6 +110,3 @@ offer_for_state:
 tracks:
   paper: [seed, triaged, lit-review, scoping, proposal, active, analysis, writing, internal-review, final]
   target: [active, final]
-
-# the subagent roles (agent-roles/<role>.md) — the PI may ADD instructions to each (lab-wide)
-roles: [ideation-critic, scoping-advocate, fresh-context-reviewer, experiment-runner, overseer]
