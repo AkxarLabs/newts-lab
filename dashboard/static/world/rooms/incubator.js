@@ -1,13 +1,11 @@
 /* Room · the Incubator — ideas are born, critiqued, evolved and sorted (seed · triaged). */
 VivWorld.defineRoom({
-  key: 'incubator', title: 'The Incubator', order: 1, floor: 0, size: [1440, 820],
-  states: ['seed', 'triaged'],
-  shell: { wall: 'panels', floor: 'boards', windows: [0.16, 0.84], accent: 'wash.green', banner: 'The Incubator', seed: 11 },
+  key: 'incubator', size: [1440, 820], floor: 0, order: 1,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'panels', floor: 'boards', windows: [0.16, 0.84], accent: 'wash.green', seed: 11 },
   stations: {
     seed: { x: 0.20, y: 0.64 }, reflect: { x: 0.50, y: 0.72 }, evolve: { x: 0.80, y: 0.64 },
     ranking: { x: 0.35, y: 0.53 }, triage: { x: 0.66, y: 0.555 },
   },
-  stateStation: { seed: 'seed', triaged: 'triage' },
   roleStation: { 'ideation-critic': 'reflect' },
   props: [
     { c: 'rug', at: [0.5, 0.70], props: { w: 440 } },

@@ -30,18 +30,24 @@ WF_ROOM = {s["id"]: s["room"] for s in _WF["states"] + _WF["side_states"]}
 WF_STATION = {s["id"]: s["station"] for s in _WF["states"] + _WF["side_states"]}
 
 
-def _world() -> dict:
+def _world(wf: dict | None = None, extra_js: str = "") -> dict:
+    """Load the world scripts under node, apply the workflow (the manifest's rooms + states), report."""
     files = [str(WORLD / f) for f in CORE] + [str(WORLD / "rooms" / f) for f in ROOM_FILES]
+    wf = wf if wf is not None else {k: _WF[k] for k in ("rooms", "states", "side_states")}
     js = f"""
       global.window = global; const fs = require('fs');
       for (const f of {json.dumps(files)}) eval(fs.readFileSync(f, 'utf8'));
-      const W = window.VivWorld, lay = W.layoutBuilding(), lay2 = W.layoutBuilding();
+      {extra_js}
+      window.console.warn = () => {{}};
+      const W = window.VivWorld; W.applyWorkflow({json.dumps(wf)});
+      const lay = W.layoutBuilding(), lay2 = W.layoutBuilding();
       const comps = {{}};
       for (const [k, c] of Object.entries(W.components)) comps[k] = {{ size: c.size(k === 'shell' ? {{ w: 1000, h: 600 }} : {{}}),
         parts: !!c.parts, fx: typeof c.fx === 'function' ? c.fx({{}}).map(f => f.kind) : [], hover: typeof c.hover }};
       const flat = o => Object.keys(o).sort().map(k => (o[k] && typeof o[k] === 'object') ? k + '{{' + flat(o[k]) + '}}' : k).join(',');
       console.log(JSON.stringify({{ rooms: W.rooms, lay, same: JSON.stringify(lay) === JSON.stringify(lay2), comps,
-        tokens: {{ day: flat(W.tokens.day), night: flat(W.tokens.night) }}, back: W.BOX.back, stateRoom: W.stateRoom() }}));
+        tokens: {{ day: flat(W.tokens.day), night: flat(W.tokens.night) }}, back: W.BOX.back, stateRoom: W.stateRoom(),
+        art: Object.keys(W.roomArt) }}));
     """
     out = subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
@@ -64,10 +70,10 @@ def test_every_lifecycle_state_lives_in_exactly_one_room(world):
             owners[st] = key
     assert set(LIFECYCLE) <= set(owners), set(LIFECYCLE) - set(owners)
     assert world["stateRoom"] == owners
-    # the art agrees with the workflow manifest (which the engine follows at runtime)
     assert {st: owners[st] for st in LIFECYCLE} == WF_ROOM
-    for st, room in WF_ROOM.items():
+    for st, room in WF_ROOM.items():   # every state's station exists in its room's art (not drawn plain)
         assert WF_STATION[st] in world["rooms"][room]["stations"], (st, room, WF_STATION[st])
+    assert set(world["art"]) == set(WF_ROOM.values()), "every shipped room has its art"
 
 
 def test_rooms_keep_the_station_contract(world):
@@ -135,12 +141,51 @@ def test_components_declare_size_and_known_fx(world):
 
 def test_world_scripts_load_before_the_app():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    order = ["vendor/pixi/pixi.min.js"] + [f"world/{f}" for f in CORE] + ["world/engine.js", "world/scene.js", "ui/core.js", "ui/app.js"]
+    order = ["vendor/pixi/pixi.min.js"] + [f"world/{f}" for f in CORE] + ["newts:rooms", "world/engine.js", "world/scene.js",
+                                                                           "ui/core.js", "ui/app.js"]
     pos = [html.index(o) for o in order]
-    assert pos == sorted(pos), order
-    for f in ROOM_FILES:   # every room spec is loaded, after the building registry and before the engine starts
-        assert html.index("world/building.js") < html.index(f"world/rooms/{f}") < html.index("world/engine.js"), f
+    assert pos == sorted(pos), order      # the room files go after the building registry, before the engine
     assert (STATIC / "vendor" / "pixi" / "LICENSE-pixi").exists()
+
+
+def test_the_server_loads_every_room_file_and_the_labs_own(tmp_path, monkeypatch):
+    """No hand-kept <script> list: the server puts one per room file where the page marks it — this code's,
+    then the lab's own lab/rooms/<id>.js (served by /api/room)."""
+    import sys
+    monkeypatch.syspath_prepend(str(REPO / "dashboard"))
+    from conftest import load
+    serve = load("dashboard/serve")
+    monkeypatch.setattr(serve.ctx, "LAB", tmp_path)
+    (tmp_path / "rooms").mkdir()
+    (tmp_path / "rooms" / "data.js").write_text("VivWorld.defineRoom({key: 'data', stations: {a: {x: .5, y: .7}}});\n", encoding="utf-8")
+    page = serve._with_rooms((STATIC / "index.html").read_text(encoding="utf-8"), "static/world/rooms/", lab_rooms=True)
+    for f in ROOM_FILES:
+        assert f'<script src="static/world/rooms/{f}"></script>' in page, f
+    assert '<script src="api/room?name=data"></script>' in page and "newts:rooms" not in page
+    assert page.index("world/building.js") < page.index("rooms/" + ROOM_FILES[0]) < page.index("world/engine.js")
+    assert serve._lab_room("data")[0].name == "data.js" and serve._lab_room("../x") is None
+    gallery = serve._with_rooms((WORLD / "gallery.html").read_text(encoding="utf-8"), "rooms/", lab_rooms=False)
+    assert all(f'<script src="rooms/{f}"></script>' in gallery for f in ROOM_FILES) and "api/room" not in gallery
+
+
+def test_a_room_is_a_line_in_the_workflow():
+    """A room the workflow names with no art is drawn plain — a station per state, its gate's door — and the
+    building makes room for it; art for it, when it comes, replaces the plain room with no other edit."""
+    wf = {k: _WF[k] for k in ("rooms", "states", "side_states")}
+    wf = json.loads(json.dumps(wf))
+    wf["states"].append({"id": "data-prep", "label": "Data prep", "stage": "experiments", "room": "data", "station": "prep"})
+    wf["rooms"].append({"id": "data", "label": "Data", "title": "The Data Room", "states": ["data-prep"], "floor": 0, "order": 4, "gate": 2})
+    w = _world(wf)
+    r = w["rooms"]["data"]
+    assert r["plain"] and r["title"] == "The Data Room" and r["stateStation"] == {"data-prep": "prep"}
+    assert "prep" in r["stations"] and any(p["c"] == "door" and p["props"]["gate"] == 2 for p in r["props"])
+    assert w["stateRoom"]["data-prep"] == "data" and set(w["lay"]["boxes"]) == set(w["rooms"])
+    boxes = list(w["lay"]["boxes"].values())
+    assert all(a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or a["y"] + a["h"] <= b["y"] or b["y"] + b["h"] <= a["y"]
+               for i, a in enumerate(boxes) for b in boxes[i + 1:])
+    art = "VivWorld.defineRoom({key: 'data', stations: {prep: {x: 0.4, y: 0.7}}, props: [], paths: [[.2,.7],[.4,.7],[.6,.7],[.8,.7]]});"
+    w2 = _world(wf, extra_js=art)
+    assert not w2["rooms"]["data"].get("plain") and w2["rooms"]["data"]["title"] == "The Data Room"
 
 
 def test_the_scene_has_a_quiet_stand_in_without_webgl():

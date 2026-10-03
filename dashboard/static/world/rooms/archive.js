@@ -1,13 +1,11 @@
 /* Room · the Archive — finished work at rest; its knowledge feeds the next idea (final). */
 VivWorld.defineRoom({
-  key: 'archive', title: 'The Archive', order: 2, floor: 1, size: [1440, 820],
-  states: ['final'],
-  shell: { wall: 'stone', floor: 'tiles', windows: [0.5], accent: 'wash.violet', banner: 'The Archive', seed: 51 },
+  key: 'archive', size: [1440, 820], floor: 1, order: 2,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'stone', floor: 'tiles', windows: [0.5], accent: 'wash.violet', seed: 51 },
   stations: {
     reproduce: { x: 0.26, y: 0.58 }, writeback: { x: 0.46, y: 0.575 }, secure: { x: 0.72, y: 0.58 },
     finalize: { x: 0.36, y: 0.87 }, rest: { x: 0.68, y: 0.88 },
   },
-  stateStation: { final: 'rest' },
   roleStation: {},
   props: [
     { c: 'boxes', at: [0.18, 0.52], props: { w: 240, h: 210, label: 'Reproduce' } },

@@ -37,6 +37,7 @@
     const tokHex = ref => T.hexNum(T.tok(TH(), ref));
     let items = [], workforce = [], slots = { cap: 0, in_use: 0 }, t = 0, pose = 'idle', highlightRole = null, followId = null, ambient = true;
     let onItem = null, onGate = null, onWorker = null, onNewt = null, onView = null, onFollow = null;
+    W.applyWorkflow((window.NL && NL.WF) || window.__WORKFLOW_DEFAULT__);   // the workflow's rooms in their art (no art: drawn plain)
     const LAYOUT = W.layoutBuilding(), BOX = LAYOUT.boxes;
     const ROOMS = Object.values(W.rooms).sort((a, b) => (b.floor - a.floor) || (a.order - b.order));
     const ROOM_KEYS = ROOMS.map(r => r.key);
@@ -549,7 +550,8 @@
         const here = items.filter(o => roomOfState(o.state) === k), ids = new Set(here.map(o => o.id)), spec = W.rooms[k];
         const crew = workforce.filter(w => (w.project && ids.has(w.project)) || (w.idea && ids.has(w.idea)));
         const waiting = spec.gate ? items.filter(o => o.gate === spec.gate).length : 0;
-        roomState[k] = { slotsCap: slots.cap || 0, slotsUse: slots.in_use || 0, busy: crew.filter(w => w.status === 'working').length, n: here.length,
+        const byState = {}; here.forEach(o => { byState[o.state] = (byState[o.state] || 0) + 1; });
+        roomState[k] = { slotsCap: slots.cap || 0, slotsUse: slots.in_use || 0, busy: crew.filter(w => w.status === 'working').length, n: here.length, byState,
           nActive: here.filter(o => o.state === 'active').length, nAnalysis: here.filter(o => o.state === 'analysis').length,
           gateWaiting: waiting, gateOpen: spec.gate !== 3 && !waiting, seed: here.length ? D.hash01(here.map(o => o.id).join()) * 6 : 1, load: (slots.in_use || 0) };
       }

@@ -343,6 +343,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             seed = "null"
         demo = "true" if self.demo else "false"
+        html = _with_rooms(html, "static/world/rooms/", lab_rooms=True)
         html = html.replace(
             "</head>", f"<script>window.__STATE__={seed};window.__VIV_DEMO__={demo};</script></head>", 1)
         body = html.encode("utf-8")
@@ -370,7 +371,10 @@ class Handler(BaseHTTPRequestHandler):
                  ".webp": "image/webp", ".json": "application/json", ".map": "application/json",
                  ".txt": "text/plain"}.get(target.suffix, "application/octet-stream")
         charset = "; charset=utf-8" if ctype.startswith(("text/", "application/j", "image/svg")) else ""
-        self._send(200, target.read_bytes(), f"{ctype}{charset}")
+        body = target.read_bytes()
+        if target.name == "gallery.html":       # the component/room gallery loads the room files the same way
+            body = _with_rooms(body.decode("utf-8"), "rooms/", lab_rooms=False).encode("utf-8")
+        self._send(200, body, f"{ctype}{charset}")
 
     def _serve_sse(self) -> None:
         self.send_response(200)
@@ -467,7 +471,30 @@ FILE_ROUTES = {
     "/api/paper": lambda q: _typed(library.paper_pdf(q.get("idea", "")), "application/pdf"),
     "/api/figure": lambda q: _typed(library.figure_file(q.get("idea", ""), q.get("name", ""))),
     "/api/libfile": lambda q: library.lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", "")),
+    "/api/room": lambda q: _lab_room(q.get("name", "")),
 }
+
+
+def _lab_room(name: str):
+    """A room the lab draws itself: lab/rooms/<name>.js (the PI's art; a run can't write there)."""
+    f = ctx.LAB / "rooms" / f"{name}.js"
+    return (f, "application/javascript; charset=utf-8") if ctx.safe_id(name) and f.is_file() else None
+
+
+ROOMS_MARK = "<!-- newts:rooms"
+
+
+def _with_rooms(html: str, prefix: str, lab_rooms: bool) -> str:
+    """Put one <script> per room file where the page marks it: this code's static/world/rooms/*.js, then the
+    lab's own lab/rooms/*.js. A room the workflow names with no file is drawn plain (world/building.js)."""
+    i = html.find(ROOMS_MARK)
+    if i < 0:
+        return html
+    tags = [f'<script src="{prefix}{f.name}"></script>' for f in sorted((STATIC / "world" / "rooms").glob("*.js"))]
+    if lab_rooms and ctx.REMOTE is None:
+        tags += [f'<script src="api/room?name={f.stem}"></script>' for f in sorted((ctx.LAB / "rooms").glob("*.js"))
+                 if ctx.safe_id(f.stem)]
+    return html[:i] + "\n".join(tags) + html[html.index("-->", i) + 3:]
 
 
 def _typed(f, ctype: str | None = None):

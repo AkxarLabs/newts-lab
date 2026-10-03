@@ -57,13 +57,17 @@ the back wall to the front edge. Everything standing on the floor is placed by i
 normalised room coordinates. It is scaled by depth, smaller toward the back wall, and sorted by depth,
 so nearer things overlap farther ones.
 
+Which rooms exist, and where, is the workflow's: each `rooms:` line in `workflow/stages.yaml` names the
+room, its title, the states that stand in it, its `floor` (`1` upper, `0` ground, `-1` cellar), its
+`order` on that floor and its gate; each state's `station` says where its studies stand. The building
+lays itself out from these and draws the cut walls, slabs, roof and glasshouse wings. A room's file is
+only its art:
+
 ```js
 VivWorld.defineRoom({
-  key: 'lab', title: 'The Lab', order: 3, floor: 0, size: [1600, 900], gate: 2,
-  states: ['active', 'analysis'],                        // registry states that live here
-  shell: { wall: 'tiles', floor: 'tiles', windows: [0.3, 0.5, 0.7], accent: 'wash.teal', banner: 'The Lab' },
+  key: 'lab', size: [1600, 900],                         // size defaults to 1440×820
+  shell: { wall: 'tiles', floor: 'tiles', windows: [0.3, 0.5, 0.7], accent: 'wash.teal' },
   stations: { experiments: { x: 0.40, y: 0.58 }, … },    // where creatures stand (feet)
-  stateStation: { active: 'experiments', analysis: 'analysis' },
   roleStation: { 'experiment-runner': 'experiments', overseer: 'quality' },
   props: [
     { c: 'bench', at: [0.40, 0.505], props: { w: 500, items: ['flask', 'bell'], label: 'Experiments' } },
@@ -74,9 +78,9 @@ VivWorld.defineRoom({
 });
 ```
 
-- **`floor`** places the room in the building: `1` is the upper floor, `0` the ground, `-1` the cellar.
-  **`order`** sets its place within the floor. The building lays itself out from these and draws the cut
-  walls, slabs, roof and glasshouse wings.
+A room the workflow names with no art file is drawn **plain**: a station and a sign per state, the
+standard decor (`VivWorld.decor()`, which any room may use too) and its gate's door.
+
 - **Keep the floor readable.** Tall pieces (bookcases, boards, racks) go near the back wall (`y` about
   0.45–0.55). The middle of the floor is for creatures and low tables. Big plants frame the front corners.
 
@@ -117,17 +121,17 @@ press, armchair, crates) and apparatus (vessel, rack, dais, trays, jars). It als
 sign, door) and atmosphere (lantern, stringLights, hangingPlant, pinned papers, plant, rug, clock).
 Reuse before adding.
 
-## Add a workflow room in five steps
+## Add a workflow room
 
-1. **Decide its registry states.** Anything in those states will live in this room.
-2. **Create `dashboard/static/world/rooms/<key>.js`** with `VivWorld.defineRoom({…})`: states, stations,
-   `stateStation`, `roleStation`, `props` and `paths`. Give it a `floor` and an `order`.
-3. **Add a `<script>` tag** for it in `dashboard/static/index.html` (after `world/building.js`, before
-   `world/engine.js`), and in `world/gallery.html`.
-4. **Check it in the gallery.** Open `/static/world/gallery.html?view=world&theme=day&room=<key>`, then
+1. **Add its line** under `rooms:` in `workflow/stages.yaml` — title, states, floor, order (and the states'
+   `room:` / `station:`). That alone puts a plain room in the building.
+2. **Give it a look:** `dashboard/static/world/rooms/<key>.js` (or the lab's own `lab/rooms/<key>.js`) with
+   `VivWorld.defineRoom({…})`: its stations (one per state's `station`), `roleStation`, `props` and
+   `paths`. The server loads every room file by itself.
+3. **Check it in the gallery.** Open `/static/world/gallery.html?view=world&theme=day&room=<key>`, then
    `theme=night`. `?view=components` shows every component in both inks.
-5. **Run the tests** (`pytest tests/test_world.py`). They check that:
-   - states are covered once;
+4. **Run the tests** (`pytest tests/test_world.py`). They check that:
+   - states are covered once, and every state's station exists in its room;
    - stations and paths are valid;
    - props reference real components;
    - the building doesn't overlap;

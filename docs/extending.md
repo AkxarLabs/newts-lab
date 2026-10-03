@@ -8,7 +8,7 @@ takes.
 |---|---|---|
 | How a stage is done | the Workflow page → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
-| A stage, a state | `workflow/stages.yaml` | `tools/workflow.py check` |
+| A stage, a state, a room | `workflow/stages.yaml` (+ a room's art in `world/rooms/` or `lab/rooms/`) | `tools/workflow.py check` |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
@@ -57,13 +57,25 @@ required.
 The executor's launch list, the dashboard's labels and launcher, the docs table and the skill list in
 `AGENTS.md` all follow from the skills. `finalize` can never be made launchable: Gate 3 is its only door.
 
-## A stage
+## A stage, a state, a room
 
-A stage is a group of registry states with procedures, a room in the dashboard's world, and optionally
-a gate. The lifecycle's order and its back edges are in `workflow/stages.yaml` too, and the guard derives
-legal transitions from them. The stage set is validated as the shipped one for now. Opening it up (new
-stages, reordering) is a change to the manifest plus the world's room art, not to the engine. Keep the
-three gates fixed: `check` refuses a manifest without exactly Gates 1, 2 and 3.
+The lifecycle's states, its stages, the gates and the rooms are `workflow/stages.yaml`; the guard derives
+legal transitions from the states and back edges. Keep the three gates: `check` refuses a manifest without
+exactly Gates 1, 2 and 3.
+
+**A room** is one line under `rooms:` — its title, the states that stand in it, its floor (1 upper, 0
+ground, -1 cellar) and its order on that floor:
+
+```yaml
+  - {id: data, label: Data, title: The Data Room, states: [data-prep], floor: 0, order: 4}
+```
+
+The building widens to fit it, and a room with no art is drawn plain (a station per state, the standard
+decor, its gate's door). To give it a look, write its art — `dashboard/static/world/rooms/<id>.js`, or the
+lab's own `lab/rooms/<id>.js` — as `VivWorld.defineRoom({key, size, shell, stations, roleStation, props,
+paths})` with the components in `world/components.js` (the gallery, `/static/world/gallery.html`, shows
+them). Each state's `station` in `stages.yaml` says where its studies stand; [the world's design
+language](world-design.md) has the rest.
 
 ## A rule
 

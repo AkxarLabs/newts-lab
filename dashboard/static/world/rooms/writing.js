@@ -1,13 +1,11 @@
 /* Room · the Writing Room — draft the paper and review it (writing · internal-review). Gate 3 is its door (session-only). */
 VivWorld.defineRoom({
-  key: 'writing', title: 'The Writing Room', order: 1, floor: 1, size: [1440, 820], gate: 3,
-  states: ['writing', 'internal-review'],
-  shell: { wall: 'panels', floor: 'boards', windows: [0.28, 0.72], accent: 'wash.rose', banner: 'The Writing Room', seed: 41 },
+  key: 'writing', size: [1440, 820], floor: 1, order: 1,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'panels', floor: 'boards', windows: [0.28, 0.72], accent: 'wash.rose', seed: 41 },
   stations: {
     figures: { x: 0.22, y: 0.62 }, drafting: { x: 0.46, y: 0.62 }, notes: { x: 0.64, y: 0.53 },
     review: { x: 0.72, y: 0.78 }, audit: { x: 0.32, y: 0.87 }, gate: { x: 0.86, y: 0.53 },
   },
-  stateStation: { writing: 'drafting', 'internal-review': 'review' },
   roleStation: { 'fresh-context-reviewer': 'review', overseer: 'audit' },
   props: [
     { c: 'door', at: [0.885, 0.455], props: { gate: 3, w: 130, h: 250 } },

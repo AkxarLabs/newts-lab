@@ -1,13 +1,11 @@
 /* Room · the Lab — experiments and their analysis (active · analysis). Gate 2 (the FULL-run envelope) is its vault. */
 VivWorld.defineRoom({
-  key: 'lab', title: 'The Lab', order: 3, floor: 0, size: [1600, 900], gate: 2,
-  states: ['active', 'analysis'],
-  shell: { wall: 'tiles', floor: 'tiles', windows: [0.30, 0.50, 0.70], accent: 'wash.teal', banner: 'The Lab', seed: 31 },
+  key: 'lab', size: [1600, 900], floor: 0, order: 3,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'tiles', floor: 'tiles', windows: [0.30, 0.50, 0.70], accent: 'wash.teal', seed: 31 },
   stations: {
     experiments: { x: 0.40, y: 0.58 }, improve: { x: 0.76, y: 0.61 }, ideate: { x: 0.35, y: 0.85 },
     quality: { x: 0.60, y: 0.81 }, analysis: { x: 0.64, y: 0.93 }, gate: { x: 0.885, y: 0.52 },
   },
-  stateStation: { active: 'experiments', analysis: 'analysis' },
   roleStation: { 'experiment-runner': 'experiments', overseer: 'quality', 'fresh-context-reviewer': 'analysis', 'ideation-critic': 'ideate' },
   props: [
     { c: 'clock', at: [0.66, 0.20], props: {} },

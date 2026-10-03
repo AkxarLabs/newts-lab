@@ -1,12 +1,10 @@
 /* Room · the Margins — out of play: parked ideas rest under cloths, killed ones dry in their jars (parked · killed). */
 VivWorld.defineRoom({
-  key: 'margins', title: 'The Margins', order: 1, floor: -1, size: [1280, 720],
-  states: ['parked', 'killed'],
-  shell: { wall: 'stone', floor: 'boards', windows: [], accent: 'wash.blue', banner: 'The Margins', seed: 61 },
+  key: 'margins', size: [1280, 720], floor: -1, order: 1,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'stone', floor: 'boards', windows: [], accent: 'wash.blue', seed: 61 },
   stations: {
     parked: { x: 0.26, y: 0.60 }, recorded: { x: 0.50, y: 0.61 }, killed: { x: 0.78, y: 0.66 }, revive: { x: 0.74, y: 0.86 },
   },
-  stateStation: { parked: 'parked', killed: 'killed' },
   roleStation: {},
   props: [
     { c: 'shrouded', at: [0.20, 0.545], props: { w: 220, h: 190, label: 'Parked' } },

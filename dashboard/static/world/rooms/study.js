@@ -1,13 +1,11 @@
 /* Room · the Study — shape the idea before spending compute (lit-review · scoping · proposal). Gate 1 is its door. */
 VivWorld.defineRoom({
-  key: 'study', title: 'The Study', order: 2, floor: 0, size: [1440, 820], gate: 1,
-  states: ['lit-review', 'scoping', 'proposal'],
-  shell: { wall: 'panels', floor: 'boards', windows: [0.52], accent: 'wash.blue', banner: 'The Study', seed: 21 },
+  key: 'study', size: [1440, 820], floor: 0, order: 2,   // placement for a lab whose workflow doesn't place its rooms
+  shell: { wall: 'panels', floor: 'boards', windows: [0.52], accent: 'wash.blue', seed: 21 },
   stations: {
     stacks: { x: 0.22, y: 0.55 }, novelty: { x: 0.44, y: 0.60 }, decisions: { x: 0.70, y: 0.545 },
     scoping: { x: 0.62, y: 0.76 }, proposal: { x: 0.48, y: 0.85 }, gate: { x: 0.86, y: 0.53 },
   },
-  stateStation: { 'lit-review': 'stacks', scoping: 'scoping', proposal: 'proposal' },
   roleStation: { 'fresh-context-reviewer': 'stacks', overseer: 'novelty', 'scoping-advocate': 'decisions' },
   props: [
     { c: 'bookcase', at: [0.13, 0.47], props: { w: 230, h: 360, ladder: true, label: 'Stacks', seed: 3 } },

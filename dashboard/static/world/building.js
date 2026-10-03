@@ -1,17 +1,18 @@
 /* Vivarium world — ROOMS and the cutaway BUILDING.
  *
- *   VivWorld.defineRoom({
- *     key, title, states:[registry states], order, floor (0 ground · 1 upper · -1 cellar), size:[w,h],
- *     shell:{ wall, floor, windows:[x…], accent, banner },           // the room box (see 'shell' below)
+ *   VivWorld.defineRoom({              // a room's ART (rooms/<key>.js); WHICH rooms exist and where is the workflow's
+ *     key, size:[w,h] (default 1440×820),
+ *     shell:{ wall, floor, windows:[x…], accent },                     // the room box (see 'shell' below)
  *     stations:{ name:{x,y} },          // where creatures stand (normalised to the room box, feet on the floor)
- *     stateStation:{state:station}, roleStation:{role:station},
+ *     roleStation:{role:station},        // where each subagent role works here
  *     props:[{ c:'component', at:[x,y], props:{…}, hover?, action? }],   // furniture (feet position, normalised)
  *     paths:[[x,y]…],                   // the walk they stroll along (normalised)
- *     gate?: n                           // the gate whose door lives in this room
  *   })
  *
- * The building lays rooms out as one cross-section: floors stacked, rooms side by side in `order`, the
- * cut walls and slabs drawn as section poché. A new workflow room slots in by declaring a floor + order.
+ * W.applyWorkflow(wf) makes W.rooms the workflow's rooms (workflow/stages.yaml `rooms:` — title, states,
+ * gate, floor, order; each state's `station`) dressed in their art; a room with no art is drawn plain
+ * (stations for its states, a standard decor). The building lays rooms out as one cross-section: floors
+ * stacked, rooms side by side in `order`, the cut walls and slabs drawn as section poché.
  * Depth: the room is a diorama box; its floor runs from the back wall (y = BACK) to the front edge (y = 1),
  * and anything standing on it is scaled by its depth (smaller toward the back wall).
  */
@@ -21,12 +22,64 @@
   const S = W.paper.S;
   const { rng } = W.noise;
   const T = W.tokens;
-  const rooms = {};
+  const rooms = {};      // what the world draws: the workflow's rooms in their art (W.applyWorkflow)
+  const art = {};        // each room file's spec, as written
   W.rooms = rooms;
+  W.roomArt = art;
   W.defineRoom = function (spec) {
-    if (!spec || !spec.key || !spec.size || !spec.stations) throw new Error('defineRoom needs key, size, stations');
-    rooms[spec.key] = Object.assign({ order: 99, floor: 0, states: [], props: [], paths: [], shell: {}, stateStation: {}, roleStation: {} }, spec);
-    return rooms[spec.key];
+    if (!spec || !spec.key || !spec.stations) throw new Error('defineRoom needs key and stations');
+    art[spec.key] = Object.assign({ size: [1440, 820], order: 99, floor: 0, states: [], props: [], paths: [], shell: {}, stateStation: {}, roleStation: {} }, spec);
+    rooms[spec.key] = art[spec.key];
+    return art[spec.key];
+  };
+
+  /** the furniture every room has (lights, a lantern, plants, a crate) — a plain room's, or any room's: props: W.decor().concat([…]) */
+  W.decor = () => [
+    { c: 'stringLights', at: [0.5, 0.13], props: { w: 1000, n: 12, swags: 2 } },
+    { c: 'lantern', at: [0.5, 0.21], props: {} },
+    { c: 'hangingPlant', at: [0.3, 0.25], props: { drop: 180 } },
+    { c: 'plant', at: [0.06, 0.93], props: { kind: 'mushrooms', size: 80, seed: 5 } },
+    { c: 'plant', at: [0.97, 1.0], props: { kind: 'fern', size: 180, seed: 11 } },
+    { c: 'crates', at: [0.8, 0.93], props: { kind: 'books', w: 110 } },
+  ];
+
+  /** a room in the workflow with no art: a station per state, signs, the standard decor, its gate's door */
+  function plainRoom(m, st) {
+    if (typeof console !== 'undefined') console.warn(`Newts' Lab: no art for the room '${m.id}' (rooms/${m.id}.js or lab/rooms/${m.id}.js) — drawing it plain.`);
+    const states = m.states || [], n = states.length, stations = {}, signs = [];
+    states.forEach((s, i) => {
+      const key = (st[s] && st[s].station) || s, x = n <= 1 ? 0.45 : 0.2 + 0.5 * i / (n - 1);
+      stations[key] = { x, y: 0.7 };
+      signs.push({ c: 'sign', at: [x, 0.6], props: { text: (st[s] && st[s].label) || s } });
+    });
+    if (!n) stations.middle = { x: 0.45, y: 0.7 };
+    const props = W.decor().concat(signs);
+    if (m.gate) { stations.gate = { x: 0.86, y: 0.53 }; props.push({ c: 'door', at: [0.88, 0.455], props: { gate: m.gate, w: 130, h: 250 } }); }
+    const xs = Object.values(stations).map(p => p.x).sort((a, b) => a - b);
+    return Object.assign({}, { key: m.id, size: [1200, 820], order: 99, floor: 0, states: [], stateStation: {}, roleStation: {},
+      shell: { wall: 'panels', floor: 'boards', windows: [0.5], accent: 'wash.blue', seed: 7 }, stations, props,
+      paths: [[0.12, 0.8], ...xs.map(x => [x, 0.74]), [0.9, 0.8], [0.5, 0.9]], plain: true });
+  }
+
+  /** W.rooms ← every room of the workflow, dressed in its art (or plain); without a workflow, the art as declared */
+  W.applyWorkflow = function (wf) {
+    const man = wf && Array.isArray(wf.rooms) && wf.rooms.length ? wf.rooms : null;
+    for (const k of Object.keys(rooms)) delete rooms[k];
+    if (!man) { Object.assign(rooms, art); return rooms; }
+    const st = {};
+    (wf.states || []).concat(wf.side_states || []).forEach(s => { st[s.id] = s; });
+    man.forEach((m, i) => {
+      const a = art[m.id] || plainRoom(m, st);
+      const first = Object.keys(a.stations)[0], stateStation = {};
+      (m.states || []).forEach(s => { const want = st[s] && st[s].station; stateStation[s] = a.stations[want] ? want : (a.stateStation[s] || first); });
+      rooms[m.id] = Object.assign({}, a, {
+        key: m.id, title: m.title || a.title || m.id, states: m.states || [], stateStation,
+        gate: m.gate != null ? m.gate : a.gate, floor: m.floor != null ? m.floor : a.floor,
+        order: m.order != null ? m.order : (a.order !== 99 ? a.order : 50 + i),
+        shell: Object.assign({}, a.shell, { banner: m.title || (a.shell && a.shell.banner) || a.title || m.id }),
+      });
+    });
+    return rooms;
   };
 
   // the diorama box, normalised: back wall inset, floor from BACK to the front edge
