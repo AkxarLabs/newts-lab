@@ -23,6 +23,8 @@ and follow it step by step.
    constraints bind exactly like control.yaml. PI-owned: read and obey, never edit.
    If the hub's `compute.scheduler` sends runs to a job scheduler (SLURM or a site-described one),
    `scripts/run.py` submits and waits for you — never call `sbatch`/`qsub` yourself.
+   `TYPE.md` says what an experiment is here; `DOMAIN.md`, **if present**, gives the field's venues,
+   data sources and conventions (a domain profile chosen at spawn).
 4. `NOTES.md` — **read it in full** (it's short by design): the *distilled* memory of this
    project — environment gotchas + their fixes, approaches already tried and abandoned (don't
    re-try blindly), and what's settled here. It is the index over `EXPERIMENT_LOG.md` that

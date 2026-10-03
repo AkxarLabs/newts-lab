@@ -41,6 +41,10 @@ The PI chooses the pace, not the protocol: per-procedure invocation, one stage p
 
 After **every** state change, update `lab/REGISTRY.md` in the same working session. Before writing a transition, check it: `uv run --with pyyaml python tools/guard.py state <slug> <from> <to>` (exit 1 = illegal — stop and re-read the lifecycle; the guard confirms, never grants).
 
+**Templates the PI made the lab's own.** A file under `templates/` (a proposal, the critique lenses, a
+LOOP_BRIEF, a project file, a project type, a domain profile) may have the PI's own version at
+`lab/templates/<the same path>`: when it exists, use it instead — the code does the same.
+
 **Configuration (3 layers):** resolution order is experiment yaml > project `control.yaml` > hub `lab/config.yaml`. Lab-wide defaults live in `lab/config.yaml`; each spawned project gets a `control.yaml` (its end-to-end run controls: budgets, seeds, parallelism, loop, Gate-2 envelope) created at spawn and editable via `/configure`. Change values in config files, never in skill files. Full reference: `docs/configuration.md`.
 
 **Projects live OUTSIDE the hub** at `lab.projects_root` (default `../newts-lab-projects/<slug>`); the registry row holds each project's path. The hub never accumulates experiment state. Each spawned project ships its own `CLAUDE.md`/`AGENTS.md`, so a session started inside the project directory is fully operational on its own.

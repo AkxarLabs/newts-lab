@@ -577,6 +577,9 @@ def brief(proc: str, hub=None, study: str | None = None) -> tuple[str, str]:
         parts.append(f"## Project type\n\nThis project's `TYPE.md` ({(project / 'TYPE.md').as_posix()}) defines what a "
                      "run, a stage, multi-seed and the frozen eval mean here; it overrides the method on those "
                      "points." + (" It is target-driven: the paper stages are N/A." if target else ""))
+    if project and (project / "DOMAIN.md").is_file():
+        parts.append(f"## Domain\n\nThis project's `DOMAIN.md` ({(project / 'DOMAIN.md').as_posix()}) gives its field's venues, "
+                     "data sources and conventions — follow them where this stage touches them.")
     for who, lvl in (("lab-wide", None), ("for this study", study)):
         if who == "for this study" and not study:
             continue

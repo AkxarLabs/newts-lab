@@ -12,6 +12,7 @@ takes.
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
+| Your own version of any template | the same path under `lab/templates/` (a proposal, the lenses, a project file, a type, a domain) | — |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
 | An agent CLI (backend) | one module in `tools/executor/backends/` | `tests/test_live_backends.py` |
 | A machine | the dashboard → Labs & machines | — |
@@ -97,9 +98,17 @@ add an adapter class next to `Slurm` and `Custom` in `templates/project/scripts/
 register it in `ADAPTERS`; to set it from the dashboard too, give it a section in Settings → System
 (`_clean_scheduler` in `dashboard/system.py`, the form in `static/ui/settings.js`).
 
+## Your own templates
+
+Every template — `templates/idea/proposal.md`, `templates/review/critique-lenses.md`, `templates/loop/*`, a
+file of `templates/project/`, a project type, a domain profile — can be made the lab's own: put your version
+at the same path under `lab/templates/`. The code (`labfiles.template`) and the agents (AGENTS.md says so)
+use it instead of the shipped one, and upgrading the lab never touches it. A spawned project gets the
+shipped project template with your files on top.
+
 ## A kind of project
 
-Add a folder `templates/project-types/<type>/` with its `TYPE.md` (what an experiment is, its runner,
+Add a folder `templates/project-types/<type>/` (or `lab/templates/project-types/<type>/`) with its `TYPE.md` (what an experiment is, its runner,
 its staged scale, its selection discipline), as [Project types](project-types.md) describes.
 `/spawn-project` offers every folder there. A type with no literal held-out test split says so in its
 `TYPE.md` with `<!-- newts: split=analogue -->`, and the eval-discipline audit then reports that check as

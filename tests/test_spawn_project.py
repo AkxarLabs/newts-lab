@@ -113,3 +113,24 @@ def test_run_refuses_existing_project_with_runs(tmp_path, monkeypatch):
     a = types.SimpleNamespace(slug="demo", title="Demo", project_type="ml", domain=None,
                               overlay=None, date=None, run_smoke=False, skip_guard=True)
     assert m.run(a) == 1
+
+
+def test_the_lab_overrides_a_template_and_adds_its_own_type(tmp_path):
+    """lab/templates/<path> is the PI's own version of a template file (spawned projects get it), and a
+    folder in lab/templates/project-types/ is a project type of the lab's own — no code."""
+    import shutil
+    hub = tmp_path / "hub"
+    shutil.copytree(REPO / "templates", hub / "templates")
+    own = hub / "lab" / "templates"
+    (own / "project").mkdir(parents=True)
+    (own / "project" / "NOTES.md").write_text("# Our own NOTES template for {{slug}}\n", encoding="utf-8")
+    (own / "project-types" / "survey").mkdir(parents=True)
+    (own / "project-types" / "survey" / "TYPE.md").write_text("# Project type: `survey`\n\nA questionnaire study.\n", encoding="utf-8")
+    lf = load("labfiles")
+    assert "survey" in lf.project_types(hub) and "ml" in lf.project_types(hub)
+    assert lf.template(hub, "project/NOTES.md") == own / "project" / "NOTES.md"
+    assert lf.template(hub, "project/PLAN.md") == hub / "templates" / "project" / "PLAN.md"
+    dest, out = _scaffold(tmp_path, hub=hub, project_type="survey", domain="econ")
+    assert (dest / "NOTES.md").read_text(encoding="utf-8") == "# Our own NOTES template for demo-proj\n"
+    assert "questionnaire" in (dest / "TYPE.md").read_text(encoding="utf-8")
+    assert (dest / "DOMAIN.md").exists() and (dest / "PLAN.md").exists()

@@ -14,7 +14,9 @@ the hub root, so a tool (or a test) can point it anywhere. pyyaml is used for YA
     projects_root(hub)                 lab.projects_root, resolved against the hub
     registry_project_path(hub, slug)   the row's Project column (an /adopt-ed repo can live anywhere)
     project_dir(hub, slug)             that, or projects_root/<slug> when it exists
-    project_types(hub)                 {type: its TYPE.md} — every folder in templates/project-types/
+    template(hub, rel)                 templates/<rel>, or the lab's own lab/templates/<rel> when the PI wrote one
+    project_types(hub)                 {type: its TYPE.md} — every folder in templates/project-types/ (+ the lab's)
+    domain_profiles(hub)               {name: its file} — templates/domain-profiles/*.md (+ the lab's)
 """
 
 from __future__ import annotations
@@ -145,12 +147,34 @@ def project_dir(hub, slug: str, r: dict | None = None) -> Path | None:
     return cand if cand.exists() else None
 
 
+def template(hub, rel) -> Path:
+    """A template file or folder: the lab's own copy (lab/templates/<rel>) when the PI wrote one, else the
+    shipped templates/<rel>. A lab customises a template by copying it there — upgrades never touch it."""
+    own = Path(hub) / "lab" / "templates" / rel
+    return own if own.exists() else Path(hub) / "templates" / rel
+
+
+def _template_roots(hub, rel) -> list[Path]:
+    return [r for r in (Path(hub) / "templates" / rel, Path(hub) / "lab" / "templates" / rel) if r.is_dir()]
+
+
 def project_types(hub) -> dict[str, str]:
-    """Every project type (templates/project-types/<type>/TYPE.md): adding one is adding that folder."""
-    root = Path(hub) / "templates" / "project-types"
+    """Every project type (templates/project-types/<type>/TYPE.md, and the lab's own under lab/templates/):
+    adding one is adding that folder."""
     out = {}
-    for d in sorted(root.iterdir()) if root.is_dir() else []:
-        f = d / "TYPE.md"
-        if f.is_file():
-            out[d.name] = f.read_text(encoding="utf-8", errors="replace")
-    return out
+    for root in _template_roots(hub, "project-types"):        # the lab's own last: it wins
+        for d in sorted(root.iterdir()):
+            f = d / "TYPE.md"
+            if f.is_file():
+                out[d.name] = f.read_text(encoding="utf-8", errors="replace")
+    return dict(sorted(out.items()))
+
+
+def domain_profiles(hub) -> dict[str, Path]:
+    """Every domain profile (templates/domain-profiles/<name>.md, and the lab's own)."""
+    out = {}
+    for root in _template_roots(hub, "domain-profiles"):
+        for f in sorted(root.glob("*.md")):
+            if f.name.lower() != "readme.md":
+                out[f.stem] = f
+    return dict(sorted(out.items()))

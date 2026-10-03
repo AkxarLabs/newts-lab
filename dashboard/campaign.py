@@ -55,7 +55,7 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     for v in (direction, budget_total, wall):
         if len(v) > 600 or "\n## " in v:
             return {"error": "keep each field short (no section headings)"}, 400
-    tpl = ctx.read(ctx.HUB / "templates" / "loop" / "CAMPAIGN.md")
+    tpl = ctx.read(ctx.labfiles.template(ctx.HUB, "loop/CAMPAIGN.md"))
     if tpl is None:
         return {"error": "templates/loop/CAMPAIGN.md is missing"}, 500
     date, ts = time.strftime("%Y-%m-%d"), ctx.ts()

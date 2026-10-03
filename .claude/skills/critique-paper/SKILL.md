@@ -46,8 +46,8 @@ Lens definitions + the calibration block live in `templates/review/critique-lens
 
 ## 2. Spawn the reviewer ensemble (fresh-context invariant)
 
-- Ensemble size: `critique.ensemble_external` lenses (novelty, soundness,
-  claims-evidence) for external papers; `critique.ensemble_own_draft` (all five) for
+- Ensemble size: `critique.ensemble_external` lenses (those in `templates/review/critique-lenses.md` not
+  marked *own drafts*) for external papers; `critique.ensemble_own_draft` (every lens there) for
   own drafts.
 - Spawn one `fresh-context-reviewer` subagent per lens, **in parallel**. Each prompt
   contains ONLY: the paper file path, the lens name + its definition and the calibration

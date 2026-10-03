@@ -207,7 +207,7 @@ def doc_get(which: str) -> tuple[dict, int]:
     p = ctx.HUB / rel
     text = ctx.read(p)
     if text is None and which == "system":
-        text = ctx.read(ctx.HUB / "templates" / "SYSTEM.md") or "# This machine\n"
+        text = ctx.read(ctx.labfiles.template(ctx.HUB, "SYSTEM.md")) or "# This machine\n"
         return {"ok": True, "rel": rel, "text": text, "exists": False}, 200
     return {"ok": True, "rel": rel, "text": text or "", "exists": text is not None}, 200
 
