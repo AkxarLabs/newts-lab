@@ -21,10 +21,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse the profiles helpers
 import profiles  # noqa: E402 — stamp / _fmt / _sync_agent_model / AGENT_FILE
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -47,15 +47,11 @@ def is_pi_owned(key: str) -> bool:
 
 
 def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+    return labfiles.load_yaml(path)
 
 
 def _projects_root() -> Path:
-    root = ((_load_yaml(LAB / "config.yaml").get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 def _resolve_project(arg: str) -> Path | None:

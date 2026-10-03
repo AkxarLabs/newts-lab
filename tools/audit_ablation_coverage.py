@@ -20,13 +20,13 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-_REG_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 _STOP = {"the", "a", "an", "and", "or", "of", "to", "for", "with", "without", "vs", "versus",
          "removal", "test", "ablation", "ablate", "remove", "removing", "each", "component",
          "this", "that", "our", "its", "on", "in", "by", "no", "not", "is", "are", "be"}
@@ -34,32 +34,15 @@ _WAIVED = re.compile(r"\b(waived|n/?a|not applicable|dropped|deferred|needs[-\s]
 
 
 def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+    return labfiles.load_yaml(path)
 
 
 def _projects_root() -> Path:
-    root = ((_load_yaml(HUB / "lab" / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 def _project_dir(slug: str) -> Path | None:
-    reg = HUB / "lab" / "REGISTRY.md"
-    if reg.exists():
-        for line in reg.read_text(encoding="utf-8-sig").splitlines():
-            if not line.strip().startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) >= len(_REG_COLS) and cells[0] == slug:
-                raw = (dict(zip(_REG_COLS, cells)).get("project") or "").strip().strip("`")
-                if raw and raw not in ("—", "-"):
-                    p = Path(raw)
-                    return p if p.is_absolute() else (HUB / p).resolve()
-    cand = _projects_root() / slug
-    return cand if cand.exists() else None
+    return labfiles.project_dir(HUB, slug)
 
 
 def planned_ablations(proposal: Path) -> list[str]:

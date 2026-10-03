@@ -34,9 +34,9 @@ try:
 except Exception:  # noqa: BLE001 — a broken/missing executor must never blank the dashboard
     executor = None
 import workflow  # noqa: E402 — the lab's stages/states/procedures (workflow/stages.yaml)
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 TERMINAL_STATES = workflow.terminal_states()
-_REGISTRY_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 
 
 def _read_text(path: Path) -> str:
@@ -90,30 +90,16 @@ def _load_yaml(path: Path) -> dict:
 # ── registry ──────────────────────────────────────────────────────────────────
 
 def parse_registry() -> list[dict]:
-    rows = []
-    for line in _read_text(ctx.LAB / "REGISTRY.md").splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 8 or cells[0] in ("ID", "") or set(cells[0]) <= {"-"} or cells[0] == "—":
-            continue
-        rows.append(dict(zip(_REGISTRY_COLS, cells)))
-    return rows
+    return labfiles.registry_rows(ctx.HUB)
 
 
 def projects_root() -> Path:
-    lab_cfg = (_load_yaml(ctx.LAB / "config.yaml").get("lab") or {})
-    return (ctx.HUB / (lab_cfg.get("projects_root") or "../newts-lab-projects")).resolve()
+    return labfiles.projects_root(ctx.HUB)
 
 
 def _project_path(row: dict) -> Path | None:
-    """Resolve a registry row's project dir, preferring its explicit Project column."""
-    raw = (row.get("project") or "").strip().strip("`")
-    if raw and raw not in ("—", "-"):
-        p = Path(raw)
-        return p if p.is_absolute() else (ctx.HUB / p).resolve()
-    cand = projects_root() / row["id"]
-    return cand if cand.exists() else None
+    """A registry row's project dir, preferring its explicit Project column."""
+    return labfiles.project_dir(ctx.HUB, row["id"], row)
 
 
 # ── run liveness (status.py semantics) ────────────────────────────────────────

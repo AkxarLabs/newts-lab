@@ -15,7 +15,6 @@ import io
 import re
 import shutil
 import subprocess
-import sys
 import tarfile
 from pathlib import Path
 

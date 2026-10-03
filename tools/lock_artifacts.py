@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 
 import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -35,26 +37,11 @@ def projects_root() -> Path:
     return (HUB / root).resolve()
 
 
-_REG_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 
 
 def _registry_project_path(slug: str) -> Path | None:
-    """The slug's project dir from lab/REGISTRY.md's Project column (mirrors audit_claims.py),
-    so an /adopt project outside projects_root still archives its cited artifacts."""
-    reg = HUB / "lab" / "REGISTRY.md"
-    if not slug or not reg.exists():
-        return None
-    for line in reg.read_text(encoding="utf-8-sig").splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < len(_REG_COLS) or cells[0] != slug:
-            continue
-        raw = (dict(zip(_REG_COLS, cells)).get("project") or "").strip().strip("`")
-        if raw and raw not in ("—", "-"):
-            p = Path(raw)
-            return p if p.is_absolute() else (HUB / p).resolve()
-    return None
+    """The slug's project dir from lab/REGISTRY.md's Project column (mirrors audit_claims.py),."""
+    return labfiles.registry_project_path(HUB, slug)
 
 
 def resolve_claim_project(claim: dict) -> Path:

@@ -9,12 +9,15 @@ hubs share one interpreter.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+
 DEFAULT_HUB = Path(__file__).resolve().parents[2]
-REGISTRY_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 HUB_TARGET = "hub"
 
 
@@ -92,40 +95,19 @@ class Lab:
 
     # ── registry / projects ─────────────────────────────────────────────────
     def registry_rows(self) -> list[dict]:
-        reg = self.lab / "REGISTRY.md"
-        try:
-            text = reg.read_text(encoding="utf-8-sig", errors="replace")
-        except OSError:
-            return []
-        out = []
-        for line in text.splitlines():
-            if not line.strip().startswith("|"):
-                continue
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) < 8 or cells[0] in ("ID", "") or set(cells[0]) <= {"-"} or cells[0] == "—":
-                continue
-            out.append(dict(zip(REGISTRY_COLS, cells)))
-        return out
+        return labfiles.registry_rows(self.hub)
 
     def row(self, slug: str) -> dict | None:
-        return next((r for r in self.registry_rows() if r.get("id") == slug), None)
+        return labfiles.row(self.hub, slug)
 
     def projects_root(self) -> Path:
-        root = ((self.config().get("lab") or {}).get("projects_root")) or "../newts-lab-projects"
-        return (self.hub / root).resolve()
+        return labfiles.projects_root(self.hub)
 
     def project_dir(self, slug: str) -> Path | None:
         """A registered project's dir: the registry Project column wins, else projects_root/<slug>.
         Only an existing directory counts (a pre-spawn idea has none)."""
-        row = self.row(slug)
-        if row:
-            raw = (row.get("project") or "").strip().strip("`")
-            if raw and raw not in ("—", "-"):
-                p = Path(raw)
-                p = p if p.is_absolute() else (self.hub / p).resolve()
-                return p if p.is_dir() else None
-        cand = self.projects_root() / slug
-        return cand if cand.is_dir() else None
+        p = labfiles.project_dir(self.hub, slug)
+        return p if (p and p.is_dir()) else None
 
     def project_dirs(self) -> list[tuple[str, Path]]:
         """(slug, dir) for every registry row whose project dir exists."""

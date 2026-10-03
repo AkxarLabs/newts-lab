@@ -21,43 +21,25 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-_REG_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 
 
 def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+    return labfiles.load_yaml(path)
 
 
 def _projects_root() -> Path:
-    root = ((_load_yaml(HUB / "lab" / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 def _registry_project_path(slug: str) -> Path | None:
-    reg = HUB / "lab" / "REGISTRY.md"
-    if not slug or not reg.exists():
-        return None
-    for line in reg.read_text(encoding="utf-8-sig").splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < len(_REG_COLS) or cells[0] != slug:
-            continue
-        raw = (dict(zip(_REG_COLS, cells)).get("project") or "").strip().strip("`")
-        if raw and raw not in ("—", "-"):
-            p = Path(raw)
-            return p if p.is_absolute() else (HUB / p).resolve()
-    return None
+    return labfiles.registry_project_path(HUB, slug)
 
 
 def resolve_project_dir(claim: dict) -> Path:

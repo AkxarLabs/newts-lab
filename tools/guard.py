@@ -33,17 +33,16 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
-_COLS = ["id", "title", "state", "idea", "project", "paper", "updated", "next"]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import workflow  # noqa: E402 — the one definition of the lifecycle (workflow/stages.yaml)
 from markers import GATE1_RE, GATE3_RE  # noqa: E402 — the one definition of the PI's marks
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 LIFECYCLE = workflow.lifecycle(HUB)
 # documented back-edges (the paper-phase round-trip) + forward steps are legal; park/kill anytime.
@@ -69,46 +68,23 @@ def _today() -> str:
 
 
 def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:
-        return {}
+    return labfiles.load_yaml(path)
 
 
 def _registry_rows() -> list[dict]:
-    reg = LAB / "REGISTRY.md"
-    out = []
-    if not reg.exists():
-        return out
-    for line in reg.read_text(encoding="utf-8-sig").splitlines():
-        if not line.strip().startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < len(_COLS) or cells[0] in ("ID", "", "—") or set(cells[0]) <= {"-"}:
-            continue
-        out.append(dict(zip(_COLS, cells)))
-    return out
+    return labfiles.registry_rows(HUB)
 
 
 def _row(slug: str) -> dict | None:
-    return next((r for r in _registry_rows() if r["id"] == slug), None)
+    return labfiles.row(HUB, slug)
 
 
 def _projects_root() -> Path:
-    root = ((_load_yaml(LAB / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../newts-lab-projects"
-    return (HUB / root).resolve()
+    return labfiles.projects_root(HUB)
 
 
 def _project_dir(slug: str, row: dict | None = None) -> Path | None:
-    row = row or _row(slug)
-    if row:
-        raw = (row.get("project") or "").strip().strip("`")
-        if raw and raw not in ("—", "-"):
-            p = Path(raw)
-            return p if p.is_absolute() else (HUB / p).resolve()
-    cand = _projects_root() / slug
-    return cand if cand.exists() else None
+    return labfiles.project_dir(HUB, slug, row)
 
 
 def _verdict(code: int, msg: str) -> int:

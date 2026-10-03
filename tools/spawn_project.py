@@ -25,10 +25,10 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse the role_sync resolver
 import role_sync  # noqa: E402 — render_project resolves the hub tiers into the new project's role files
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -41,16 +41,11 @@ _PLACEHOLDERS = ("{{slug}}", "{{title}}", "{{date}}", "{{hub_path}}")  # ONLY th
 
 
 def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+    return labfiles.load_yaml(path)
 
 
 def _projects_root(hub: Path) -> Path:
-    root = ((_load_yaml(hub / "lab" / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../newts-lab-projects"
-    return (hub / root).resolve()
+    return labfiles.projects_root(hub)
 
 
 def _copy_file(src: Path, dst: Path, subs: dict) -> None:
