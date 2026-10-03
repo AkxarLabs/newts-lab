@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 from . import attention, campaigns
-from .lab import Lab, labfiles
+from .lab import Lab, labfiles, profile
 from .manifest import now
 
 CHECK_EVERY = 15.0
@@ -62,13 +62,13 @@ def link(cfg: dict, it: dict) -> str | None:
     if it.get("run_id"):
         return f"{base}/#/runs?run={urllib.parse.quote(it['run_id'])}"
     if (it.get("detail") or {}).get("campaign"):
-        return f"{base}/#/studies"
+        return f"{base}/{profile.NOTIFY_PATH}"
     return f"{base}/#/"
 
 
 def send(cfg: dict, it: dict, timeout: float = 8.0) -> list[str]:
     """Send one item to every configured channel. Returns the channels that failed."""
-    title = str(it.get("title") or "Newts' Lab needs you")[:200]
+    title = str(it.get("title") or profile.NOTIFY_TITLE)[:200]
     body = str(it.get("body") or "")[:500]
     url = link(cfg, it)
     failed = []

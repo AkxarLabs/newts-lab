@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+import lab_profile as profile  # noqa: E402,F401 — what this lab is: its procedures, gates, campaigns, hooks (tools/lab_profile.py)
 
 DEFAULT_HUB = Path(__file__).resolve().parents[2]
 HUB_TARGET = "hub"

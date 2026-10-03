@@ -15,8 +15,10 @@ executor code, never an agent — does the rest:
     enqueues it as a normal executor run (parent = the cycle), so it is capped, traced, retried and shown
   * retries a dispatched run that hit a timeout / usage limit / transient error (up to 3 times)
   * marks a study as waiting when its run reports `needs_pi` — only that study waits; the campaign goes on
-  * records Gate 3 itself — only if the brief delegates it — once a paper passed review AND the keeper's
-    own run of the paper audits is clean, then launches /finalize (tools/gate3.py)
+  * after each pass, lets the lab profile act (tools/lab_profile.py after_cycle): for Newts' Lab, recording
+    Gate 3 — only if the brief delegates it — once a paper passed review AND the keeper's own run of the
+    paper audits is clean, then launching /finalize (tools/gate3.py). Membership (the Campaign Log), the
+    brief's parallelism and when a waiting study is resolved are the profile's too.
   * stops on the deadline, the agent-minutes budget, the cycle cap, the PI's Stop, a cycle reporting
     `campaign=done`, or N failures in a row (→ "stalled", which asks the PI) — ending with one final
     report cycle (the morning report)
@@ -34,10 +36,10 @@ import sys
 import time
 from pathlib import Path
 
-from .lab import HUB_TARGET, Lab, pos_float, pos_int, read_jsonl
+from .lab import HUB_TARGET, Lab, pos_float, pos_int, profile, read_jsonl
 from .manifest import ACTIVE, TERMINAL, all_runs, now, parse_ts, read_manifest, run_dir, transition
 from .procs import is_locked
-from .spec import RunSpec, SpecError, _workflow as workflow, registry
+from .spec import RunSpec, SpecError, registry
 
 BACKOFF_MIN = [2, 5, 15, 30, 60]
 LIVE = ACTIVE | {"queued", "waiting_input"}
@@ -166,7 +168,7 @@ def control(lab: Lab, name: str, action: str, study: str | None = None, text: st
                     pass
     if action == "revoke_gate3":
         for _t, _w, _p, m in all_runs(lab):
-            if m.get("campaign") == name and m.get("skill") == "finalize" and m.get("status") in LIVE:
+            if m.get("campaign") == name and m.get("gate3_signed") and m.get("status") in LIVE:
                 try:
                     stop_run(lab, m["run_id"], by="gate3-revoked")
                 except (SpecError, OSError):
@@ -211,43 +213,9 @@ def _brief(lab: Lab, st: dict) -> str:
         return ""
 
 
-def _parallel(brief: str) -> int:
-    m = re.search(r"≤\s*(\d+)\s*ideas in flight", brief)
-    return max(1, int(m.group(1))) if m else 1
-
-
-def _members(lab: Lab, st: dict, brief: str) -> None:
-    """Studies in this campaign: named in its Campaign Log, or projects whose envelope it signed."""
-    studies = st.setdefault("studies", {})
-    log = brief.split("## Campaign Log", 1)[1] if "## Campaign Log" in brief else ""
-    found = set()
-    for line in log.splitlines():
-        cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and _NAME_RE.match(cells[1] or "") and cells[1] not in ("idea", "---"):
-            found.add(cells[1])
-    rows = {r.get("id"): r for r in lab.registry_rows()}
-    for slug in rows:
-        pdir = lab.project_dir(slug)
-        if pdir and st["file"] in ((pdir / "control.yaml").read_text(encoding="utf-8", errors="replace")
-                                   if (pdir / "control.yaml").is_file() else ""):
-            found.add(slug)
-    for slug in found:
-        if slug in rows:
-            studies.setdefault(slug, {})["member"] = True
-
-
 def _row_sig(lab: Lab, slug: str) -> str:
     r = lab.row(slug) or {}
     return f"{r.get('state')}|{r.get('next')}"
-
-
-def _signed_since(lab: Lab, slug: str, kind: str) -> bool:
-    """Has the PI resolved what this study was waiting for?"""
-    if kind not in ("gate1", "gate2", "gate3"):
-        return False
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import markers  # noqa: PLC0415
-    return markers.gate_signed(lab.hub, slug, int(kind[-1]), lab.project_dir(slug))
 
 
 def _update_waits(lab: Lab, st: dict, mine: list) -> None:
@@ -265,7 +233,7 @@ def _update_waits(lab: Lab, st: dict, mine: list) -> None:
     for slug, s in studies.items():
         if not s.get("waiting"):
             continue
-        if _row_sig(lab, slug) != s.get("waiting_since") or _signed_since(lab, slug, s["waiting"]):
+        if _row_sig(lab, slug) != s.get("waiting_since") or profile.wait_resolved(lab, slug, s["waiting"]):
             s["cleared_run"] = s.get("waiting_run")
             s.update(waiting=None, waiting_run=None)
             _event(st, f"{slug} no longer waits — the campaign picks it up again")
@@ -312,7 +280,7 @@ def _dispatch(lab: Lab, st: dict, cycles: list, children: list, brief: str, out:
     events = [e for e in read_jsonl(lab.lab / ".bus" / "events.jsonl", tail=6000)
               if e.get("kind") == "campaign_dispatch" and e.get("run_id") in cycle_ids]
     live = [m for *_x, m in children if m.get("status") in LIVE]
-    cap = _parallel(brief)
+    cap = profile.campaign_parallel(brief)
     for e in events:
         key = f"{e.get('ts')}|{e.get('run_id')}|{json.dumps(e.get('data') or {}, sort_keys=True)}"
         if key in seen:
@@ -326,7 +294,7 @@ def _dispatch(lab: Lab, st: dict, cycles: list, children: list, brief: str, out:
         why = None
         s = (st.get("studies") or {}).get(target) or {}
         reg = registry(lab.hub)
-        if skill in workflow.not_dispatchable(lab.hub) or skill not in reg:
+        if skill in profile.not_dispatchable(lab.hub) or skill not in reg:
             why = f"/{skill} can't be dispatched by a campaign"
         elif reg[skill].get("mode") != "headless":
             why = f"/{skill} is interactive"
@@ -353,74 +321,6 @@ def _dispatch(lab: Lab, st: dict, cycles: list, children: list, brief: str, out:
         st.setdefault("dispatch_log", []).append(rec)
         st["dispatch_log"] = st["dispatch_log"][-80:]
     st["seen_dispatch"] = list(seen)[-600:]
-
-
-def _open_escalation(lab: Lab, slug: str) -> bool:
-    open_ = set()
-    for e in read_jsonl(lab.lab / ".bus" / "events.jsonl", tail=6000):
-        if e.get("idea") != slug:
-            continue
-        if e.get("kind") == "escalation":
-            open_.add(e.get("ts"))
-        elif e.get("kind") == "escalation_resolved":
-            open_.clear()
-    return bool(open_)
-
-
-def _try_gate3(lab: Lab, st: dict, children: list, out: dict, enqueue) -> None:
-    if not st.get("gate3_auto"):
-        return
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import gate3  # noqa: PLC0415
-    ok, why = gate3.campaign_delegates(lab.hub, st["file"])
-    if not ok:
-        return
-    for slug, s in (st.get("studies") or {}).items():
-        if not s.get("member") or s.get("hold") or s.get("gate3_done") or s.get("waiting") not in (None, "gate3"):
-            continue
-        if gate3.registry_state(lab.hub, slug) != workflow.gate_state(3, lab.hub) or gate3.note_path(lab.hub, slug).exists():
-            continue
-        pdir = lab.project_dir(slug)
-        if pdir and re.search(r"^target:\s*\n(?:[ \t].*\n)*?[ \t]+active:\s*true",
-                              (pdir / "control.yaml").read_text(encoding="utf-8", errors="replace")
-                              if (pdir / "control.yaml").is_file() else "", re.M):
-            continue   # a target-driven project: the PI picks the final output
-        stopper = (workflow.load(lab.hub).get("next_for_state") or {}).get(workflow.gate_state(3, lab.hub))   # stops at Gate 3
-        review = [m for *_x, m in children if m.get("skill") == stopper and m.get("subject") == slug
-                  and m.get("status") == "completed" and (m.get("report") or {}).get("needs_pi") == "gate3"]
-        if not review:
-            continue
-        paper = gate3.paper_dir(lab.hub, slug)
-        stamp = "|".join(str(int(p.stat().st_mtime)) for p in (paper / "main.pdf", paper / "claims.yaml") if p.exists())
-        if s.get("gate3_checked") == stamp:
-            continue   # same paper already failed the checks — wait for a revision
-        s["gate3_checked"] = stamp
-        ready = gate3.readiness(lab.hub, slug)
-        fails = [c["label"] for c in ready["checks"] if not c["ok"]]
-        if _open_escalation(lab, slug):
-            fails.append("an escalation is still open")
-        audits = {} if fails else gate3.run_audits(lab.hub, slug)
-        bad = [f"{k} audit exit {v}" for k, v in audits.items() if v != 0]
-        entry = {"ts": now(), "study": slug, "audits": audits}
-        if fails or bad:
-            entry["result"] = "not yet: " + "; ".join(fails + bad)
-            st.setdefault("gate3_log", []).append(entry)
-            _event(st, f"{slug}: Gate 3 not recorded — {entry['result'][9:]}")
-            continue
-        save(lab, st)   # gate3.delegation_valid reads the saved state (membership, hold)
-        gate3.sign_delegated(lab.hub, slug, st["file"], audits, by=f"campaign keeper pid {os.getpid()}")
-        spec = RunSpec(skill="finalize", target=slug, gate3=True, backend=st.get("backend"), model=st.get("model"),
-                       campaign=st["name"], parent=review[-1]["run_id"], created_by="campaign-gate3")
-        try:
-            child = enqueue(lab, spec)
-            entry.update(result="recorded Gate 3 by delegation; /finalize started", run_id=child["run_id"])
-            s["gate3_done"] = True
-            out["gate3"].append(slug)
-        except SpecError as ex:
-            entry["result"] = f"recorded, but /finalize could not start: {ex}"
-        st.setdefault("gate3_log", []).append(entry)
-        st["gate3_log"] = st["gate3_log"][-40:]
-        _event(st, f"{slug}: Gate 3 recorded by delegation")
 
 
 def _account(lab: Lab, st: dict, last: dict) -> None:
@@ -490,18 +390,18 @@ def _stop_reason(st: dict) -> str | None:
 def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
     name = st["name"]
     mine = [x for x in runs if x[3].get("campaign") == name]
-    driver = workflow.campaign_driver(lab.hub)
+    driver = profile.campaign_driver(lab.hub)
     cycles = sorted([x for x in mine if x[3].get("skill") == driver],
                     key=lambda x: (int(x[3].get("campaign_cycle") or 0), x[3].get("created") or ""))
     children = [x for x in mine if x[3].get("skill") != driver]
     st["used_minutes"] = round(sum(_wall_min(m) for *_x, m in mine), 1)
     brief = _brief(lab, st)
-    _members(lab, st, brief)
+    profile.campaign_members(lab, st, brief)
     _update_waits(lab, st, mine)
     _dispatch(lab, st, cycles, children, brief, out, enqueue)
     if st["status"] == "active":
         _retry_children(lab, st, children, out)
-        _try_gate3(lab, st, children, out, enqueue)
+        profile.after_cycle(lab, st, children, out, enqueue, sys.modules[__name__])
     # the cycle itself
     live = [m for *_x, m in cycles if m.get("status") in LIVE]
     if live:
@@ -543,7 +443,7 @@ def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
         nb = min(nb, time.time())   # the report cycle goes right away
     n = len(cycles) + 1
     answers = [q for q in st.get("questions") or [] if q.get("answer") and not q.get("delivered")]
-    spec = RunSpec(skill=workflow.campaign_driver(lab.hub) or "autopilot", target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
+    spec = RunSpec(skill=profile.campaign_driver(lab.hub), target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
                    model=st.get("model"), max_minutes=st.get("cycle_minutes"), campaign=name,
                    parent=last["run_id"] if last else None, created_by="campaign",
                    extra={"campaign_cycle": n, "campaign_final": final, "not_before": _iso(max(nb, time.time())),

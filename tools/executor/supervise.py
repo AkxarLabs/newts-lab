@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import backends, live
-from .lab import Lab, labfiles, pos_float, pos_int
+from .lab import Lab, labfiles, pos_float, pos_int, profile
 from .manifest import (append_jsonl, emit, now, read_manifest, run_dir, transition, worker_line,
                        write_manifest)
 from .procs import NEW_GROUP, NO_WINDOW, RunLock, graceful_stop, kill_tree, python_exe
@@ -330,17 +330,14 @@ def _prepare(lab: Lab, b, st: _State, workdir: Path, rd: Path, is_live: bool):
            "NEWTS_RUN_TARGET": str(m.get("target")), "NEWTS_ATTEMPT": str(attempt),
            "NEWTS_RUN_SUBJECT": str(m.get("subject") or ""), "NEWTS_RUN_SKILL": str(m.get("skill") or ""),
            "AUTOSCIENTIST_AGENT_DEPTH": str(pos_int(m.get("depth"), 0, 0) + 1)}
-    if m.get("skill") == "finalize" and m.get("gate3_signed"):
-        env.pop("AUTOSCIENTIST_NO_GATE3", None)   # the PI signed Gate 3 in the dashboard for exactly this run
-    else:
-        env["AUTOSCIENTIST_NO_GATE3"] = "1"   # Gate 3 is never delegated — guard.py finalization hard-stops it
+    profile.run_env(m, env)                   # what the lab sets for one run (its Gate 3 lock)
     env.update(_env_local(lab))
     env["NEWTS_PYTHON"] = python_exe()   # the opencode tracer plugin shells out to trace_hook.py with it
     preamble = (rd / "preamble.md").read_text(encoding="utf-8") if (rd / "preamble.md").exists() else ""
     a = backends.Attempt(lab=lab, m=m, workdir=workdir, rd=rd, prog=prog, cli=cli, ver=ver, prompt=prompt,
                          preamble=preamble, resuming=resuming, live=is_live, env=env, python=python_exe(),
-                         guard=backends.SIGNATURE_GUARD if backends.SIGNATURE_GUARD.is_file() else None,
-                         tracer=backends.TRACE_HOOK if backends.TRACE_HOOK.is_file() else None)
+                         guard=profile.GUARD if profile.GUARD.is_file() else None,
+                         tracer=profile.TRACER if profile.TRACER.is_file() else None)
     try:
         b.prepare(a)
         a.command = b.command(a)

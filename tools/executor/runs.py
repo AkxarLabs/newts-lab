@@ -24,8 +24,8 @@ from .lab import HUB_TARGET, Lab, pos_float, pos_int
 from .manifest import (ACTIVE, PAUSED, RESUMABLE, SCHEMA, TERMINAL, all_runs, emit, find_run,
                        new_run_id, now, parse_ts, run_dir, safe_id, scheduler_lock, transition)
 from .procs import is_locked, kill_tree
-from .spec import (ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, preamble, render_prompt, slash_command,
-                   campaign_block, stage_brief, validate)
+from .lab import profile
+from .spec import ASK, RunSpec, SpecError, SKILL_REGISTRY, ask_label, slash_command, validate
 
 MAX_ANSWER_BYTES = 4096
 MAX_REPLY_CHARS = 4000
@@ -65,11 +65,12 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
     rd = run_dir(adir, run_id)
     rd.mkdir(parents=True, exist_ok=True)
     is_ask = v["skill"] == ASK
-    prompt = v["prompt"] if is_ask else (spec.prompt_override or render_prompt(lab, v, backend))
+    prompt = v["prompt"] if is_ask else (spec.prompt_override or
+                                         profile.render_prompt(lab, v, slash_command(v), backends.get(backend).native_slash))
     (rd / "prompt.md").write_text(prompt, encoding="utf-8")
-    pre = preamble(lab, run_id, v, backend)
+    pre = profile.preamble(lab, run_id, v, backends.get(backend).ask_tool)
     if spec.campaign:
-        pre += "\n\n" + campaign_block(lab, spec, v, run_id)
+        pre += "\n\n" + profile.campaign_block(lab, spec, v, run_id)
     (rd / "preamble.md").write_text(pre, encoding="utf-8")
     max_minutes = pos_float(spec.max_minutes, 0.0) or pos_float(prog.get("max_minutes"), 240.0) or 240.0
     m = {
@@ -96,7 +97,7 @@ def enqueue(lab: Lab, spec: RunSpec) -> dict:
         "started": None, "finished": None, "wall_seconds": None, "exit_code": None,
         "last_message": None, "last_action": None, "n_actions": 0, "pending_question": None,
         "answers_given": 0, "denials": 0, "report": None, "usage": {}, "subagents": {},
-        "brief_sha": stage_brief(lab, v)[1],   # which instructions governed this run (provenance)
+        "brief_sha": profile.stage_brief(lab, v)[1],   # which instructions governed this run (provenance)
     }
     transition(lab, mpath, m, "queued", by=spec.created_by or "cli")
     return {**m, "position": queue_position(lab, run_id)}

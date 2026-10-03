@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, load
 
 sys.path.insert(0, str(REPO / "tools"))
 import executor  # noqa: E402
@@ -111,12 +111,12 @@ def test_autopilot_brief_must_live_in_campaigns(hub):
 def test_prompt_forms(hub):
     lab = setup(hub)
     v = spec.validate(lab, RunSpec(skill="propose", target="idea-a"))
-    assert spec.render_prompt(lab, v, "claude") == "/propose idea-a"          # native slash command
-    p = spec.render_prompt(lab, v, "codex")
+    assert spec.profile.render_prompt(lab, v, spec.slash_command(v), spec.backends.get("claude").native_slash) == "/propose idea-a"          # native slash command
+    p = spec.profile.render_prompt(lab, v, spec.slash_command(v), spec.backends.get("codex").native_slash)
     assert "SKILL.md" in p and "/propose idea-a" in p                        # other agents read the file
-    pre = spec.preamble(lab, "rid-1", v, "claude")
+    pre = spec.profile.preamble(lab, "rid-1", v, spec.backends.get("claude").ask_tool)
     assert "run_report --run-id rid-1" in pre and "Gate 3" in pre and "AskUserQuestion" in pre
-    assert "(question)" in spec.preamble(lab, "rid-1", v, "opencode") and "(request_user_input)" in spec.preamble(lab, "rid-1", v, "codex")
+    assert "(question)" in spec.profile.preamble(lab, "rid-1", v, spec.backends.get("opencode").ask_tool) and "(request_user_input)" in spec.profile.preamble(lab, "rid-1", v, spec.backends.get("codex").ask_tool)
 
 
 # ── backends: argv, resolution, parsing ──────────────────────────────────────
@@ -466,3 +466,27 @@ def test_health_reports_cli_login(hub, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")          # an API key also works without a claude.ai login
     assert executor.health(lab)["clis"]["claude"]["logged_in"] is True
     backends._AUTH_CACHE.clear()
+
+
+def test_the_executor_knows_no_procedure_or_state_by_name():
+    """tools/executor runs coding agents; what THIS lab is (its procedures, states, gates, campaigns) is
+    tools/lab_profile.py's. No string literal in the executor names a procedure or a lifecycle state —
+    except the run / campaign status words that happen to share a name with one ('active', 'killed')."""
+    import ast
+    import io
+    import tokenize
+    wf = load("workflow")
+    m = wf.load()
+    names = set(m["procedures"]) | {s["id"] for s in m["states"] + m["side_states"]}
+    names -= {"active", "killed"}          # also a campaign status / a run status
+    hits = []
+    for f in sorted((REPO / "tools" / "executor").rglob("*.py")):
+        for t in tokenize.generate_tokens(io.StringIO(f.read_text(encoding="utf-8")).readline):
+            if t.type == tokenize.STRING:
+                try:
+                    v = ast.literal_eval(t.string)
+                except (ValueError, SyntaxError):
+                    continue
+                if isinstance(v, str) and v in names:
+                    hits.append(f"{f.name}:{t.start[0]} {v!r}")
+    assert not hits, hits

@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 
 from .. import live
+from ..lab import profile
 from . import ANSI_RE, TRACE_EVENTS, Attempt, Backend, RunCommand, toml_str, trace_script, with_preamble
 
 
@@ -27,7 +28,7 @@ class Codex(Backend):
 
     def prepare(self, a: Attempt) -> None:
         a.hooks = hook_overrides(a.workdir, a.bcfg, a.python, guard=a.guard)
-        a.traced = any("trace_hook" in str(x) for x in (a.hooks or []))   # the guard alone logs nothing
+        a.traced = any(profile.TRACER.name in str(x) for x in (a.hooks or []))   # the guard alone logs nothing
         if a.traced:
             a.env["NEWTS_TRACE_FLAGS"] = "1"   # a trusted repo's own .codex/hooks.json then stands down
 

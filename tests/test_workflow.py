@@ -240,9 +240,9 @@ def test_headless_runs_carry_the_brief_and_record_its_sha(tmp_path, wf):
     lab = Lab(REPO)
     v = {"skill": "propose", "subject": None, "target": "hub", "workdir": REPO, "level": "hub",
          "cfg": {"mode": "headless", "args": "slug"}, "args": ""}
-    pre = spec.preamble(lab, "r1", v, "claude")
+    pre = spec.profile.preamble(lab, "r1", v, spec.backends.get("claude").ask_tool)
     assert "NEWTS STAGE BRIEF /propose" in pre and "Proposal: the method" in pre
-    text, h = spec.stage_brief(lab, v)
+    text, h = spec.profile.stage_brief(lab, v)
     assert h and h in text
     ask = {**v, "skill": "ask", "cfg": {"mode": "headless", "kind": "ask"}}
-    assert spec.stage_brief(lab, ask) == (None, None)
+    assert spec.profile.stage_brief(lab, ask) == (None, None)

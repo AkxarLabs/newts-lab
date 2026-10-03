@@ -215,7 +215,7 @@ def test_dashboard_links_spawn_to_exact_child(tmp_path):
 def test_preamble_warns_background_work_dies_with_the_session(hub):
     lab = executor.Lab(hub.root)
     v = spec.validate(lab, RunSpec(skill="lab-status"))
-    text = spec.preamble(lab, "r1", v, "claude")
+    text = spec.profile.preamble(lab, "r1", v, spec.backends.get("claude").ask_tool)
     assert "background shell job is killed" in text and "Subagents cannot ask the PI" in text
 
 

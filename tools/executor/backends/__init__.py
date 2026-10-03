@@ -25,10 +25,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..lab import profile   # the lab's hooks: its signature guard, tracer and bus (tools/lab_profile.py)
+
 DEFAULT = "claude"
 TOOLS = Path(__file__).resolve().parents[2]
-SIGNATURE_GUARD = TOOLS / "signature_guard.py"   # only the PI signs — see tools/signature_guard.py
-TRACE_HOOK = TOOLS / "trace_hook.py"
 TRACE_EVENTS = ("SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop", "SessionEnd")
 
 
@@ -87,8 +87,7 @@ class Attempt:
     @property
     def bus(self) -> Path:
         """The run's own lab_bus.py (hub-level → the hub's; project → the project's copy)."""
-        return (self.lab.hub / "tools" / "lab_bus.py") if self.m.get("level") == "hub" else \
-            (self.workdir / "scripts" / "lab_bus.py")
+        return profile.bus_script(self.lab.hub, self.m.get("level") or "hub", self.workdir)
 
 
 class Backend:
@@ -289,14 +288,7 @@ def cli_auth(prefix: list[str] | None, ttl: float = 60.0, backend: str = DEFAULT
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
-def trace_script(workdir) -> Path | None:
-    """The lab's tracer for a run's workdir: the hub's tools/trace_hook.py or a project's
-    scripts/trace_hook.py (a git worktree of a project has its own copy)."""
-    for rel in (("tools", "trace_hook.py"), ("scripts", "trace_hook.py")):
-        f = Path(workdir).joinpath(*rel)
-        if f.is_file():
-            return f
-    return None
+trace_script = profile.trace_script   # the lab's tracer for a run's workdir (tools/lab_profile.py)
 
 
 # ── why a run failed: "try again later" or "something is wrong" ───────────────

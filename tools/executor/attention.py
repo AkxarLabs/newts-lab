@@ -15,19 +15,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .lab import Lab, read_jsonl
+from .lab import Lab, profile, read_jsonl
 from .manifest import append_jsonl, now, parse_ts, run_dir
 
 SEV_ORDER = {"block": 0, "warn": 1, "info": 2}
-_NEEDS_PI_TITLE = {
-    "gate1": "Gate 1 — a proposal awaits your approval",
-    "gate2": "Gate 2 — a FULL run needs a signed envelope",
-    "gate3": "Gate 3 — a paper awaits final sign-off (in a session)",
-    "kill_criteria": "Kill criteria fired — kill or park?",
-    "null_result": "Null / negative result — how to proceed?",
-    "spawn_type": "Confirm the project type before spawning",
-    "other": "The agent needs a PI decision",
-}
 
 
 def _item(kind, sev, iid, m, title, body="", detail=None, actions=None, ts=None) -> dict:
@@ -107,7 +98,7 @@ def run_items(lab: Lab, runs: list[tuple[Path, dict]]) -> list[dict]:
             actions += [{"id": "reply", "label": "reply"}, {"id": "dismiss", "label": "dismiss"}]
             if needs:
                 out.append(_item("needs_pi", "block", f"needs:{rid}:{att}", m,
-                                 _NEEDS_PI_TITLE.get(needs, _NEEDS_PI_TITLE["other"]),
+                                 profile.NEEDS_PI_TITLES.get(needs, profile.NEEDS_PI_TITLES["other"]),
                                  body=rep.get("summary") or "", detail={"needs_pi": needs, "next": nxt},
                                  actions=actions))
             else:

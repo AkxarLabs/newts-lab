@@ -15,6 +15,7 @@ takes.
 | Your own version of any template | the same path under `lab/templates/` (a proposal, the lenses, a project file, a type, a domain) | — |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
 | An agent CLI (backend) | one module in `tools/executor/backends/` | `tests/test_live_backends.py` |
+| A different kind of lab on the same agent runner | `tools/lab_profile.py` | `tests/test_executor.py` |
 | A machine | the dashboard → Labs & machines | — |
 
 ## A procedure
@@ -144,3 +145,14 @@ everything about its CLI, and nothing outside the package branches on a backend'
 
 The supervisor, the scheduler, campaigns and the dashboard stay as they are. `tests/test_live_backends.py`
 and `tests/test_backend_tracing.py` show the contract each backend meets, with a fake CLI per backend.
+
+## A different kind of lab
+
+`tools/executor/` only runs coding agents: live sessions, the queue and its caps, retries, chaining, the
+campaign keeper's mechanics, notifications. Everything it needs to know about *this* lab is one module,
+`tools/lab_profile.py`: what may launch (the skills' frontmatter) and the one exception (/finalize under a
+Gate 3 signature); what a run is told (its prompt, the preamble, the stage brief, a campaign's
+instructions); the campaign policy (membership, parallelism, when a waiting study is resolved, delegated
+Gate 3 after each pass); the `needs_pi` titles; the hooks a run carries (the signature guard, the tracer,
+the bus); a run's environment. A test keeps the executor free of procedure and state names. To run a
+different kind of lab on the same machinery, replace that one file.

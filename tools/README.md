@@ -24,7 +24,7 @@ uv run --with pyyaml python tools/upgrade_project.py --all [--check]  # bring ol
 | **The lab's definition** | `workflow.py`, `labfiles.py` | read `workflow/stages.yaml`, `workflow/rules.yaml` and the skills; the brief; the PI's instruction layers; the generated docs; the lab's files read one way |
 | **Observability** | `lab_bus.py`, `trace_hook.py` | the append-only event bus and directive inbox; the per-agent action tracer (both ship into every project too) |
 | **Coordination** | `run_slots.py`, `hub_writeback.py`, `process_writebacks.py` | compute slots across projects; the project→hub write-back boundary |
-| **Agents** | `executor/`, `executor_cli.py`, `role_sync.py` | run procedures as live or headless sessions of claude / codex / opencode; render the roles for each CLI |
+| **Agents** | `executor/`, `executor_cli.py`, `lab_profile.py`, `role_sync.py` | run procedures as live or headless sessions of claude / codex / opencode (`executor/` knows nothing about this lab; `lab_profile.py` is everything it needs to); render the roles for each CLI |
 | **Setup and config** | `spawn_project.py`, `new_lab.py`, `configure.py`, `profiles.py`, `show_config.py`, `check_lab.py`, `upgrade_project.py`, `system_probe.py`, `terminal.py` | stamp projects and labs; owner-aware config; lint; what this machine offers; a terminal for a CLI's sign-in |
 
 Exit codes for the guard and checks: **0 = OK · 1 = BLOCKED · 2 = WARN**. A guard never grants a gate; it
