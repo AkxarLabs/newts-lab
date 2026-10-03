@@ -221,7 +221,7 @@ def cmd_health(lab: Lab, a) -> int:
 
 
 def cmd_skills(lab: Lab, a) -> int:
-    for name, cfg in executor.SKILL_REGISTRY.items():
+    for name, cfg in executor.registry(lab.hub).items():
         print(f"- /{name:<15} {cfg['level']:<8} {cfg['mode']:<12} {cfg['args'] or '-':<11} {cfg['hint']}")
     print(f"never headless: {', '.join('/' + s for s in sorted(executor.NEVER))}")
     return 0
