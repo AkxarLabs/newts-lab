@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The newt — 3D</title>
+<!-- The newt up close, in every pose (world3d/newt.js). ?theme=day|night -->
+<style>
+  @font-face { font-family: 'Newsreader'; src: url('../vendor/fonts/newsreader-opsz-normal.woff2') format('woff2'); font-weight: 200 800; }
+  @font-face { font-family: 'IBM Plex Mono'; src: url('../vendor/fonts/ibm-plex-mono-500.woff2') format('woff2'); font-weight: 500 800; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: linear-gradient(#cfe0ee, #f3efe6); }
+  body.night { background: radial-gradient(ellipse at 50% 40%, #16262e, #0b1114 70%); color: #e9efed; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  h1 { position: fixed; top: 16px; left: 20px; margin: 0; font: 450 28px 'Newsreader', Georgia, serif; z-index: 2; }
+  #names { position: fixed; left: 0; right: 0; bottom: 18%; display: flex; justify-content: space-around; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .09em; text-transform: uppercase; opacity: .6; z-index: 2; }
+</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
+</head>
+<body>
+<h1>The newt</h1><div id="names"></div>
+<canvas id="c"></canvas>
+<script src="kit.js"></script>
+<script src="newt.js"></script>
+<script type="module">
+import * as THREE from 'three';
+const theme = new URLSearchParams(location.search).get('theme') || 'day';
+document.body.classList.toggle('night', theme === 'night');
+const K = Lab3D.kit(THREE, theme);
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true });
+r.setPixelRatio(Math.min(2, devicePixelRatio)); r.shadowMap.enabled = true; r.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, theme === 'night' ? 0x203038 : 0xd8cbb4, theme === 'night' ? 0.5 : 1.2));
+const sun = new THREE.DirectionalLight(0xfff3df, theme === 'night' ? 0.8 : 2.4); sun.position.set(-3, 6, 5); sun.castShadow = true; scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 64), K.mat(theme === 'night' ? '#33464a' : '#efe7d6')); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const POSES = ['idle', 'work', 'walk', 'wait', 'carry', 'sleep', 'fail'];
+const newts = POSES.map((p, i) => { const n = Lab3D.makeNewt(K, { color: ['#e0b44e', '#3fb8a6', '#6f9be6', '#9b84ea', '#e57ab5', '#e0a346', '#3fb8a6'][i] }); n.group.position.x = (i - (POSES.length - 1) / 2) * 1.05; scene.add(n.group); return n; });
+document.getElementById('names').innerHTML = POSES.map(p => `<span>${p}</span>`).join('');
+const resize = () => { r.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); };
+addEventListener('resize', resize); resize();
+function frame(now) {
+  const t = now / 1000, az = Math.sin(t * 0.25) * 0.5;
+  cam.position.set(Math.sin(az) * 9, 2.4, Math.cos(az) * 9); cam.lookAt(0, 0.6, 0);
+  newts.forEach((n, i) => { n.update(t, { pose: POSES[i], moving: POSES[i] === 'walk' || POSES[i] === 'carry' }); n.group.rotation.y = POSES[i] === 'walk' ? Math.sin(t * 0.5) * 0.6 : 0; });
+  r.render(scene, cam); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -512,7 +512,7 @@ function frame(now) {
   const shelfN = {};
   for (const s of studies) {
     const c = cards[s.id], k = carriedAt(s, t);
-    if (k) { const n = pool.get(k[2].id); if (n && n.group.visible) { c.position.set(n.group.position.x, 1.95, n.group.position.z); c.rotation.y = n.group.rotation.y; c.visible = true; continue; } }
+    if (k) { const n = pool.get(k[2].id); if (n && n.group.visible) { c.position.set(n.group.position.x, 1.85 * n.group.scale.y + 0.2, n.group.position.z); c.rotation.y = n.group.rotation.y; c.visible = true; continue; } }
     const rid = ROOM_OF[stateAt(s, t)], o = ROOMS[rid]; if (!o) { c.visible = false; continue; }
     const i = (shelfN[rid] = (shelfN[rid] || 0) + 1) - 1, perRow = Math.max(1, Math.floor(Math.min(3.4, o.spec.size[0] * 0.4) / 0.6));
     const [x, z] = toWorld(o, o.shelfAt[0] + 0.32 + (i % perRow) * 0.6, o.shelfAt[1]);
