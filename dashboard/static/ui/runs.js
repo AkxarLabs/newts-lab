@@ -95,6 +95,7 @@
   const Block = ({ b, last }) => {
     switch (b.k) {
       case 'text': return html`<div class="msg"><${Who} who=${b.who} /><${NL.Markdown} text=${b.t} /></div>`;
+      case 'you': return html`<div class="msg msg-you"><span class="msg-who">${b.by === 'you' ? (b.kind === 'answer' ? 'you answered' : b.kind === 'permission' ? 'you decided' : 'you') : b.by}</span>${b.t}</div>`;
       case 'tools': return html`<${ToolGroup} b=${b} last=${last} />`;
       case 'spawn': return html`<div class="spawn"><span class="spawn-ico">⤷</span><span>started a subagent</span> <b>${NL.clip(b.t, 120)}</b></div>`;
       case 'sub': return html`<div class="subres"><div class="subres-h">↩ <b>${b.who || 'subagent'}</b> handed back</div><div class="subres-t">${NL.clip(b.t, 1800)}</div></div>`;
@@ -189,7 +190,7 @@
         <${NL.Btn} kind="primary" onClick=${sendReply} disabled=${!reply.trim()}>Send</${NL.Btn}></div>` : null}
       <div class="row">
         ${liveNow && active ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/interrupt', { run_id: r.run_id })} title="Stop the current step; the session stays open for your next message">⏸ Interrupt</${NL.Btn}>` : null}
-        ${active ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }}>■ Stop</${NL.Btn}>` : null}
+        ${active || (liveNow && r.status === 'waiting_input') ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }}>■ Stop</${NL.Btn}>` : null}
         ${r.status === 'queued' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/cancel', { run_id: r.run_id }, 'Cancelled')}>Cancel</${NL.Btn}>` : null}
         ${NL.RUN_DONE.has(r.status) && r.session_id && r.status !== 'completed' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/resume', { run_id: r.run_id }, 'Resuming')}>↻ Resume</${NL.Btn}>` : null}
         <span class="grow"></span>

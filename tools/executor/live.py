@@ -550,7 +550,7 @@ class Conversation:
     manifest state (`st.m`, `st.lock`, `st.write`, `st.transition`); `say` logs; `note(kind, **data)`
     emits a bus event."""
 
-    def __init__(self, session, st, rd: Path, prog: dict, note=None):
+    def __init__(self, session, st, rd: Path, prog: dict, note=None, log=None):
         self.s, self.st, self.rd = session, st, Path(rd)
         cfg = prog.get("live") if isinstance(prog.get("live"), dict) else {}
         self.park_after = pos_float(cfg.get("park_minutes"), 60.0) * 60
@@ -560,6 +560,7 @@ class Conversation:
         self.linger = pos_float(cfg.get("linger_minutes"), 10.0) * 60 if st.m.get("kind") == "ask" else 0.0
         self.idle = False                      # Ask Newt: answered, waiting for the PI's next message
         self.note = note or (lambda *a, **k: None)
+        self.log = log or (lambda obj: None)   # a line in the run's transcript: what the PI said
         self.pending: dict[str, dict] = {}     # request id → request (+ "t0")
         self.parked = False
         self.leftover: list[dict] = []         # messages that arrived too late for this process
@@ -643,6 +644,7 @@ class Conversation:
             return
         if k == "message":
             if self.s.send(str(item.get("text") or "")):
+                self.log({"_pi": "message", "text": str(item.get("text") or ""), "ts": now()})
                 self._turn_end_at = None
                 if self.idle:
                     self.idle = False
@@ -666,6 +668,9 @@ class Conversation:
 
     def _answer(self, req: dict, item: dict, by: str) -> None:
         self.s.respond(req, item)
+        self.log({"_pi": "answer" if req["kind"] == "question" else "permission", "by": by, "ts": now(),
+                  "answers": item.get("answers"), "response": item.get("response"), "allow": item.get("allow"),
+                  "tool": req.get("tool")})
         self._drop(req["id"])
         m = self.st.m
         if req["kind"] == "question":

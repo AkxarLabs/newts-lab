@@ -464,7 +464,8 @@ def _attempt(lab: Lab, workdir: Path, adir: Path, mpath: Path, m: dict, rd: Path
         sess = live.make(backend, prompt or "", m.get("session_id") if (resuming or backend == "claude") else None, **ctx)
         env.update(sess.env())
         conv = live.Conversation(sess, st, rd, prog, note=lambda kind, detail=None, **d: emit(
-            lab, workdir, kind, detail=detail or run_id, idea=m.get("subject"), data={"run_id": run_id, **d}))
+            lab, workdir, kind, detail=detail or run_id, idea=m.get("subject"), data={"run_id": run_id, **d}),
+            log=lambda obj: append_jsonl(adir / (m.get("stream") or f"{run_id}.stream.jsonl"), obj))
 
     def on_spawn(pid):
         m["attempts"][-1]["pid"] = pid

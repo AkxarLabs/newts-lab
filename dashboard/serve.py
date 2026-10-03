@@ -721,6 +721,17 @@ def _tail_entry(backend: str, obj: dict, labels: dict) -> list[dict]:
                  "ts": obj.get("ts")}]
     if "_truncated" in obj:
         return [{"k": "raw", "t": obj["_truncated"]}]
+    if "_pi" in obj:   # what the PI said to a live session (written by the supervisor)
+        kind = obj["_pi"]
+        if kind == "message":
+            t = obj.get("text") or ""
+        elif kind == "answer":
+            t = "; ".join(f"{k} → {', '.join(v) if isinstance(v, list) else v}" for k, v in (obj.get("answers") or {}).items())
+            t = (t + (" — " if t else "") + (obj.get("response") or "")).strip()
+        else:
+            t = f"{'allowed' if obj.get('allow') else 'denied'} {obj.get('tool') or 'the action'}"
+        by = obj.get("by") or "PI"
+        return [{"k": "you", "t": t[:4000], "by": "you" if by == "PI" else by, "kind": kind, "ts": obj.get("ts")}]
     out = []
     for ev in executor.backends.parse_events(backend, obj):
         who = labels.get(ev.get("parent")) if ev.get("parent") else None
