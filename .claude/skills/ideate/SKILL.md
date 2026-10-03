@@ -8,6 +8,7 @@ newts:
   args: text?
   launchable: true
   replaceable: true
+  in_project: true
   hint: research direction, or --in-project <slug>
   title: Explore a new direction
   does: Researches the direction, generates and critiques ideas, and files the best 1–3 as studies.
@@ -19,6 +20,8 @@ newts:
   - registry rows (state seed → triaged)
   - lab/ideation/<run>/ record
   brief_note: With `--in-project <slug>`, add `--study <slug>`.
+  start: {icon: "✦", order: 1, label: The direction, placeholder: "e.g. sparse routing for small mixture-of-experts models",
+    onramp: "Describe a direction; the lab researches it, generates and critiques ideas, and files the best as studies."}
 ---
 
 # Ideate (phased pipeline)

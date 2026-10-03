@@ -136,7 +136,7 @@ def validate(lab: Lab, spec: RunSpec) -> dict:
     needs_slug = schema.startswith("slug") and not schema.startswith("slug?")
     if needs_slug and not subject:
         raise SpecError(f"/{skill} needs an idea/project — pick one as the target")
-    args = sanitize_text(spec.args, allow_in_project=(skill == "ideate"))
+    args = sanitize_text(spec.args, allow_in_project=bool(cfg.get("in_project")))
     if schema == "" and args:
         raise SpecError(f"/{skill} takes no arguments")
     if schema == "campaign":
@@ -227,7 +227,7 @@ def slash_command(v: dict) -> str:
     """The `/skill args` line exactly as the PI would type it in a session."""
     skill, subject, args, schema = v["skill"], v["subject"], v["args"], v["cfg"]["args"]
     parts = [f"/{skill}"]
-    if skill == "autopilot":
+    if schema == "campaign":
         parts += ["continue", args]
     else:
         if schema.startswith("slug") and subject:
@@ -268,8 +268,9 @@ def _answers_block(spec: RunSpec) -> list[str]:
 def campaign_block(lab: Lab, spec: RunSpec, v: dict, run_id: str) -> str:
     """Standing instructions for a run that belongs to a campaign kept by the executor (campaigns.py)."""
     bus = (lab.hub / "tools" / "lab_bus.py").as_posix()
-    brief = spec.args if v.get("skill") == "autopilot" else ""
-    if v.get("skill") == "autopilot":
+    driver = (v.get("cfg") or {}).get("args") == "campaign"   # this run IS a campaign cycle
+    brief = spec.args if driver else ""
+    if driver:
         final = bool((spec.extra or {}).get("campaign_final"))
         lines = [
             f"CAMPAIGN CYCLE {spec.extra.get('campaign_cycle') or ''} of {spec.campaign} (brief {brief}), kept by the "

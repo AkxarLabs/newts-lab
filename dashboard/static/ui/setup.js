@@ -71,11 +71,7 @@
   };
   const FirstStep = ({ back, finish }) => html`<div class="wz-body"><h2>Where do you want to start?</h2>
     <p class="lede">Pick one — you can do all of them later from <b>Start something</b>.</p>
-    <div class="onramps big">${[['campaign', '⟳', 'Start a campaign and walk away', 'Sign a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.'],
-      ['ideate', '✦', 'Explore a new direction', 'Describe a direction; the lab researches it, generates and critiques ideas, and files the best as studies.'],
-      ['adopt', '⇲', 'Bring in what I have', 'An idea you had, a design, an existing repository or a draft paper — enter the lifecycle mid-way.'],
-      ['discuss', '❝', 'Talk it through first', 'A one-question-at-a-time conversation with live research. Commits to nothing.'],
-      ['compete', '◎', 'Compete on a target', 'A benchmark or a score to beat, with a fixed evaluation.']].map(([id, ico, t, sub]) =>
+    <div class="onramps big">${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.onramp]).map(([id, ico, t, sub]) =>
       html`<button type="button" class="onramp" onClick=${() => { finish(); NL.openStart({ intent: id }); }}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}</div>
     <div class="row end"><${NL.Btn} onClick=${back}>Back</${NL.Btn}><${NL.Btn} onClick=${finish}>Go to the lab</${NL.Btn}></div></div>`;
 

@@ -147,7 +147,7 @@ def parse_next(cmd: str | None, default_target: str = HUB_TARGET, hub=None) -> R
         return None
     rest = toks[1:]
     schema = cfg["args"]
-    if skill == "autopilot":
+    if schema == "campaign":   # the campaign driver: `/autopilot continue <brief>`
         if len(rest) >= 2 and rest[0] == "continue":
             return RunSpec(skill=skill, target=HUB_TARGET, args=rest[1])
         return None
@@ -245,7 +245,7 @@ def _note_limit(lab: Lab, backend: str, until: float) -> None:
 def cap_key(m: dict, target: str) -> str:
     """What a run counts against: a campaign's cycles (1 at a time), a study (hub runs about a study count
     as that study's, so a long hub procedure on one study doesn't block every other), or the hub itself."""
-    if m.get("skill") == "autopilot" and m.get("campaign"):
+    if m.get("campaign") and m.get("campaign_cycle"):
         return "campaign:" + str(m["campaign"])
     if m.get("level") == "hub":
         return ("hub:" + str(m["subject"])) if m.get("subject") else HUB_TARGET

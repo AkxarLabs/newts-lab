@@ -378,14 +378,15 @@ def _try_gate3(lab: Lab, st: dict, children: list, out: dict, enqueue) -> None:
     for slug, s in (st.get("studies") or {}).items():
         if not s.get("member") or s.get("hold") or s.get("gate3_done") or s.get("waiting") not in (None, "gate3"):
             continue
-        if gate3.registry_state(lab.hub, slug) != "internal-review" or gate3.note_path(lab.hub, slug).exists():
+        if gate3.registry_state(lab.hub, slug) != workflow.gate_state(3, lab.hub) or gate3.note_path(lab.hub, slug).exists():
             continue
         pdir = lab.project_dir(slug)
         if pdir and re.search(r"^target:\s*\n(?:[ \t].*\n)*?[ \t]+active:\s*true",
                               (pdir / "control.yaml").read_text(encoding="utf-8", errors="replace")
                               if (pdir / "control.yaml").is_file() else "", re.M):
             continue   # a target-driven project: the PI picks the final output
-        review = [m for *_x, m in children if m.get("skill") == "review-paper" and m.get("subject") == slug
+        stopper = (workflow.load(lab.hub).get("next_for_state") or {}).get(workflow.gate_state(3, lab.hub))   # stops at Gate 3
+        review = [m for *_x, m in children if m.get("skill") == stopper and m.get("subject") == slug
                   and m.get("status") == "completed" and (m.get("report") or {}).get("needs_pi") == "gate3"]
         if not review:
             continue
@@ -489,9 +490,10 @@ def _stop_reason(st: dict) -> str | None:
 def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
     name = st["name"]
     mine = [x for x in runs if x[3].get("campaign") == name]
-    cycles = sorted([x for x in mine if x[3].get("skill") == "autopilot"],
+    driver = workflow.campaign_driver(lab.hub)
+    cycles = sorted([x for x in mine if x[3].get("skill") == driver],
                     key=lambda x: (int(x[3].get("campaign_cycle") or 0), x[3].get("created") or ""))
-    children = [x for x in mine if x[3].get("skill") != "autopilot"]
+    children = [x for x in mine if x[3].get("skill") != driver]
     st["used_minutes"] = round(sum(_wall_min(m) for *_x, m in mine), 1)
     brief = _brief(lab, st)
     _members(lab, st, brief)
@@ -541,7 +543,7 @@ def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
         nb = min(nb, time.time())   # the report cycle goes right away
     n = len(cycles) + 1
     answers = [q for q in st.get("questions") or [] if q.get("answer") and not q.get("delivered")]
-    spec = RunSpec(skill="autopilot", target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
+    spec = RunSpec(skill=workflow.campaign_driver(lab.hub) or "autopilot", target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
                    model=st.get("model"), max_minutes=st.get("cycle_minutes"), campaign=name,
                    parent=last["run_id"] if last else None, created_by="campaign",
                    extra={"campaign_cycle": n, "campaign_final": final, "not_before": _iso(max(nb, time.time())),

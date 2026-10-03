@@ -27,7 +27,8 @@
   /* ── Gate 1 ─────────────────────────────────────────────────────────────── */
   const Gate1 = ({ it }) => {
     const [env, setEnv] = useState(false);
-    const signed = it.gate_signed || it.state !== 'proposal' && !it.gate;
+    const signed = it.gate_signed || it.state !== NL.gateAt(1) && !it.gate;
+    const then = NL.nextSkill(NL.gateAt(1), true);   // what runs once Gate 1 is signed (spawn-project)
     const sign = async () => {
       const ok = await NL.confirm({ title: `Sign Gate 1 for “${it.title || it.id}”?`, ok: 'Sign the proposal',
         body: html`<p>This records your approval in <span class="mono">studies/${it.id}/proposal.md</span>${env ? ' — including its Gate-2 envelope (§5)' : ''}, logged. Next: create the project repo.</p>` });
@@ -35,14 +36,14 @@
       const r = await NL.act('/api/gate', { idea: it.id, gate: 1, envelope: env, confirm: true }, 'Proposal signed');
       if (r.ok && !(r.launch && r.launch.run_id)) {
         if (await NL.confirm({ title: 'Create the project repo now?', body: 'Runs /spawn-project: the repo, its config from the proposal, and a green smoke test.', ok: 'Create it', cancel: 'Later' }))
-          NL.launch({ skill: 'spawn-project', target: it.id });
+          NL.launch({ skill: then, target: it.id });
       } else if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
     };
     return html`<div class="signbox">
       <div class="signbox-h">Gate 1 · approve the proposal</div>
       <p>You approve the hypothesis, the frozen evaluation, the staged plan with its promotion criteria, the budgets and the kill criteria. Nothing is built or spent before this.</p>
-      ${signed ? html`<div class="note note-ok">✓ Signed${it.state === 'proposal' ? ' — the project repo is created next' : ''}.</div>
-        ${it.state === 'proposal' ? html`<div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: 'spawn-project', target: it.id })}>Create the project repo</${NL.Btn}><${Revoke} slug=${it.id} what="gate1" /></div>` : null}`
+      ${signed ? html`<div class="note note-ok">✓ Signed${it.state === NL.gateAt(1) ? ' — the project repo is created next' : ''}.</div>
+        ${it.state === NL.gateAt(1) ? html`<div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: then, target: it.id })}>Create the project repo</${NL.Btn}><${Revoke} slug=${it.id} what="gate1" /></div>` : null}`
         : html`<label class="check"><input type="checkbox" checked=${env} onChange=${e => setEnv(e.target.checked)} /> Also approve the proposal's Gate-2 envelope (§5), so FULL runs within it can proceed once the project exists</label>
         <div class="row"><${NL.Btn} kind="primary" onClick=${sign}>Sign Gate 1</${NL.Btn}></div>`}
     </div>`;
@@ -99,7 +100,7 @@
       ${!r ? html`<${NL.Spinner} />` : html`<ul class="checklist">${r.checks.map(c => html`<li class=${c.ok ? 'ok' : c.blocking ? 'bad' : 'warn'}><span>${c.ok ? '✓' : c.blocking ? '✕' : '!'}</span><div><b>${c.label}</b><small>${c.detail}</small></div></li>`)}</ul>`}
       ${r && r.signed ? html`${String(r.signed_via || '').startsWith('campaign:') ? html`<div class=${cls('note', r.valid ? 'note-ok' : 'note-warn')}>${r.valid ? '✓ Gate 3 was recorded by delegation' : 'Gate 3 was recorded by delegation, but it no longer counts'} — <span class="mono">${r.signed_via.slice(9)}</span>${r.valid ? ': the lab re-ran the paper audits and they were clean. Take it back (or hold this study) on the campaign card.' : ': ' + (r.valid_why || '')}</div>` : html`<div class="note note-ok">✓ Gate 3 is signed.</div>`}<div class="row">${it.state !== 'final' ? html`<${NL.Btn} kind="primary" onClick=${async () => {
             const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); }}>Start /finalize</${NL.Btn}>` : null}
-          ${it.state !== 'final' ? html`<${Revoke} slug=${it.id} what="gate3" />` : null}</div>`
+          ${it.state !== NL.gateOpens(3) ? html`<${Revoke} slug=${it.id} what="gate3" />` : null}</div>`
         : html`<label class="check"><input type="checkbox" checked=${launch} onChange=${e => setLaunch(e.target.checked)} /> Start <span class="mono">/finalize</span> right after signing, and watch it here</label>
         <div class="row"><${NL.Btn} kind="danger" disabled=${!r || !r.can_sign} onClick=${sign}>Sign Gate 3…</${NL.Btn}>
           ${r && !r.can_sign ? html`<span class="muted small">${r.checks.filter(c => c.blocking && !c.ok).map(c => c.detail).join('; ')}</span>` : null}</div>`}
@@ -151,6 +152,7 @@
   NL.revive = async (it) => {
     const reason = await NL.confirm({ title: `Bring back “${it.title || it.id}”?`, input: 'Why it comes back (recorded)', placeholder: 'e.g. new evidence from …', ok: 'Revive' });
     if (!reason) return;
-    NL.act('/api/revive', { idea: it.id, reason, to: 'triaged', confirm: true }, 'Revived — back in Ideas');
+    const to = NL.reviveTo();
+    NL.act('/api/revive', { idea: it.id, reason, to, confirm: true }, `Revived — back to ${NL.STATE_LABEL[to] || to}`);
   };
 })();

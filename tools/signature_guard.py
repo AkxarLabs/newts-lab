@@ -49,7 +49,15 @@ HUB = Path(os.environ.get("NEWTS_HUB") or HERE.parent).resolve()
 
 sys.path.insert(0, str(HERE))
 from markers import AUTH_BOX_RE, GATE1_RE, GATE3_RE  # noqa: E402  (one definition of the PI's marks)
-FINAL_ROW_RE = re.compile(r"^\|\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*\|[^|\n]*\|\s*final\s*\|", re.M | re.I)
+def _final_rows(text: str) -> set[str]:
+    """Registry rows in the state Gate 3 opens (`final`) — only a signed Gate 3 may put one there."""
+    try:
+        import workflow  # noqa: PLC0415
+        final = workflow.gate_before(3, HUB) or "final"
+    except Exception:  # noqa: BLE001
+        final = "final"
+    rx = re.compile(r"^\|\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*\|[^|\n]*\|\s*" + re.escape(final) + r"\s*\|", re.M | re.I)
+    return set(rx.findall(text or ""))
 CAMPAIGN_REF_RE = re.compile(r"lab/campaigns/([A-Za-z0-9][A-Za-z0-9._-]*\.md)")
 ENVELOPE_OK_RE = re.compile(r"PI Gate 1 approved[^>\n]*envelope", re.I)
 
@@ -278,8 +286,8 @@ def _rule_campaign(path: Path, old: str | None, new: str) -> str | None:
 def _rule_registry(path: Path, old: str | None, new: str) -> str | None:
     if _rel(path) != "lab/REGISTRY.md":
         return None
-    had = set(FINAL_ROW_RE.findall(old or ""))
-    for slug in set(FINAL_ROW_RE.findall(new)) - had:
+    had = _final_rows(old)
+    for slug in _final_rows(new) - had:
         sys.path.insert(0, str(HERE))
         import gate3  # noqa: PLC0415
         if not gate3.delegation_valid(HUB, slug)[0]:

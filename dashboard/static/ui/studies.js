@@ -12,11 +12,11 @@
     const live = NL.runsOf(s, it.id).find(r => NL.RUN_ACTIVE.has(r.status) || r.status === 'queued' || r.status === 'waiting_input');
     if (live) return { label: live.status === 'waiting_input' ? 'Answer its question' : 'Watch it work', icon: '▸', run: () => NL.openRun(live.run_id), live };
     if (it.gate && !it.gate_signed) return { label: `Review and sign Gate ${it.gate}`, icon: '✉', run: () => NL.openGate(it.id, it.gate), gate: it.gate };
-    if (it.state === 'internal-review' && it.gate === 3 && it.gate_signed) return { label: 'Finalize', icon: '▸', run: async () => {
+    if (it.state === NL.gateAt(3) && it.gate === 3 && it.gate_signed) return { label: 'Finalize', icon: '▸', run: async () => {
       if (!await NL.confirm({ title: `Finalize “${it.title || it.id}”?`, ok: 'Start /finalize', body: 'The reproducibility pass, artifact locking and knowledge write-back — under your Gate 3 signature.' })) return;
       const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); } };
     const skill = NL.nextSkill(it.state, it.gate_signed);   // workflow/stages.yaml next_for_state
-    if (!skill) return it.state === 'final' ? null : NL.isShelved(it.state) ? { label: 'Revive it', icon: '↺', run: () => NL.revive(it) } : null;
+    if (!skill) return NL.isDone(it.state) ? null : NL.isShelved(it.state) ? { label: 'Revive it', icon: '↺', run: () => NL.revive(it) } : null;
     if (((s.skills || {})[skill] || {}).level === 'project' && !it.has_project) return null;
     return { label: NL.procTitle(skill), icon: '▸', skill, run: () => NL.launch({ skill, target: it.id }) };
   };
@@ -160,11 +160,10 @@
     </div><aside class="col-side"><${NL.Section} title="Look closer"><div class="stack">
       <${NL.Btn} onClick=${() => tool('status')}>Project status</${NL.Btn}><${NL.Btn} onClick=${() => tool('compare')}>Compare runs</${NL.Btn}>
       <${NL.Btn} onClick=${() => tool('show_config')}>Effective config</${NL.Btn}><${NL.Btn} onClick=${() => tool('inbox')}>Agent inbox</${NL.Btn}></div></${NL.Section}>
-      <${NL.Section} title="Start"><div class="stack">
-        <${NL.Btn} onClick=${() => NL.launch({ skill: 'experiment', target: it.id })}>Run experiments</${NL.Btn}>
-        <${NL.Btn} onClick=${() => NL.launch({ skill: 'improve', target: it.id })}>Improve the method</${NL.Btn}>
-        <${NL.Btn} onClick=${() => NL.open(NL.LoopBriefSheet, { slug: it.id }, { key: 'loop' })}>Research loop…</${NL.Btn}>
-        <${NL.Btn} onClick=${() => NL.launch({ skill: 'analyze', target: it.id })}>Analyze</${NL.Btn}></div></${NL.Section}></aside></div>`;
+      <${NL.Section} title="Start"><div class="stack">${(NL.PROCS_FOR_STATE[it.state] || []).filter(p => (NL.getState().skills || {})[p]).map(p => {
+        const brief = (NL.PROC[p] || {}).kind === 'driver' && (NL.PROC[p] || {}).level === 'project';   // a loop needs its signed brief first
+        return html`<${NL.Btn} onClick=${() => brief ? NL.open(NL.LoopBriefSheet, { slug: it.id }, { key: 'loop' }) : NL.launch({ skill: p, target: it.id })}>${NL.procTitle(p)}${brief ? '…' : ''}</${NL.Btn}>`; })}
+        </div></${NL.Section}></aside></div>`;
   };
 
   NL.SectionsSheet = ({ title, data, onClose }) => html`<${NL.Sheet} wide title=${title} onClose=${onClose}>${!data || !data.ok ? html`<div class="note note-warn">${(data && data.error) || 'nothing to show'}</div>` :
@@ -181,7 +180,7 @@
         <${NL.Btn} onClick=${() => NL.openClaims(it.id)}>Claims ↔ evidence${it.claims ? ` (${it.claims})` : ''}</${NL.Btn}>
         <${NL.Btn} onClick=${() => NL.launch({ skill: 'make-figures', target: it.id })}>Rebuild figures</${NL.Btn}>
         <${NL.Btn} onClick=${() => NL.launch({ skill: 'critique-paper', target: it.id })}>Critique it</${NL.Btn}>
-        ${it.state === 'internal-review' ? html`<${NL.Btn} kind="primary" onClick=${() => NL.openGate(it.id, 3)}>Gate 3…</${NL.Btn}>` : null}</div></${NL.Section}>
+        ${it.state === NL.gateAt(3) ? html`<${NL.Btn} kind="primary" onClick=${() => NL.openGate(it.id, 3)}>Gate 3…</${NL.Btn}>` : null}</div></${NL.Section}>
         ${figs.length ? html`<${NL.Section} title="Figures" count=${figs.length}><div class="figs">${figs.map(f => /\.pdf$/i.test(f) ? html`<a class="link small" href=${`/api/figure?${NL.qs({ idea: it.id, name: f })}`} target="_blank">${f}</a>` :
           html`<a href=${`/api/figure?${NL.qs({ idea: it.id, name: f })}`} target="_blank" rel="noopener"><img src=${`/api/figure?${NL.qs({ idea: it.id, name: f, t: mt })}`} alt=${f} loading="lazy" /></a>`)}</div></${NL.Section}>` : null}</aside></div>`;
   };
@@ -230,7 +229,7 @@
       <${NL.Section} title="Signatures"><div class="stack">
         <${NL.Btn} onClick=${() => NL.openGate(it.id, 1)}>Gate 1 — proposal</${NL.Btn}>
         ${it.has_project ? html`<${NL.Btn} onClick=${() => NL.openGate(it.id, 2)}>Gate 2 — FULL-run envelope</${NL.Btn}>` : null}
-        ${['internal-review', 'final'].includes(it.state) ? html`<${NL.Btn} onClick=${() => NL.openGate(it.id, 3)}>Gate 3 — finalize</${NL.Btn}>` : null}</div></${NL.Section}>
+        ${[NL.gateAt(3), NL.gateOpens(3)].includes(it.state) ? html`<${NL.Btn} onClick=${() => NL.openGate(it.id, 3)}>Gate 3 — finalize</${NL.Btn}>` : null}</div></${NL.Section}>
       <${NL.Section} title="Elsewhere"><div class="stack">${it.project_dir ? html`<${NL.EditorLink} path=${it.project_dir}>Open the project repo ↗</${NL.EditorLink}>` : null}
         <button class="link small" onClick=${() => NL.openNote(it.id)}>Leave a note for the next agent</button></div></${NL.Section}></aside></div>`;
   };

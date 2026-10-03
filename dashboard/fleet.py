@@ -68,7 +68,7 @@ def lab_summary(hub: Path) -> dict:
         out["studies"] = len(rows)
         for r in rows:
             g = ctx.tool("markers").gate_waiting(r.get("next"))
-            if g and r.get("state") not in ("final", "killed", "parked") and not _gate_signed(hub, lab, r["id"], g):
+            if g and r.get("state") not in ctx.tool("workflow").terminal_states(hub) and not _gate_signed(hub, lab, r["id"], g):
                 items.append({"kind": "gate", "title": f"Gate {g} — {r.get('title') or r['id']}", "idea": r["id"],
                               "detail": {"gate": g}})
         from executor import campaigns  # noqa: PLC0415

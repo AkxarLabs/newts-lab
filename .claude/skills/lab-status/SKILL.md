@@ -11,6 +11,7 @@ newts:
   hint: 'orient: registry, inboxes, next action'
   title: Check on the lab
   does: Reads the registry, inboxes and notebook and recommends the next step.
+  start: {icon: "☰", order: 8}
 ---
 
 # Lab Status

@@ -12,6 +12,8 @@ newts:
   hint: slug or task
   title: Compete on a target
   does: An interview for a fixed-target task (a benchmark, a score).
+  start: {icon: "◎", order: 7, label: The task or benchmark, placeholder: "e.g. beat the baseline on …",
+    onramp: "A benchmark or a score to beat, with a fixed evaluation."}
 ---
 
 # Compete — pursue a fixed target

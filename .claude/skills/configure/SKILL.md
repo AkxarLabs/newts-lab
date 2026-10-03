@@ -12,6 +12,7 @@ newts:
   hint: e.g. <slug> or set key=value
   title: Change lab settings
   does: Views or edits the lab configuration with you.
+  start: {icon: "⚙", order: 9, title: Change lab settings with an agent, label: What to change (optional)}
 ---
 
 # Configure

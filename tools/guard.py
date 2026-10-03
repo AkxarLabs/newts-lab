@@ -303,7 +303,7 @@ def c_state(a) -> int:
         return _verdict(1, f"no registry row for {a.slug}")
     if row["state"] != a.frm:
         return _verdict(1, f"registry state is '{row['state']}', not '{a.frm}' — refusing the {a.frm}→{a.to} transition")
-    if a.to in ("parked", "killed"):
+    if a.to in SIDE_STATES:
         return _verdict(0, f"{a.frm}→{a.to} (park/kill is allowed from any state)")
     if not legal_transition(a.frm, a.to):
         return _verdict(1, f"{a.frm}→{a.to} is not a legal lifecycle transition")
@@ -355,8 +355,10 @@ def c_finalization(a) -> int:
     target = (labfiles.load_yaml(pdir / "control.yaml").get("target") or {}) if pdir else {}
     target_driven = bool(target.get("active"))
     if target_driven:
-        if state != "active":
-            return _verdict(1, f"target-driven {a.slug} is '{state}', not 'active' — nothing to finalize")
+        track = workflow.tracks(HUB).get("target") or []
+        ready = track[-2] if len(track) >= 2 else None      # the state a target-driven project finalizes from
+        if state != ready:
+            return _verdict(1, f"target-driven {a.slug} is '{state}', not '{ready}' — nothing to finalize")
     elif state != workflow.gate_state(3, HUB):
         return _verdict(1, f"{a.slug} is '{state}', not '{workflow.gate_state(3, HUB)}' — /review-paper must accept first")
     if getattr(a, "pi_approved", False):

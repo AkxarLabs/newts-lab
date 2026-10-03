@@ -19,6 +19,10 @@ from runops import launch_run  # noqa: E402
 executor = sources.executor   # tools/executor, or None (observe-and-sign only)
 
 
+def _wf():
+    return ctx.tool("workflow")   # the lab's states, gates and procedures (workflow/stages.yaml)
+
+
 def _sign_gate2_block(text: str, ts: str) -> tuple[str, bool]:
     """Flip pi_signed -> true and signed_via -> dashboard:<ts> WITHIN the gate2_envelope block only,
     tolerating YAML's `False`/`no`/`off` and an empty/`null`/`~` signed_via. Block-scoped so it can't
@@ -73,28 +77,30 @@ def approve_gate(idea: str, gate: int, envelope: bool = False) -> dict:
             return {"error": "Gate 1 is already approved on this proposal — nothing to do "
                              "(the agent applies it at its next checkpoint)."}
         row = next((r for r in sources.parse_registry() if r["id"] == idea), None)
-        warnings = ([] if (row and (row.get("state") or "").strip() == "proposal")
-                    else ["idea is not in state 'proposal' — approving anyway, but confirm this is the "
+        at = _wf().gate_state(1, ctx.HUB)
+        warnings = ([] if (row and (row.get("state") or "").strip() == at)
+                    else [f"idea is not in state '{at}' — approving anyway, but confirm this is the "
                           "right idea before the agent spawns it"])
         # `envelope approved`: the PI also approved the proposal's Gate-2 envelope (§5) — /spawn-project
         # may then write it into control.yaml signed (tools/signature_guard.py checks for this marker)
         with proposal.open("a", encoding="utf-8") as f:
             f.write(f"\n\n<!-- {_MARK} {ts}" + (" · envelope approved" if envelope else "") + " -->\n")
+        then = _wf().after_gate(1, ctx.HUB) or "spawn-project"
         append_command(idea, "gate1_approved", {"idea": idea},
-                       "Gate 1 approved (PI via dashboard) — proceed to /spawn-project")
+                       f"Gate 1 approved (PI via dashboard) — proceed to /{then}")
         ctx.emit_hub("gate_resolved", idea=idea, detail="Gate 1 approved (PI via dashboard)")
         ctx.pi_log({"action": "approve_gate", "gate": 1, "idea": idea, "envelope": bool(envelope)})
         exec_on = executor is not None and bool(
             ((ctx.config().get("agents") or {}).get("programmatic") or {}).get("enabled"))
         res = {"ok": True, "gate": 1, "idea": idea, "warnings": warnings or None,
-               "note": (f"Proposal signed — launch /spawn-project {idea} from the Activity tab when you're ready."
+               "note": (f"Proposal signed — launch /{then} {idea} from the Activity tab when you're ready."
                         if exec_on else
                         "Proposal signed; the agent will transition the registry and spawn the project at its next checkpoint.")}
         if (ctx.config().get("dashboard") or {}).get("auto_spawn_on_gate1"):
-            out, code = launch_run({"skill": "spawn-project", "target": idea, "confirm": True}, by="gate1-auto")
+            out, code = launch_run({"skill": then, "target": idea, "confirm": True}, by="gate1-auto")
             res["launch"] = out
             if code == 200:
-                res["note"] = f"Proposal signed; /spawn-project {idea} queued ({out.get('run_id')})."
+                res["note"] = f"Proposal signed; /{then} {idea} queued ({out.get('run_id')})."
         return res
     # gate 2 — sign the project's control.yaml gate2_envelope (the canonical machine-readable
     # signature). READ via YAML to VALIDATE the envelope; WRITE via a targeted regex so the
@@ -226,8 +232,10 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
             return {"error": "no dashboard Gate-1 signature on this proposal"}, 400
         ctx.write_keep_eol(prop, text, new)
         row = ctx.row(slug)
+        life, opened = _wf().lifecycle(ctx.HUB), _wf().gate_before(1, ctx.HUB)
+        state = (row or {}).get("state") or ""
         warn = ["the project is already spawned — revoking Gate 1 does not undo that"]\
-            if row and (row.get("state") or "") not in ("proposal", "scoping") else None
+            if state in life and opened in life and life.index(state) >= life.index(opened) else None
     elif what in ("2", "gate2"):
         pdir = ctx.pdir(slug)
         ctl = (pdir / "control.yaml") if pdir else None
@@ -243,7 +251,7 @@ def gate_revoke(body: dict) -> tuple[dict, int]:
         note = _paper(slug) / "gate3-approval.md"
         if not note.exists():
             return {"error": "Gate 3 is not signed"}, 400
-        if ((ctx.row(slug) or {}).get("state") or "") == "final":
+        if ((ctx.row(slug) or {}).get("state") or "") == _wf().gate_before(3, ctx.HUB):
             return {"error": "already finalized — revoking now would not undo it"}, 400
         note.unlink()
         warn = None
@@ -403,7 +411,7 @@ def revive(body: dict) -> tuple[dict, int]:
     reason = str(body.get("reason") or "").strip().replace("|", "/").replace("\n", " ")[:300]
     if not reason:
         return {"error": "say why it comes back (it is recorded)"}, 400
-    to = str(body.get("to") or "triaged")
+    to = str(body.get("to") or _wf().revive_default(ctx.HUB))
     if to not in _revive_to():
         return {"error": f"revive into one of {', '.join(_revive_to())}"}, 400
     reg = ctx.LAB / "REGISTRY.md"
@@ -421,7 +429,7 @@ def revive(body: dict) -> tuple[dict, int]:
         return {"error": f"{slug} is not in the registry"}, 400
     i, cells = hit
     was = cells[2].strip()
-    if was not in ("parked", "killed"):
+    if was not in _wf().side_states(ctx.HUB):
         return {"error": f"{slug} is '{was}', not parked or killed"}, 400
     cells[2] = f" {to} "
     cells[6] = f" {time.strftime('%Y-%m-%d')} "

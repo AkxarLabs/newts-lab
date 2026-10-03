@@ -11,6 +11,8 @@ newts:
   hint: 'what exists: idea, design, or repo path'
   title: Bring in what I have
   does: Enters the lifecycle mid-stream from an idea, a design, a repo or a draft.
+  start: {icon: "⇲", order: 2, label: What exists, placeholder: "an idea, a design, a repo path, or a draft paper",
+    onramp: "An idea you had, a design, an existing repository or a draft paper — enter the lifecycle mid-way."}
 ---
 
 # Adopt Existing Work

@@ -113,10 +113,18 @@ def skill_meta(text: str) -> dict:
 def _procedures(files: list[Path], m: dict) -> dict[str, dict]:
     """{name: definition} from each skill's frontmatter — the stages' procedures first, in stage order."""
     found = {}
+    # a lab made before skills defined themselves: its manifest still lists the procedures, and a skill of
+    # its with no `newts:` block takes this code's definition of the same procedure
+    legacy = m.get("procedures") if isinstance(m.get("procedures"), dict) else {}
     for f in files:
         fm = skill_meta(_read(f))
         block = fm.get("newts")
         p = dict(PROC_DEFAULTS)
+        if not isinstance(block, dict):
+            ours = HUB / SKILLS / f.parent.name / "SKILL.md"
+            if ours.is_file() and ours.resolve() != f.resolve():
+                p.update(skill_meta(_read(ours)).get("newts") or {})
+        p.update(legacy.get(f.parent.name) or {})
         p.update(block if isinstance(block, dict) else {})
         p.setdefault("title", fm.get("name") or f.parent.name)
         p.setdefault("does", str(fm.get("description") or "").split(". ")[0][:200])
@@ -158,7 +166,8 @@ def launch_registry(hub=None) -> dict[str, dict]:
     out = {}
     for name, p in (load(hub).get("procedures") or {}).items():
         if p.get("launchable") and name not in NEVER_LAUNCH:
-            out[name] = {"level": p["level"], "mode": p["mode"], "args": p.get("args", ""), "hint": p.get("hint", "")}
+            out[name] = {"level": p["level"], "mode": p["mode"], "args": p.get("args", ""), "hint": p.get("hint", ""),
+                         "in_project": bool(p.get("in_project"))}
     return out
 
 
@@ -170,6 +179,39 @@ def not_dispatchable(hub=None) -> set[str]:
 def gate_state(n: int, hub=None) -> str | None:
     """The registry state a gate is signed at (Gate 1: proposal · Gate 3: internal-review)."""
     return next((g.get("at") for g in load(hub).get("gates", []) if g.get("n") == n), None)
+
+
+def gate_before(n: int, hub=None) -> str | None:
+    """The state a gate opens (Gate 1: active · Gate 3: final) — what the guard and the dashboard refuse to
+    enter until the gate is signed."""
+    return next((g.get("before") for g in load(hub).get("gates", []) if g.get("n") == n), None)
+
+
+def after_gate(n: int, hub=None) -> str | None:
+    """The procedure that runs once a gate is signed (Gate 1 → spawn-project)."""
+    v = (load(hub).get("next_for_state") or {}).get(gate_state(n, hub))
+    return v.get("signed") if isinstance(v, dict) else v
+
+
+def tracks(hub=None) -> dict[str, list[str]]:
+    return load(hub).get("tracks") or {}
+
+
+def results_states(hub=None) -> set[str]:
+    """States where a study has results (`results: true`)."""
+    m = load(hub)
+    return {s["id"] for s in m.get("states", []) + m.get("side_states", []) if s.get("results")}
+
+
+def revive_default(hub=None) -> str:
+    rev = revivable_states(hub)
+    want = load(hub).get("revive_to")
+    return want if want in rev else (rev[0] if rev else lifecycle(hub)[0])
+
+
+def campaign_driver(hub=None) -> str | None:
+    """The procedure that runs a signed campaign (its args are `campaign`): what the keeper starts each cycle."""
+    return next((n for n, p in (load(hub).get("procedures") or {}).items() if p.get("args") == "campaign"), None)
 
 
 def stages_of(proc: str, hub=None) -> list[dict]:
@@ -186,8 +228,8 @@ def stage_of_state(state: str, hub=None) -> str | None:
 def ui_view(hub=None) -> dict:
     """What the dashboard needs: the manifest's vocabulary + the PI's customisations + pending proposals."""
     m = load(hub)
-    keep = ("title", "does", "stops", "kind", "level", "mode", "hint", "launchable", "replaceable",
-            "outputs", "anchors", "uses")
+    keep = ("title", "does", "stops", "kind", "level", "mode", "args", "hint", "launchable", "replaceable",
+            "outputs", "anchors", "uses", "start")
     procs = {n: {k: p[k] for k in keep if k in p} for n, p in (m.get("procedures") or {}).items()}
     pend = proposals(hub)
     return {
@@ -195,6 +237,7 @@ def ui_view(hub=None) -> dict:
         "stages": m.get("stages", []), "rooms": m.get("rooms", []), "tracks": m.get("tracks", {}),
         "next_for_state": m.get("next_for_state", {}), "offer_for_state": m.get("offer_for_state", {}),
         "back_edges": m.get("back_edges", []), "roles": m.get("roles", []), "procedures": procs,
+        "revive_to": revive_default(hub),
         "custom": status(hub), "study_custom": studies_customised(hub),
         "proposals": [{k: r.get(k) for k in ("id", "kind", "name", "study", "why", "by", "ts")} for r in pend],
     }
@@ -756,6 +799,21 @@ def contract_block(proc: str, hub=None) -> str:
     return "\n".join(lines)
 
 
+def project_types_line(hub=None) -> str:
+    """`ml` (default) · `empirical` · … — every folder in templates/project-types/ (the TYPE.md that says
+    "(default)" in its title is the default)."""
+    root = _hub(hub) / "templates" / "project-types"
+    out = []
+    for d in sorted(root.iterdir()) if root.is_dir() else []:
+        head = _read(d / "TYPE.md").split("\n", 1)[0]
+        if head:
+            out.append(f"`{d.name}`" + (" (default)" if "(default)" in head else ""))
+    return " · ".join(out)
+
+
+INLINE = {"project-types"}      # generated spans that sit inside a sentence
+
+
 def _blocks(hub) -> list[tuple[Path, str, str]]:
     """(file, block name, content) for every generated span — each file holds
     <!-- newts:<name> (generated…) --> … <!-- /newts:<name> --> where its content goes."""
@@ -765,7 +823,9 @@ def _blocks(hub) -> list[tuple[Path, str, str]]:
            (Path("AGENTS.md"), "subagent-rules", _numbered(rl.get("subagent_rules") or [])),
            (Path("AGENTS.md"), "lifecycle", lifecycle_line(hub)),
            (PROJECT_MANUAL, "project-rules", _numbered(rl.get("project_rules") or [])),
-           (SKILLS / "advance" / "SKILL.md", "next-table", advance_table(hub))]
+           (SKILLS / "advance" / "SKILL.md", "next-table", advance_table(hub)),
+           (Path("AGENTS.md"), "project-types", project_types_line(hub)),
+           (SKILLS / "spawn-project" / "SKILL.md", "project-types", project_types_line(hub))]
     for name in load(hub).get("procedures") or {}:
         if not (load(hub)["procedures"][name].get("engineering")):
             out.append((SKILLS / name / "SKILL.md", "contract", contract_block(name, hub)))
@@ -821,7 +881,8 @@ def render_docs(hub=None, check_only: bool = False) -> list[Path]:
             continue
         nl = "\r\n" if "\r\n" in txt else "\n"
         body = content.replace("\n", nl)
-        new = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: f"{begin}{nl}{body}{nl}{end}", txt, flags=re.S)
+        gen = f"{begin}{body}{end}" if name in INLINE else f"{begin}{nl}{body}{nl}{end}"
+        new = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: gen, txt, flags=re.S)
         if new != txt:
             stale.append(rel)
             if not check_only:

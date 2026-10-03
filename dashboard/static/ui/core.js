@@ -63,6 +63,11 @@
   NL.applyWorkflow(window.__WORKFLOW_DEFAULT__);
   const stateOf = st => (NL.WF.states || []).concat(NL.WF.side_states || []).find(y => y.id === st);
   NL.isTerminal = st => !!(stateOf(st) || {}).terminal;   // final, parked, killed: nothing more runs
+  NL.stateTone = st => (stateOf(st) || {}).tone || (NL.isShelved(st) ? 'muted' : NL.isTerminal(st) ? 'ok' : 'state');   // a state pill's colour
+  NL.gateAt = n => (NL.GATES.find(g => g.n === n) || {}).at;       // where a gate is signed (Gate 3: internal-review)
+  NL.gateOpens = n => (NL.GATES.find(g => g.n === n) || {}).before; // what it opens (Gate 1: active · Gate 3: final)
+  NL.reviveTo = () => NL.WF.revive_to || (NL.WF.states || []).filter(x => x.revivable).map(x => x.id)[0];
+  NL.isDone = st => NL.isTerminal(st) && !NL.isShelved(st);         // finished (final), not parked/killed
   NL.isShelved = st => (NL.WF.side_states || []).some(y => y.id === st);   // parked or killed: revivable from here
   NL.stageOf = st => { const x = (NL.WF.states || []).find(y => y.id === st); return x ? NL.STAGES.find(g => g.id === x.stage) : null; };
   // where a state stands in the world (room + station), for the painted and the diorama worlds
@@ -279,7 +284,7 @@
     const cfg = ((s && s.skills) || {})[skill];
     if (!cfg) { NL.toast(`"${cmd}" isn't something the dashboard can start`, 'warn'); return; }
     const rest = toks.slice(1);
-    if (skill === 'autopilot') return NL.launch({ skill, args: rest[rest[0] === 'continue' ? 1 : 0] || '' });
+    if ((NL.PROC[skill] || {}).args === 'campaign') return NL.launch({ skill, args: rest[rest[0] === 'continue' ? 1 : 0] || '' });
     if (cfg.args.startsWith('slug') && rest.length) return NL.launch({ skill, target: rest[0], args: rest.slice(1).join(' ') });
     return NL.launch({ skill, target: cfg.level === 'project' ? (fallbackTarget || 'hub') : 'hub', args: rest.join(' ') });
   };

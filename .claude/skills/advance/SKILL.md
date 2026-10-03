@@ -11,6 +11,7 @@ newts:
   hint: optional idea slug
   title: Advance one step
   does: Runs exactly the next lifecycle stage for a study, then stops.
+  start: {icon: "→", order: 5, title: Advance a study one step}
 ---
 
 # Advance One Stage

@@ -82,9 +82,7 @@
 
   const OnRamps = () => html`<div class="onramps">
     <p class="lede">The lab is quiet. Where do you want to start?</p>
-    ${[['campaign', '⟳', 'Start a campaign and walk away', 'Ideas carried to papers on their own, within bounds you sign'],
-      ['ideate', '✦', 'Explore a new direction', 'Ideas researched, critiqued and filed as studies'], ['adopt', '⇲', 'Bring in what I have', 'An idea, a repo or a draft'],
-      ['discuss', '❝', 'Talk it through', 'A conversation first, no commitment'], ['compete', '◎', 'Compete on a target', 'A benchmark or a score to beat']].map(([id, ico, t, sub]) =>
+    ${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.campaign ? 'Ideas carried to papers on their own, within bounds you sign' : i.does]).map(([id, ico, t, sub]) =>
       html`<button type="button" class="onramp" onClick=${() => NL.openStart({ intent: id })}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}</div>`;
 
   const Rail = () => {
@@ -123,7 +121,7 @@
       <button class="key-btn" onClick=${() => setOpen(!open)} aria-expanded=${open}>Key ${open ? '▾' : '▴'}</button>
       ${open ? html`<div class="key-body"><div class="key-h">Agents</div>${Object.entries(NL.ROLE).map(([r, v]) => html`<button type="button" class=${cls('key-row', hl === r && 'on')} onClick=${() => pick(r)}>
           <i class="role-dot" style=${{ background: v.color }}></i><span class="grow">${v.label}${r === 'orchestrator' ? ' (Newt)' : ''}</span><span class="muted">${count(r) || ''}</span></button>`)}
-        <div class="key-h">Studies</div>${(s.items || []).filter(i => !['final', 'killed'].includes(i.state)).slice(0, 12).map(i => html`<button type="button" class="key-row" onClick=${() => NL.Scene && NL.Scene.focusProject(i.id)}>
+        <div class="key-h">Studies</div>${(s.items || []).filter(i => !NL.isTerminal(i.state)).slice(0, 12).map(i => html`<button type="button" class="key-row" onClick=${() => NL.Scene && NL.Scene.focusProject(i.id)}>
           <i class="role-dot" style=${{ background: `hsl(${window.VivScene ? window.VivScene.projectHue(i.id) : 180} 45% 55%)` }}></i><span class="grow clip">${i.title || i.id}</span></button>`)}</div>` : null}</div>`;
   };
 

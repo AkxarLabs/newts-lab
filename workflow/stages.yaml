@@ -18,6 +18,8 @@ version: 1
 
 # ── registry states, in lifecycle order ──────────────────────────────────────────────────────────
 # stage: which stage (below) the state belongs to · room/station: where it stands in the dashboard's world
+# revivable: a parked/killed study may be revived into it · terminal: nothing more runs · results: the study
+# has results (a settled one owes a RECIPE write-back) · tone: its colour on a state pill (ok | muted | bad)
 states:
   - {id: seed,            label: Seed,              stage: ideation,     room: incubator, station: seed,        revivable: true}
   - {id: triaged,         label: Triaged,           stage: ideation,     room: incubator, station: triage,      revivable: true}
@@ -25,15 +27,18 @@ states:
   - {id: scoping,         label: Scoping,           stage: scoping,      room: study,     station: scoping,     revivable: true}
   - {id: proposal,        label: Proposal,          stage: proposal,     room: study,     station: proposal,    revivable: true}
   - {id: active,          label: Experiments,       stage: experiments,  room: lab,       station: experiments, revivable: true}
-  - {id: analysis,        label: Analysis,          stage: analysis,     room: lab,       station: analysis}
-  - {id: writing,         label: Writing,           stage: writing,      room: writing,   station: drafting}
-  - {id: internal-review, label: Internal review,   stage: review,       room: writing,   station: review}
-  - {id: final,           label: Final,             stage: finalization, room: archive,   station: rest,        terminal: true}
+  - {id: analysis,        label: Analysis,          stage: analysis,     room: lab,       station: analysis,    results: true}
+  - {id: writing,         label: Writing,           stage: writing,      room: writing,   station: drafting,    results: true}
+  - {id: internal-review, label: Internal review,   stage: review,       room: writing,   station: review,      results: true}
+  - {id: final,           label: Final,             stage: finalization, room: archive,   station: rest,        terminal: true, results: true, tone: ok}
 
 # reachable from ANY state (whichever procedure finds the evidence records it); terminal
 side_states:
-  - {id: parked, label: Parked, room: margins, station: parked, terminal: true}
-  - {id: killed, label: Killed, room: margins, station: killed, terminal: true}
+  - {id: parked, label: Parked, room: margins, station: parked, terminal: true, tone: muted}
+  - {id: killed, label: Killed, room: margins, station: killed, terminal: true, tone: bad}
+
+# where a revived study goes unless the PI picks another revivable state
+revive_to: triaged
 
 # documented back-edges (the paper-phase round trip); every other move is one step forward
 back_edges:

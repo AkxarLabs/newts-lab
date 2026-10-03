@@ -12,6 +12,8 @@ newts:
   hint: purpose [target], e.g. direction
   title: Talk it through
   does: A one-question-at-a-time conversation with live research. Crosses no gate.
+  start: {icon: "❝", order: 3, label: What about, placeholder: "direction · <study> · scope <study> · paper <study>",
+    onramp: "A one-question-at-a-time conversation with live research. Commits to nothing."}
 ---
 
 # Discuss — collaborative direction-setting & ideation

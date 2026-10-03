@@ -124,6 +124,22 @@ def test_a_rule_and_its_check_need_no_code(lab, wf, monkeypatch):
     assert checks["no-tabs"].run(types.SimpleNamespace(slug="x"), guard) == 0
 
 
+def test_a_lab_from_before_skills_defined_themselves_still_works(lab, wf):
+    """An older lab: its stages.yaml still lists the procedures, its skills have no `newts:` block."""
+    import yaml
+    old = yaml.safe_load((lab / "workflow" / "stages.yaml").read_text(encoding="utf-8"))
+    old["procedures"] = {"experiment": {"kind": "stage", "level": "project", "mode": "headless", "args": "slug text?",
+                                        "launchable": True, "replaceable": True, "title": "Run experiments"}}
+    (lab / "workflow" / "stages.yaml").write_text(yaml.safe_dump(old, sort_keys=False), encoding="utf-8")
+    sk = lab / ".claude" / "skills" / "experiment" / "SKILL.md"
+    text = sk.read_text(encoding="utf-8")
+    head, body = text.split("\n---\n", 1)
+    sk.write_text(head.split("\nnewts:", 1)[0] + "\n---\n" + body, encoding="utf-8")
+    p = wf.procedure("experiment", lab)
+    assert p["level"] == "project" and p["replaceable"] and p["title"] == "Run experiments"
+    assert p.get("outputs") and p.get("anchors")            # the rest of its definition: this code's skill
+
+
 def test_gates_are_fixed(lab, wf):
     p = lab / "workflow" / "stages.yaml"
     txt = p.read_text(encoding="utf-8")

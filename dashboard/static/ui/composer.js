@@ -42,17 +42,17 @@
   };
 
   /* ── intents ───────────────────────────────────────────────────────────── */
-  const INTENTS = [
-    { id: 'ideate', icon: '✦', title: 'Explore a new direction', skill: 'ideate', arg: 'text', argLabel: 'The direction', placeholder: 'e.g. sparse routing for small mixture-of-experts models' },
-    { id: 'adopt', icon: '⇲', title: 'Bring in what I have', skill: 'adopt', arg: 'text', argLabel: 'What exists', placeholder: 'an idea, a design, a repo path, or a draft paper' },
-    { id: 'discuss', icon: '❝', title: 'Talk it through', skill: 'discuss', arg: 'text', argLabel: 'What about', placeholder: 'direction · <study> · scope <study> · paper <study>' },
-    { id: 'study', icon: '◫', title: 'Work on a study', study: true },
-    { id: 'advance', icon: '→', title: 'Advance a study one step', skill: 'advance', target: 'study?' },
-    { id: 'campaign', icon: '⟳', title: 'Plan a campaign', campaign: true },
-    { id: 'compete', icon: '◎', title: 'Compete on a target', skill: 'compete', arg: 'text', argLabel: 'The task or benchmark', placeholder: 'e.g. beat the baseline on …' },
-    { id: 'status', icon: '☰', title: 'Check on the lab', skill: 'lab-status' },
-    { id: 'configure', icon: '⚙', title: 'Change lab settings with an agent', skill: 'configure', arg: 'text', argLabel: 'What to change (optional)' },
-  ];
+  // a skill appears here by giving its SKILL.md frontmatter a `start:` block (icon, order, label, …)
+  const BUILT_IN = [{ id: 'study', icon: '◫', title: 'Work on a study', study: true, order: 4 },
+    { id: 'campaign', icon: '⟳', title: 'Plan a campaign', campaign: true, order: 6,
+      onramp: 'Sign a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.',
+      onrampTitle: 'Start a campaign and walk away' }];
+  NL.intents = () => Object.entries(NL.PROC).filter(([, p]) => p.start && p.launchable !== false).map(([name, p]) => {
+    const st = p.start, args = p.args || '';
+    return { id: name, icon: st.icon || '▸', title: st.title || p.title || name, skill: name, order: st.order ?? 50,
+      arg: args.includes('text') ? 'text' : null, argLabel: st.label, placeholder: st.placeholder,
+      target: args.startsWith('slug?') ? 'study?' : null, onramp: st.onramp, does: p.does };
+  }).concat(BUILT_IN).sort((a, b) => a.order - b.order);
 
   NL.StartSheet = ({ onClose, intent: initial, target: initTarget, skill: initSkill, args: initArgs }) => {
     const s = NL.useLab();
@@ -62,6 +62,7 @@
     const [arg, setArg] = useState(initArgs || '');
     const [opts, setOpts] = useState(DEFAULT_OPTS);
     const [ask, setAsk] = useState('');
+    const INTENTS = NL.intents();
     const it = INTENTS.find(i => i.id === intent);
     const study = target && target !== 'hub' ? NL.item(s, target) : null;
     // for "work on a study": the procedures that fit its state

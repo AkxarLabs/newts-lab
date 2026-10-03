@@ -17,7 +17,7 @@
 
   NL.Pill = ({ tone, children, title }) => html`<span class=${cls('pill', tone && 'pill-' + tone)} title=${title}>${children}</span>`;
   NL.RunPill = ({ r }) => r ? html`<${NL.Pill} tone=${NL.RUN_TONE[r.status] || 'muted'}>${NL.RUN_TONE[r.status] === 'live' ? html`<i class="dot-live"></i>` : null}${NL.RUN_WORD[r.status] || r.status}</${NL.Pill}>` : null;
-  NL.StatePill = ({ state }) => html`<${NL.Pill} tone=${state === 'killed' ? 'bad' : state === 'parked' ? 'muted' : state === 'final' ? 'ok' : 'state'}>${NL.STATE_LABEL[state] || state || '—'}</${NL.Pill}>`;
+  NL.StatePill = ({ state }) => html`<${NL.Pill} tone=${NL.stateTone(state)}>${NL.STATE_LABEL[state] || state || '—'}</${NL.Pill}>`;
   NL.RoleDot = ({ role }) => html`<i class="role-dot" style=${{ background: NL.roleOf(role).color }} title=${NL.roleOf(role).label}></i>`;
 
   NL.Card = ({ children, tone, onClick, className }) => html`<div class=${cls('card', tone && 'card-' + tone, onClick && 'card-click', className)} onClick=${onClick} role=${onClick ? 'button' : null} tabIndex=${onClick ? 0 : null}

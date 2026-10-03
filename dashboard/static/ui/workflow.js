@@ -63,7 +63,7 @@
     const p = (NL.WF.procedures || {})[name] || {};
     const layer = d && (study ? d.study_layer || {} : d.lab || {});
     const replaced = layer && layer.method;
-    const studies = (s.items || []).filter(i => i.state !== 'killed');
+    const studies = (s.items || []).filter(i => !NL.isTerminal(i.state));
     const scopeSel = html`<div class="wf-scope"><span class="muted small">Applies to</span><${NL.Select} value=${study} onChange=${setStudy}
       options=${[{ value: '', label: 'the whole lab' }, ...studies.map(i => ({ value: i.id, label: 'only ' + (i.title || i.id) }))]} /></div>`;
     const tabs = [{ id: 'instructions', label: 'Your instructions' }, ...(p.replaceable ? [{ id: 'method', label: replaced ? 'Method (yours)' : 'Method' }] : []),
@@ -161,7 +161,7 @@
     if (wf.error) return html`<div class="page"><h1>Workflow</h1><div class="note note-warn">The workflow definition has a problem: ${wf.error}</div></div>`;
     const gateBefore = {}; (wf.gates || []).forEach(g => { const at = (wf.states || []).find(x => x.id === g.at); if (at && g.n !== 2) { const nx = stages[stages.findIndex(x => x.id === at.stage) + 1]; if (nx) gateBefore[nx.id] = g.n; } if (g.n === 2) gateBefore['__within_' + (at ? at.stage : '')] = 2; });
     const props = (wf.proposals || []);
-    const studies = (s.items || []).filter(i => i.state !== 'killed');
+    const studies = (s.items || []).filter(i => !NL.isTerminal(i.state));
     const roles = wf.roles || [];
     const rolesCustom = custom(s, null).roles || {};
     return html`<div class="page wf-page">
