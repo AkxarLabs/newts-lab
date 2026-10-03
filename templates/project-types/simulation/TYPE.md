@@ -1,6 +1,6 @@
 # Project type: `simulation`
 
-<!-- newts: split=analogue — no literal held-out test split; tools/audit_eval_discipline.py reports the selection discipline as MANUAL -->
+<!-- newts: split=analogue — no literal held-out test split; checks/audit_eval_discipline.py reports the selection discipline as MANUAL -->
 
 Computational modeling: agent-based models, DSGE / structural macro, Monte-Carlo studies,
 calibration. This is the **closest non-ML fit to the base engine** — a simulation is already a

@@ -32,7 +32,7 @@ NOTE = "gate3-approval.md"
 sys.path.insert(0, str(HUB / "tools"))
 from markers import AUTH_BOX_RE, GATE3_BOX_RE  # noqa: E402
 import workflow  # noqa: E402
-AUDITS = [
+AUDITS = [   # (name, [checks/<script>, args…]) — the default; workflow/rules.yaml gate3_audits overrides it
     ("claims", ["audit_claims.py", "{paper}", "--scan-novelty"]),
     ("multiseed", ["audit_multiseed.py", "{paper}"]),
     ("ablations", ["audit_ablation_coverage.py", "{paper}"]),
@@ -123,8 +123,10 @@ def run_audits(hub: Path, slug: str, timeout: float = 600) -> dict:
     hub = Path(hub)
     paper = paper_dir(hub, slug).as_posix()
     out = {}
-    for name, argv in AUDITS:
-        tool = hub / "tools" / argv[0]
+    audits = [(a["name"], a["run"]) for a in (workflow.rules(hub).get("gate3_audits") or [])
+              if isinstance(a, dict) and a.get("name") and a.get("run")] or AUDITS
+    for name, argv in audits:
+        tool = hub / "checks" / argv[0]
         if not tool.is_file():
             out[name] = 127
             continue

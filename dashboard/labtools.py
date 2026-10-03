@@ -11,7 +11,7 @@ import ctx
 
 
 # Read-only / safe tools the dashboard may run directly. Never anything that trains or writes.
-# audit_claims runs tools/audit_claims.py (reads claims.yaml + artifacts, prints PASS/FAIL/MANUAL — writes nothing).
+# audit_claims runs checks/audit_claims.py (reads claims.yaml + artifacts, prints PASS/FAIL/MANUAL — writes nothing).
 SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots", "audit_claims"}
 
 
@@ -32,7 +32,7 @@ def run_tool(name: str, idea: str | None = None) -> dict:
         if not s:
             return {"error": "audit_claims needs an idea slug"}
         rel_tol = (ctx.config().get("critique") or {}).get("claim_rel_tol", 1e-3)
-        cmd = [py, str(ctx.HUB / "tools" / "audit_claims.py"), f"studies/{s}/paper", "--rel-tol", str(rel_tol)]
+        cmd = [py, str(ctx.HUB / "checks" / "audit_claims.py"), f"studies/{s}/paper", "--rel-tol", str(rel_tol)]
     elif name == "inbox":
         if pdir:
             cmd, cwd = [py, str(pdir / "scripts" / "lab_bus.py"), "inbox"], pdir

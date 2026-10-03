@@ -57,7 +57,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor `/critique-paper` substitutes into every reviewer prompt |
 | `critique.accept_bar` | 7 | PI | median Overall at/above this (+ zero unrefuted fatal flaws) = accept |
 | `critique.max_review_cycles` | 3 | PI | revision cycles before escalating to the PI |
-| `critique.claim_rel_tol` | 0.001 | PI | relative tolerance `tools/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) — a rigor knob, mechanically PI-owned via the `critique.` prefix |
+| `critique.claim_rel_tol` | 0.001 | PI | relative tolerance `checks/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) — a rigor knob, mechanically PI-owned via the `critique.` prefix |
 | `experiment.max_debug_depth` | 3 | agent-readable | consecutive debug attempts before record-and-move-on |
 | `experiment.num_drafts` | 3 | agent-readable | distinct solution lines `/improve` maintains |
 | `experiment.max_parallel_subagents` | 3 | agent-readable | concurrent worktree subagents (project may override) |

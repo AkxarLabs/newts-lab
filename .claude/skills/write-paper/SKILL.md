@@ -89,7 +89,7 @@ Run reflection rounds as the method describes. Each round, in order:
    be presented without a PDF, so this becomes a queued PI note, not a silent skip.
 2. **Figures + claims re-audit**: `tools/sync_figures.py <slug> --check` (hub figures still
    match their project sources — a regenerated-but-unsynced or hand-edited figure fails), then
-   `tools/audit_claims.py studies/<slug>/paper --scan-novelty --rel-tol <critique.claim_rel_tol>` (completeness scan —
+   `checks/audit_claims.py studies/<slug>/paper --scan-novelty --rel-tol <critique.claim_rel_tol>` (completeness scan —
    every numeral in Results/Ablations/Abstract carries a `% CNNN` annotation — plus the per-claim artifact check,
    plus a **novelty WARN**: any priority/superiority claim — SOTA / "first to" / "outperforms all" / unprecedented —
    with no `\cite` or `% Cnnn/Nnnn` backing gets cited against the closest prior work, a `% Nnnn` lit-review
@@ -98,7 +98,7 @@ Run reflection rounds as the method describes. Each round, in order:
    experiments hide in ablation/analysis subsections. Any number the audit can't trace gets
    deleted, not defended. Also run the three paper-integrity audits as a **WARN** here (they
    hard-block later at `/review-paper` + `/finalize`, so surface the gaps while drafting):
-   `tools/audit_multiseed.py`, `tools/audit_ablation_coverage.py`, `tools/audit_eval_discipline.py`
+   `checks/audit_multiseed.py`, `checks/audit_ablation_coverage.py`, `checks/audit_eval_discipline.py`
    (each on `studies/<slug>/paper`) — a headline result thin on seeds, a dropped ablation, or a
    validation-selected number gets fixed now, not at the gate. Mark load-bearing claims
    `headline: true` and add `split: test`/`multi_seed_waiver:` to `claims.yaml` as needed.

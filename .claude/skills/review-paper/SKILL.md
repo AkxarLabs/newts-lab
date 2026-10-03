@@ -1,6 +1,6 @@
 ---
 name: review-paper
-description: Internal review of a paper — mechanical claims audit (tools/audit_claims.py), then a fresh-context critique ensemble via /critique-paper, with scores, minority veto, and action items. Argument; the idea slug.
+description: Internal review of a paper — mechanical claims audit (checks/audit_claims.py), then a fresh-context critique ensemble via /critique-paper, with scores, minority veto, and action items. Argument; the idea slug.
 newts:
   kind: stage
   level: hub
@@ -35,7 +35,7 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
 1. **Figures in sync:** `uv run --with pyyaml python tools/sync_figures.py <slug> --check` —
    a stale (project regenerated, not re-synced) or hand-edited hub figure is a blocking FAIL;
    re-run `tools/sync_figures.py <slug>` then re-check before continuing.
-2. Run `uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper --check-commits --scan-novelty --rel-tol <critique.claim_rel_tol>`.
+2. Run `uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper --check-commits --scan-novelty --rel-tol <critique.claim_rel_tol>`.
    - Any **FAIL** → return to `/write-paper` with the failure table. Part B does not run.
      (FAIL now includes the completeness scan: any numeral in main.tex body prose with no
      `% CNNN` annotation — a number with no claims entry.)
@@ -48,11 +48,11 @@ consolidating the cycle, and a route decision. Cycle cap: `critique.max_review_c
      gate (the field's most public failures were rediscovery shipped as discovery). It must trace
      to the `/lit-review` novelty verdict, exactly as a number must trace to an artifact.
    - **Paper-integrity audits (blocking)** — mechanize what used to be manual step-5 checks:
-     - `tools/audit_multiseed.py studies/<slug>/paper` — headline claims (`headline: true`) carry ≥
+     - `checks/audit_multiseed.py studies/<slug>/paper` — headline claims (`headline: true`) carry ≥
        `seeds.multi_seed_n` distinct seeds (hard rule 6); a `multi_seed_waiver` routes to MANUAL.
-     - `tools/audit_ablation_coverage.py studies/<slug>/paper` — every planned ablation ran / was
+     - `checks/audit_ablation_coverage.py studies/<slug>/paper` — every planned ablation ran / was
        waived / routed, none silently dropped.
-     - `tools/audit_eval_discipline.py studies/<slug>/paper` — the frozen protocol defines validation +
+     - `checks/audit_eval_discipline.py studies/<slug>/paper` — the frozen protocol defines validation +
        held-out test and no headline claim reports a validation-selected metric (hard rule 5).
      Exit **1 = FAIL** (→ `/write-paper`, Part B does not run) · **2 = MANUAL** (resolve by hand;
      unresolved = FAIL) · 0 = clean.

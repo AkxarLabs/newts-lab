@@ -28,6 +28,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — import the sibling renderer
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+import workflow  # noqa: E402 — the lab's rules (workflow/rules.yaml): the rigor floors
 import role_sync  # noqa: E402 — canonical model:/effort: sync (replaces the old private regex path)
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -137,21 +138,9 @@ def stamp(text: str, dotted: list, value) -> tuple:
 
 def rigor_violations(flat: dict) -> list:
     """Reasons a profile must be refused — it would lower an integrity floor. Empty list = OK."""
-    out = []
-    for dotted, value in flat.items():
-        key = ".".join(dotted)
-        if key == "experiment.multi_seed_n":
-            try:
-                if int(value) < 3:
-                    out.append(f"experiment.multi_seed_n={value} < 3 (paper-grade seed floor)")
-            except (TypeError, ValueError):
-                out.append(f"experiment.multi_seed_n={value!r} is not an integer")
-        elif key == "oversight.level" and str(value).lower() == "off":
-            out.append("oversight.level=off disables the confabulation circuit-breaker")
-        elif key == "eval_frozen" and value is False:
-            out.append("eval_frozen=false — a profile may never unfreeze the eval")
-        elif key.startswith("gate2_envelope"):
-            out.append(f"{key} — a profile may not touch the Gate-2 envelope (PI-signed)")
+    dotted = {".".join(k): v for k, v in flat.items()}
+    out = workflow.rigor_violations(dotted, HUB)       # the floors: workflow/rules.yaml rigor_floors
+    out += [f"{k} — a profile may not touch the Gate-2 envelope (PI-signed)" for k in dotted if k.startswith("gate2_envelope")]
     return out
 
 

@@ -60,7 +60,7 @@ registry row), one script per artifact (`fig_main_result.py`, `tab_ablations.py`
 fine): one entry per table/figure with its claim, the numbers it shows, its location (table
 label / figure file), the run ids from `consumed_runs`, and the derivation. This makes
 *tabular* results auditable — a table cell never echoed in prose would otherwise escape
-`tools/audit_claims.py` entirely.
+`checks/audit_claims.py` entirely.
 
 Run every script; commit the scripts in the project repo; then sync the outputs into the hub:
 `uv run --with pyyaml python tools/sync_figures.py <slug>` — it copies `figures/*.{pdf,tex,png}`

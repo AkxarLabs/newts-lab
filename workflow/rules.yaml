@@ -187,23 +187,31 @@ project_rules:       # every session inside a project repo (the project's AGENTS
 # ── read by code ─────────────────────────────────────────────────────────────────────────────────
 
 # lab/config.yaml (and a project's control.yaml) keys only the PI changes — in the dashboard's Settings or
-# by asking for them in /configure. A key ending in "." is a prefix (the whole tree); others are exact.
+# by asking for them in /configure. An entry covers that key and everything under it; `*` is a wildcard.
 pi_owned_config:
-  - lab.
-  - compute.
-  - agents.
+  - lab
+  - compute
+  - agents
   - oversight.level
-  - critique.
+  - critique
   - writing.page_limit
   - writing.venue
-  - budgets.
-  - gate2_envelope.
+  - budgets
+  - gate2_envelope
   - eval_frozen
   - loop.mode
-  - loop.explore_
+  - loop.explore_*
   - ideation.in_project
   - ideation.in_project_approval
   - autopilot.max_concurrent_projects
+
+# the paper audits (checks/<script>) a campaign's keeper re-runs before it may record a delegated Gate 3 —
+# all must exit 0. `{paper}` is the study's paper/ folder. Add a check here to make it part of Gate 3.
+gate3_audits:
+  - {name: claims, run: [audit_claims.py, "{paper}", --scan-novelty]}
+  - {name: multiseed, run: [audit_multiseed.py, "{paper}"]}
+  - {name: ablations, run: [audit_ablation_coverage.py, "{paper}"]}
+  - {name: eval, run: [audit_eval_discipline.py, "{paper}"]}
 
 # procedures whose whole job is changing PI-owned config WITH the PI (the signature guard lets them)
 config_procedures: [setup-lab, configure]

@@ -2,12 +2,17 @@
 
 Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's ephemeral env (nothing to install); project helpers ship inside every spawned project.
 
-## Hub tools (`tools/`)
+## Checks (`checks/`)
+
+The lab's mechanical rules, one file each — see `checks/README.md`. The guard checks (`append-only`,
+`writeback`, `evolve`, `decisions`, `plan-trace`) run through `tools/guard.py <check>`; the paper audits
+below are scripts of their own. A lab adds a check by dropping a file here (and naming it in
+`workflow/rules.yaml`), or removes one it doesn't use.
 
 ### `audit_claims.py` — verify a paper's numbers against artifacts
 
 ```bash
-uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3] [--check-commits]
+uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3] [--check-commits]
 ```
 
 For every claim in the paper's `claims.yaml`, each number must be found in the referenced run artifacts (resolved via `lab.projects_root`):
@@ -26,9 +31,9 @@ For every claim in the paper's `claims.yaml`, each number must be found in the r
 ### `audit_multiseed.py` · `audit_ablation_coverage.py` · `audit_eval_discipline.py` — paper integrity
 
 ```bash
-uv run --with pyyaml python tools/audit_multiseed.py         studies/<slug>/paper
-uv run --with pyyaml python tools/audit_ablation_coverage.py studies/<slug>/paper
-uv run --with pyyaml python tools/audit_eval_discipline.py   studies/<slug>/paper
+uv run --with pyyaml python checks/audit_multiseed.py         studies/<slug>/paper
+uv run --with pyyaml python checks/audit_ablation_coverage.py studies/<slug>/paper
+uv run --with pyyaml python checks/audit_eval_discipline.py   studies/<slug>/paper
 ```
 
 Three focused audits that mechanize the hard rules `audit_claims.py` doesn't cover — each exits **0 clean · 2 needs-human-review · 1 violation**:
@@ -38,6 +43,8 @@ Three focused audits that mechanize the hard rules `audit_claims.py` doesn't cov
 - **eval discipline** (hard rule 5): the frozen `§4` protocol must define both a validation and a held-out test set, and no `headline` claim may declare `split: validation` (reporting a selection-time metric). Theory/simulation types relax to MANUAL (the TYPE card defines the analogue).
 
 New optional `claims.yaml` fields these read: `headline: true` (marks a load-bearing claim), `split: test|validation` (which set it's reported on), `multi_seed_waiver: <rationale>`. Wired **WARN** in `/write-paper` (surface gaps while drafting) and **blocking** in `/review-paper` Part A + `/finalize`.
+
+## Hub tools (`tools/`)
 
 ### `check_lab.py` — lab state lint
 
@@ -97,9 +104,10 @@ Named, *partial* bundles of `lab/config.yaml` overrides (built-ins in `lab/profi
 
 ```bash
 uv run --with pyyaml python tools/guard.py <spawn|full-run|release-full-run|frozen|state|append-only|writeback|evolve|decisions|plan-trace|finalization> <slug> [args]
+uv run --with pyyaml python tools/guard.py --list     # the built-in commands and every check in checks/
 ```
 
-The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked), `finalization` (**Gate 3** — never an agent's; a campaign's delegated record counts only while `tools/gate3.py` says that campaign still delegates it — blocks unless the state is right (`internal-review`, or `active`+`target.active` for target-driven), a Gate-3 marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`) or `--pi-approved` is passed, **and** `AUTOSCIENTIST_NO_GATE3` is unset — the executor sets that env on every launched agent, so a headless agent can never finalize). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
+The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions. The gates and transitions are built in; `append-only`, `writeback`, `evolve`, `decisions` and `plan-trace` are checks in `checks/`, found by the guard — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked), `finalization` (**Gate 3** — never an agent's; a campaign's delegated record counts only while `tools/gate3.py` says that campaign still delegates it — blocks unless the state is right (`internal-review`, or `active`+`target.active` for target-driven), a Gate-3 marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`) or `--pi-approved` is passed, **and** `AUTOSCIENTIST_NO_GATE3` is unset — the executor sets that env on every launched agent, so a headless agent can never finalize). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
 
 ### `configure.py` — owner-aware config view/set/profile
 

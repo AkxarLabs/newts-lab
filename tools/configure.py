@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse the profiles helpers
 import profiles  # noqa: E402 — stamp / _fmt / _sync_agent_model / AGENT_FILE
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+import workflow  # noqa: E402 — the lab's rules (workflow/rules.yaml)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -32,18 +33,9 @@ if hasattr(sys.stdout, "reconfigure"):
 HUB = Path(__file__).resolve().parents[1]
 LAB = HUB / "lab"
 
-# PI-owned keys (docs/configuration.md Owner column). Prefixes catch whole trees; the exact set is
-# for keys that would be wrongly matched (or missed) by a prefix — e.g. loop.no_progress_backoff_cycles
-# is agent-readable, so only loop.mode / loop.explore_ are prefixes, never a bare "loop.".
-PI_OWNED_PREFIXES = ("lab.", "compute.", "agents.", "oversight.level", "critique.",
-                     "writing.page_limit", "budgets.", "gate2_envelope.", "eval_frozen",
-                     "loop.mode", "loop.explore_")
-PI_OWNED_EXACT = {"ideation.in_project", "ideation.in_project_approval",
-                  "writing.venue", "autopilot.max_concurrent_projects"}
-
-
 def is_pi_owned(key: str) -> bool:
-    return key in PI_OWNED_EXACT or any(key.startswith(p) for p in PI_OWNED_PREFIXES)
+    """workflow/rules.yaml `pi_owned_config` (docs/configuration.md's Owner column) — the one owner table."""
+    return workflow.pi_owned(key, HUB)
 
 
 def _projects_root() -> Path:

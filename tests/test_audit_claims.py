@@ -1,4 +1,4 @@
-"""Tests for tools/audit_claims.py — the mechanical claims auditor (hard rule 1)."""
+"""Tests for checks/audit_claims.py — the mechanical claims auditor (hard rule 1)."""
 
 from __future__ import annotations
 

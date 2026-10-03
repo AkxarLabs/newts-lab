@@ -1,6 +1,6 @@
 r"""Mechanically audit a paper's claims.yaml against run artifacts.
 
-    uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3]
+    uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3]
         [--check-commits] [--verify-hashes]
 
 Artifacts resolve from the hub archive (studies/<slug>/paper/artifacts/, locked by tools/lock_artifacts.py
@@ -53,7 +53,7 @@ import sys
 from pathlib import Path
 
 import yaml
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -314,7 +314,7 @@ def main() -> int:
                         help="also flag bare integers near result words (excludes years/refs)")
     parser.add_argument("--scan-novelty", action="store_true", dest="scan_novelty",
                         help="flag priority/superiority claims (SOTA/first-to/outperforms-all) in "
-                             "main.tex with no \\cite or % Cnnn/Nnnn backing (WARN, exit 2)")
+                             "main.tex with no \\cite or %% Cnnn/Nnnn backing (WARN, exit 2)")
     args = parser.parse_args()
 
     paper_dir = (HUB / args.paper_dir) if not Path(args.paper_dir).is_absolute() else Path(args.paper_dir)

@@ -45,7 +45,7 @@ Everything between gates runs autonomously. Everything at a gate stops for you.
 
 ## Load-bearing principles
 
-1. **Every reported number traces to a run artifact** — enforced mechanically by `tools/audit_claims.py`, not by promise.
+1. **Every reported number traces to a run artifact** — enforced mechanically by `checks/audit_claims.py`, not by promise.
 2. **Staged scale** — smoke → pilot → full; most ideas die cheaply at pilot.
 3. **Git is memory** — one commit per experiment attempt; append-only ledgers; nothing lives only in a chat transcript.
 4. **Frozen things stay frozen** — eval protocol, test sets, seeds, budgets. The watchdog enforces budgets in code.

@@ -1,6 +1,6 @@
 """Audit selection discipline (hard rule 5): tune on validation, report on a held-out test set.
 
-    uv run --with pyyaml python tools/audit_eval_discipline.py studies/<slug>/paper
+    uv run --with pyyaml python checks/audit_eval_discipline.py studies/<slug>/paper
 
 Two checks:
   1. The FROZEN eval protocol in the proposal (§4 "Metrics & evaluation protocol") must define BOTH a
@@ -22,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):

@@ -434,8 +434,8 @@ def test_evolve_placeholder_and_comment_dont_count_as_filled(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     proj = hub.make_project("demo")
     _make_notes(proj)
-    assert m._notes_section_filled(proj, "abandoned") is False
-    assert m._notes_section_filled(proj, "worked") is False
+    assert m.CHECKS["evolve"]._notes_section_filled(proj, "abandoned") is False
+    assert m.CHECKS["evolve"]._notes_section_filled(proj, "worked") is False
 
 
 # ── decisions (Revisit-predicate lint) ────────────────────────────────────────

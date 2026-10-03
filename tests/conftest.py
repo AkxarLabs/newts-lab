@@ -36,7 +36,8 @@ os.environ.setdefault("NEWTS_KEEP_PYTHON", "1")
 def load(name: str):
     """Load a tool module fresh from the repo, by short name or relative path.
 
-    ``load("audit_claims")``  -> REPO/tools/audit_claims.py
+    ``load("guard")``  -> REPO/tools/guard.py — a short name is looked up in tools/, then checks/, then
+                          the skills' own tools (.claude/skills/*/tools/)
     ``load("dashboard/sources")`` -> REPO/dashboard/sources.py
     Each call produces an independent module object so a test's global overrides never leak.
     """
@@ -45,7 +46,9 @@ def load(name: str):
         path = REPO / rel
         mod_name = f"_hubtest_{Path(rel).stem}_{abs(hash(rel))}"
     else:
-        path = REPO / "tools" / f"{name}.py"
+        hits = [REPO / "tools" / f"{name}.py", REPO / "checks" / f"{name}.py",
+                *sorted((REPO / ".claude" / "skills").glob(f"*/tools/{name}.py"))]
+        path = next((h for h in hits if h.is_file()), hits[0])
         mod_name = f"_hubtest_{name}_{abs(hash(name))}"
     spec = importlib.util.spec_from_file_location(mod_name, path)
     module = importlib.util.module_from_spec(spec)

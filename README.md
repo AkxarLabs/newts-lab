@@ -99,7 +99,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/analyze` | Analyze results, decide ablations/follow-ups, write findings |
 | `/make-figures` | Figures/tables mechanically from run artifacts (shared figure library) + multimodal self-review |
 | `/write-paper` | Evidence-first LaTeX drafting; placeholder-resolved verified citations; claims re-audited every revision round |
-| `/review-paper` | Mechanical claims audit (`tools/audit_claims.py`) + fresh-context critique ensemble with minority veto |
+| `/review-paper` | Mechanical claims audit (`checks/audit_claims.py`) + fresh-context critique ensemble with minority veto |
 | `/finalize` | Close out: archive, write-back to lab knowledge, update registry |
 | `/grill-with-docs` | Sharpen an engineering plan/design via a relentless grilling loop → `CONTEXT.md` glossary + ADRs (vendored, MIT). Available in the hub and every project repo |
 

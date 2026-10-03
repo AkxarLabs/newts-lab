@@ -270,6 +270,40 @@ def check(hub=None) -> list[str]:
     for r in m.get("roles", []):
         if not (hub / "agent-roles" / f"{r}.md").is_file():
             probs.append(f"role {r}: no agent-roles/{r}.md")
+    return probs + check_rules(hub)
+
+
+BUILT_IN_CHECKS = {"spawn", "full-run", "release-full-run", "frozen", "state", "finalization"}   # in tools/guard.py
+
+
+def check_rules(hub=None) -> list[str]:
+    """Problems with workflow/rules.yaml: every rule has an id and text, ids are unique, every check it names
+    exists (built into the guard, or a checks/<name>.py), every Gate 3 audit script exists."""
+    hub = _hub(hub)
+    try:
+        rl = rules(hub)
+    except (OSError, yaml.YAMLError) as e:
+        return [f"{RULES}: {e}"]
+    probs, seen = [], set()
+    roots = [d for d in (hub / "checks", HUB / "checks") if d.is_dir()]
+    have = BUILT_IN_CHECKS | {f.stem.replace("_", "-") for d in roots for f in d.glob("*.py")} | \
+        {f.stem for d in roots for f in d.glob("*.py")}
+    for group in ("hard_rules", "subagent_rules", "project_rules"):
+        for r in rl.get(group) or []:
+            rid = (r or {}).get("id")
+            if not rid or not str((r or {}).get("text") or "").strip():
+                probs.append(f"rules.yaml {group}: every rule needs an id and text ({rid or r!r})")
+                continue
+            if rid in seen:
+                probs.append(f"rules.yaml: duplicate rule id {rid}")
+            seen.add(rid)
+            for c in r.get("checks") or []:
+                if c not in have:
+                    probs.append(f"rules.yaml {rid}: unknown check {c!r} (not built in, no checks/{c}.py)")
+    for a in rl.get("gate3_audits") or []:
+        script = ((a or {}).get("run") or [None])[0]
+        if not script or not any((d / script).is_file() for d in roots):
+            probs.append(f"rules.yaml gate3_audits: no checks/{script}")
     return probs
 
 
@@ -610,11 +644,11 @@ def rules(hub=None) -> dict:
 
 
 def pi_owned(key: str, hub=None) -> bool:
-    """A config key only the PI changes (rules.yaml pi_owned_config: "x." = the whole tree, else exact)."""
-    for k in rules(hub).get("pi_owned_config") or []:
-        if key == k or (k.endswith(".") and key.startswith(k)) or key.startswith(k + "."):
-            return True
-    return False
+    """A config key only the PI changes (rules.yaml pi_owned_config): an entry covers that key and everything
+    under it (`agents` → `agents.tiers.strong`); `*` is a wildcard (`loop.explore_*`)."""
+    import fnmatch  # noqa: PLC0415
+    return any(key == k or key.startswith(k + ".") or fnmatch.fnmatchcase(key, k)
+               for k in (str(x) for x in rules(hub).get("pi_owned_config") or []))
 
 
 def rigor_violations(flat: dict, hub=None) -> list[str]:

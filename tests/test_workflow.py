@@ -96,6 +96,34 @@ def test_a_skills_frontmatter_need_not_be_strict_yaml(wf):
     assert meta["description"].startswith("With `--flag") and meta["newts"] == {"kind": "entry"}
 
 
+def test_a_rule_and_its_check_need_no_code(lab, wf, monkeypatch):
+    """A new rule is an entry in workflow/rules.yaml (rendered into the manuals); a check is one file in
+    checks/ that the guard finds by itself."""
+    shutil.copy(REPO / "workflow" / "rules.yaml", lab / "workflow" / "rules.yaml")
+    with (lab / "workflow" / "rules.yaml").open("a", encoding="utf-8") as f:
+        f.write("")
+    rules = (lab / "workflow" / "rules.yaml").read_text(encoding="utf-8")
+    rules = rules.replace("\nsubagent_rules:", "  - id: no-tabs\n    checks: [no-tabs]\n    text: \"**No tabs.** Indent with spaces.\"\n\nsubagent_rules:", 1)
+    (lab / "workflow" / "rules.yaml").write_text(rules, encoding="utf-8")
+    begin, end = wf._span("hard-rules")
+    (lab / "AGENTS.md").write_text(f"## Hard rules\n\n{begin}\n{end}\n", encoding="utf-8")
+    assert any("unknown check 'no-tabs'" in x for x in wf.check_rules(lab))
+    (lab / "checks").mkdir()
+    (lab / "checks" / "no_tabs.py").write_text(
+        'NAME = "no-tabs"\n\n\ndef add_args(p):\n    p.add_argument("slug")\n\n\n'
+        'def run(a, g):\n    return g._verdict(0, f"no tabs in {a.slug}")\n', encoding="utf-8")
+    assert not [x for x in wf.check_rules(lab) if "no-tabs" in x]
+    wf.render_docs(lab)
+    manual = (lab / "AGENTS.md").read_text(encoding="utf-8")
+    assert "14. **No tabs.** Indent with spaces." in manual and "1. **Traceability.**" in manual
+    guard = load("guard")
+    monkeypatch.setattr(guard, "HUB", lab)
+    checks = guard._load_checks()
+    assert {"no-tabs", "evolve", "append-only"} <= set(checks)
+    import types
+    assert checks["no-tabs"].run(types.SimpleNamespace(slug="x"), guard) == 0
+
+
 def test_gates_are_fixed(lab, wf):
     p = lab / "workflow" / "stages.yaml"
     txt = p.read_text(encoding="utf-8")

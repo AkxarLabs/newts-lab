@@ -1,6 +1,6 @@
 """Audit that every planned ablation was run, waived, or routed back — not silently dropped.
 
-    uv run --with pyyaml python tools/audit_ablation_coverage.py studies/<slug>/paper
+    uv run --with pyyaml python checks/audit_ablation_coverage.py studies/<slug>/paper
 
 Reads the proposal's `### Planned ablations` bullets (studies/<slug>/proposal.md) and checks each is
 ACCOUNTED FOR: some significant token from it appears in the project's `PLAN.md` experiment table or
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):

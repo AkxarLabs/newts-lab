@@ -4,7 +4,7 @@
 *Reviewer lens: {{lens}}*
 
 > The claims audit is performed mechanically and blockingly by `/review-paper` Part A
-> (`tools/audit_claims.py` + `s2.py verify`) *before* this review runs — do not attempt it
+> (`checks/audit_claims.py` + `s2.py verify`) *before* this review runs — do not attempt it
 > here. As a fresh-context reviewer you are given only the paper, your lens, and an output
 > path; you have no access to the project artifacts. Fill Parts B and C only.
 

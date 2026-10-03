@@ -286,3 +286,14 @@ def test_proposing_an_instruction_change_is_allowed(g, hub):
     assert g.decide(bash("uv run --with pyyaml python tools/workflow.py propose --proc experiment --mode add "
                          "--file /tmp/draft.md", hub.root)) is None
     assert g.decide(write(hub.root / "studies" / "idea-a" / "notes.md", "fine")) is None
+
+
+def test_the_rules_the_manuals_and_the_checks_are_the_pis(g, hub):
+    """workflow/rules.yaml's protected_paths: a run can't rewrite the lab's rules, its manuals, its checks or
+    its templates (it proposes instead); ordinary work files stay writable."""
+    for rel in ("workflow/rules.yaml", "AGENTS.md", "CLAUDE.md", "checks/evolve.py", "templates/idea/proposal.md",
+                "lab/templates/idea/proposal.md", ".claude/skills/propose/SKILL.md"):
+        assert g.decide(write(hub.root / rel, "x\n")), rel
+    assert g.decide(write(hub.root / "studies" / "idea-a" / "notes.md", "fine\n")) is None
+    assert g.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(hub.root),
+                     "tool_input": {"command": "echo '14. new rule' >> AGENTS.md"}})

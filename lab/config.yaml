@@ -295,7 +295,7 @@ critique:                       # ── /critique-paper · /review-paper · PI-
                                 # (mirrored in critique-lenses.md; /critique-paper substitutes it)
   accept_bar: 7                 # median Overall at/above this + zero unrefuted fatal flaws = accept
   max_review_cycles: 3          # revision cycles before escalating to the PI
-  claim_rel_tol: 0.001          # relative tolerance tools/audit_claims.py uses to match a paper
+  claim_rel_tol: 0.001          # relative tolerance checks/audit_claims.py uses to match a paper
                                 # number to its run artifact (looser of this · printed precision).
                                 # Written 0.001 not 1e-3 so YAML parses it as a float, not a string.
 

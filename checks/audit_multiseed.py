@@ -1,6 +1,6 @@
 """Audit that HEADLINE paper claims carry multi-seed confirmation (hard rule 6).
 
-    uv run --with pyyaml python tools/audit_multiseed.py studies/<slug>/paper [--rel-tol ...]
+    uv run --with pyyaml python checks/audit_multiseed.py studies/<slug>/paper [--rel-tol ...]
 
 Only claims marked `headline: true` in claims.yaml are enforced (hard rule 6: "headline results get
 multi-seed confirmation"). For each, the distinct seeds behind its artifacts are counted — a claim's
@@ -21,7 +21,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):

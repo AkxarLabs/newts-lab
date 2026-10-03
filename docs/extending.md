@@ -10,6 +10,7 @@ takes.
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
 | A stage, a state | `workflow/stages.yaml` | `tools/workflow.py check` |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
+| A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
 | How training runs on a machine | `lab/config.yaml` → `compute.scheduler` (+ `lab/SYSTEM.md`) | [Machines & compute](compute.md) |
 | An agent CLI (backend) | one module in `tools/executor/backends/` | `tests/test_live_backends.py` |
@@ -62,6 +63,22 @@ a gate. The lifecycle's order and its back edges are in `workflow/stages.yaml` t
 legal transitions from them. The stage set is validated as the shipped one for now. Opening it up (new
 stages, reordering) is a change to the manifest plus the world's room art, not to the engine. Keep the
 three gates fixed: `check` refuses a manifest without exactly Gates 1, 2 and 3.
+
+## A rule
+
+The lab's rules are one PI-owned file, `workflow/rules.yaml`: the hard rules every session follows, the
+subagent rules, and the project rules. `render-docs` writes them into `AGENTS.md`, the project template's
+`AGENTS.md` and the experiment runner's role, so a rule added there reaches every agent. Append, because
+the skills cite hard rules by number.
+
+The same file holds what the code enforces from it: the config keys only the PI changes
+(`pi_owned_config`), the rigor floors no profile may lower, the paths a headless run may never write
+(`protected_paths`), and the paper audits a delegated Gate 3 must pass (`gate3_audits`).
+
+To make a rule mechanical, give it a check in `checks/` (see `checks/README.md`): a guard check is
+`NAME`, `add_args` and `run(args, guard)`, and `tools/guard.py <name>` finds it by itself. Then call it
+from the skills that need it. The three gates and the lifecycle transitions are built into the guard and
+can't be removed; every other check can be.
 
 ## A subagent role
 

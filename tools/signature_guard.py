@@ -64,7 +64,8 @@ SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_
                         r"PI Gate 3|gate3_approved|\[x\]\s*Authorized", re.I)
 PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.bus/campaigns/|\.claude/(?:skills|agents)/|agent-roles/|"
                              r"\.(?:codex|opencode)/agents/|"
-                             r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/stages\.yaml", re.I)
+                             r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/(?:stages|rules)\.yaml|"
+                             r"(?:^|[\s/'\"])(?:AGENTS|CLAUDE)\.md", re.I)
 WRITE_HINT = re.compile(r"(?<![0-9&])>(?!&)|\btee\b|sed\s+-i|perl\s+-\w*i|Set-Content|Add-Content|Out-File|"
                         r"\.write\(|write_text|write_bytes|open\([^)]*['\"][wa+]|\bcp\s|\bmv\s|\brm\s|"
                         r"Copy-Item|Move-Item|Remove-Item|New-Item|yaml\.(safe_)?dump", re.I)
@@ -142,13 +143,26 @@ def _flat(d, prefix="") -> dict:
     return out
 
 
+def _rules() -> dict:
+    """workflow/rules.yaml — the owner table, the protected paths, the config procedures."""
+    try:
+        import workflow  # noqa: PLC0415
+        return workflow.rules(HUB)
+    except Exception:  # noqa: BLE001 — unreadable rules: the conservative defaults below still hold
+        return {}
+
+
 def _is_pi_owned(key: str) -> bool:
     try:
-        sys.path.insert(0, str(HERE))
-        from configure import is_pi_owned   # the single owner table (docs/configuration.md)
-        return is_pi_owned(key)
+        import workflow  # noqa: PLC0415
+        return workflow.pi_owned(key, HUB)
     except Exception:  # noqa: BLE001
         return key.startswith(("agents.", "lab.", "compute.", "budgets.", "oversight."))
+
+
+def _config_run() -> bool:
+    """A run of a procedure whose job is changing PI config with the PI (rules.yaml config_procedures)."""
+    return os.environ.get("NEWTS_RUN_SKILL") in (_rules().get("config_procedures") or ["setup-lab", "configure"])
 
 
 # ── per-file rules: (path, text before, text after) → reason or None ─────────
@@ -285,7 +299,7 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
     if b is None:
         return None if not new.strip() else "lab/config.yaml would no longer parse"
     b = _flat(b)
-    interview = os.environ.get("NEWTS_RUN_SKILL") in ("setup-lab", "configure")
+    interview = _config_run()
     for key in sorted(set(a) | set(b)):
         if a.get(key) == b.get(key):
             continue
@@ -296,15 +310,23 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
     return None
 
 
-PROCEDURE_PATHS = re.compile(r"^(?:\.claude/skills/|\.claude/agents/|\.codex/agents/|\.opencode/agents/|"
-                             r"agent-roles/|workflow/|lab/workflow/|studies/[^/]+/workflow/)")
+PROTECTED_DEFAULT = [r"^\.claude/(skills|agents)/", r"^\.(codex|opencode)/agents/", r"^agent-roles/", r"^workflow/",
+                     r"^lab/workflow/", r"^studies/[^/]+/workflow/"]
+
+
+def _protected(rel: str) -> bool:
+    """workflow/rules.yaml `protected_paths` (+ the defaults, which a rules file can extend but not drop)."""
+    pats = PROTECTED_DEFAULT + [p for p in (_rules().get("protected_paths") or []) if isinstance(p, str)]
+    return any(re.search(p, rel) for p in pats)
 
 
 def _rule_procedures(path: Path, old: str | None, new: str) -> str | None:
-    """The lab's procedures, roles, workflow definition and the PI's stage instructions are not a run's to
-    change — an agent that wants them different files a proposal the PI accepts in the dashboard."""
-    if PROCEDURE_PATHS.match(_rel(path)):
-        return ("procedures, roles and the PI's stage instructions are PI-owned — suggest a change with "
+    """The lab's procedures, rules, roles, workflow definition, templates and the PI's stage instructions are
+    not a run's to change — an agent that wants them different files a proposal the PI accepts in the
+    dashboard."""
+    if _protected(_rel(path)):
+        return ("the lab's procedures, rules, roles, templates and the PI's stage instructions are PI-owned — "
+                "suggest a change with "
                 "`python tools/workflow.py propose --proc <procedure> --mode add|replace --file <draft.md>`")
     return None
 
@@ -399,7 +421,7 @@ def check_shell(cmd: str) -> str | None:
     for rx, why in SHELL_ALWAYS:
         if rx.search(cmd):
             return why
-    interview = os.environ.get("NEWTS_RUN_SKILL") in ("setup-lab", "configure")
+    interview = _config_run()
     if "--pi-approved" in cmd and not interview:
         return "--pi-approved is the PI's own flag — the PI approves in the dashboard"
     quiet = REDIRECT_NOISE.sub(" ", cmd)
