@@ -195,7 +195,7 @@ def test_repo_codex_hooks_stand_down_when_executor_passed_flags(tmp_path):
 
 def test_dashboard_links_spawn_to_exact_child(tmp_path):
     src = load("dashboard/sources")
-    parent = src._fold_worker([
+    parent = src.workers._fold_worker([
         {"ts": "2026-09-26T10:00:00", "worker_id": "r", "event": "spawn", "tool_use_id": "c1", "spawns": "default",
          "summary": "Agent: default: first"},
         {"ts": "2026-09-26T10:00:01", "worker_id": "r", "event": "spawn", "tool_use_id": "c2", "spawns": "default",
@@ -205,7 +205,7 @@ def test_dashboard_links_spawn_to_exact_child(tmp_path):
     workers = [{"worker_id": "r", "is_subagent": False, "spawned": parent["spawns"], "_returns": {}},
                {"worker_id": "kid-B", "is_subagent": True, "parent": "r", "role": "default", "started": "1"},
                {"worker_id": "kid-A", "is_subagent": True, "parent": "r", "role": "default", "started": "2"}]
-    src._link_workers(workers)
+    src.workers.link_workers(workers)
     labels = {w["worker_id"]: w.get("label") for w in workers}
     assert labels == {"r": None, "kid-B": "second", "kid-A": "first"}   # by id, not by start order
 

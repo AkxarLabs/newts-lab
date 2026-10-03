@@ -162,3 +162,21 @@ def withdraw_post(body: dict) -> tuple[dict, int]:
     except ValueError as e:
         return {"error": str(e)}, 400
     return {"ok": True}, 200
+
+
+def resolve_escalation(body: dict) -> tuple[dict, int]:
+    """'Mark handled' on an escalation: emit escalation_resolved on the bus that raised it."""
+    ref = str(body.get("ref") or "")
+    if not re.match(r"^e-[0-9a-f]{6,32}$", ref):
+        return {"error": "invalid escalation id"}, 400
+    src = str(body.get("source") or "hub")
+    bus = ctx.LAB / ".bus" if src in ("hub", "") else ((ctx.pdir(src) / ".bus") if (ctx.safe_id(src) and ctx.pdir(src)) else None)
+    if bus is None:
+        return {"error": f"unknown source '{src}'"}, 400
+    bus.mkdir(parents=True, exist_ok=True)
+    with (bus / "events.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": ctx.ts(), "source": src or "hub",
+                            "kind": "escalation_resolved", "detail": "handled by the PI (dashboard)",
+                            "data": {"ref": ref}}) + "\n")
+    ctx.pi_log({"action": "escalation.resolve", "ref": ref, "source": src})
+    return {"ok": True}, 200

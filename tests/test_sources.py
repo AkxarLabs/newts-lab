@@ -96,7 +96,7 @@ def test_workers_marks_done(hub, monkeypatch):
          "kind": "read"},
         {"ts": "2026-06-19T10:02:00", "event": "stop"},
     ])
-    workers = m._workers(bus, None)
+    workers = m.workers.scan(bus, None)
     assert len(workers) == 1
     w = workers[0]
     assert w["role"] == "experiment-runner"
@@ -113,7 +113,7 @@ def test_workers_marks_working(hub, monkeypatch):
         {"ts": "2026-06-19T10:01:00", "event": "action", "tool": "Edit", "summary": "Edit: y",
          "kind": "edit"},
     ])
-    workers = m._workers(bus, None)
+    workers = m.workers.scan(bus, None)
     assert workers[0]["status"] == "working"
 
 
@@ -436,7 +436,7 @@ def test_worker_tree_links_spawn_to_child_with_label_and_result(hub, monkeypatch
         {"role": "ideation-critic", "event": "start", "session_id": "SESS"},
         {"role": "ideation-critic", "event": "action", "session_id": "SESS", "tool": "WebSearch", "summary": "q"},
     ])
-    ws = {w["worker_id"]: w for w in m._link_workers(m._workers(bus, None))}
+    ws = {w["worker_id"]: w for w in m.workers.link_workers(m.workers.scan(bus, None))}
     child, parent = ws["agent-1"], ws["SESS"]
     assert child["is_subagent"] and child["parent"] == "SESS" and parent["children"] == ["agent-1"]
     assert child["label"] == "Novelty skeptic: sparse attn" and child["spawn_id"] == "tuA"
@@ -456,7 +456,7 @@ def test_worker_inside_long_tool_stays_working(hub, monkeypatch):
     ])
     old = _t.time() - 1500                                          # 25 min into a PILOT run
     os.utime(bus / "workers" / "agent-2.jsonl", (old, old))
-    w = m._workers(bus, None)[0]
+    w = m.workers.scan(bus, None)[0]
     assert w["status"] == "working" and w["in_tool"]["tool"] == "Bash"   # not idle, not dropped
 
 
@@ -465,11 +465,11 @@ def test_done_worker_lingers_with_result_and_resume_reopens(hub, monkeypatch):
     bus = hub.lab / ".bus"
     _wlog(bus, "agent-3", [{"role": "overseer", "event": "start", "session_id": "S"},
                            {"role": "overseer", "event": "stop", "session_id": "S", "result": "SUPPORTED"}])
-    w = m._workers(bus, None)[0]
+    w = m.workers.scan(bus, None)[0]
     assert w["status"] == "done" and w["result"] == "SUPPORTED"
     _wlog(bus, "S", [{"event": "start", "session_id": "S"}, {"event": "stop", "session_id": "S"},
                      {"event": "start", "session_id": "S", "source": "resume"}])
-    w = next(x for x in m._workers(bus, None) if x["worker_id"] == "S")
+    w = next(x for x in m.workers.scan(bus, None) if x["worker_id"] == "S")
     assert w["status"] != "done"                                    # a resumed session is live again
 
 

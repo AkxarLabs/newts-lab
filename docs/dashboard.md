@@ -441,9 +441,16 @@ chain, a repeat, a campaign pass) and what it started.
 
 ## Tech notes
 
-- **Server.** `dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (plus pyyaml), and
-  `dashboard/product.py` holds the PI actions beyond the gates and the launcher. The lab's files are
-  the database:
+- **Server.** `dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (plus pyyaml) with one route table;
+  each area of the product is one module beside it, sharing `ctx.py` (which lab is shown):
+  - reading: `sources.py` (the snapshot), `workers.py` (runs and traced agents), `attention.py` (what
+    needs you), `review.py` (what you read before signing), `library.py`;
+  - acting: `runops.py` (runs), `gates.py` (signatures), `campaign.py`, `bus.py` (directives,
+    commands), `instructions.py` (the Workflow page), `settings.py`, `keys.py`, `system.py`;
+  - around the lab: `ticker.py` (the scheduler thread), `labtools.py`, `labs.py`, `machines.py`,
+    `fleet.py`, `term.py`.
+
+  The lab's files are the database:
   - `GET /api/state` is a snapshot rebuilt from files, cached for about 1 s.
   - `GET /api/events` is Server-Sent Events, polled every 1.5 s.
   - Each run has `GET /api/run`, `/api/run/tail` and `/api/run/log`.

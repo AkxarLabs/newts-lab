@@ -203,13 +203,13 @@ def test_revive(m, hub):
 # ── keys, settings, setup, docs ───────────────────────────────────────────────
 
 def test_keys_are_stored_but_never_read_back(m, hub):
-    assert m.settings.keys_set({"key": "S2_API_KEY", "value": "secret-123"})[1] == 200
+    assert m.keys.keys_set({"key": "S2_API_KEY", "value": "secret-123"})[1] == 200
     assert "S2_API_KEY=secret-123" in (hub.lab / ".env.local").read_text(encoding="utf-8")
-    st, _ = m.settings.keys_status()
+    st, _ = m.keys.keys_status()
     assert "secret-123" not in json.dumps(st) and next(k for k in st["keys"] if k["key"] == "S2_API_KEY")["set"]
     assert "lab/.env.local" in (hub.root / ".gitignore").read_text(encoding="utf-8")
     assert "secret-123" not in json.dumps(_pi(hub))
-    assert m.settings.keys_set({"key": "NEWTS_RUN_ID", "value": "x"})[1] == 400
+    assert m.keys.keys_set({"key": "NEWTS_RUN_ID", "value": "x"})[1] == 400
     sup = load("tools/executor/supervise.py") if False else None   # noqa: F841 — _env_local is tested below
     from executor.supervise import _env_local
     assert _env_local(m.executor.Lab(hub.root))["S2_API_KEY"] == "secret-123"
@@ -311,25 +311,25 @@ def test_terminal_opens_only_fixed_commands(m, hub, monkeypatch):
 # ── System & compute ──────────────────────────────────────────────────────────
 
 def test_system_probe_and_scheduler_block(m, hub):
-    out, code = m.settings.system_info({"fresh": "1"})
+    out, code = m.system.system_info({"fresh": "1"})
     assert code == 200 and out["facts"]["cpus"] and "suggested_scheduler" in out["facts"]
     assert out["scheduler"]["kind"] == "local"
     sc = {"kind": "slurm", "stages": ["PILOT", "FULL"], "slurm": {"partition": "gpu", "gpus_per_run": 2, "mem": "32G",
                                                                    "setup": ["module load cuda/12.4"], "extra_args": ["--exclusive"]}}
-    out, code = m.settings.system_scheduler_set({"scheduler": sc, "confirm": True})
+    out, code = m.system.system_scheduler_set({"scheduler": sc, "confirm": True})
     assert code == 200, out
     cfg = m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")
     got = cfg["compute"]["scheduler"]
     assert got["kind"] == "slurm" and got["slurm"]["gpus_per_run"] == 2 and got["slurm"]["setup"] == ["module load cuda/12.4"]
     assert cfg["compute"]["max_concurrent_runs"] == 1 and cfg["agents"]["programmatic"]["enabled"] is True   # the rest kept
     # a second save replaces the block in place (no duplicate key)
-    assert m.settings.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
+    assert m.system.system_scheduler_set({"scheduler": {"kind": "local"}, "confirm": True})[1] == 200
     text = (hub.lab / "config.yaml").read_text(encoding="utf-8")
     assert text.count("scheduler:") == 1 and m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")["compute"]["scheduler"]["kind"] == "local"
     bad = [{"kind": "pbs"}, {"kind": "slurm", "slurm": {"partition": "gpu; rm -rf /"}},
            {"kind": "slurm", "slurm": {"extra_args": ["exclusive"]}}, {"kind": "custom", "custom": {"submit": "qsub"}}]
     for b in bad:
-        assert m.settings.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b
+        assert m.system.system_scheduler_set({"scheduler": b, "confirm": True})[1] == 400, b
 
 
 # ── the workflow: the PI's instructions per procedure / stage / role ──────────
@@ -378,13 +378,13 @@ def test_workflow_refuses_bad_input(m, hub):
 def test_agent_proposals_are_accepted_or_declined_by_the_pi(m, hub):
     _wf_hub(hub)
     rec = m.sources.workflow.propose("propose", "add", "Also list compute risks.", hub.root, why="missing")
-    items = [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
+    items = [a for a in m.sources.attention.lab_items([], [], []) if a["kind"] == "proposal"]
     assert [a["detail"]["proposal"] for a in items] == [rec["id"]]
     assert m.instructions.workflow_proposal({"id": rec["id"], "accept": "yes"})[1] == 400
     assert m.instructions.workflow_proposal({"id": rec["id"], "accept": True})[1] == 200
     assert "Also list compute risks." in m.instructions.workflow_item({"kind": "procedure", "name": "propose"})[0]["lab"]["add"]
     assert m.instructions.workflow_proposal({"id": rec["id"], "accept": True})[1] == 400      # already resolved
-    assert not [a for a in m.sources._lab_attention([], [], []) if a["kind"] == "proposal"]
+    assert not [a for a in m.sources.attention.lab_items([], [], []) if a["kind"] == "proposal"]
 
 
 def test_autonomy_settings_round_trip(m, hub):
@@ -404,17 +404,17 @@ def test_autonomy_settings_round_trip(m, hub):
 # ── phone notifications (Settings → Notifications) ─────────────────────────────
 
 def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
-    settings = m.settings
-    out, code = settings.notify_set({"confirm": True, "ntfy": "not a url"})
+    keys = m.keys
+    out, code = keys.notify_set({"confirm": True, "ntfy": "not a url"})
     assert code == 400
     base, got = inbox
-    out, code = settings.notify_set({"confirm": True, "ntfy": f"{base}/secret-topic-123", "link": "http://pc:8787"})
+    out, code = keys.notify_set({"confirm": True, "ntfy": f"{base}/secret-topic-123", "link": "http://pc:8787"})
     assert code == 200, out
-    st, _ = settings.notify_status()
+    st, _ = keys.notify_status()
     assert "secret-topic" not in st["ntfy"] and st["link"] == "http://pc:8787" and not st["webhook"]
     assert "secret-topic" not in (hub.lab / "config.yaml").read_text(encoding="utf-8")
-    assert [k["key"] for k in settings.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
-    out, code = settings.notify_test({})
+    assert [k["key"] for k in keys.keys_status()[0]["keys"] if k["key"].startswith("NEWTS_")] == []
+    out, code = keys.notify_test({})
     assert code == 200 and got and got[0]["path"] == "/secret-topic-123"
 
 

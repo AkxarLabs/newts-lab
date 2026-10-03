@@ -59,7 +59,7 @@ A site scheduler (PBS, LSF, a wrapper) needs no code. Describe it with command t
 [Machines & compute](compute.md) shows. Code is only needed for a scheduler with a genuinely new model:
 add an adapter class next to `Slurm` and `Custom` in `templates/project/scripts/_scheduler.py` and
 register it in `ADAPTERS`; to set it from the dashboard too, give it a section in Settings → System
-(`_clean_scheduler` in `dashboard/settings.py`, the form in `static/ui/settings.js`).
+(`_clean_scheduler` in `dashboard/system.py`, the form in `static/ui/settings.js`).
 
 ## A kind of project
 

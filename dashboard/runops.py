@@ -1,27 +1,20 @@
 """Headless runs from the dashboard: launch, answer, reply, stop, the live transcript, the executor
-settings switch, and the scheduler thread (and its hand-off when the dashboard stops).
+settings switch, and the bus commands that start a procedure. (The scheduler thread is ticker.py.)
 """
 
 from __future__ import annotations
 
 import json
-import os
-import re
-import subprocess
-import sys
-import threading
 
 import ctx  # noqa: E402
 import settings  # noqa: E402
 from bus import COMMAND_ACTIONS, append_command  # noqa: E402
 import sources  # noqa: E402
+import workers  # noqa: E402
+import attention  # noqa: E402
+import ticker  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (observe-and-sign only)
-
-
-# Read-only / safe tools the dashboard may run directly. Never anything that trains or writes.
-# audit_claims runs tools/audit_claims.py (reads claims.yaml + artifacts, prints PASS/FAIL/MANUAL — writes nothing).
-SAFE_TOOLS = {"check_lab", "show_config", "status", "compare", "inbox", "slots", "audit_claims"}
 
 
 # dashboard command → the procedure that consumes it (the directive is still written first, so a
@@ -141,24 +134,6 @@ def ack_attention(body: dict) -> tuple[dict, int]:
     return {"ok": True, "ack": rec}, 200
 
 
-def resolve_escalation(body: dict) -> tuple[dict, int]:
-    """'Mark handled' on an escalation: emit escalation_resolved on the bus that raised it."""
-    ref = str(body.get("ref") or "")
-    if not re.match(r"^e-[0-9a-f]{6,32}$", ref):
-        return {"error": "invalid escalation id"}, 400
-    src = str(body.get("source") or "hub")
-    bus = ctx.LAB / ".bus" if src in ("hub", "") else ((ctx.pdir(src) / ".bus") if (ctx.safe_id(src) and ctx.pdir(src)) else None)
-    if bus is None:
-        return {"error": f"unknown source '{src}'"}, 400
-    bus.mkdir(parents=True, exist_ok=True)
-    with (bus / "events.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"ts": ctx.ts(), "source": src or "hub",
-                            "kind": "escalation_resolved", "detail": "handled by the PI (dashboard)",
-                            "data": {"ref": ref}}) + "\n")
-    ctx.pi_log({"action": "escalation.resolve", "ref": ref, "source": src})
-    return {"ok": True}, 200
-
-
 def set_programmatic(body: dict) -> tuple[dict, int]:
     """Flip agents.programmatic.enabled in lab/config.yaml (settings.write_config). It widens autonomy, so
     it needs an explicit confirm and is logged."""
@@ -182,7 +157,7 @@ def run_detail(run_id: str) -> tuple[dict, int]:
     if not hit:
         return {"error": "no such run"}, 404
     target, workdir, path, m = hit
-    out = sources._compact_run(m)
+    out = workers.compact_run(m)
     out.update(qa=m.get("qa") or [], attempts=m.get("attempts") or [], args=m.get("args"),
                transcript=str(path.parent / (m.get("stream") or f"{run_id}.stream.jsonl")), cwd=m.get("cwd"))
     return {"ok": True, "run": out}, 200
@@ -295,10 +270,10 @@ def executor_health(fresh: bool = False) -> tuple[dict, int]:
     if executor is None:
         return {"available": False, "enabled": False}, 200
     if fresh:   # "check again" after a sign-in
-        sources.recheck_executor(cli=True)
+        attention.recheck_executor(cli=True)
     h = executor.health(_xlab())
     h["available"] = True
-    h["thread_alive"] = bool(_SCHED.get("thread") and _SCHED["thread"].is_alive())
+    h["thread_alive"] = ticker.alive()
     return h, 200
 
 
@@ -331,104 +306,6 @@ def command_stop_loop(target: str) -> list[str]:
             except executor.SpecError:
                 pass
     return stopped
-
-
-_SCHED: dict = {"thread": None, "stop": None}
-
-
-_SCHED_HUBS: set = set()   # labs opened in this server session: their queues keep moving after a switch
-ctx.on_change(lambda old, new: _SCHED_HUBS.update({old, new}))
-
-
-def start_scheduler() -> bool:
-    """The executor's scheduler loop, in a daemon thread. Runs never depend on it (each has its own
-    supervisor); it only starts queued runs, reconciles, and post-processes finished ones."""
-    if executor is None or (_SCHED["thread"] and _SCHED["thread"].is_alive()):
-        return False
-    stop = threading.Event()
-    os.environ["NEWTS_TICKER"] = "dashboard"
-    from executor import awake  # noqa: PLC0415
-
-    def loop():
-        while not stop.is_set():
-            busy = False
-            for hub in [ctx.HUB, *[h for h in list(_SCHED_HUBS) if h != ctx.HUB]]:
-                try:
-                    lab = executor.Lab(hub)
-                    executor.tick(lab)
-                    busy = executor.scheduler.has_work(lab) or busy
-                except Exception:  # noqa: BLE001 — one bad pass must never kill the loop
-                    pass
-            try:   # keep the computer awake while any lab this server schedules is working
-                if busy and awake.enabled(executor.Lab(ctx.HUB)):
-                    awake.hold("the lab is working")
-                else:
-                    awake.release()
-            except Exception:  # noqa: BLE001
-                pass
-            ctx.KICK.wait(2.0)
-            ctx.KICK.clear()
-
-    t = threading.Thread(target=loop, name="executor-scheduler", daemon=True)
-    _SCHED.update(thread=t, stop=stop)
-    t.start()
-    return True
-
-
-def run_tool(name: str, idea: str | None = None) -> dict:
-    if name not in SAFE_TOOLS:
-        return {"error": f"tool '{name}' is not in the read-only whitelist"}
-    py = sys.executable
-    pdir = ctx.pdir(idea) if idea else None
-    cmd, cwd = None, ctx.HUB
-    if name == "check_lab":
-        cmd = [py, str(ctx.HUB / "tools" / "check_lab.py")]
-    elif name == "show_config":
-        cmd = [py, str(ctx.HUB / "tools" / "show_config.py")] + ([str(pdir)] if pdir else [])
-    elif name == "slots":
-        cmd = [py, str(ctx.HUB / "tools" / "run_slots.py"), "status"]
-    elif name == "audit_claims":
-        s = ctx.slug(idea or "")
-        if not s:
-            return {"error": "audit_claims needs an idea slug"}
-        rel_tol = (ctx.config().get("critique") or {}).get("claim_rel_tol", 1e-3)
-        cmd = [py, str(ctx.HUB / "tools" / "audit_claims.py"), f"studies/{s}/paper", "--rel-tol", str(rel_tol)]
-    elif name == "inbox":
-        if pdir:
-            cmd, cwd = [py, str(pdir / "scripts" / "lab_bus.py"), "inbox"], pdir
-        else:
-            cmd = [py, str(ctx.HUB / "tools" / "lab_bus.py"), "inbox"]
-    elif name in ("status", "compare"):
-        if not pdir:
-            return {"error": f"'{name}' needs a project (pass idea)"}
-        script = pdir / "scripts" / f"{name}.py"
-        # compare.py requires a subcommand (`list`); status.py takes none.
-        cmd, cwd = [py, str(script)] + (["list", "--last", "20"] if name == "compare" else []), pdir
-    try:
-        out = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=60)
-        return {"ok": True, "tool": name, "exit": out.returncode,
-                "output": (out.stdout or "") + (("\n[stderr]\n" + out.stderr) if out.stderr.strip() else "")}
-    except subprocess.TimeoutExpired:
-        return {"error": f"{name} timed out"}
-    except Exception as e:  # noqa: BLE001
-        return {"error": f"{name} failed: {e}"}
-
-
-def handoff_scheduler() -> None:
-    """The dashboard is going away: if any lab it scheduled still has queued runs or a campaign to keep, hand
-    the scheduling to a detached `executor_cli serve --until-idle` so the work doesn't stall."""
-    if executor is None:
-        return
-    for hub in {ctx.HUB, *_SCHED_HUBS}:
-        try:
-            lab = executor.Lab(hub)
-            if executor.scheduler.has_work(lab):
-                (lab.lab / ".bus" / "scheduler.lease").unlink(missing_ok=True)   # our lease ends with us
-                if executor.scheduler.ensure_ticker(lab):
-                    print(f"  work is still queued for {hub.name} — a background scheduler keeps it going")
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def command_post(body: dict) -> tuple[dict, int]:

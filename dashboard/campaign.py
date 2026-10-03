@@ -9,6 +9,7 @@ import time
 
 import ctx  # noqa: E402
 import sources  # noqa: E402
+import attention  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None
 
@@ -144,7 +145,7 @@ def campaign_preflight(q: dict) -> tuple[dict, int]:
                                                         "detail": "tools/executor is missing"}]}, 200
     lab = ex.Lab(ctx.HUB)
     prog = lab.prog()
-    status = sources.executor_status()
+    status = attention.executor_status()
     backend = prog.get("backend") or "claude"
     cli = (status.get("clis") or {}).get(backend) or {}
     checks = [{"id": "launch", "ok": bool(prog.get("enabled")), "label": "Agents may be started from the dashboard",

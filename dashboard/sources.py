@@ -35,6 +35,8 @@ except Exception:  # noqa: BLE001 — a broken/missing executor must never blank
     executor = None
 import workflow  # noqa: E402 — the lab's stages/states/procedures (workflow/stages.yaml)
 import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+import workers  # noqa: E402 — who is working: runs + the traced agents
+import attention  # noqa: E402 — what needs the PI; the executor's status
 
 TERMINAL_STATES = workflow.terminal_states()
 
@@ -97,74 +99,6 @@ def _inflight_runs(project_dir: Path, log_interval: float = 60.0) -> list[dict]:
             "elapsed_s": round(elapsed), "budget_min": budget,
             "state": "stalled" if stalled else "alive", "last": last,
         })
-    return out
-
-
-_RUN_KEYS = ("agent_id", "run_id", "backend", "role", "status", "started", "finished", "wall_seconds",
-             "exit_code", "prompt_summary", "session_id", "skill", "command", "target", "subject", "level",
-             "attempt", "reason", "status_ts", "pending_question", "report", "usage", "chain", "chain_child",
-             "parent", "created_by", "created", "max_minutes", "n_actions", "denials", "mode", "label",
-             "cli_version", "model_used", "repeat_minutes", "not_before", "answers_given", "schema",
-             "kind", "gate3_signed", "args", "model", "effort", "max_repeats", "repeat_index", "campaign",
-             "repeat_child", "campaign_cycle", "campaign_final", "failure_kind", "limit_reset", "campaign_retries",
-             "brief_sha", "chain_step", "transport", "pending_permissions", "assumed", "limits", "pid")
-
-
-def _r10(x) -> int | None:
-    return None if x is None else int(x // 10 * 10)
-
-
-def _compact_run(m: dict) -> dict:
-    """A run manifest → the fields the dashboard renders. Time-varying numbers are rounded to 10 s
-    so the SSE signature (which ignores `now`) doesn't change every tick."""
-    out = {k: m.get(k) for k in _RUN_KEYS}
-    out["run_id"] = out["run_id"] or out["agent_id"]
-    out["last_message"] = (m.get("last_message") or "")[:1200] or None
-    out["last_text"] = (m.get("last_text") or "")[:400] or None
-    la = m.get("last_action")
-    out["last_action"] = {"tool": la.get("tool"), "summary": (la.get("summary") or "")[:200], "ts": la.get("ts")}\
-        if isinstance(la, dict) else None
-    now = time.time()
-    st = m.get("status")
-    started = labfiles.parse_ts(m.get("started"))
-    if st in ("starting", "running", "resuming") and started:
-        prior = sum(float(a.get("wall_seconds") or 0) for a in (m.get("attempts") or [])[:-1])
-        cur = labfiles.parse_ts(((m.get("attempts") or [{}])[-1] or {}).get("started")) or started
-        out["elapsed_s"] = _r10(prior + max(0.0, now - cur))
-    else:   # a finished run's wall time never changes → exact (only LIVE numbers are rounded for SSE)
-        out["elapsed_s"] = round(float(m.get("wall_seconds") or 0)) if m.get("wall_seconds") is not None else None
-    hb = labfiles.parse_ts(m.get("heartbeat"))
-    out["heartbeat_age_s"] = _r10(now - hb) if (hb and st in ("starting", "running", "resuming")) else None
-    subs = m.get("subagents") or {}
-    out["subagents"] = [{"id": k, "type": v.get("type"), "description": v.get("description"),
-                         "status": v.get("status"), "n_actions": v.get("n_actions"),
-                         "last_action": (v.get("last_action") or {}).get("summary"),
-                         "result": (v.get("result") or "")[:600] or None,
-                         "started": v.get("started"), "finished": v.get("finished"),
-                         "parent": v.get("parent"), "session": v.get("session"), "background": v.get("background")}
-                        for k, v in list(subs.items())[-40:]]
-    out["n_qa"] = len(m.get("qa") or [])
-    return out
-
-
-def _launched_agents(project_dir: Path) -> list[dict]:
-    """Headless agents launched into this project (tools/executor runs, or older launcher
-    launches) — each is a <project>/.bus/agents/<id>.json manifest; the full transcript lives next to
-    it as <id>.stream.jsonl. Best-effort, absent dir => []."""
-    return _agents_in(project_dir / ".bus" / "agents")
-
-
-def _agents_in(adir: Path) -> list[dict]:
-    if not adir.exists():
-        return []
-    out = []
-    for f in sorted(adir.glob("*.json")):
-        try:
-            m = json.loads(labfiles.read_text(f))
-        except json.JSONDecodeError:
-            continue
-        if isinstance(m, dict):
-            out.append(_compact_run(m))
     return out
 
 
@@ -424,208 +358,6 @@ def _escalations(events: list[dict]) -> list[dict]:
     return out
 
 
-# ── workers (per-agent activity from .bus/workers/*.jsonl — the traceability feed) ──
-#
-# tools/trace_hook.py (a Claude Code hook) writes ONE file per agent/subagent. We fold each file into
-# a roster entry: who it is (role + a readable label), what it's doing (status, the tool it is inside
-# right now, recent actions), where (project / idea / worktree variant), who spawned it (parent) and
-# what it handed back (result). Best-effort and non-canonical, like the rest of the bus.
-#
-# Tree: a subagent's lines carry the PARENT session's id in `session_id`; its parent's file holds a
-# `spawn` line (tool_use_id, subagent type, description) and later a `return` line (the result
-# packet). `_link_workers` matches each child to its spawn, so the UI can draw
-# run → session → subagents with every subagent's label, status and result.
-
-_WORKER_DONE_KEEP_S = 1800   # a finished worker stays on the roster (greyed, with its result) this long
-_WORKER_DEAD_S = 7200        # a file with no 'stop' untouched this long = a session that died uncleanly
-_WORKER_STALE_S = 150        # no activity, no open tool, no stop -> idle (not "working")
-_SUBAGENT_STUCK_S = 1200     # an idle, unfinished subagent this long is surfaced as needing a look
-_MAX_RECENT = 40
-_KNOWN_ROLES = {"orchestrator", "experiment-runner", "fresh-context-reviewer",
-                "overseer", "ideation-critic", "scoping-advocate"}
-_WORKER_CACHE: dict[str, tuple] = {}
-_WORKER_IN_TOOL_MAX_S = 3 * 86400   # inside one tool call (a long training run, a SLURM queue wait) this long
-_LIVE_IDS: set = set()               # session / run ids of runs that were live at the last snapshot
-
-
-def _fold_worker(lines: list[dict]) -> dict:
-    """One worker file's lines → its roster facts (pure; cached by file mtime+size)."""
-    role, idea, proj, variant, sid = "orchestrator", None, None, None, None
-    run_id = subject = depth = None
-    stop_i, start_i = -1, -1
-    actions, spawns, returns = [], [], {}
-    open_tool, result, n_actions = None, None, 0
-    for i, ln in enumerate(lines):
-        if ln.get("role"):
-            role = ln["role"]
-        if ln.get("idea"):
-            idea = ln["idea"]
-        if ln.get("project"):
-            proj, variant = ln["project"], ln.get("variant") or variant
-        if ln.get("session_id") and not sid:
-            sid = ln["session_id"]
-        if ln.get("run_id") and not run_id:
-            run_id, subject, depth = ln["run_id"], ln.get("subject") or subject, ln.get("depth", depth)
-        ev = ln.get("event")
-        if ev == "start":
-            start_i = i
-        elif ev == "stop":
-            stop_i = i
-            if ln.get("result"):
-                result = ln["result"]
-        elif ev == "begin":
-            open_tool = {"tool": ln.get("tool"), "summary": ln.get("summary"), "since": ln.get("ts"),
-                         "kind": ln.get("kind"), "tool_use_id": ln.get("tool_use_id")}
-        elif ev in ("action", "spawn", "return"):
-            if ev == "spawn":
-                spawns.append({"tool_use_id": ln.get("tool_use_id"), "type": ln.get("spawns") or "general-purpose",
-                               "summary": ln.get("summary"), "ts": ln.get("ts"), "background": ln.get("background")})
-            if ev == "return" and ln.get("tool_use_id"):
-                returns[ln["tool_use_id"]] = ln.get("result")
-            if ln.get("child") and ln.get("tool_use_id"):   # codex / opencode name the child exactly
-                for sp in spawns:
-                    if sp.get("tool_use_id") == ln["tool_use_id"]:
-                        sp["child"] = ln["child"]
-            if ev in ("action", "return"):
-                open_tool = None          # the call that was in flight has finished
-            if ev != "return":
-                n_actions += 1
-            actions.append({"ts": ln.get("ts"), "text": ln.get("summary") or ln.get("tool") or ev,
-                            "kind": ln.get("kind") or ev, "event": ev})
-    done = stop_i >= 0 and stop_i >= start_i    # a later 'start' (a resumed session) reopens it
-    return {"role": role, "idea": idea, "project_hint": proj, "variant": variant, "session_id": sid,
-            "run_id": run_id, "subject": subject, "depth": depth,
-            "done": done, "open_tool": None if done else open_tool, "result": result,
-            "spawns": spawns, "returns": returns, "n_actions": n_actions,
-            "recent_actions": actions[-_MAX_RECENT:], "started": lines[0].get("ts"),
-            "last_ts": lines[-1].get("ts")}
-
-
-def _workers(bus_dir: Path, project: str | None = None, projects: set | None = None) -> list[dict]:
-    wdir = bus_dir / "workers"
-    if not wdir.exists():
-        return []
-    now = time.time()
-    out = []
-    for f in sorted(wdir.glob("*.jsonl")):
-        try:
-            st = f.stat()
-        except OSError:
-            continue
-        age = now - st.st_mtime
-        key = str(f)
-        hit = _WORKER_CACHE.get(key)
-        if age > max(_WORKER_DEAD_S, _WORKER_DONE_KEEP_S) and f.stem not in _LIVE_IDS and\
-                not (hit and hit[2].get("open_tool") and age < _WORKER_IN_TOOL_MAX_S):
-            continue   # never parsed: roster cost stays O(recent) before trace_hook's retention sweep
-        if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
-            fold = hit[2]
-        else:
-            lines = labfiles.read_jsonl(f)
-            if not lines:
-                continue
-            fold = _fold_worker(lines)
-            _WORKER_CACHE[key] = (st.st_mtime, st.st_size, fold)
-        if fold["done"] and age > _WORKER_DONE_KEEP_S:
-            continue
-        if fold["done"]:
-            status = "done"
-        elif fold["open_tool"]:
-            status = "working"            # inside a tool call — however long it takes
-        elif age > _WORKER_STALE_S:
-            status = "idle"
-        else:
-            status = "working"
-        wid = f.stem
-        # attribution: an explicit project bus wins; a hub-bus worker whose calls named a registered
-        # project (its /improve worktree, its runs/…) is promoted to that project so the project's
-        # lab view and worker count include it
-        proj = project
-        if not proj:
-            for cand in (fold["project_hint"], fold["idea"]):
-                if cand and projects and cand in projects:
-                    proj = cand
-                    break
-        sid = fold["session_id"]
-        is_sub = bool(sid and sid != wid)
-        out.append({
-            "worker_id": wid,
-            "role": fold["role"],
-            "role_known": fold["role"] in _KNOWN_ROLES,
-            "status": status,
-            "project": proj,
-            "idea": fold["idea"] or (proj if proj != project else None),
-            "variant": fold["variant"],
-            "session_id": sid,
-            "parent": sid if is_sub else None,
-            "is_subagent": is_sub,
-            "children": [],
-            "label": None,
-            "spawns": fold["spawns"][-1]["type"] if fold["spawns"] else None,
-            "spawned": fold["spawns"][-20:],
-            "started": fold["started"],
-            "last_ts": fold["last_ts"],
-            "idle_s": int(age // 10 * 10),
-            "in_tool": fold["open_tool"],
-            "result": fold["result"],
-            "n_actions": fold["n_actions"],
-            "recent_actions": fold["recent_actions"],
-            "run_id": fold.get("run_id"),
-            "subject": fold.get("subject"),
-            "depth": fold.get("depth"),
-            "_returns": fold["returns"],
-        })
-    return out
-
-
-def _link_workers(workers: list[dict]) -> list[dict]:
-    """Match each subagent to the spawn line in its parent's log (same session, same type, in order)
-    → a readable label, the spawn id, and the result packet if the child's own stop didn't carry it.
-    Fills parent.children. Mutates and returns `workers`."""
-    by_id = {w["worker_id"]: w for w in workers}
-    kids: dict[str, list[dict]] = {}
-    for w in workers:
-        if w["is_subagent"]:
-            kids.setdefault(w["parent"], []).append(w)
-    for root_id, children in kids.items():
-        root = by_id.get(root_id)
-        children.sort(key=lambda c: c.get("started") or "")
-        if root is None:
-            continue
-        # every spawn in this session — the root's and its subagents' own (a subagent of a subagent)
-        owners = [root] + children
-        free = [(o, s) for o in owners for s in (o.get("spawned") or [])]
-        for c in children:
-            before = [(o, s) for (o, s) in free if o is not c and (s.get("ts") or "") <= (c.get("started") or "~")]
-            match = next(((o, s) for (o, s) in free if s.get("child") == c["worker_id"]), None) or\
-                next(((o, s) for (o, s) in before if s["type"] == c["role"] and not s.get("child")), None) or\
-                (next(((o, s) for (o, s) in before if s["type"] == "general-purpose"), None)
-                 if c["role"] == "general-purpose" else None)
-            owner = root
-            if match:
-                free.remove(match)
-                owner, sp = match
-                desc = (sp.get("summary") or "").split(": ", 2)[-1]
-                c["label"] = desc[:160] or None
-                c["spawn_id"] = sp.get("tool_use_id")
-                c["background"] = bool(sp.get("background"))
-                if not c.get("result") and sp.get("tool_use_id"):
-                    c["result"] = (owner.get("_returns") or {}).get(sp["tool_use_id"])
-            c["parent"] = owner["worker_id"]
-            c["depth_in_session"] = 1 if owner is root else 2
-            owner.setdefault("children", [])
-            if c["worker_id"] not in owner["children"]:
-                owner["children"].append(c["worker_id"])
-            if not c.get("project") and root.get("project"):
-                c["project"] = root["project"]
-            if not c.get("run_id") and root.get("run_id"):
-                c["run_id"] = root["run_id"]
-    for w in workers:
-        w.pop("_returns", None)
-        w.pop("spawned", None)
-    return workers
-
-
 # ── campaigns (/autopilot) — first-class grouping of delegated projects ─────────
 #
 # A campaign is a PI-signed /autopilot brief that delegates work across projects. We read it from two
@@ -703,8 +435,8 @@ def snapshot() -> dict:
     hub_bus = ctx.LAB / ".bus"
     items, all_events = [], []
     proj_ids = {r["id"] for r in rows if _project_path(r) is not None}
-    workers = _workers(hub_bus, None, proj_ids)
-    hub_runs = _agents_in(hub_bus / "agents")
+    roster = workers.scan(hub_bus, None, proj_ids)
+    hub_runs = workers.agents_in(hub_bus / "agents")
 
     for e in labfiles.read_jsonl(hub_bus / "events.jsonl", tail=400):
         all_events.append(e)
@@ -732,7 +464,7 @@ def snapshot() -> dict:
             item["best"] = _best_metric(registry)
             item["inflight"] = _inflight_runs(pdir)
             item["loop_active"] = (pdir / ".bus" / ".loop-active").exists()
-            item["agents"] = _launched_agents(pdir)
+            item["agents"] = workers.launched_agents(pdir)
             item["directives"] = _directive_threads(pdir / ".bus", default_target=row["id"])
             ctrl = pdir / "control.yaml"
             env = (labfiles.load_yaml(ctrl).get("gate2_envelope") if ctrl.exists() else None)
@@ -741,19 +473,19 @@ def snapshot() -> dict:
             pevents = labfiles.read_jsonl(pdir / ".bus" / "events.jsonl", tail=80)
             item["events"] = pevents[-12:]
             all_events.extend(pevents)
-            workers.extend(_workers(pdir / ".bus", row["id"], proj_ids))
+            roster.extend(workers.scan(pdir / ".bus", row["id"], proj_ids))
         items.append(item)
 
     # hub-bus workers promoted to a project (its /improve worktrees) count toward that project too
     for item in items:
-        item["n_workers"] = sum(1 for w in workers if w["project"] == item["id"] and w["status"] != "done")
+        item["n_workers"] = sum(1 for w in roster if w["project"] == item["id"] and w["status"] != "done")
     runs = hub_runs + [a for it in items for a in (it.get("agents") or [])]
-    _LIVE_IDS.clear()
-    _LIVE_IDS.update(x for r in runs if r.get("status") in ("starting", "running", "resuming", "waiting_input")
+    workers.LIVE_IDS.clear()
+    workers.LIVE_IDS.update(x for r in runs if r.get("status") in ("starting", "running", "resuming", "waiting_input")
                      for x in (r.get("run_id"), r.get("session_id")) if x)
-    _join_runs(workers, runs)
-    _link_workers(workers)
-    workers.sort(key=lambda w: w.get("last_ts") or "")
+    workers.join_runs(roster, runs)
+    workers.link_workers(roster)
+    roster.sort(key=lambda w: w.get("last_ts") or "")
 
     all_events.sort(key=lambda e: e.get("ts", ""))
     # gates_waiting counts gates that still need the PI's SIGNATURE — a signed-but-unconsumed gate
@@ -766,18 +498,18 @@ def snapshot() -> dict:
         "editor": editor_scheme(),
         "items": items,
         "events": all_events[-200:],
-        "escalations": _escalations(all_events),
+        "escalations": (esc := _escalations(all_events)),
         "notebook": _notebook_status(),
         "slots": {"in_use": len(held), "cap": slot_cap(), "held": held},
         "directives": _directive_threads(hub_bus),
-        "workers": workers[-200:],
+        "workers": roster[-200:],
         "campaigns": campaigns(rows),
         "gates_waiting": sum(1 for it in items if it["gate"] and not it["gate_signed"]),
         "cold": len(rows) == 0,
         "runs": sorted(runs, key=lambda r: r.get("created") or r.get("started") or "", reverse=True)[:100],
         "hub_agents": hub_runs,
-        "attention": _attention(items, all_events, workers, runs),
-        "executor": executor_status(),
+        "attention": attention.collect(items, esc, roster, runs),
+        "executor": attention.executor_status(),
         "skills": (executor.SKILL_REGISTRY if executor else {}),
         "workflow": _workflow_view(),
         **_autonomy_view(),
@@ -804,158 +536,5 @@ def _workflow_view() -> dict:
         return {"error": str(e)}
 
 
-def _join_runs(workers: list[dict], runs: list[dict]) -> None:
-    """A headless run's orchestrator IS a worker (its session id names the trace file): tag it with
-    the run so the roster nests run → session → subagents, and give it the run's role/label."""
-    by_sid = {r["session_id"]: r for r in runs if r.get("session_id")}
-    by_run = {r["run_id"]: r for r in runs if r.get("run_id")}
-    for w in workers:
-        r = by_run.get(w.get("run_id")) or by_run.get(w["worker_id"]) or by_sid.get(w["worker_id"]) or\
-            (by_sid.get(w.get("session_id")) if w.get("is_subagent") else None)
-        if not r:
-            w["interactive"] = not w.get("is_subagent")   # a session the PI started by hand
-            if w["interactive"] and not w.get("label"):
-                w["label"] = "Terminal session (started outside the dashboard)"
-            continue
-        w["run_id"] = r["run_id"]
-        if r.get("subject") and not w.get("idea") and not w.get("project"):
-            w["idea"] = r["subject"]
-        if not w.get("is_subagent"):
-            w["label"] = r.get("command") or r.get("prompt_summary")
-            if r.get("status") in ("completed", "failed", "timeout", "killed", "waiting_input") and w["status"] != "done":
-                w["status"] = "done" if r["status"] != "waiting_input" else "idle"
 
 
-# ── attention: one "needs you" queue ─────────────────────────────────────────
-
-def _lab_attention(items: list[dict], events: list[dict], workers: list[dict]) -> list[dict]:
-    """Lab-derived items in the executor's normalized shape (gates, escalations, stalled runs,
-    stuck subagents). Run-derived items come from executor.attention."""
-    out = []
-    for it in items:
-        if it.get("gate") and not it.get("gate_signed") and it["gate"] in (1, 2, 3):
-            g = it["gate"]
-            out.append({"id": f"gate:{it['id']}:{g}", "kind": "gate", "sev": "block", "ts": it.get("updated"),
-                        "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
-                        "title": f"Gate {g} — {it.get('title') or it['id']}",
-                        "body": it.get("next") or "", "detail": {"gate": g},
-                        "actions": [{"id": "sign", "label": f"review & sign Gate {g}"}]
-                        + [{"id": "bundle", "label": "review bundle"}]})
-        for r in it.get("inflight") or []:
-            if r.get("state") == "stalled":
-                out.append({"id": f"stalled:{it['id']}:{r.get('run_id')}", "kind": "stalled", "sev": "warn",
-                            "ts": None, "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
-                            "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}",
-                            "detail": r, "actions": [{"id": "dismiss", "label": "dismiss"}]})
-    try:
-        for pr in workflow.proposals(ctx.HUB):
-            what = ("replace the method of /" if pr.get("kind") == "method" else "add instructions to "
-                    + ("stage " if pr.get("kind") == "stage" else "role " if pr.get("kind") == "role" else "/"))
-            out.append({"id": f"proposal:{pr['id']}", "kind": "proposal", "sev": "warn", "ts": pr.get("ts"),
-                        "target": pr.get("study") or "hub", "idea": pr.get("study"), "run_id": None, "skill": None,
-                        "title": "An agent suggests: " + what + str(pr.get("name")) + (f" ({pr['study']})" if pr.get("study") else ""),
-                        "body": pr.get("why") or pr.get("text", "")[:200], "detail": {"proposal": pr["id"]},
-                        "actions": [{"id": "proposal", "label": "review"}]})
-    except Exception:  # noqa: BLE001 — never blank the dashboard
-        pass
-    for e in _escalations(events):
-        out.append({"id": f"esc:{e['id']}", "kind": "escalation", "sev": "warn" if e.get("severity") != "high" else "block",
-                    "ts": e.get("ts"), "target": e.get("source"), "idea": e.get("source"), "run_id": None,
-                    "skill": None, "title": "Escalation from " + str(e.get("source")), "body": e.get("detail") or "",
-                    "detail": e, "actions": [{"id": "reply", "label": "reply"}, {"id": "resolve", "label": "mark handled"}]})
-    for w in workers:
-        if w.get("is_subagent") and w["status"] == "idle" and not w.get("in_tool") and w.get("idle_s", 0) >= _SUBAGENT_STUCK_S:
-            out.append({"id": f"subagent:{w['worker_id']}:{w.get('last_ts')}", "kind": "subagent", "sev": "warn",
-                        "ts": w.get("last_ts"), "target": w.get("project") or "hub", "idea": w.get("idea"),
-                        "run_id": w.get("run_id"), "skill": None,
-                        "title": f"{w.get('role')} has been silent for {w['idle_s'] // 60} min",
-                        "body": w.get("label") or "", "detail": {"worker_id": w["worker_id"]},
-                        "actions": [{"id": "inspect", "label": "inspect"}, {"id": "dismiss", "label": "dismiss"}]})
-    return out
-
-
-_HEARTBEAT_STALE_S = 120
-
-
-def _attention(items, events, workers, runs) -> list[dict]:
-    extra = _lab_attention(items, events, workers)
-    try:   # a campaign that stopped and needs the PI (stalled, paused on a sign-in problem) — one item for it
-        from executor import campaigns as _camps  # noqa: PLC0415
-        for c in _camps.all_states(executor.Lab(ctx.HUB)) if executor else []:
-            if c.get("status") in ("stalled", "paused") and c.get("paused_reason") and c.get("paused_reason") != "paused by the PI":
-                extra.append({"id": f"campaign:{c['name']}:{c.get('status')}:{len(c.get('cycles') or [])}", "kind": "campaign",
-                              "sev": "block", "ts": (c.get("events") or [{}])[-1].get("ts"), "target": "hub", "idea": None,
-                              "run_id": None, "skill": "autopilot", "title": f"Campaign {c['name']} stopped — it needs you",
-                              "body": c.get("paused_reason") or "", "detail": {"campaign": c["name"]},
-                              "actions": [{"id": "campaign", "label": "open the campaign"}]})
-            for q in (c.get("questions") or [])[-3:]:
-                extra.append({"id": f"cq:{c['name']}:{q.get('ts')}", "kind": "question", "sev": "warn", "ts": q.get("ts"),
-                              "target": "hub", "idea": None, "run_id": None, "skill": "autopilot",
-                              "title": q.get("question") or "A campaign pass asked a question",
-                              "body": f"left by campaign {c['name']} — it moved on; answer with a note and the next pass reads it",
-                              "detail": {"campaign": c["name"]}, "actions": [{"id": "campaign", "label": "open the campaign"}]})
-    except Exception:  # noqa: BLE001
-        pass
-    for r in runs or []:   # a live run whose supervisor stopped reporting (the next tick reconciles it)
-        age = r.get("heartbeat_age_s")
-        if r.get("schema") == 2 and age is not None and age > _HEARTBEAT_STALE_S:
-            extra.append({"id": f"stale:{r['run_id']}", "kind": "stalled", "sev": "warn", "ts": r.get("status_ts"),
-                          "target": r.get("subject") or "hub", "idea": r.get("subject"), "run_id": r["run_id"],
-                          "skill": r.get("skill"), "title": f"{r.get('command') or r['run_id']} has gone quiet",
-                          "body": f"no heartbeat from its supervisor for {int(age // 60)} min — the scheduler checks "
-                                  "whether it is still alive", "detail": {"heartbeat_age_s": age},
-                          "actions": [{"id": "tail", "label": "open"}, {"id": "stop", "label": "stop"}]})
-    if executor is None:
-        return extra
-    try:
-        lab = executor.Lab(ctx.HUB)
-        manifests = []
-        for _t, _w, path, m in executor.all_runs(lab):
-            manifests.append((path, m))
-        brake = executor.brake(lab, [m for _p, m in manifests])
-        return executor.attention.collect(lab, runs=manifests, extra=extra, brake_reason=brake)
-    except Exception:  # noqa: BLE001 — never blank the dashboard
-        return extra
-
-
-_EXEC_CACHE: dict = {"ts": 0.0, "key": None, "value": None}
-ctx.on_change(lambda _old, _new: _EXEC_CACHE.update(ts=0))
-
-
-def recheck_executor(cli: bool = False) -> None:
-    """The next snapshot re-reads the executor's status; `cli` also re-probes the agent CLIs (after a
-    sign-in, an install, a backend change)."""
-    _EXEC_CACHE["ts"] = 0
-    if cli and executor is not None:
-        executor.backends.forget_checks()
-
-
-def executor_status() -> dict:
-    """Launching possible? Which CLIs exist? Caps and load. The CLI probe (a subprocess) is cached 30 s."""
-    if executor is None:
-        return {"available": False, "enabled": False, "reason": "tools/executor is missing"}
-    lab = executor.Lab(ctx.HUB)
-    key = str(lab.hub)
-    if _EXEC_CACHE["key"] == key and time.time() - _EXEC_CACHE["ts"] < 30 and _EXEC_CACHE["value"]:
-        base = dict(_EXEC_CACHE["value"])
-    else:
-        try:
-            base = executor.health(lab)
-        except Exception as e:  # noqa: BLE001
-            base = {"enabled": False, "error": str(e)}
-        _EXEC_CACHE.update(ts=time.time(), key=key, value=base)
-    prog = lab.prog()
-    runs = [m for *_x, m in executor.all_runs(lab)]
-    # settings the PI can change here: always fresh (the cached part is only the CLI probes)
-    base.update(backend=prog.get("backend") or "claude", permission_mode=prog.get("permission_mode") or "auto",
-                caps=executor.caps(lab), config={k: prog.get(k) for k in executor.CONFIG_KEYS if k in prog},
-                auto_spawn_on_gate1=bool((lab.dashboard_cfg() or {}).get("auto_spawn_on_gate1")))
-    base.update(available=True, enabled=bool(prog.get("enabled")),
-                active=sum(1 for m in runs if m.get("status") in executor.ACTIVE),
-                queued=sum(1 for m in runs if m.get("status") == "queued"),
-                waiting=sum(1 for m in runs if m.get("status") in executor.PAUSED))
-    lt = base.get("last_tick")
-    if isinstance(lt, dict):
-        base["last_tick"] = {k: v for k, v in lt.items() if k != "ts"}   # keep the SSE signature stable
-    base.pop("daily", None)
-    return base

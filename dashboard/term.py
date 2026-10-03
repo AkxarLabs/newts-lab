@@ -26,6 +26,7 @@ import time
 
 import ctx  # noqa: E402
 import sources  # noqa: E402
+import attention  # noqa: E402
 
 MAX_BUF = 1 << 20        # keep the last 1 MB of output per session
 MAX_SESSIONS = 8
@@ -167,7 +168,7 @@ def command_for(purpose: str, backend: str | None) -> tuple[list[str] | None, st
         if os.name == "posix":
             return [os.environ.get("SHELL") or "/bin/bash", "-l"], None
         return [os.environ.get("COMSPEC") or "cmd.exe"], None
-    if backend not in ("claude", "codex", "opencode"):   # (= executor.backends.BACKENDS)
+    if backend not in (sources.executor.backends.BACKENDS if sources.executor else ("claude", "codex", "opencode")):
         return None, "unknown backend"
     if purpose == "install":
         cmd = terminal.install_command(backend)
@@ -204,7 +205,7 @@ def open_session(body: dict) -> tuple[dict, int]:
             return {"error": f"could not start it: {e}"}, 500
         SESSIONS[s.id] = s
     ctx.pi_log({"action": f"term.{purpose}", "backend": backend, "argv": argv[:4]})
-    sources.recheck_executor(cli=True)
+    attention.recheck_executor(cli=True)
     title = {"login": f"Sign in to {backend}", "install": f"Install {backend}", "shell": "Terminal"}[purpose]
     return {"ok": True, "id": s.id, "title": title, "pty": has_pty(), "command": " ".join(shlex.quote(a) for a in argv)}, 200
 

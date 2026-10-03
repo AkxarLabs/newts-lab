@@ -11,6 +11,7 @@ from pathlib import Path
 
 import ctx  # noqa: E402
 import sources  # noqa: E402
+import attention  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None
 
@@ -142,19 +143,16 @@ def terminal_open(body: dict) -> tuple[dict, int]:
                 return {"error": f"no install command known for {backend}"}, 400
             res = terminal.open_terminal(cmd, ctx.HUB)
         else:
-            if sources.executor is None:
-                return ctx.no_executor()
-            prog = (ctx.config().get("agents") or {}).get("programmatic") or {}
-            cli = sources.executor.backends.resolve_cli(backend, (prog.get("backends") or {}).get(backend) or {})
-            argv = terminal.login_argv(backend, cli or [])
-            if not argv:
-                return {"error": f"{backend} is not installed yet — install it first"}, 400
+            import term  # noqa: PLC0415 — the one place that knows each CLI's sign-in command
+            argv, err = term.command_for("login", backend)
+            if err:
+                return {"error": err}, 400
             res = terminal.open_terminal(argv, ctx.HUB)
     else:
         return {"error": "unknown purpose"}, 400
     if not res.get("ok"):
         return res, 500
-    sources.recheck_executor(cli=True)
+    attention.recheck_executor(cli=True)
     ctx.pi_log({"action": f"terminal.{purpose}", "backend": backend or None})
     what = {"login": "sign-in", "install": "install", "shell": "shell"}[purpose]
     return {"ok": True, "note": f"opened {res['how']} for the {backend + ' ' if backend else ''}{what} — "

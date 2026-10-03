@@ -65,6 +65,10 @@ import instructions  # noqa: E402
 import fleet  # noqa: E402
 import library  # noqa: E402
 import review  # noqa: E402
+import ticker  # noqa: E402
+import labtools  # noqa: E402
+import keys  # noqa: E402
+import system  # noqa: E402
 
 executor = sources.executor   # tools/executor, or None (the dashboard then stays observe-and-sign)
 TOKEN = secrets.token_urlsafe(24)    # this server process's session secret (the cookie below)
@@ -451,10 +455,10 @@ GET_ROUTES = {
     "/api/campaign/preflight": campaign.campaign_preflight,
     "/api/workflow/proposal": instructions.workflow_proposal_get,
     "/api/lab/config": lambda q: settings.lab_config_get(),
-    "/api/keys": lambda q: settings.keys_status(),
-    "/api/notify": lambda q: settings.notify_status(),
+    "/api/keys": lambda q: keys.keys_status(),
+    "/api/notify": lambda q: keys.notify_status(),
     "/api/term/read": term.read,
-    "/api/system": settings.system_info,
+    "/api/system": system.system_info,
     "/api/figs": lambda q: ({"figures": library.figure_list(q.get("idea", ""))}, 200),
 }
 
@@ -474,7 +478,7 @@ POST_ROUTES = {
     **{f"/api/run/{op}": functools.partial(runops._run_op, op) for op in ("answer", "reply", "interrupt", "stop", "resume", "cancel")},
     "/api/run/permission": runops.permission_run,
     "/api/attention/ack": runops.ack_attention,
-    "/api/escalation/resolve": runops.resolve_escalation,
+    "/api/escalation/resolve": bus.resolve_escalation,
     "/api/executor/enable": runops.set_programmatic,
     "/api/executor/config": settings.set_executor_config,
     "/api/labs/open": labs.labs_open,
@@ -492,9 +496,9 @@ POST_ROUTES = {
     "/api/workflow/save": instructions.workflow_save,
     "/api/workflow/proposal": instructions.workflow_proposal,
     "/api/lab/config": settings.lab_config_set,
-    "/api/keys": settings.keys_set,
-    "/api/notify": settings.notify_set,
-    "/api/notify/test": settings.notify_test,
+    "/api/keys": keys.keys_set,
+    "/api/notify": keys.notify_set,
+    "/api/notify/test": keys.notify_test,
     "/api/setup/complete": settings.setup_complete,
     "/api/server/stop": labs.server_stop,
     "/api/machines/add": machines.add_machine,
@@ -508,7 +512,7 @@ POST_ROUTES = {
     "/api/fleet/keep": fleet.set_keep,
     "/api/machines/local": machines.local,
     "/api/machines/install-uv": machines.install_uv,
-    "/api/system/scheduler": settings.system_scheduler_set,
+    "/api/system/scheduler": system.system_scheduler_set,
     "/api/term/open": term.open_session,
     "/api/term/write": term.write,
     "/api/term/resize": term.resize,
@@ -517,7 +521,7 @@ POST_ROUTES = {
     "/api/withdraw": bus.withdraw_post,
     "/api/command": runops.command_post,
     "/api/gate": gates.gate_post,
-    "/api/tool": lambda b: _res(runops.run_tool(b.get("name", ""), b.get("idea"))),
+    "/api/tool": lambda b: _res(labtools.run_tool(b.get("name", ""), b.get("idea"))),
     "/api/read": lambda b: _res(review.read_doc(b.get("what", ""), b.get("idea"), b.get("gate"), b.get("run"))),
     "/api/libdoc": lambda b: _res(library.lib_doc(b.get("scope", ""), b.get("slug"), b.get("rel", ""))),
     "/api/claims": lambda b: _res(review.claims_map(b.get("idea"))),
@@ -582,14 +586,14 @@ def main() -> int:
         return 3
     SERVER = ctx.SERVER = server
     labs.remember_lab(ctx.HUB)
-    runops._SCHED_HUBS.add(ctx.HUB)
+    ticker._SCHED_HUBS.add(ctx.HUB)
     print(f"Vivarium — the living lab · http://127.0.0.1:{args.port}  (Ctrl-C to stop)")
     if executor is None:
         print("  executor: not available (tools/executor missing) — observe-and-sign only")
     elif cfg.get("executor", True) is False:
         print("  executor: disabled for this dashboard (dashboard.executor: false) — observe-and-sign only")
     else:
-        runops.start_scheduler()
+        ticker.start_scheduler()
         fleet.start_keeper()
         on = bool((ctx.config().get("agents") or {}).get("programmatic", {}).get("enabled"))
         print("  executor: scheduler running · programmatic launching is "
@@ -600,7 +604,7 @@ def main() -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nlights out in the vivarium.")
-    runops.handoff_scheduler()
+    ticker.handoff_scheduler()
     return 0
 
 

@@ -26,16 +26,16 @@ def _mod(hub, monkeypatch):
 
 def test_run_tool_rejects_non_whitelisted(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    res = m.runops.run_tool("rm_rf")
+    res = m.labtools.run_tool("rm_rf")
     assert "error" in res
     assert "whitelist" in res["error"]
 
 
 def test_safe_tools_set_is_read_only(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert "check_lab" in m.runops.SAFE_TOOLS
+    assert "check_lab" in m.labtools.SAFE_TOOLS
     # nothing that trains/writes
-    assert "run" not in m.runops.SAFE_TOOLS and "sweep" not in m.runops.SAFE_TOOLS
+    assert "run" not in m.labtools.SAFE_TOOLS and "sweep" not in m.labtools.SAFE_TOOLS
 
 
 # ── gate approval ─────────────────────────────────────────────────────────────
@@ -367,8 +367,8 @@ def test_claims_map_missing_file_errors(hub, monkeypatch):
 
 def test_run_tool_audit_claims_whitelisted_needs_slug(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
-    assert "audit_claims" in m.runops.SAFE_TOOLS          # read-only audit is allowed
-    res = m.runops.run_tool("audit_claims", "")
+    assert "audit_claims" in m.labtools.SAFE_TOOLS          # read-only audit is allowed
+    res = m.labtools.run_tool("audit_claims", "")
     assert "error" in res and "slug" in res["error"]
 
 

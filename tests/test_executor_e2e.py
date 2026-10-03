@@ -441,6 +441,6 @@ def test_a_backend_without_hooks_still_joins_its_run(hub, monkeypatch):
     wdir.mkdir(parents=True, exist_ok=True)
     (wdir / "hub-x-1.jsonl").write_text(json.dumps({"ts": "2026-09-27T10:00:00", "worker_id": "hub-x-1", "event": "start",
                                                      "run_id": "hub-x-1", "session_id": "hub-x-1"}) + "\n", encoding="utf-8")
-    ws = sources._workers(hub.lab / ".bus")
-    sources._join_runs(ws, [{"run_id": "hub-x-1", "session_id": None, "status": "running", "command": "/lab-status"}])
+    ws = sources.workers.scan(hub.lab / ".bus")
+    sources.workers.join_runs(ws, [{"run_id": "hub-x-1", "session_id": None, "status": "running", "command": "/lab-status"}])
     assert ws[0]["run_id"] == "hub-x-1" and ws[0]["label"] == "/lab-status" and not ws[0].get("interactive")

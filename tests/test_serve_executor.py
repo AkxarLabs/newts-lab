@@ -194,8 +194,8 @@ def test_resolve_escalation_writes_on_the_raising_bus(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     proj = hub.make_project("demo")
     hub.add_registry_row("demo", state="active", project=str(proj))
-    assert m.runops.resolve_escalation({"ref": "not-an-id"})[1] == 400
-    out, code = m.runops.resolve_escalation({"ref": "e-abcdef123456", "source": "demo"})
+    assert m.bus.resolve_escalation({"ref": "not-an-id"})[1] == 400
+    out, code = m.bus.resolve_escalation({"ref": "e-abcdef123456", "source": "demo"})
     assert code == 200
     ev = json.loads((proj / ".bus" / "events.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert ev["kind"] == "escalation_resolved" and ev["data"]["ref"] == "e-abcdef123456"
