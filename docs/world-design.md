@@ -40,8 +40,8 @@ active theme's inks, so both themes always match.
    by day and a gradient by night. `wash: 'wash.ochre'` is a watercolour blotch with pooled edges.
 5. **Only say `glow:` for things that shine.** Liquids, bulbs, screens, window light, specimens. By day
    glow is faint (`glow.strength` 0.28); by night it carries the room.
-6. **Labels are hand-lettered** (`P.text`, or the `plaque` / `sign` components), in the theme's label
-   ink.
+6. **Labels are lettered in the serif** (`P.text`, or the `plaque` / `sign` components): the theme's
+   label font (Newsreader, bundled with the dashboard) in the theme's label ink.
 7. **Every object is a live readout** where it can be:
    - the compute rack's LEDs are the real slots in use;
    - the FULL reactor bubbles with load;

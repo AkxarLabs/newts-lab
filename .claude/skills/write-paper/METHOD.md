@@ -1,6 +1,6 @@
 # Writing the paper: the method
 
-How this lab drafts a paper by default. The PI can add to it or replace it (dashboard → Workflow). The
+How this lab drafts a paper by default. The PI can add to it or replace it (dashboard → Compose). The
 contract (SKILL.md) fixes the evidence and citation rules, the audits after every round, the
 bibliography verification and the hand-off; this file is the craft.
 

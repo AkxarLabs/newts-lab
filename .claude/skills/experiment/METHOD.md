@@ -1,6 +1,6 @@
 # Experiments: the method
 
-How this lab runs experiments by default. The PI can add to it or replace it (dashboard → Workflow). The
+How this lab runs experiments by default. The PI can add to it or replace it (dashboard → Compose). The
 contract (SKILL.md) fixes the inbox checkpoint, config immutability, the stage gates and preflights, the
 runner, the ledger and commits, the frozen set, the kill criteria and the multi-seed rule. This file is
 how to use the stages well.

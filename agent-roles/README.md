@@ -18,7 +18,7 @@ Each role is two files:
 - `.opencode/agents/<name>.md` — opencode subagents (hub).
 - `templates/project/…` — the neutral copies spawned projects ship (resolved at spawn).
 
-The PI's own instructions for a role (dashboard → Workflow → Subagent roles, stored in
+The PI's own instructions for a role (dashboard → Compose → Roles, stored in
 `lab/workflow/roles/<name>.add.md`) are appended to the hub's and spawned projects' rendered copies,
 never to the shipped template copies.
 

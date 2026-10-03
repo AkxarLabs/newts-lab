@@ -243,7 +243,7 @@ def test_real_repo_preserves_role_constraints():
 
 def test_a_new_role_is_two_files(monkeypatch, tmp_path):
     """agent-roles/<role>.yaml + .md is the whole definition: it renders for all three CLIs, the workflow
-    lists it (the Workflow page, PI add-ons, proposals), and its model key resolves — no code edit."""
+    lists it (Compose, PI add-ons, proposals), and its model key resolves — no code edit."""
     root = tmp_path / "hub"
     roles = root / "agent-roles"
     roles.mkdir(parents=True)

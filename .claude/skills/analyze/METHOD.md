@@ -1,6 +1,6 @@
 # Analysis: the method
 
-How this lab interrogates results by default. The PI can add to it or replace it (dashboard → Workflow).
+How this lab interrogates results by default. The PI can add to it or replace it (dashboard → Compose).
 The contract (SKILL.md) fixes the evidence rules (artifacts only, multi-seed spread, validation vs test),
 the oversight check and the routing; this file is how to think.
 

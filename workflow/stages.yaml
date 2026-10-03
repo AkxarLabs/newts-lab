@@ -2,7 +2,7 @@
 #
 # The PI's to shape: add a state, a stage or a room, change what a state offers, then run
 # `tools/workflow.py check`. Agents never edit it (the signature guard refuses). HOW a procedure is done is
-# the PI's too, in lab/workflow/ and studies/<slug>/workflow/ (the dashboard's Workflow page), layered onto
+# the PI's too, in lab/workflow/ and studies/<slug>/workflow/ (the dashboard's Compose page), layered onto
 # each procedure by `tools/workflow.py brief`. Fixed by code: exactly three gates, and /finalize only ever
 # starting from a Gate 3 signature.
 #

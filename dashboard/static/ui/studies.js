@@ -31,8 +31,8 @@
       <div class="scard-meta"><${NL.StatePill} state=${it.state} />
         ${it.gate && !it.gate_signed ? html`<${NL.Pill} tone="gate">✉ Gate ${it.gate}</${NL.Pill}>` : null}
         ${asking ? html`<${NL.Pill} tone="ask">asking you</${NL.Pill}>` : live ? html`<${NL.Pill} tone="live"><i class="dot-live"></i>${live} running</${NL.Pill}>` : null}
-        ${it.n_workers ? html`<span class="muted small">🦎 ${it.n_workers}</span>` : null}
-        ${it.envelope && it.envelope.signed ? html`<span class="muted small" title="FULL-run envelope">⛽ ${it.envelope.full_done + it.envelope.full_resv}/${it.envelope.full_cap || '∞'}</span>` : null}</div>
+        ${it.n_workers ? html`<span class="muted small mono" title="agents working on it">${NL.plural(it.n_workers, 'agent')}</span>` : null}
+        ${it.envelope && it.envelope.signed ? html`<span class="muted small" title="FULL runs used of the signed envelope">FULL ${it.envelope.full_done + it.envelope.full_resv}/${it.envelope.full_cap || '∞'}</span>` : null}</div>
       ${it.next && it.next !== '-' ? html`<div class="scard-next muted small clip">${it.next}</div>` : null}</a>`;
   };
 
@@ -98,7 +98,7 @@
         <h1>${it.title || it.id}</h1><${Stepper} it=${it} /></div>
         <div class="study-actions">${next ? html`<${NL.Btn} kind="primary" icon=${next.icon} onClick=${next.run}>${next.label}</${NL.Btn}>` : null}
           <${NL.Btn} onClick=${() => NL.openStart({ intent: 'study', target: it.id })}>Work on it…</${NL.Btn}>
-          <${NL.Btn} onClick=${() => { NL.go(''); NL.Scene && NL.Scene.focusProject(it.id); }} title="see it in the world">🏠 In the world</${NL.Btn}></div></header>
+          <${NL.Btn} onClick=${() => { NL.go(''); NL.Scene && NL.Scene.focusProject(it.id); }} title="see it in the world">In the world</${NL.Btn}></div></header>
       <${NL.Tabs} tabs=${tabs} value=${tab} onChange=${setTab} />
       <div class="tabpane">
         ${tab === 'overview' ? html`<${Overview} it=${it} />` : null}

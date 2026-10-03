@@ -321,7 +321,7 @@ def _rule_config(path: Path, old: str | None, new: str) -> str | None:
 
 
 PROTECTED_DEFAULT = [r"^\.claude/(skills|agents)/", r"^\.(codex|opencode)/agents/", r"^agent-roles/", r"^workflow/",
-                     r"^lab/workflow/", r"^studies/[^/]+/workflow/"]
+                     r"^lab/workflow/", r"^studies/[^/]+/workflow/", r"^lab/\.bus/compose/"]   # the PI's Compose draft
 
 
 def _protected(rel: str) -> bool:

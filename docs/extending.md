@@ -12,7 +12,8 @@ uv run --with pyyaml python tools/new.py type  survey     --like empirical
 uv run --with pyyaml python tools/new.py rule  no-tabs    --text "**No tabs.** Indent with spaces." [--check no-tabs]
 ```
 
-The dashboard does the first and third too: **Workflow → a procedure or a role → Make a copy…**. A copied skill
+The dashboard does all of it in **Compose**: **New …** on any list, or **Make a copy** on any item, into a draft you review
+and publish ([Customising](customising.md)). A copied skill
 or role says `like: <the original>` and inherits its *definition* (a skill's level, mode, arguments,
 outputs, …; a role's tools, model and sandbox), overriding only what it lists. Its *contract and
 instructions* are copied, never linked: when the original's rules change, a copy doesn't silently change
@@ -26,7 +27,8 @@ Every moving part is a small, named registry; the table is the map.
 
 | To add or change | Where it lives | Checked by |
 |---|---|---|
-| How a stage is done | the Workflow page → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
+| Anything below, from the dashboard | Compose (a draft, checked, then published) | [Customising](customising.md) |
+| How a stage is done | Compose → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
 | A stage, a state, a room | `workflow/stages.yaml` (+ a room's art in `world/rooms/` or `lab/rooms/`) | `tools/workflow.py check` |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
@@ -119,8 +121,8 @@ can't be removed; every other check can be.
 Add `agent-roles/<role>.yaml` (its `label`, description, `tools_claude`, a `model_key` naming its
 `agents.<x>_model` config key, codex settings) and `agent-roles/<role>.md` (its instructions). Then run
 `uv run --with pyyaml python tools/role_sync.py render`. The role is rendered for Claude Code
-(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`), listed on the Workflow
-page (where the PI can add instructions to it), and `role_sync.py resolve <role>` gives its model and
+(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`), listed in Compose
+(where the PI can add instructions to it), and `role_sync.py resolve <role>` gives its model and
 effort. Set its model in `lab/config.yaml` (`agents.<x>_model: standard`). Then a skill spawns it.
 
 ## A scheduler

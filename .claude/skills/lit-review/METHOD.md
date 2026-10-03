@@ -1,6 +1,6 @@
 # Literature review: the method
 
-How this lab reviews the literature by default. The PI can add to it or replace it (dashboard → Workflow).
+How this lab reviews the literature by default. The PI can add to it or replace it (dashboard → Compose).
 Whatever the method, the procedure's contract (SKILL.md) still holds: every query logged, notes as the
 only citation source, the verdict vocabulary, and the routing.
 

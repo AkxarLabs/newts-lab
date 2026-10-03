@@ -165,8 +165,8 @@
     const raw = (location.hash || '').replace(/^#\/?/, '');
     const [path, q] = raw.split('?');
     const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
-    const legacy = { terrarium: '', shelf: 'studies', gates: '', night: '', agents: 'runs', ledger: 'history' };
-    if (parts.length === 1 && parts[0] in legacy) return { page: legacy[parts[0]] || 'home', args: [], query: {} };
+    const legacy = { terrarium: '', shelf: 'studies', gates: '', night: '', agents: 'runs', ledger: 'history', workflow: 'compose' };
+    if (parts.length === 1 && parts[0] in legacy) return { page: legacy[parts[0]] || 'home', args: [], query: Object.fromEntries(new URLSearchParams(q || '')) };
     const query = Object.fromEntries(new URLSearchParams(q || ''));
     return { page: parts[0] || 'home', args: parts.slice(1), query };
   };

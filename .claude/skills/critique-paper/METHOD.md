@@ -1,7 +1,7 @@
 # Critique: the method
 
 How this lab reads a critique ensemble's output by default. The PI can add to it or replace it
-(dashboard → Workflow). The contract (SKILL.md) fixes the fresh-context invariant, the ensemble, the
+(dashboard → Compose). The contract (SKILL.md) fixes the fresh-context invariant, the ensemble, the
 score aggregation, the fatal-flaw veto and the oversight checks. The lens definitions themselves live in
 `templates/review/critique-lenses.md`.
 

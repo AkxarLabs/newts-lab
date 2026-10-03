@@ -1,7 +1,7 @@
 # Improving the method: the operators
 
 How this lab picks the next attempt by default, in the AIDE/AIRA style: the quality lives in the
-**operators**. The PI can add to this or replace it (dashboard → Workflow). The contract (SKILL.md) fixes
+**operators**. The PI can add to this or replace it (dashboard → Compose). The contract (SKILL.md) fixes
 the shared journal, the explore-mode operators (expand, revisit), parallel execution and merging, the
 gates, the exit and selection discipline. This file is how to choose and brief each attempt.
 

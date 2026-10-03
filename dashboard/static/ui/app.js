@@ -37,7 +37,7 @@
 
   /* ── command palette (/ or Ctrl+K) ─────────────────────────────────────── */
   /* the pages you can go to: [route, label, in the top bar] — the top bar and the palette both read this */
-  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['workflow', 'Workflow', 1],
+  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['compose', 'Compose', 1],
     ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']];
   function paletteActions(s) {
     const A = [];
@@ -46,6 +46,8 @@
     add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
     add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
+    add('New procedure…', 'Compose — start from a copy', () => { NL.go('compose'); setTimeout(() => NL.composeNew('procedure'), 50); }, 'skill add create workflow');
+    add('Tour of Compose', 'how to make the lab yours, in a minute', () => NL.composeTour(), 'customise customize workflow help');
     NAV.forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
     (NL.SETTINGS_SECTIONS || []).forEach(x => add('Settings: ' + x.label, 'go', () => NL.go('settings/' + x.id), x.id));
     (s.items || []).forEach(i => {
@@ -81,29 +83,27 @@
     const { needs } = NL.inboxItems(s);
     const li = s.lab_info || {};
     const x = NL.exec(s);
-    const slots = s.slots || {};
     const nav = NAV.filter(x => x[2]).map(([to, label]) => [to || 'home', to, label]);
     const running = x.active || 0;
     const fl = NL.useFleet ? NL.useFleet() : null;
     useEffect(() => { const el = document.querySelector('.mainnav .navlink.on'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [page]);
     const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
-      <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">🦎</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
-        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret">▾</span>${elsewhere ? html`<span class="brand-else" title=${`${elsewhere} thing(s) need you in your other labs`}>+${elsewhere}</span>` : null}</a>
+      <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
+        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${elsewhere} thing(s) need you in your other labs`}>+${elsewhere}</span>` : null}</a>
       <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
-        ${slots.cap ? html`<span class="slots" title=${`compute slots: ${slots.in_use || 0} of ${slots.cap} in use`}>${Array.from({ length: Math.min(slots.cap, 8) }, (_, i) => html`<i class=${i < (slots.in_use || 0) ? 'on' : ''}></i>`)}</span>` : null}
-        <button class="iconbtn" title="search and jump (/ or Ctrl+K)" onClick=${NL.openPalette}>⌕</button>
-        <button class=${cls('iconbtn', needs.length && 'has')} title="what needs you" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}>🔔${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
-        <a class=${cls('iconbtn', page === 'settings' && 'on')} title="settings" href="#/settings">⚙</a>
+        <button class="iconbtn" title="search and jump (/ or Ctrl+K)" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
+        <button class=${cls('iconbtn', needs.length && 'has')} title="what needs you" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
+        <a class=${cls('iconbtn', page === 'settings' && 'on')} title="settings" href="#/settings"><${NL.Icon} name="sliders" /></a>
       </div></header>`;
   };
 
   /* ── routing ───────────────────────────────────────────────────────────── */
   const PAGES = {
     home: () => null, studies: () => NL.StudiesPage, study: () => NL.StudyPage, runs: () => NL.RunsPage, run: () => NL.RunsPage,
-    library: () => NL.LibraryPage, workflow: () => NL.WorkflowPage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
+    library: () => NL.LibraryPage, compose: () => NL.ComposePage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
   };
   const App = () => {
     const route = NL.useRoute();
@@ -123,6 +123,7 @@
     }, [page, route.args.join('/'), JSON.stringify(route.query || {})]);
     return html`<${TopBar} page=${page} />
       ${page === 'home' ? html`<${NL.Home} />` : html`<main class="stage" key=${page}><${P} args=${route.args} query=${route.query} /></main>`}
+      ${page === 'compose' ? html`<${NL.ComposeTourCard} />` : null}
       <${NL.OverlayHost} /><${NL.Toasts} />`;
   };
 
@@ -157,7 +158,9 @@
     NL.applyTheme();
     const root = document.getElementById('app');
     render(html`<${App} />`, root);
-    if (NL.Scene) NL.Scene.boot(document.getElementById('scene')).then(() => { if (!NL.prefs.motion) NL.Scene.setAmbient(false); });
+    // the world paints its signs once: wait (briefly) for the bundled fonts first
+    const fonts = document.fonts ? Promise.race([Promise.all(['600 14px Newsreader', '600 13px "Instrument Sans"'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 1200))]) : Promise.resolve();
+    if (NL.Scene) fonts.catch(() => null).then(() => NL.Scene.boot(document.getElementById('scene'))).then(() => { if (!NL.prefs.motion) NL.Scene.setAmbient(false); });
     if (NL.DEMO && NL.startDemo) { NL.startDemo(); return; }
     if (NL.store.state) NL.onSnapshot(null, NL.store.state); else NL.refresh();
     NL.connect();

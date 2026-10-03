@@ -19,7 +19,7 @@ from conftest import REPO, load
 STATIC = REPO / "dashboard" / "static"
 UI = STATIC / "ui"
 NODE = shutil.which("node")
-UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "campaign", "gates", "library", "studies", "workflow", "home", "settings", "setup", "machines", "demo", "app"]
+UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "campaign", "gates", "library", "studies", "workflow", "compose", "home", "settings", "setup", "machines", "demo", "app"]
 
 
 def _js():
@@ -71,7 +71,7 @@ def test_day_and_night_define_the_same_tokens():
     css = (UI / "ui.css").read_text(encoding="utf-8")
     night = re.search(r':root, html\[data-lamp="night"\] \{(.*?)\n\}', css, re.S).group(1)
     day = re.search(r'html\[data-lamp="day"\] \{(.*?)\n\}', css, re.S).group(1)
-    colour = lambda block: {k for k in re.findall(r"(--[\w-]+):", block) if k not in ("--sans", "--display", "--hand", "--mono", "--r", "--r-l", "--top", "--rail-w")}   # noqa: E731
+    colour = lambda block: {k for k in re.findall(r"(--[\w-]+):", block) if k not in ("--sans", "--serif", "--mono", "--round", "--r", "--r-l", "--top", "--rail-w")}   # noqa: E731
     assert colour(night) == colour(day), colour(night) ^ colour(day)
 
 
@@ -80,6 +80,11 @@ def test_retired_files_stay_retired_and_vendored_libs_carry_licences():
         assert not (STATIC / f).exists(), f
     for f in ("preact.umd.js", "hooks.umd.js", "htm.umd.js", "LICENSE-preact", "LICENSE-htm"):
         assert (STATIC / "vendor" / "preact" / f).exists(), f
+    fonts = STATIC / "vendor" / "fonts"         # the bundled type (SIL OFL), each with its licence
+    for fam in ("newsreader", "instrument-sans", "ibm-plex-mono"):
+        assert list(fonts.glob(f"{fam}-*.woff2")) and (fonts / f"OFL-{fam}.txt").exists(), fam
+    css = (UI / "ui.css").read_text(encoding="utf-8")
+    assert "fonts.googleapis" not in css and all(f"'{n}'" in css for n in ("Newsreader", "Instrument Sans", "IBM Plex Mono"))
 
 
 def test_gate3_and_free_form_are_wired_in_the_ui():

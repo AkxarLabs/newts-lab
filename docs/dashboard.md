@@ -73,8 +73,10 @@ Settings → About.
 4. **Your research.** `/setup-lab` runs as a conversation: research areas and first directions,
    compute, venue, and which models play which roles. Its questions appear as forms you answer in
    place.
-5. **First step.** Four on-ramps: *Explore a new direction* (`/ideate`), *Bring in what I have*
-   (`/adopt`), *Talk it through* (`/discuss`), and *Compete on a target* (`/compete`).
+5. **First step.** The on-ramps: *Explore a new direction* (`/ideate`), *Bring in what I have*
+   (`/adopt`), *Talk it through* (`/discuss`), *Compete on a target* (`/compete`), *Start a campaign*,
+   and *Make the lab yours* — a one-minute tour of Compose (copy a procedure, change how it works,
+   publish it).
 
 <figure markdown>
 ![The setup wizard — connect an agent](assets/dashboard-setup.png){ .as-shot }
@@ -393,18 +395,15 @@ The event kinds are listed in `tools/lab_bus.py`. The main ones:
 
 The bus lives in the git-ignored `lab/.bus/` (hub) and `<project>/.bus/` (each project).
 
-## The Workflow page
+## Compose
 
-**Workflow** (top nav) is how the lab does research, stage by stage, with the gates between them. You
-can add your own instructions to any procedure, or replace its method, lab-wide or for one study. Each
-procedure's sheet shows:
-- your instructions;
-- the method (default or yours, with a compare view);
-- what always applies (its contract and required outputs);
-- the exact text an agent reads.
-
-Agents' suggested changes arrive in Needs you with a diff, for you to accept or decline. A study's page
-has an **Instructions** tab for that study alone. See [Customising the workflow](customising.md).
+**Compose** (top nav) is everything the lab is made of, all of it editable: the pipeline of stages and the
+building of rooms as a map, then procedures (their definition, method, your instructions, their files),
+roles, rooms, rules, checks and project types. Adding anything starts from a copy of the closest thing.
+Every edit goes into a **draft**; **Review & publish** shows the diff and whether the lab still reads
+consistently, and a publish can be undone. A short tour walks through it. Agents' suggested changes arrive
+in Needs you and under Compose → Agents' suggestions, with a diff, for you to accept or decline. A study's
+page has an **Instructions** tab for that study alone. See [Customising the lab](customising.md).
 
 ## Traceability: one log per worker
 
@@ -446,7 +445,8 @@ chain, a repeat, a campaign pass) and what it started.
   - reading: `sources.py` (the snapshot), `workers.py` (runs and traced agents), `attention.py` (what
     needs you), `review.py` (what you read before signing), `library.py`;
   - acting: `runops.py` (runs), `gates.py` (signatures), `campaign.py`, `bus.py` (directives,
-    commands), `instructions.py` (the Workflow page), `settings.py`, `keys.py`, `system.py`;
+    commands), `compose.py` (the lab's definition: draft, check, publish, undo), `instructions.py` (a study's
+    instructions, agents' proposals), `settings.py`, `keys.py`, `system.py`;
   - around the lab: `ticker.py` (the scheduler thread), `labtools.py`, `labs.py`, `machines.py`,
     `fleet.py`, `term.py`.
 
@@ -466,9 +466,14 @@ chain, a repeat, a campaign pass) and what it started.
   - The inline snapshot seed is `</`-escaped.
 - **Front end.** `static/ui/*.js` (Preact 10 + htm, vendored UMD builds, no build step) and
   `static/ui/ui.css`.
-  - Colours are tokens on `:root`, matching the world's day and night palettes.
+  - Colours are tokens on `:root`, one set for day and one for night.
+  - Type: Newsreader for the few big statements (page titles, the lede under them, quotes in italic),
+    Instrument Sans for structure and every word of UI, IBM Plex Mono for labels, data and timestamps.
+    The fonts are bundled (`static/vendor/fonts/`, SIL Open Font License), so the dashboard stays
+    offline.
   - Hash routes: `#/`, `#/studies`, `#/study/<slug>/<tab>`, `#/runs`, `#/run/<id>`,
-    `#/library/<scope>/<slug>/<file>`, `#/settings/<section>`, `#/history`, `#/labs`, `#/setup`.
+    `#/library/<scope>/<slug>/<file>`, `#/compose/<kind>/<name>`, `#/settings/<section>`, `#/history`,
+    `#/labs`, `#/setup`.
   - Old deep links (`?open=<slug>`, `?read=<scope>:<slug>:<rel>`) still work.
 - **The world.** `static/world/scene.js` holds the one `Scene` wrapper around the diorama (and a quiet stand-in when the browser has no WebGL).
   The diorama is `engine.js` with its tokens, painter, components and rooms, and

@@ -1,6 +1,6 @@
 # Proposal: the method
 
-How this lab writes a proposal by default. The PI can add to it or replace it (dashboard → Workflow).
+How this lab writes a proposal by default. The PI can add to it or replace it (dashboard → Compose).
 The contract (SKILL.md) fixes what the proposal must contain and where it stops; this file is how to make
 it good.
 

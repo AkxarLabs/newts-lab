@@ -995,7 +995,7 @@ def main(argv=None) -> int:
                          detail=f"{a.mode} /{a.proc}", data={"proposal": rec["id"]})
         except Exception:  # noqa: BLE001 — the proposal file is the record; the event is a nudge
             pass
-        print(f"[workflow] proposal {rec['id']} filed — the PI accepts or declines it in the dashboard (Workflow)")
+        print(f"[workflow] proposal {rec['id']} filed — the PI accepts or declines it in the dashboard (Compose)")
         return 0
     if a.cmd == "render-docs":
         stale = render_docs(check_only=a.check)

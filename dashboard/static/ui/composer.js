@@ -87,7 +87,7 @@
       const r = await NL.launch({ prompt: ask.trim(), target: target && target !== 'hub' ? target : 'hub', ...optBody({ ...opts, chain: 'off' }) });
       if (r) onClose();
     };
-    return html`<${NL.Sheet} title="Start something" sub="Agents run on this machine, as you. Every gate still waits for your signature." onClose=${onClose} wide icon="＋">
+    return html`<${NL.Sheet} title="Start something" sub="Agents run on this machine, as you. Every gate still waits for your signature." onClose=${onClose} wide>
       <div class="asknewt-big">
         <label class="field-label">Ask Newt — or tell it what to do</label>
         <${NL.Textarea} rows="3" value=${ask} onInput=${setAsk} onSubmit=${sendAsk} autofocus=${!initial && !initSkill}

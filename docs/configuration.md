@@ -226,7 +226,7 @@ Two lightweight reproducibility guards, deliberately in place of a heavyweight c
 
 ## The workflow and your instructions
 
-The stages and procedures are defined in `workflow/stages.yaml` (code-owned, like the skills). Your own
-instructions per procedure, stage and role, lab-wide or per study, live in `lab/workflow/` and
-`studies/<slug>/workflow/`, edited on the dashboard's Workflow page. See
-[Customising the workflow](customising.md).
+The stages are defined in `workflow/stages.yaml` and each procedure in its skill folder; your own
+instructions per procedure, stage and role live in `lab/workflow/` (lab-wide) and `studies/<slug>/workflow/`
+(one study). The dashboard's Compose page edits all of it, as a draft you publish. See
+[Customising the lab](customising.md).

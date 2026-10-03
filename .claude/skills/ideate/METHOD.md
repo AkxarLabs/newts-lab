@@ -2,7 +2,7 @@
 
 How this lab generates and sharpens ideas by default: a phased pipeline that ends with 1–3 ideas that
 have already survived adversarial reflection, not a long list of shallow ones. The PI can add to it or
-replace it (dashboard → Workflow). The contract (SKILL.md) fixes the critic role, the worksheet, the
+replace it (dashboard → Compose). The contract (SKILL.md) fixes the critic role, the worksheet, the
 `ideation.*` knobs, triage and the in-project gate rules. This file is how to think.
 
 ## Phase 0 — Sources

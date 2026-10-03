@@ -143,7 +143,7 @@ def _spec(name: str) -> tuple[dict, str]:
 
 def _with_pi(name: str, body: str) -> str:
     """The role body plus the PI's lab-wide instructions for this role (lab/workflow/roles/<role>.add.md,
-    edited in the dashboard's Workflow page). Hub and spawned-project copies carry them; the shipped
+    edited in the dashboard's Compose page). Hub and spawned-project copies carry them; the shipped
     template copies never do."""
     try:
         sys.path.insert(0, str(HUB / "tools"))

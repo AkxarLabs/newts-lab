@@ -38,26 +38,16 @@
   const itemHash = it => it.kind === 'gate' && it.idea ? `#/study/${it.idea}?gate=${(it.detail || {}).gate}` : it.run_id ? `#/runs?run=${it.run_id}`
     : (it.detail || {}).campaign ? `#/studies?campaign=${encodeURIComponent(it.detail.campaign)}` : it.idea ? `#/study/${it.idea}` : '#/';
 
-  function FleetOverview() {
-    const d = NL.useFleet();
-    if (!d) return html`<${NL.Spinner} />`;
-    const labs = (d.labs || []).slice().sort((a, b) => ((b.summary || {}).needs || 0) - ((a.summary || {}).needs || 0) || (b.current ? 1 : 0) - (a.current ? 1 : 0));
-    if (labs.length < 2) return null;
-    return html`<${NL.Section} title="Across your labs" className="fleet">
-      <p class="muted small">${d.needs_total ? html`<b>${NL.plural(d.needs_total, 'thing')}</b> need you` : 'Nothing needs you'} · ${NL.plural(d.running_total || 0, 'agent run')} working, in ${NL.plural(labs.length, 'lab')}. Remote labs you've opened stay connected in the background and refresh every 15 s.</p>
-      ${labs.map(l => { const sm = l.summary || {};
-        return html`<div class=${cls('fleet-row', l.current && 'on', sm.needs && 'needs')} key=${l.key}>
-          <div class="grow"><div class="row gap wrap"><b>${l.name}</b><span class="muted small">${l.machine}</span>
-            ${l.current ? html`<${NL.Pill} tone="ok">open</${NL.Pill}>` : null}
-            ${l.kind === 'remote' ? html`<${NL.Pill} tone=${(STATE[l.state] || STATE.idle)[0]}>${(STATE[l.state] || STATE.idle)[1]}</${NL.Pill}>` : null}
-            ${l.kind === 'remote' && l.summary_age != null && l.summary_age > 60 ? html`<span class="muted small">as of ${Math.round(l.summary_age / 60)} min ago</span>` : null}</div>
-            ${l.summary ? html`<div class="small row gap wrap">${sm.needs ? html`<span class="warn"><b>${sm.needs}</b> need you</span>` : html`<span class="muted">nothing needs you</span>`}
-              <span>${sm.running || 0} running${sm.queued ? ` · ${sm.queued} queued` : ''}${sm.waiting ? ` · ${sm.waiting} waiting` : ''}</span>
-              ${(sm.campaigns || []).map(c => html`<span class="chip">⟳ ${NL.clip(c.name.replace(/^\d{4}-\d{2}-\d{2}-/, ''), 22)} · ${c.status}${c.waiting ? ` · ${c.waiting} waiting` : ''}</span>`)}</div>`
-              : html`<div class="small muted">${l.kind === 'remote' ? (l.needs_sign_in ? 'needs an interactive sign-in — open it to connect' : l.keep_connected ? 'connecting…' : 'not kept connected — open it once to see it here') : 'no summary'}</div>`}
-            ${(sm.top || []).length ? html`<div class="fleet-items">${sm.top.slice(0, 3).map(it => html`<button type="button" class="link small" onClick=${() => NL.goToLab(l, itemHash(it))}>› ${NL.clip(it.title || it.kind, 80)}</button>`)}</div>` : null}</div>
-          <div class="row">${l.current ? html`<${NL.Btn} small onClick=${() => NL.go('')}>Go to it</${NL.Btn}>` : html`<${NL.Btn} small kind=${sm.needs ? 'primary' : ''} onClick=${() => NL.goToLab(l)}>Open</${NL.Btn}>`}</div></div>`; })}
-    </${NL.Section}>`;
+  /* what a lab needs and runs, from the fleet summary — shown on that lab's own row */
+  const fleetLab = (fl, kind, path, machine) => ((fl && fl.labs) || []).find(l => l.kind === kind && l.path === path && (kind === 'local' || l.machine_id === machine));
+  function LabStatus({ l }) {
+    if (!l || !l.summary) return null;
+    const sm = l.summary;
+    return html`<div class="small row gap wrap">${sm.needs ? html`<span class="warn"><b>${sm.needs}</b> need you</span>` : null}
+        ${sm.running || sm.queued || sm.waiting ? html`<span>${sm.running || 0} running${sm.queued ? ` · ${sm.queued} queued` : ''}${sm.waiting ? ` · ${sm.waiting} waiting` : ''}</span>` : null}
+        ${(sm.campaigns || []).map(c => html`<span class="chip">⟳ ${NL.clip(c.name.replace(/^\d{4}-\d{2}-\d{2}-/, ''), 22)} · ${c.status}</span>`)}
+        ${l.kind === 'remote' && l.summary_age > 60 ? html`<span class="muted">as of ${Math.round(l.summary_age / 60)} min ago</span>` : null}</div>
+      ${(sm.top || []).length ? html`<div class="fleet-items">${sm.top.slice(0, 3).map(it => html`<button type="button" class="link small" onClick=${() => NL.goToLab(l, itemHash(it))}>› ${NL.clip(it.title || it.kind, 80)}</button>`)}</div>` : null}`;
   }
 
   function Facts({ f }) {
@@ -72,7 +62,7 @@
       <span class="row-wrap">${['uv', 'git', 'claude', 'codex', 'opencode'].map(tool)}</span></div>`;
   }
 
-  function RemoteLab({ m, lab, reload }) {
+  function RemoteLab({ m, lab, reload, fl }) {
     const [busy, setBusy] = useState(false);
     const st = STATE[lab.state] || STATE.idle;
     const open = async (interactive) => {
@@ -106,14 +96,15 @@
     return html`<div class="labrow">
       <div class="grow"><b>${lab.lab_name || lab.name || lab.path.split('/').filter(Boolean).pop()}</b> <${NL.Pill} tone=${st[0]}>${st[1]}</${NL.Pill}>
         ${lab.exists === false ? html` <${NL.Pill} tone="warn">no lab there yet</${NL.Pill}>` : null}
-        <div class="mono small muted">${lab.path}</div>${lab.error ? html`<div class="small warn">${lab.error}</div>` : null}</div>
+        <div class="mono small muted">${lab.path}</div>${lab.error ? html`<div class="small warn">${lab.error}</div>` : null}
+        <${LabStatus} l=${fleetLab(fl, 'remote', lab.path, m.id)} /></div>
       <div class="row">${lab.state === 'waiting' ? html`<${NL.Spinner} /><span class="small muted">sign in in the terminal window…</span>` : html`<${NL.Btn} small kind="primary" busy=${busy} onClick=${() => open(false)}>Open</${NL.Btn}>`}
         ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { const r = await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); if (r.was_current) { NL.go('labs'); location.reload(); } else reload(); }}>disconnect</button>` : null}
         <label class="small keep" title="stay connected in the background so the overview (and the top bar) shows what it needs"><input type="checkbox" checked=${!!lab.keep_connected}
           onChange=${async e => { await NL.act('/api/fleet/keep', { id: m.id, path: lab.path, keep: e.target.checked }); reload(); NL.refreshFleet(); }} /> keep connected</label></div></div>`;
   }
 
-  function MachineCard({ m, reload }) {
+  function MachineCard({ m, reload, fl }) {
     const [path, setPath] = useState('');
     const [newName, setNewName] = useState('');
     const [newPath, setNewPath] = useState('~/labs/');
@@ -127,7 +118,6 @@
       const x = await NL.act('/api/machines/create-lab', { id: m.id, path: newPath.trim(), name: newName.trim(), confirm: true });
       if (x.ok) { setMode(null); reload(); }
     };
-    const f = m.facts || {};
     return html`<section class="machine">
       <header class="machine-head"><div class="grow"><h3>${m.name}</h3><span class="mono small muted">${m.host}</span> <${NL.Pill} tone=${r.tone}>${r.text}</${NL.Pill}>
         ${m.reach && !m.reach.ok ? html`<div class="small muted">${m.reach.error}</div>` : null}</div>
@@ -135,8 +125,7 @@
           ${m.facts && !(m.facts.tools || {}).uv ? html`<${NL.Btn} small onClick=${() => NL.act('/api/machines/install-uv', { id: m.id }, 'Installing uv in a terminal window')}>Install uv…</${NL.Btn}>` : null}
           <button class="link small danger" onClick=${async () => { if (await NL.confirm({ title: `Forget ${m.name}?`, body: 'Removes it from this list. Nothing on that machine changes.', ok: 'Forget', danger: true })) { await NL.api('/api/machines/remove', { id: m.id }); reload(); } }}>forget</button></div></header>
       <${Facts} f=${m.facts} />
-      ${(m.labs || []).length ? (m.labs || []).map(l => html`<${RemoteLab} key=${l.path} m=${m} lab=${l} reload=${reload} />`) : html`<div class="muted small pad">No labs on this machine yet.</div>`}
-      ${(f.labs || []).length === 0 && !(m.labs || []).length ? null : null}
+      ${(m.labs || []).length ? (m.labs || []).map(l => html`<${RemoteLab} key=${l.path} m=${m} lab=${l} reload=${reload} fl=${fl} />`) : html`<div class="muted small pad">No labs on this machine yet.</div>`}
       <div class="row">${mode === 'add' ? html`<${NL.Input} value=${path} onInput=${setPath} placeholder="the lab's folder on that machine, e.g. ~/my-lab" mono onEnter=${addLab} /><${NL.Btn} small onClick=${addLab}>Add</${NL.Btn}><button class="link small" onClick=${() => setMode(null)}>cancel</button>`
         : mode === 'create' ? html`<${NL.Input} value=${newName} onInput=${setNewName} placeholder="lab name" /><${NL.Input} value=${newPath} onInput=${setNewPath} mono /><${NL.Btn} small kind="primary" onClick=${create}>Create</${NL.Btn}><button class="link small" onClick=${() => setMode(null)}>cancel</button>`
         : html`<${NL.Btn} small onClick=${() => setMode('add')}>Add a lab folder</${NL.Btn}><${NL.Btn} small onClick=${() => setMode('create')}>Create a lab here</${NL.Btn}>`}</div>
@@ -167,7 +156,7 @@
   }
 
   /* this computer's labs (open / create / switch) */
-  function LocalLabs({ d, reload }) {
+  function LocalLabs({ d, reload, fl }) {
     const [path, setPath] = useState('');
     const [nm, setNm] = useState('');
     const [where, setWhere] = useState('');
@@ -187,7 +176,8 @@
       <header class="machine-head"><div class="grow"><h3>This computer</h3></div></header>
       ${!d ? html`<${NL.Spinner} />` : (d.labs || []).map(l => html`<div class=${cls('labrow', l.current && !s.remote && 'on', !l.exists && 'gone')}>
         <div class="grow"><b>${l.name}</b>${l.current && !s.remote ? html` <${NL.Pill} tone="ok">open</${NL.Pill}>` : null}<div class="mono small muted">${l.path}</div>
-          ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') : 'no studies yet'}${l.opened ? ' · opened ' + NL.ago(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}</div>
+          ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') : 'no studies yet'}${l.opened ? ' · opened ' + NL.ago(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}
+          <${LabStatus} l=${fleetLab(fl, 'local', l.path)} /></div>
         <div class="row">${l.current && !s.remote ? html`<${NL.Btn} small onClick=${() => NL.go('')}>Go to it</${NL.Btn}>` : l.exists ? html`<${NL.Btn} small kind="primary" onClick=${() => open(l.path)}>Open</${NL.Btn}>` : null}
           ${!l.current ? html`<button class="link small" onClick=${async () => { await NL.api('/api/labs/forget', { path: l.path }); reload(); }}>forget</button>` : null}</div></div>`)}
       <details class="more"><summary>Create or open another lab on this computer</summary><div class="form">
@@ -206,12 +196,13 @@
     const load = () => { NL.get('/api/labs').then(setLocal); NL.get('/api/machines').then(setMach); };
     useEffect(() => { load(); const t = setInterval(() => NL.get('/api/machines').then(setMach), 8000); return () => clearInterval(t); }, []);
     const cur = s.remote;
+    const fl = NL.useFleet();
     return html`<div class="page page-narrow">
       <header class="page-head"><div><h1>Labs & machines</h1><p class="lede">A lab is one folder: its ideas, studies, papers and knowledge. It can live on this computer or on any machine you reach over SSH — the lab and its agents run where it lives; this page is your window onto each.</p></div></header>
       ${cur ? html`<div class="note">Showing <b>${cur.lab_name || cur.lab}</b> on <b>${cur.name}</b> (${cur.host}). <button class="link" onClick=${async () => { await NL.api('/api/machines/local', {}); NL.go(''); location.reload(); }}>Back to this computer</button></div>` : null}
-      <${FleetOverview} />
-      <${LocalLabs} d=${local} reload=${load} />
-      ${mach ? (mach.machines || []).map(m => html`<${MachineCard} key=${m.id} m=${m} reload=${load} />`) : html`<${NL.Spinner} />`}
+      ${fl && (fl.labs || []).length > 1 ? html`<p class="muted">${fl.needs_total ? html`<b class="warn">${NL.plural(fl.needs_total, 'thing')}</b> need you` : 'Nothing needs you'} across ${NL.plural(fl.labs.length, 'lab')} · ${NL.plural(fl.running_total || 0, 'run')} working. Remote labs set to stay connected refresh every 15 s.</p>` : null}
+      <${LocalLabs} d=${local} reload=${load} fl=${fl} />
+      ${mach ? (mach.machines || []).map(m => html`<${MachineCard} key=${m.id} m=${m} reload=${load} fl=${fl} />`) : html`<${NL.Spinner} />`}
       <${AddMachine} suggestions=${mach && mach.suggestions} reload=${load} />
     </div>`;
   };

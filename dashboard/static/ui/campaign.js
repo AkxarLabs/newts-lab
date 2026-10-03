@@ -62,7 +62,7 @@
     const runs = (s.runs || []).filter(r => r.campaign === name);
     if (!c) return html`<${NL.Sheet} title="Campaign" onClose=${onClose}><${NL.Empty}>This campaign isn't being kept on this lab.</${NL.Empty}></${NL.Sheet}>`;
     const studies = Object.entries(c.studies || {}).filter(([, v]) => v.member);
-    return html`<${NL.Sheet} wide title=${c.name} sub=${html`${WORD[c.status] || c.status} · <button type="button" class="link" onClick=${() => { onClose(); NL.openDoc('lab', null, c.file.replace(/^lab\//, '')); }}>the signed brief</button>`} onClose=${onClose} icon="⟳">
+    return html`<${NL.Sheet} wide title=${c.name} sub=${html`${WORD[c.status] || c.status} · <button type="button" class="link" onClick=${() => { onClose(); NL.openDoc('lab', null, c.file.replace(/^lab\//, '')); }}>the signed brief</button>`} onClose=${onClose}>
       <${NL.CampaignCard} c=${c} />
       ${c.gate3_auto ? html`<div class="note note-ask">Papers of this campaign may finalize without you: after internal review accepts one, the lab re-runs the paper audits and, if clean, records Gate 3 and runs /finalize.
         <div class="row end"><${NL.Btn} small onClick=${() => act(c, 'revoke_gate3')}>Take Gate 3 back…</${NL.Btn}></div></div>` : null}

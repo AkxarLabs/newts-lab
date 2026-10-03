@@ -45,7 +45,7 @@
   NL.InboxSheet = ({ onClose }) => {
     const s = NL.useLab();
     const { needs, info, notes } = NL.inboxItems(s);
-    return html`<${NL.Sheet} title="Needs you" sub=${needs.length ? NL.plural(needs.length, 'thing') + ' waiting on you' : 'Nothing is waiting on you'} onClose=${onClose} icon="🔔">
+    return html`<${NL.Sheet} title="Needs you" sub=${needs.length ? NL.plural(needs.length, 'thing') + ' waiting on you' : 'Nothing is waiting on you'} onClose=${onClose}>
       ${needs.length ? needs.map(it => html`<${InboxRow} key=${it.id} it=${it} />`) : html`<${NL.Empty} icon="✓">All clear. Agents ask here when they need a decision.</${NL.Empty}>`}
       ${info.length ? html`<${NL.Section} title="Finished" count=${info.length}>${info.slice(0, 20).map(it => html`<${InboxRow} key=${it.id} it=${it} compact />`)}</${NL.Section}>` : null}
       ${notes.length ? html`<${NL.Section} title="Your notes, not read yet" count=${notes.length}>${notes.map(d => html`<div class="inrow sev-info"><div class="inrow-main"><span class="inrow-ico">✉</span><span class="inrow-t"><b>${NL.clip(d.text, 120)}</b><small>to ${d.target === 'hub' ? 'the lab' : d.target} · ${NL.hhmm(d.ts)}</small></span></div>
@@ -83,7 +83,8 @@
   const OnRamps = () => html`<div class="onramps">
     <p class="lede">The lab is quiet. Where do you want to start?</p>
     ${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.campaign ? 'Ideas carried to papers on their own, within bounds you sign' : i.does]).map(([id, ico, t, sub]) =>
-      html`<button type="button" class="onramp" onClick=${() => NL.openStart({ intent: id })}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}</div>`;
+      html`<button type="button" class="onramp" onClick=${() => NL.openStart({ intent: id })}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}
+    <button type="button" class="onramp" onClick=${() => NL.composeTour()}><span class="intent-ico"><${NL.Icon} name="layers" /></span><span><b>Make the lab yours</b><small>A one-minute tour of Compose — how this lab works, and how to change it</small></span></button></div>`;
 
   const Rail = () => {
     const s = NL.useLab();

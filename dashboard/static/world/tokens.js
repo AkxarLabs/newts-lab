@@ -29,7 +29,7 @@
     shadow: { color: '#56401f', alpha: 0.34, dx: 0.45, dy: 1.0, blur: 2.6 },
     edge: { deckle: 1.25, fibre: 0.07 },
     sky: { top: '#f4ecd6', bottom: '#eadcbd', far: '#dccdaa', mid: '#d2c099', near: '#c8b48c', cloud: 'rgba(255,252,242,0.75)', celestial: '#f7d98a' },
-    label: { font: '"Segoe Print","Bradley Hand","Patrick Hand","Comic Neue",cursive', color: '#4a3521', plate: '#f4e9cf' },
+    label: { font: '"Newsreader","Iowan Old Style",Georgia,serif', color: '#4a3521', plate: '#f4e9cf' },
     grade: { grain: 0.05, vignette: 0.28, tint: 'rgba(255,240,210,0)' },
     ambient: 'dust',      // floating motes
   };
@@ -49,7 +49,7 @@
     shadow: { color: '#000000', alpha: 0.6, dx: 0.45, dy: 1.0, blur: 3.2 },
     edge: { deckle: 0.9, fibre: 0.05 },
     sky: { top: '#071419', bottom: '#0b1e24', far: '#0d2329', mid: '#0a1b20', near: '#07141a', cloud: 'rgba(90,200,190,0.06)', celestial: '#bff7ec' },
-    label: { font: '"Segoe Print","Bradley Hand","Patrick Hand","Comic Neue",cursive', color: '#c4fbef', plate: '#15333a' },
+    label: { font: '"Newsreader","Iowan Old Style",Georgia,serif', color: '#c4fbef', plate: '#15333a' },
     grade: { grain: 0.06, vignette: 0.45, tint: 'rgba(20,80,90,0.10)' },
     ambient: 'spores',
   };

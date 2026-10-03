@@ -35,7 +35,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - The workflow: workflow.md
-  - Customising the workflow: customising.md
+  - Customising the lab: customising.md
   - Autonomy & modes: autonomy.md
   - Skills reference: skills.md
   - Collaborative sessions (/discuss): discuss.md

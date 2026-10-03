@@ -15,6 +15,31 @@
       disabled=${disabled || busy || working} title=${title} onClick=${click}>${icon ? html`<span class="btn-ico" aria-hidden="true">${icon}</span>` : null}${children}</button>`;
   };
 
+  /* line icons (stroke = the text colour): NL.Icon name="search" */
+  const ICONS = {
+    search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3 20 20',
+    bell: 'M18 15.5V11a6 6 0 1 0-12 0v4.5L4.5 17h15zM10 20a2 2 0 0 0 4 0',
+    sliders: 'M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1M15 5v4M9 10v4M17 15v4',
+    plus: 'M12 5v14M5 12h14',
+    x: 'M6.5 6.5l11 11M17.5 6.5l-11 11',
+    lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+    copy: 'M9 9h10v11H9zM15 9V5H5v11h4',
+    trash: 'M4.5 7h15M10 11v6M14 11v6M6.5 7l1 13h9l1-13M9.5 7V4.5h5V7',
+    undo: 'M9 14 4.5 9.5 9 5M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
+    alert: 'M12 4 2.8 20h18.4zM12 10v4.5M12 17.2v.3',
+    up: 'M12 19V5M6.5 10.5 12 5l5.5 5.5',
+    down: 'M12 5v14M6.5 13.5 12 19l5.5-5.5',
+    chevron: 'M9.5 6l6 6-6 6',
+    caret: 'M7 10l5 5 5-5',
+    file: 'M6 3.5h8l4 4V20.5H6zM14 3.5v4h4',
+    layers: 'M12 4 3.5 8.5 12 13l8.5-4.5zM3.5 12.5 12 17l8.5-4.5M3.5 16.5 12 21l8.5-4.5',
+    spark: 'M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z',
+    arrow: 'M5 12h14M13 6l6 6-6 6',
+  };
+  NL.Icon = ({ name, size, title }) => html`<svg class="ico" viewBox="0 0 24 24" width=${size || null} height=${size || null} fill="none" stroke="currentColor"
+    stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden=${title ? null : 'true'} role=${title ? 'img' : null}>${title ? html`<title>${title}</title>` : null}<path d=${ICONS[name] || ''} /></svg>`;
+
   NL.Pill = ({ tone, children, title }) => html`<span class=${cls('pill', tone && 'pill-' + tone)} title=${title}>${children}</span>`;
   NL.RunPill = ({ r }) => r ? html`<${NL.Pill} tone=${NL.RUN_TONE[r.status] || 'muted'}>${NL.RUN_TONE[r.status] === 'live' ? html`<i class="dot-live"></i>` : null}${NL.RUN_WORD[r.status] || r.status}</${NL.Pill}>` : null;
   NL.StatePill = ({ state }) => html`<${NL.Pill} tone=${NL.stateTone(state)}>${NL.STATE_LABEL[state] || state || '—'}</${NL.Pill}>`;
@@ -56,9 +81,9 @@
 
   /* ── layers ─────────────────────────────────────────────────────────────── */
   /** A side sheet (right) — or a centered dialog. Rendered by the OverlayHost from NL.open(). */
-  NL.Sheet = ({ title, sub, onClose, children, wide, footer, icon }) => html`<aside class=${cls('sheet', wide && 'sheet-wide')} role="dialog" aria-modal="true" aria-label=${typeof title === 'string' ? title : null}>
-    <header class="sheet-head">${icon ? html`<span class="sheet-ico" aria-hidden="true">${icon}</span>` : null}<div class="sheet-titles"><h2>${title}</h2>${sub ? html`<div class="sheet-sub">${sub}</div>` : null}</div>
-      <button class="x" aria-label="close" onClick=${onClose}>✕</button></header>
+  NL.Sheet = ({ title, sub, onClose, children, wide, footer, kicker }) => html`<aside class=${cls('sheet', wide && 'sheet-wide')} role="dialog" aria-modal="true" aria-label=${typeof title === 'string' ? title : null}>
+    <header class="sheet-head"><div class="sheet-titles">${kicker ? html`<div class="kicker">${kicker}</div>` : null}<h2>${title}</h2>${sub ? html`<div class="sheet-sub">${sub}</div>` : null}</div>
+      <button class="x" aria-label="close" onClick=${onClose}><${NL.Icon} name="x" /></button></header>
     <div class="sheet-body">${children}</div>${footer ? html`<footer class="sheet-foot">${footer}</footer>` : null}</aside>`;
 
   NL.ConfirmDialog = ({ title, body, ok, cancel, danger, typed, resolve, input, placeholder, detail }) => {

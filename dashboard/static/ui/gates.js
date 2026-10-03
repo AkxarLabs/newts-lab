@@ -113,7 +113,7 @@
     const it = NL.item(s, slug);
     if (!it) return html`<${NL.Sheet} title="Gate" onClose=${onClose}><${NL.Empty}>No such study.</${NL.Empty}></${NL.Sheet}>`;
     const G = gate === 3 ? Gate3 : gate === 2 ? NL.EnvelopeEditor : Gate1;
-    return html`<${NL.Sheet} wide icon="✉" title=${`Gate ${gate} · ${it.title || it.id}`} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
+    return html`<${NL.Sheet} wide title=${`Gate ${gate} · ${it.title || it.id}`} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
       <div class="gate-grid"><div class="gate-sign"><${G} it=${it} /></div>
         <div class="gate-read"><h4>What you're signing</h4><${Bundle} slug=${slug} gate=${gate} />
           ${gate === 3 && it.has_paper ? html`<div class="row"><${NL.Btn} small onClick=${() => NL.openPaper(it.id)}>Open the paper</${NL.Btn}><${NL.Btn} small onClick=${() => NL.openClaims(it.id)}>Claims ↔ evidence</${NL.Btn}></div>` : null}</div></div>
@@ -138,7 +138,7 @@
       if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
       load();
     };
-    return html`<${NL.Sheet} wide icon="⟳" title=${`Loop brief · ${it.title || slug}`} onClose=${onClose}>
+    return html`<${NL.Sheet} wide title=${`Loop brief · ${it.title || slug}`} onClose=${onClose}>
       ${!doc ? html`<${NL.Spinner} />` : !doc.ok ? html`<${NL.Empty} icon="⟳" title="No loop brief yet">The loop writes its brief on the first start. <div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: 'research-loop', target: slug })}>Start the loop (it drafts the brief)</${NL.Btn}></div></${NL.Empty}>`
       : html`<div class="gate-grid"><div class="gate-sign"><div class="signbox"><div class="signbox-h">Authorize the loop</div>
           ${signed ? html`<div class="note note-ok">✓ Authorized.</div><div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: 'research-loop', target: slug })}>Start the loop</${NL.Btn}><${Revoke} slug=${slug} what="loop" /></div>`

@@ -13,7 +13,8 @@ module that owns that area —
     gates/review  signing Gates 1-3, revoke, envelope, loop brief, revive / what the PI reads to sign
     campaign      campaigns: sign, control, preflight
     settings      lab/config.yaml (one writer), keys, notifications, documents, the System page, setup
-    instructions  the Workflow page (the PI's instructions per procedure / stage / role)
+    instructions  one study's own instructions, and agents' proposals to change the lab's
+    compose       Compose: the lab's definition, edited as a draft and published (with undo)
     bus · library · labs · machines · fleet · term   notes to agents · the library · labs on this
                   computer · remote machines · the across-labs overview · in-browser terminals
 
@@ -62,6 +63,7 @@ import gates  # noqa: E402
 import campaign  # noqa: E402
 import settings  # noqa: E402
 import instructions  # noqa: E402
+import compose  # noqa: E402
 import fleet  # noqa: E402
 import library  # noqa: E402
 import review  # noqa: E402
@@ -456,6 +458,8 @@ GET_ROUTES = {
     "/api/gate3/readiness": lambda q: (gates.gate3_readiness(ctx.safe_id(q.get("idea", "")) or "-"), 200),
     "/api/doc": lambda q: settings.doc_get(q.get("which", "")),
     "/api/workflow/item": instructions.workflow_item,
+    "/api/compose": compose.view,
+    "/api/compose/file": compose.file_get,
     "/api/campaign/preflight": campaign.campaign_preflight,
     "/api/workflow/proposal": instructions.workflow_proposal_get,
     "/api/lab/config": lambda q: settings.lab_config_get(),
@@ -522,7 +526,7 @@ POST_ROUTES = {
     "/api/doc/save": settings.doc_save,
     "/api/workflow/save": instructions.workflow_save,
     "/api/workflow/proposal": instructions.workflow_proposal,
-    "/api/workflow/new": instructions.workflow_new,
+    "/api/compose": compose.op,
     "/api/lab/config": settings.lab_config_set,
     "/api/keys": keys.keys_set,
     "/api/notify": keys.notify_set,

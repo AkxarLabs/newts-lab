@@ -1,6 +1,6 @@
 # Internal review: the method
 
-How this lab reviews its own paper by default. The PI can add to it or replace it (dashboard → Workflow).
+How this lab reviews its own paper by default. The PI can add to it or replace it (dashboard → Compose).
 The contract (SKILL.md) fixes the blocking audits, the fresh-context ensemble, the oversight checks, the
 routing and the final sign-off stop. This file is how to do the judgement parts well.
 

@@ -171,7 +171,7 @@
     const [reply, setReply] = useState('');
     useEffect(() => { const el = scroller.current; if (el && stick) el.scrollTop = el.scrollHeight; }, [blocks.length, r && r.status, stick]);
     const onScroll = e => { const el = e.target; setStick(el.scrollHeight - el.scrollTop - el.clientHeight < 80); };
-    if (!r) return html`<${NL.Sheet} title="Run" onClose=${onClose} wide>${err ? html`<${NL.Empty} icon="?">${err}</${NL.Empty}>` : html`<${NL.Spinner} />`}</${NL.Sheet}>`;
+    if (!r) return html`<${NL.Sheet} title="Run" onClose=${onClose} wide>${err ? html`<${NL.Empty}>${err}</${NL.Empty}>` : html`<${NL.Spinner} />`}</${NL.Sheet}>`;
     const it = r.subject && NL.item(s, r.subject);
     const active = NL.RUN_ACTIVE.has(r.status);
     const budget = r.max_minutes ? r.max_minutes * 60 : null;
@@ -197,7 +197,7 @@
         ${r.transcript ? html`<${NL.EditorLink} path=${r.transcript}>transcript ↗</${NL.EditorLink}>` : null}
         <button class="link small" onClick=${async () => { const x = await NL.get(`/api/run/log?${NL.qs({ run_id: r.run_id })}`); NL.open(NL.TextSheet, { title: 'Supervisor log', sub: r.run_id, text: x.text || '(empty)' }); }}>supervisor log</button>
       </div></div>`;
-    return html`<${NL.Sheet} title=${title} sub=${sub} onClose=${onClose} wide footer=${footer} icon=${r.kind === 'ask' ? '✎' : '▸'}>
+    return html`<${NL.Sheet} title=${title} sub=${sub} onClose=${onClose} wide footer=${footer}>
       <div class="runmeta">
         ${r.elapsed_s != null ? html`<span><b>${NL.mins(r.elapsed_s)}</b>${budget ? html` of ${Math.round(r.max_minutes)}m <${NL.Bar} value=${r.elapsed_s} max=${budget} tone=${r.elapsed_s > budget * 0.85 ? 'warn' : ''} />` : null}</span>` : null}
         ${r.n_actions ? html`<span><b>${r.n_actions}</b> actions</span>` : null}
@@ -324,7 +324,7 @@
     const byId = x => ((s.workers) || []).find(w => w.worker_id === x);
     const w = byId(id);
     const [follow, setFollow] = useState(NL.Scene && NL.Scene.following() === id);
-    if (!w) return html`<${NL.Sheet} title="Agent" onClose=${onClose}><${NL.Empty} icon="🦎">This agent has finished and left the lab.</${NL.Empty}></${NL.Sheet}>`;
+    if (!w) return html`<${NL.Sheet} title="Agent" onClose=${onClose}><${NL.Empty}>This agent has finished and left the lab.</${NL.Empty}></${NL.Sheet}>`;
     const anchor = NL.item(s, w.project || w.idea);
     const parent = w.parent && byId(w.parent);
     const kids = (w.children || []).map(byId).filter(Boolean);

@@ -63,7 +63,7 @@
     const title = (info && info.title) || ({ login: `Sign in to ${backend}`, install: `Install ${backend}`, shell: 'Terminal' }[purpose]);
     const s = NL.getState() || {};
     const where = s.remote ? `on ${s.remote.name || s.remote.host}` : 'on this machine';
-    return html`<${NL.Sheet} wide icon="⌨" title=${title} onClose=${onClose}
+    return html`<${NL.Sheet} wide title=${title} onClose=${onClose}
       sub=${html`<span class="row-wrap"><span>Running ${where}</span>${info ? html`<span class="mono small muted">${info.command}</span>` : null}${done ? html`<${NL.Pill} tone="ok">finished</${NL.Pill}>` : null}</span>`}
       footer=${html`<div class="row"><span class="muted small">${purpose === 'login' ? 'Type into the terminal as you would in any shell. Credentials go to the CLI only — this page never stores them.' : 'Everything typed here goes to this process only.'}</span><span class="grow"></span>
         <${NL.Btn} onClick=${onClose}>${done ? 'Close' : 'Close (stops it)'}</${NL.Btn}></div>`}>

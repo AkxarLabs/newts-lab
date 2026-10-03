@@ -1,5 +1,5 @@
-"""The Workflow page: the PI's own instructions per procedure, stage and role (tools/workflow.py layers),
-and agents' proposals to change them (accept / decline).
+"""The PI's own instructions per procedure, stage and role (tools/workflow.py layers) — lab-wide (the API
+Compose's editors share) or for one study (its page) — and agents' proposals to change them (accept / decline).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _strip_fm(text: str) -> str:
 
 
 def workflow_item(q: dict) -> tuple[dict, int]:
-    """Everything the Workflow page shows for one procedure, stage or role — at lab level, or one study's."""
+    """One procedure, stage or role with the PI's layers on it — lab-wide, or one study's (and its brief)."""
     wf, hub = _wf(), ctx.HUB
     kind = str(q.get("kind") or "procedure")
     name = str(q.get("name") or "")
@@ -116,29 +116,6 @@ def workflow_save(body: dict) -> tuple[dict, int]:
     where = f"for {study}" if study else "lab-wide"
     return {"ok": True, "note": (f"saved {where}" if path else f"reset to the default ({where})"), "file": rel,
             "warnings": warnings}, 200
-
-
-def workflow_new(body: dict) -> tuple[dict, int]:
-    """Make a copy of a procedure or a role (tools/new.py) — the PI's way to add one without editing files."""
-    if not body.get("confirm"):
-        return {"error": "making a copy needs explicit confirm"}, 400
-    kind, name, like = str(body.get("kind") or ""), str(body.get("name") or "").strip(), str(body.get("like") or "")
-    new = ctx.tool("new")
-    try:
-        if kind == "skill":
-            stage = next((s["id"] for s in _wf().stages_of(like, ctx.HUB)), None)   # beside the one it copies
-            files = new.new_skill(ctx.HUB, name, like, stage=stage, title=str(body.get("title") or "") or None)
-        elif kind == "role":
-            files = new.new_role(ctx.HUB, name, like, label=str(body.get("title") or "") or None)
-        else:
-            return {"error": "kind must be skill or role"}, 400
-    except new.NewError as e:
-        return {"error": str(e)}, 400
-    _wf().render_docs(ctx.HUB)
-    rel = [f.relative_to(ctx.HUB).as_posix() for f in files if f.is_relative_to(ctx.HUB)]
-    ctx.pi_log({"action": "workflow.new", "kind": kind, "name": name, "like": like, "files": rel})
-    return {"ok": True, "note": f"made {'/' if kind == 'skill' else ''}{name} from {like} — edit it to make it its own",
-            "files": rel, "name": name}, 200
 
 
 def workflow_proposal(body: dict) -> tuple[dict, int]:
