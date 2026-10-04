@@ -12,6 +12,7 @@ newts:
   hint: room-id and a description, e.g. data "a quiet data room with big screens"
   title: Design a room
   does: Builds a room's 3D look from your description, for you to preview and accept in Compose.
+  world: designs-room     # its run stands in the room its first argument names
   stops: with a design waiting in Compose
 ---
 

@@ -13,7 +13,9 @@
     : (window.NL && window.NL.WF && window.NL.WF.rooms ? window.NL.WF : window.__WORKFLOW_DEFAULT__)) || { rooms: [], states: [] };
   M.procsOf = (wf, states) => [...new Set((wf.stages || []).filter(st => (st.states || []).some(x => states.includes(x))).flatMap(st => st.procedures || []))];
   const terminal = (wf, st) => (wf.states || []).concat(wf.side_states || []).some(x => x.id === st && x.terminal);
-  M.building = (s, it) => (s.runs || []).some(r => r.skill === 'spawn-project' && (r.subject === it.id || r.target === it.id) && (ACTIVE.has(r.status) || r.status === 'queued'));
+  // how a procedure's run shows in the world is the procedure's own say (its `world:` key), never its name
+  M.worldRole = (s, skill) => ((M.wfOf(s).procedures || {})[skill] || {}).world || null;
+  M.building = (s, it) => (s.runs || []).some(r => M.worldRole(s, r.skill) === 'builds-project' && (r.subject === it.id || r.target === it.id) && (ACTIVE.has(r.status) || r.status === 'queued'));
   /** a room is one per live project when the workflow says so — or, unsaid, when most procedures it holds run
    *  inside a project (the Lab's do), so a lab made before the flag gets its project labs too */
   M.perProject = (wf, r) => {
@@ -72,13 +74,15 @@
     const state = st && (st.states || [])[0], base = state && (wf.rooms || []).find(r => (r.states || []).includes(state));
     return base && rooms[base.id] ? base.id : null;
   };
-  /** a run stands where its work is: /design-room in the room it designs, /spawn-project in the lab it builds,
+  /** a run stands where its work is: a room-designing procedure in the room it designs, a project-building one in the
+   *  project room it raises (both by the procedure's `world:` key),
    *  a project-level procedure in its project's lab, other work on a study in that study's room, the rest in
    *  the room of the procedure's stage — or at your desk */
   M.placeOfRun = function placeOfRun(s, r, rooms) {
     const procs = M.wfOf(s).procedures || {}, subj = r.subject || (r.target && r.target !== 'hub' ? r.target : null), it = subj && M.item(s, subj);
-    if (r.skill === 'design-room') { const rid = String(r.args || '').split(/\s+/)[0]; if (rooms[rid]) return rid; }
-    if (r.skill === 'spawn-project' && it) { const site = Object.keys(rooms).find(k => rooms[k].study === it.id); if (site) return site; }
+    const role = M.worldRole(s, r.skill);
+    if (role === 'designs-room') { const rid = String(r.args || '').split(/\s+/)[0]; if (rooms[rid]) return rid; }
+    if (role === 'builds-project' && it) { const site = Object.keys(rooms).find(k => rooms[k].study === it.id); if (site) return site; }
     if (it) { const lab = M.labOf(it, rooms); if ((procs[r.skill] || {}).level === 'project' && lab) return lab; return M.roomOfItem(s, it, rooms) || 'hub'; }
     return M.roomForProc(s, r.skill, rooms) || 'hub';
   };

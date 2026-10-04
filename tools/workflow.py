@@ -262,7 +262,7 @@ def ui_view(hub=None) -> dict:
     """What the dashboard needs: the manifest's vocabulary + the PI's customisations + pending proposals."""
     m = load(hub)
     keep = ("title", "does", "stops", "kind", "level", "mode", "args", "hint", "launchable", "replaceable",
-            "outputs", "anchors", "uses", "start", "show_pi", "guide")
+            "outputs", "anchors", "uses", "start", "show_pi", "guide", "world")
     procs = {n: {k: p[k] for k in keep if k in p} for n, p in (m.get("procedures") or {}).items()}
     pend = proposals(hub)
     return {

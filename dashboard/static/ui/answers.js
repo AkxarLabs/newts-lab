@@ -40,8 +40,8 @@
     const t = String(text || '').trim();
     if (!t || t.length > 200 || WORK.test(t) || !ASKING.test(t)) return null;
     const study = studyIn(t, items);
-    for (const [intent, rx] of INTENTS) if (rx.test(t)) return { intent: intent === 'running' && study ? 'study' : intent, study };
-    if (study && /\b(status|where|how('s| is)|state|progress|stage|up to|doing)\b|\?\s*$/i.test(t)) return { intent: 'study', study };
+    for (const [intent, rx] of INTENTS) if (rx.test(t)) return { intent: intent === 'running' && study ? 'status' : intent, study };
+    if (study && /\b(status|where|how('s| is)|state|progress|stage|up to|doing)\b|\?\s*$/i.test(t)) return { intent: 'status', study };
     return null;
   };
 
@@ -97,7 +97,7 @@
         return { title: xs.length ? `${NL.plural(xs.length, 'thing')} for you to look at` : 'Nothing new for you',
           body: list(xs.slice(0, 10).map(a => html`<li><button type="button" class="link" onClick=${() => NL.openArtifact(a.id)}>${a.title}</button>${a.question && !a.answered ? html`<span class="muted"> — asks you</span>` : null}</li>`), '') };
       }
-      case 'study': {
+      case 'status': {
         const it = study, mine = runs.filter(r => r.subject === it.id && (NL.RUN_ACTIVE.has(r.status) || r.status === 'waiting_input' || r.status === 'queued'));
         const nx = NL.nextFor ? NL.nextFor(s, it) : null;
         return { title: `${it.title || it.id}: ${NL.STATE_LABEL ? NL.STATE_LABEL[it.state] || it.state : it.state}`,
@@ -112,7 +112,7 @@
   /** an answer for this question from the live state, or null when it needs an agent */
   NL.quickAnswer = (text, s) => {
     const m = NL.quickIntent(text, (s && s.items) || []);
-    if (!m || (m.intent === 'study' && !m.study)) return null;
+    if (!m || (m.intent === 'status' && !m.study)) return null;
     const a = answer(m.intent, m.study, s);
     return a ? { ...a, intent: m.intent } : null;
   };

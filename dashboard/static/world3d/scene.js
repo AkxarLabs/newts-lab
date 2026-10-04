@@ -113,7 +113,7 @@ function newtPoseFor(s) {
     if (['replan', 'decision_revisit', 'frontier_expand', 'approach_ideate'].includes(k)) return 'regen';
   }
   if ((s.items || []).some(it => (it.inflight || []).length) || (s.runs || []).some(r => ['starting', 'running', 'resuming'].includes(r.status))) return 'running';
-  if (recent.some(e => e.kind === 'paper_compiled' || (e.kind || '').includes('review'))) return 'writing';
+  if (recent.some(e => e.kind === 'paper_compiled' || e.kind === 'review_verdict')) return 'work';   // (bus event kinds — the system's, not the lifecycle's)
   if (!recent.length) return 'sleep';
   return 'idle';
 }

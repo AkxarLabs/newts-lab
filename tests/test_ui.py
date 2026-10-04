@@ -102,7 +102,7 @@ def test_questions_the_live_state_answers_never_start_an_agent():
         "what needs me?": "needs", "anything waiting on me": "needs", "what's running?": "running",
         "what happened overnight?": "overnight", "how much have we spent today?": "cost", "did anything fail?": "failed",
         "which gates are waiting?": "gates", "anything for me to look at?": "foryou",
-        "how is sparse moe routing doing?": "study", "status of rl?": "study",
+        "how is sparse moe routing doing?": "status", "status of rl?": "status",
         "compare the last three pilots of moe": None, "write the related work section": None,
         "why did exp-019 time out?": None, "run the smoke test": None, "summarise what moved overnight": None,
     }

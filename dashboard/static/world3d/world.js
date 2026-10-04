@@ -228,7 +228,7 @@ L.createWorld = async function createWorld(canvas, opts) {
       for (let k = 0; k < Math.min(8, nb.running || 0); k++) g.add(K.sphere(0.22, 'teal', -3 + k * 0.85, 1.05, 2.3, { glow: true }));   // agents at work
       if (nb.needs) { const f = K.group(K.cyl(0.05, 0.05, 2.2, 'woodDark', 0, 0, 0), K.box(0.9, 0.55, 0.05, 'amber', 0.47, 1.6, 0, { glow: true })); f.position.set(3.6, 0, -2.2); g.add(f); }
       const bridge = K.box(1.4, 0.18, 11 - 3 - 1.6, TH.table, 0, -0.12, 3 + (11 - 3 - 1.6) / 2 - 0.4); g.add(bridge);
-      g.userData.pick = { kind: 'lab', key: nb.key };
+      g.userData.pick = { kind: 'otherlab', key: nb.key };
       g.traverse(o => { if (o.isMesh) o.castShadow = false; });
       nbGroup.add(g); pickables.add(g); nb._at = [x, z];
     });
@@ -372,7 +372,7 @@ L.createWorld = async function createWorld(canvas, opts) {
     const m = new THREE.MeshStandardMaterial({ color: new THREE.Color(`hsl(${hue}, 55%, 60%)`), roughness: 0.6, emissive: new THREE.Color(`hsl(${hue}, 60%, 40%)`), emissiveIntensity: theme === 'night' ? 0.35 : 0 });
     const c = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.09, 0.4), m); b.castShadow = true; c.add(b);
     const lab = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.012, 0.1), K.mat('paper')); lab.position.set(-0.04, 0.05, -0.08); c.add(lab);
-    c.userData = { pick: { kind: 'study', id: it.id }, id: it.id }; scene.add(c); pickables.add(c); cards.set(it.id, c);
+    c.userData = { pick: { kind: 'card', id: it.id }, id: it.id }; scene.add(c); pickables.add(c); cards.set(it.id, c);
     return c;
   }
   function carry(it, fromRoom, toRoom) {
@@ -431,10 +431,10 @@ L.createWorld = async function createWorld(canvas, opts) {
   function click(p) {
     if (!p) return;
     if (p.kind === 'room') { if (view.level === 'ROOM' && view.room === p.id) return; setViewState('ROOM', p.id); return; }
-    if (p.kind === 'study' && onItem) return onItem(p.id);
+    if (p.kind === 'card' && onItem) return onItem(p.id);
     if (p.kind === 'hub' && onInbox) return onInbox();
     if (p.kind === 'newt' && onNewt) return onNewt();
-    if (p.kind === 'lab' && onLab) return onLab(p.key);
+    if (p.kind === 'otherlab' && onLab) return onLab(p.key);
     if (p.kind === 'artifact' && onArtifact) return onArtifact(p.id);
     if (p.kind === 'gate' && onItem) { const it = ((snap && snap.items) || []).find(i => i.gate === p.gate && !i.gate_signed); if (it) return onItem(it.id); }
     if (p.kind === 'actor') {
@@ -454,7 +454,7 @@ L.createWorld = async function createWorld(canvas, opts) {
   function describe(p) {
     const s = snap || {};
     if (p.kind === 'artifact') { const a = ((snap && snap.artifacts) || []).find(x => x.id === p.id); return a ? `<b>${esc(a.title)}</b><small>${a.question ? 'asks you: ' + esc(a.question) : 'made for you to look at'} — click to read</small>` : null; }
-    if (p.kind === 'lab') { const nb = neighbours.find(n => n.key === p.key); return nb ? `<b>${esc(nb.name)}</b><small>${esc(nb.machine || '')} — click to go to this lab</small>` : null; }
+    if (p.kind === 'otherlab') { const nb = neighbours.find(n => n.key === p.key); return nb ? `<b>${esc(nb.name)}</b><small>${esc(nb.machine || '')} — click to go to this lab</small>` : null; }
     if (p.kind === 'actor') {
       const a = actors.get(p.key); if (!a) return null;
       if (a.courier) { const it = item(s, a.courier); return `<b>Carrying “${esc(it ? it.title || it.id : a.courier)}”</b><small>to its next room</small>`; }
@@ -463,7 +463,7 @@ L.createWorld = async function createWorld(canvas, opts) {
       const tok = r && r.usage && r.usage.cost_usd != null ? ` · $${(+r.usage.cost_usd).toFixed(2)}` : '';
       return `<b>${who}</b><small>${it ? 'on “' + esc(it.title || it.id) + '” — ' : ''}${esc(doing(sp))}</small>${r ? `<small>${esc(r.backend || '')}${r.model_used ? ' · ' + esc(r.model_used) : ''}${tok}</small>` : ''}`;
     }
-    if (p.kind === 'study') { const it = item(s, p.id); return it ? `<b>${esc(it.title || it.id)}</b><small>${esc((window.NL && NL.STATE_LABEL && NL.STATE_LABEL[it.state]) || it.state)}${it.gate && !it.gate_signed ? ` · waiting at Gate ${it.gate} for your signature` : ''}${it.project_type ? ' · ' + esc(it.project_type) + ' project' : ''}</small>` : null; }
+    if (p.kind === 'card') { const it = item(s, p.id); return it ? `<b>${esc(it.title || it.id)}</b><small>${esc((window.NL && NL.STATE_LABEL && NL.STATE_LABEL[it.state]) || it.state)}${it.gate && !it.gate_signed ? ` · waiting at Gate ${it.gate} for your signature` : ''}${it.project_type ? ' · ' + esc(it.project_type) + ' project' : ''}</small>` : null; }
     if (p.kind === 'room') { const o = W.rooms[p.id]; if (!o) return null; const n = [...actors.values()].filter(a => a.room === p.id && !a.leaving).length; return `<b>${esc(o.title)}</b><small>${o.kicker ? esc(o.kicker) + ' · ' : ''}${n} agent${n === 1 ? '' : 's'} here${o.building ? ' · being built' : ''}</small>`; }
     if (p.kind === 'hub') { const n = needs(s).length; return `<b>Your desk</b><small>${n ? n + ' waiting for you' : 'nothing waiting for you'}</small>`; }
     if (p.kind === 'newt') return '<b>Newt</b><small>click to start something</small>';

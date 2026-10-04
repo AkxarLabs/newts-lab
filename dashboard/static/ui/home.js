@@ -134,6 +134,9 @@
     const pick = r => { const v = hl === r ? null : r; setHl(v); NL.Scene && NL.Scene.highlight(v); };
     if (!(s.items || []).length && !workers.length) return null;
     const prefs = NL.usePrefs(), c = prefs.cast || {}, chars = (window.Lab3D && Lab3D.CHARACTERS) || [];
+    const wf = (s.workflow && s.workflow.rooms) ? s.workflow : (NL.WF || window.__WORKFLOW_DEFAULT__ || {});
+    const isPer = r => (window.Lab3D && Lab3D.model ? Lab3D.model.perProject(wf, r) : !!r.per_project);
+    const perProject = (wf.rooms || []).filter(isPer), stepped = (wf.stages || []).filter(st => (st.substages || []).length);
     const charName = id => ((chars.find(x => x.id === id) || {}).label || id || 'Newt').toLowerCase();
     const lens = NL.Scene && NL.Scene.lens ? NL.Scene.lens() : 'work';
     const LENS = { work: 'what each agent is doing — hover one to read it', cost: "today's spend: a brighter floor means more spent; the tags are each run's cost so far",
@@ -142,10 +145,10 @@
       <button class="key-btn" onClick=${() => setOpen(!open)} aria-expanded=${open}>Key ${open ? '▾' : '▴'}</button>
       ${open ? html`<div class="key-body">
         <div class="key-h">Reading the table</div>
-        <div class="key-note"><b>Rooms</b> are the stages a study moves through (their short name is on the label); each live project gets its own <b>Lab</b>.</div>
+        <div class="key-note"><b>Rooms</b> are the stages a study moves through (their short name is on the label)${perProject.length ? html`; each live project gets its own <b>${perProject.map(r => r.label || r.title || r.id).join(' / ')}</b>` : ''}.</div>
         <div class="key-note"><b>A figure</b> is one agent at work; <b>a small one</b> is a subagent it started, in the same colours.</div>
         <div class="key-note"><b>?</b> = it's asking you something · <b>zzz</b> = gone quiet · <b>cards</b> on shelves are studies · <b>sheets</b> on a board = something for you · <b>scaffolding</b> = a project repo being set up</div>
-        <div class="key-note"><b>Experiments</b> go SMOKE (a tiny check it runs at all) → PILOT (a small trial) → FULL (the full-scale run, within the budget you approved at Gate 2).</div>
+        ${stepped.map(st => html`<div class="key-note"><b>${st.title}:</b> ${st.substages.join(' → ')}${st.gate ? ` — the last step needs what you approved at Gate ${st.gate}` : ''}.</div>`)}
         <div class="key-note"><b>This lens:</b> ${LENS[lens] || LENS.work}</div>
         <div class="key-h">Tools</div>
         <div class="key-note">${c.mode === 'one' ? `every agent is a ${charName(c.one)}` : `Claude = ${charName(c.claude || 'newt')} · Codex = ${charName(c.codex || 'human')} · opencode = ${charName(c.opencode || 'robot')}`} — <a class="link" href="#/settings/appearance">change</a></div>

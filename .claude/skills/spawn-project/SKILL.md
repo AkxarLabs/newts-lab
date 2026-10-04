@@ -11,6 +11,7 @@ newts:
   hint: idea slug (needs Gate 1)
   title: Create the project repo
   does: Creates the project repository from the approved proposal and runs its smoke test.
+  world: builds-project   # its run raises the study's project room (scaffolding until it exists)
   stops: when the smoke test is green
 ---
 

@@ -11,6 +11,7 @@ work is.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -25,6 +26,7 @@ W3 = STATIC / "world3d"
 CORE = ["kit.js", "components.js", "layout.js", "model.js"]
 ROOM_FILES = sorted(p.name for p in (W3 / "rooms").glob("*.js"))
 _WF = yaml.safe_load((REPO / "workflow" / "stages.yaml").read_text(encoding="utf-8"))
+_FULL = load("workflow").load()          # the whole manifest: stages.yaml + every procedure's frontmatter
 LIFECYCLE = [s["id"] for s in _WF["states"] + _WF["side_states"]]
 WF_ROOM = {s["id"]: s["room"] for s in _WF["states"] + _WF["side_states"]}
 
@@ -37,7 +39,7 @@ def _node(body: str) -> dict:
     js = f"""
       global.window = global; const fs = require('fs');
       for (const f of {json.dumps(files)}) eval(fs.readFileSync(f, 'utf8'));
-      const L = window.Lab3D, M = L.model, WF = {json.dumps(_WF)};
+      const L = window.Lab3D, M = L.model, WF = {json.dumps(_FULL)};
       const out = (() => {{ {body} }})();
       console.log(JSON.stringify(out));
     """
@@ -177,3 +179,18 @@ def test_every_project_type_has_a_starter_lab_look_that_passes_the_checker():
         data, probs = compose.room_check(f.read_text(encoding="utf-8"), f.stem)
         assert probs == [] and data["key"] == f.stem, (f.name, probs)
         assert {"experiment", "improve", "research-loop", "analyze"} <= set(data["stations"]), f.name
+
+
+def test_the_world_names_no_procedure_stage_or_room():
+    """The lifecycle is the lab's to change: the world's code reads rooms, stages and procedures (and how a
+    procedure's run shows, its `world:` key) from the manifest, and never names one of the default ones."""
+    names = set(_FULL["procedures"]) | {s["id"] for s in _FULL["stages"]} | {r["id"] for r in _FULL["rooms"]} \
+        | {s["id"] for s in _FULL["states"] + _FULL["side_states"]}
+    names -= {"completed", "failed", "timeout", "killed", "queued", "running"}   # a run's status: the executor's, not the lifecycle's
+    files = [W3 / f for f in ["world.js", "model.js", "layout.js", "scene.js", "characters.js", "newt.js", "kit.js", "components.js"]]
+    files += [STATIC / "ui" / f for f in ["answers.js", "artifacts.js", "sound.js"]]
+    for path in files:
+        f = path.name
+        src = re.sub(r"/\*.*?\*/|(?<![:'\"])//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)   # code, not comments
+        named = sorted(n for n in names if f"'{n}'" in src or f'"{n}"' in src)
+        assert not named, f"{f} names {named} — read it from the workflow instead"

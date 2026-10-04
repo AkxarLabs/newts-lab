@@ -142,7 +142,7 @@ function demoState(T, items) {
     ['gate_waiting', 'Gate 1 is waiting — Curriculum distillation', 260, 'prop-1'], ['run_finished', 'experiment finished — exp-014', 180, 'moe', 'completed'],
     ['run_finished', 'exp-019 timed out', 95, 'rl', 'failed'], ['agent_waiting', 'the writing agent asked you something', 9, 'paper-1']]
     .map(([kind, detail, min, idea, status]) => ({ ts: ago(min), source: 'hub', kind, detail, idea, ...(status ? { status } : {}) }));
-  return { artifacts, now: iso(Date.now()), items: items.map(it => ({ inflight: [], events: [], directives: [], ...it })), runs: runs.concat(done), attention, workers: [],
+  return { artifacts, workflow: window.__WORKFLOW_DEFAULT__, now: iso(Date.now()), items: items.map(it => ({ inflight: [], events: [], directives: [], ...it })), runs: runs.concat(done), attention, workers: [],
     slots: { cap: 3, in_use: 2 }, directives: [], gates_waiting: attention.filter(a => a.kind === 'gate').length, cold: false, events,
     executor: { available: true, enabled: true, caps: { total: 6 } },
     campaign_states: NL.demoCampaignStates ? NL.demoCampaignStates(T) : [],
