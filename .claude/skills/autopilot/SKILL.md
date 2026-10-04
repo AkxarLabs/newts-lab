@@ -12,6 +12,9 @@ newts:
   hint: signed campaign brief in lab/campaigns/
   title: Run a campaign
   does: Carries several ideas end-to-end within a signed campaign brief.
+  guide:
+  - 'Programmatic agents'
+  - 'Headless runs under the executor'
   show_pi: 'a short report per campaign pass: what moved, what is waiting on the PI, what the next pass will do'
 ---
 
@@ -21,6 +24,8 @@ newts:
 **First, load this procedure's brief:** `uv run --with pyyaml python tools/workflow.py brief autopilot [--study <slug>]` (skip it if a `NEWTS STAGE BRIEF /autopilot` block is already in your context). It carries the PI's own instructions for this procedure. This file is the procedure's **contract**: its steps, guard calls, gates, stop points and records always bind, and win over the brief on any conflict.
 
 **Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): a short report per campaign pass: what moved, what is waiting on the PI, what the next pass will do. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `AGENT-GUIDE.md` — "Programmatic agents", "Headless runs under the executor" (it binds exactly like AGENTS.md).
 <!-- /newts:contract -->
 
 The full-autonomy mode: "one signature before bed, papers in the morning." The campaign

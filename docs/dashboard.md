@@ -169,6 +169,13 @@ slot is free, within the concurrency caps and the daily limits set in Settings �
 
 ### Ask Newt (free-form)
 
+**A question the dashboard can already answer is answered at once, with no agent** — *"what needs me?"*,
+*"what's running?"*, *"what happened overnight?"*, *"how much have we spent today?"*, *"did anything fail?"*,
+*"which gates are waiting?"*, *"anything for me to look at?"*, *"how is moe doing?"*. The answer comes from the lab's
+live state (`ui/answers.js`), costs nothing, and offers **Ask an agent anyway** if it isn't what you meant. An agent
+session loads ~50k tokens of context before it does anything, so this keeps quick look-ups free. Anything that asks
+for work or judgement (run, write, compare, explain why…) goes to an agent as below.
+
 Type any instruction, e.g. *"compare the last three pilots of moe and tell me which knob mattered"*,
 in the bar under the world or at the top of Start something. A short confirmation shows:
 

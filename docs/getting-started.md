@@ -53,7 +53,7 @@ Your lab is a single git repo that mixes three kinds of files. The rule of thumb
 
 | Kind | Examples | Commit to your lab? | Send upstream to the template? |
 |---|---|---|---|
-| **Machinery** | `.claude/skills/`, `tools/`, `templates/`, `dashboard/`, `docs/`, `AGENTS.md`, `CLAUDE.md` | rarely — you mostly don't edit these | **yes** — as PRs (that's contributing) |
+| **Machinery** | `.claude/skills/`, `tools/`, `templates/`, `dashboard/`, `docs/`, `AGENTS.md`, `AGENT-GUIDE.md`, `CLAUDE.md` | rarely — you mostly don't edit these | **yes** — as PRs (that's contributing) |
 | **Config & identity** | `lab/config.yaml`, `.claude/agents/*.md` (rendered), `SYSTEM.md` | **yes** — your settings, versioned | no — personal (your budgets, models, machine) |
 | **Research memory** | `lab/REGISTRY.md`, `lab/notebook/`, `lab/knowledge/`, `studies/`, `lab/ideation/` | **yes** — this *is* the lab's memory | no |
 | **Runtime scratch** | `lab/.bus/`, `lab/.slots/`, project `runs/`, `site/`, `research/` | already **`.gitignore`d** — stays local | — |

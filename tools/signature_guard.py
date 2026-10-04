@@ -75,7 +75,7 @@ SIG_TOKENS = re.compile(r"pi_signed|signed_via|gate ?1 approved|PI Gate 1|gate1_
 PROTECTED_NAMES = re.compile(r"gate3-approval\.md|pi-actions\.jsonl|\.bus/campaigns/|\.claude/(?:skills|agents)/|agent-roles/|"
                              r"\.(?:codex|opencode)/agents/|lab/rooms3?d?/|\.bus/compose/|\.bus/artifacts/[^/\s]+/(?:reply\.json|seen)\b|"
                              r"lab/workflow/|/workflow/[\w.-]+\.(?:add|method)\.md|workflow/(?:stages|rules)\.yaml|"
-                             r"(?:^|[\s/'\"])(?:AGENTS|CLAUDE)\.md", re.I)
+                             r"(?:^|[\s/'\"])(?:AGENTS|CLAUDE|AGENT-GUIDE)\.md", re.I)
 WRITE_HINT = re.compile(r"(?<![0-9&])>(?!&)|\btee\b|sed\s+-i|perl\s+-\w*i|Set-Content|Add-Content|Out-File|"
                         r"\.write\(|write_text|write_bytes|open\([^)]*['\"][wa+]|\bcp\s|\bmv\s|\brm\s|"
                         r"Copy-Item|Move-Item|Remove-Item|New-Item|yaml\.(safe_)?dump", re.I)

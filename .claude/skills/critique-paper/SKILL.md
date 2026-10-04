@@ -11,6 +11,8 @@ newts:
   hint: study slug
   title: Critique the paper
   does: A fresh-context reviewer ensemble critiques the draft.
+  guide:
+  - 'The back half: analysis, writing, review and back'
   show_pi: 'the critique summary — per-lens scores and the top action items'
   outputs:
   - 'studies/<slug>/critiques/ or paper/reviews/ report: per-lens scores, meta-review, action items'
@@ -26,6 +28,8 @@ newts:
 - studies/<slug>/critiques/ or paper/reviews/ report: per-lens scores, meta-review, action items
 
 **Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the critique summary — per-lens scores and the top action items. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `AGENT-GUIDE.md` — "The back half: analysis, writing, review and back" (it binds exactly like AGENTS.md).
 <!-- /newts:contract -->
 
 Ensemble sizes, anchors, and cycle caps come from `lab/config.yaml` (`critique.*`).

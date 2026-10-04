@@ -11,6 +11,9 @@ newts:
   hint: needs a signed LOOP_BRIEF.md
   title: Run the research loop
   does: Unattended experiment cycles within the signed loop brief.
+  guide:
+  - 'Unattended loops (/research-loop)'
+  - 'In-project iteration: execute and explore'
   show_pi: 'a cycle report when the loop stops, or every few cycles on a long loop (what was tried, what is best so far) — never every cycle'
   stops: at the brief's stop conditions
   uses:
@@ -24,6 +27,8 @@ newts:
 **First, load this procedure's brief:** `uv run --with pyyaml python <hub>/tools/workflow.py brief research-loop --study <slug>` (`<hub>` = this project's `control.yaml` `hub_path`; skip it if a `NEWTS STAGE BRIEF /research-loop` block is already in your context). It carries the PI's own instructions for this procedure. This file is the procedure's **contract**: its steps, guard calls, gates, stop points and records always bind, and win over the brief on any conflict.
 
 **Show the PI** (`python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>`): a cycle report when the loop stops, or every few cycles on a long loop (what was tried, what is best so far) — never every cycle. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `<hub>/AGENT-GUIDE.md` — "Unattended loops (/research-loop)", "In-project iteration: execute and explore" (it binds exactly like AGENTS.md).
 <!-- /newts:contract -->
 
 For overnight/long sessions while the PI is away. Tunables from the project's

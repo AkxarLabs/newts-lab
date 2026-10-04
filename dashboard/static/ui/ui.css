@@ -705,3 +705,7 @@ label.keep.keep-vis { padding: 3px 8px; border: 1px solid var(--edge); border-ra
 .btn .btn-sub, .btn-sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--ink-soft); }
 .stack .btn:has(.btn-sub) { flex-direction: column; align-items: flex-start; text-align: left; }
 .wl-nb .wl-go { font-style: italic; opacity: .7; }
+
+/* an answer from the live state (no agent) */
+.qa-answer { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.qa-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; } .qa-list li { line-height: 1.45; }

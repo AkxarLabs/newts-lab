@@ -11,6 +11,8 @@ newts:
   hint: study slug
   title: Write the paper
   does: Drafts the paper with every claim linked to evidence.
+  guide:
+  - 'The back half: analysis, writing, review and back'
   show_pi: 'the compiled PDF once a full draft exists'
   outputs:
   - studies/<slug>/paper/main.tex (compiled main.pdf)
@@ -29,6 +31,8 @@ newts:
 - paper/references.bib from the lit-review notes only
 
 **Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the compiled PDF once a full draft exists. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `AGENT-GUIDE.md` — "The back half: analysis, writing, review and back" (it binds exactly like AGENTS.md).
 <!-- /newts:contract -->
 
 Input: idea in state `writing` with a completed analysis. Output: `studies/<slug>/paper/`

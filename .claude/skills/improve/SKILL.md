@@ -11,6 +11,8 @@ newts:
   hint: optional operator/notes
   title: Improve the method
   does: Draft / debug / improve operators in parallel worktrees.
+  guide:
+  - 'In-project iteration: execute and explore'
   show_pi: 'what the round found — the winning variant, what it beat and by how much, with its figure — when a round ends'
   anchors:
   - revisit
@@ -32,6 +34,8 @@ newts:
 - NOTES.md lessons
 
 **Show the PI** (`python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>`): what the round found — the winning variant, what it beat and by how much, with its figure — when a round ends. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `<hub>/AGENT-GUIDE.md` — "In-project iteration: execute and explore" (it binds exactly like AGENTS.md).
 
 Other procedures rely on these parts of this contract: revisit, expand.
 <!-- /newts:contract -->

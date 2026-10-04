@@ -262,7 +262,7 @@ def ui_view(hub=None) -> dict:
     """What the dashboard needs: the manifest's vocabulary + the PI's customisations + pending proposals."""
     m = load(hub)
     keep = ("title", "does", "stops", "kind", "level", "mode", "args", "hint", "launchable", "replaceable",
-            "outputs", "anchors", "uses", "start", "show_pi")
+            "outputs", "anchors", "uses", "start", "show_pi", "guide")
     procs = {n: {k: p[k] for k in keep if k in p} for n, p in (m.get("procedures") or {}).items()}
     pend = proposals(hub)
     return {
@@ -857,6 +857,10 @@ def contract_block(proc: str, hub=None) -> str:
         lines += [f"- {o}" for o in p["outputs"]]
     if p.get("show_pi"):
         lines.append("\n" + show_pi_line(p, project))
+    if p.get("guide"):
+        where = "<hub>/AGENT-GUIDE.md" if project else "AGENT-GUIDE.md"
+        lines.append(f"\n**Read first:** `{where}` — " + ", ".join(f"\"{g}\"" for g in p["guide"])
+                     + " (it binds exactly like AGENTS.md).")
     if p.get("anchors"):
         lines.append(f"\nOther procedures rely on these parts of this contract: {', '.join(p['anchors'])}.")
     return "\n".join(lines)

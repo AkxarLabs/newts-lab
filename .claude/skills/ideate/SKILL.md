@@ -12,6 +12,8 @@ newts:
   hint: research direction, or --in-project <slug>
   title: Explore a new direction
   does: Researches the direction, generates and critiques ideas, and files the best 1–3 as studies.
+  guide:
+  - 'In-project method-ideation (/ideate --in-project)'
   show_pi: 'the ideas you filed — one short Markdown note (each idea''s title, one-line pitch and scores) once they are in the registry'
   stops: when the ideas are filed
   anchors:
@@ -36,6 +38,8 @@ newts:
 - lab/ideation/<run>/ record
 
 **Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the ideas you filed — one short Markdown note (each idea's title, one-line pitch and scores) once they are in the registry. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `AGENT-GUIDE.md` — "In-project method-ideation (/ideate --in-project)" (it binds exactly like AGENTS.md).
 
 Other procedures rely on these parts of this contract: reflect.
 <!-- /newts:contract -->
@@ -92,7 +96,7 @@ The one first-class way to ideate **divergent new approaches** *inside* an activ
 incremental, within-hypothesis generator is `/improve`'s `expand`). Same engine as above — generate →
 fresh-context critic ensemble → tournament → triage — but **scoped to method approaches**; output is
 **candidate approaches, NOT experiments**, and it is `active → active` (only a `/propose` re-entry crosses
-Gate 1). Full policy in AGENTS.md ("In-project method-ideation"); this skill is its **single enforcement
+Gate 1). Full policy in AGENT-GUIDE.md ("In-project method-ideation"); this skill is its **single enforcement
 point for the ENABLE flag** `ideation.in_project`: if `false`, the capability is OFF — do not run it; tell
 the caller the headline-reopen route must fall back to a **successor hub `/ideate`**.
 
@@ -126,7 +130,7 @@ framing. Skip silently in autonomous / `/autopilot` runs.
   notes). It **NEVER** enters experiments on a bare PI note; only the `/propose` re-entry crosses
   Gate 1. This preserves the `Headline: yes` autonomy boundary.
 
-**Approval** (`ideation.in_project_approval`, PI-owned — full rule in AGENTS.md):
+**Approval** (`ideation.in_project_approval`, PI-owned — full rule in AGENT-GUIDE.md):
 - **Manual / PI-driven run:** always **PI-gated** — queue surviving headline-changing approaches
   at `/propose` for human Gate 1; report and stop, never self-approve.
 - **Under a signed `/autopilot` campaign** with `campaign_auto`: apply `/autopilot`'s Gate-1

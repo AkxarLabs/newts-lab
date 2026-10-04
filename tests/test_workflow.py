@@ -246,3 +246,13 @@ def test_headless_runs_carry_the_brief_and_record_its_sha(tmp_path, wf):
     assert h and h in text
     ask = {**v, "skill": "ask", "cfg": {"mode": "headless", "kind": "ask"}}
     assert spec.profile.stage_brief(lab, ask) == (None, None)
+
+
+def test_every_guide_section_a_procedure_points_to_exists(wf):
+    """AGENTS.md carries what every session needs; AGENT-GUIDE.md the situational reference a procedure's
+    contract points to — every section a contract names must be a heading there."""
+    heads = {ln[3:].strip() for ln in (REPO / "AGENT-GUIDE.md").read_text(encoding="utf-8").splitlines() if ln.startswith("## ")}
+    named = {g for p in wf.load()["procedures"].values() for g in (p.get("guide") or [])}
+    assert named and named <= heads, named - heads
+    manual = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    assert "AGENT-GUIDE.md" in manual and len(manual) < 30_000, "AGENTS.md is loaded by every agent: keep it lean"

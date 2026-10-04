@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import json
 import subprocess
 
 import pytest
@@ -19,7 +20,7 @@ from conftest import REPO, load
 STATIC = REPO / "dashboard" / "static"
 UI = STATIC / "ui"
 NODE = shutil.which("node")
-UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "campaign", "gates", "library", "artifacts", "sound", "studies", "workflow", "compose", "home", "settings", "setup", "machines", "demo", "app"]
+UI_ORDER = ["workflow-default", "core", "components", "runs", "terminal", "composer", "campaign", "gates", "library", "artifacts", "sound", "answers", "studies", "workflow", "compose", "home", "settings", "setup", "machines", "demo", "app"]
 
 
 def _js():
@@ -92,3 +93,23 @@ def test_gate3_and_free_form_are_wired_in_the_ui():
     assert "typed: it.id" in src                       # Gate 3 needs the study name typed
     assert "prompt:" in src and "/api/run" in src       # Ask Newt sends a free-form prompt
     assert "/api/terminal" in src                       # sign-in opens the CLI's own login window
+
+
+@pytest.mark.skipif(not NODE, reason="node is needed")
+def test_questions_the_live_state_answers_never_start_an_agent():
+    """Ask Newt: a status question is answered from the snapshot (free, instant); work goes to an agent."""
+    cases = {
+        "what needs me?": "needs", "anything waiting on me": "needs", "what's running?": "running",
+        "what happened overnight?": "overnight", "how much have we spent today?": "cost", "did anything fail?": "failed",
+        "which gates are waiting?": "gates", "anything for me to look at?": "foryou",
+        "how is sparse moe routing doing?": "study", "status of rl?": "study",
+        "compare the last three pilots of moe": None, "write the related work section": None,
+        "why did exp-019 time out?": None, "run the smoke test": None, "summarise what moved overnight": None,
+    }
+    items = [{"id": "moe", "title": "Sparse MoE routing"}, {"id": "rl", "title": "RL fine-tuning"}]
+    js = (f"global.window = global; eval(require('fs').readFileSync({json.dumps(str(UI / 'answers.js'))}, 'utf8'));"
+          f"const items = {json.dumps(items)}, cases = {json.dumps(list(cases))};"
+          "console.log(JSON.stringify(cases.map(c => { const m = window.NL.quickIntent(c, items); return m ? m.intent : null; })));")
+    r = subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert dict(zip(cases, json.loads(r.stdout))) == cases

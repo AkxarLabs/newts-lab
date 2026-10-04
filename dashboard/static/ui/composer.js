@@ -84,6 +84,7 @@
     };
     const sendAsk = async () => {
       if (!ask.trim()) return;
+      if (NL.quickAnswer && NL.quickAnswer(ask.trim(), NL.getState())) { onClose(); return NL.open(NL.AnswerSheet, { text: ask.trim(), target, onAgent: () => NL.launch({ prompt: ask.trim(), target: target && target !== 'hub' ? target : 'hub', ...optBody({ ...opts, chain: 'off' }) }) }, { key: 'answer' }); }
       const r = await NL.launch({ prompt: ask.trim(), target: target && target !== 'hub' ? target : 'hub', ...optBody({ ...opts, chain: 'off' }) });
       if (r) onClose();
     };
@@ -127,7 +128,9 @@
     const s = NL.useLab();
     const [v, setV] = useState('');
     const study = target && target !== 'hub' ? NL.item(s, target) : null;
-    const send = () => { if (!v.trim()) return; NL.open(AskConfirm, { text: v.trim(), target: target || 'hub', onSent: () => setV('') }, { kind: 'dialog', key: 'ask' }); };
+    const toAgent = text => NL.open(AskConfirm, { text, target: target || 'hub', onSent: () => setV('') }, { kind: 'dialog', key: 'ask' });
+    // a question the lab's live state already answers is answered here — free, instant, no agent session
+    const send = () => { const q = v.trim(); if (!q) return; if (NL.quickAnswer && NL.quickAnswer(q, s)) return NL.open(NL.AnswerSheet, { text: q, target, onAgent: () => toAgent(q) }, { key: 'answer' }); toAgent(q); };
     return html`<div class="askbar" role="search">
       <span class="askbar-newt" aria-hidden="true">🦎</span>
       <input class="askbar-in" value=${v} onInput=${e => setV(e.target.value)} onKeyDown=${e => e.key === 'Enter' && (e.preventDefault(), send())}

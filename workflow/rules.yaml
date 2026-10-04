@@ -226,6 +226,7 @@ rigor_floors:
 # workflow, the PI's instructions — an agent that wants them different files a proposal instead
 protected_paths:
   - '^AGENTS\.md$'
+  - '^AGENT-GUIDE\.md$'
   - '^CLAUDE\.md$'
   - '^\.claude/(skills|agents)/'
   - '^\.(codex|opencode)/agents/'

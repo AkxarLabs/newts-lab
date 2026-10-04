@@ -12,6 +12,8 @@ newts:
   hint: slug or task
   title: Compete on a target
   does: An interview for a fixed-target task (a benchmark, a score).
+  guide:
+  - 'Target-driven projects (/compete)'
   show_pi: 'the standing after each scored submission (score vs target, what changed)'
   start: {icon: "◎", order: 7, label: The task or benchmark, placeholder: "e.g. beat the baseline on …",
     onramp: "A benchmark or a score to beat, with a fixed evaluation."}
@@ -23,6 +25,8 @@ newts:
 **First, load this procedure's brief:** `uv run --with pyyaml python tools/workflow.py brief compete [--study <slug>]` (skip it if a `NEWTS STAGE BRIEF /compete` block is already in your context). It carries the PI's own instructions for this procedure. This file is the procedure's **contract**: its steps, guard calls, gates, stop points and records always bind, and win over the brief on any conflict.
 
 **Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the standing after each scored submission (score vs target, what changed). One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `AGENT-GUIDE.md` — "Target-driven projects (/compete)" (it binds exactly like AGENTS.md).
 <!-- /newts:contract -->
 
 For a **task with a straightforward target** (beat a benchmark, hit a metric, climb a

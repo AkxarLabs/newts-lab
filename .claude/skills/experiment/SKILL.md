@@ -11,6 +11,8 @@ newts:
   hint: optional exp-id
   title: Run experiments
   does: Smoke → pilot → full runs from the plan, logged and committed.
+  guide:
+  - 'Mechanical guards (tools/guard.py)'
   show_pi: 'a results note when a stage finishes (SMOKE → PILOT, PILOT → FULL): a table of its runs and one figure — never one per attempt'
   stops: before FULL runs outside a signed envelope
   anchors:
@@ -34,6 +36,8 @@ newts:
 - NOTES.md lessons at exit
 
 **Show the PI** (`python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>`): a results note when a stage finishes (SMOKE → PILOT, PILOT → FULL): a table of its runs and one figure — never one per attempt. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
+
+**Read first:** `<hub>/AGENT-GUIDE.md` — "Mechanical guards (tools/guard.py)" (it binds exactly like AGENTS.md).
 
 Other procedures rely on these parts of this contract: parallel path.
 <!-- /newts:contract -->

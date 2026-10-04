@@ -48,6 +48,9 @@ required.
 
 1. Write `.claude/skills/<name>/SKILL.md`: its **contract**, meaning inputs, outputs, guard calls,
    ledgers, stop points and the run footer.
+   - Two of its frontmatter keys keep agents lean and useful: `guide:` names the sections of `AGENT-GUIDE.md`
+     the procedure needs (rendered as "Read first" in its contract; `AGENTS.md` stays what *every* agent needs,
+     since every session loads it), and `show_pi:` says what it publishes for the PI to look at.
    - Its frontmatter's `newts:` block defines the procedure for the lab. Without one, it is a launchable
      utility (headless, hub-level, free-text argument), titled by its name. The keys:
 
