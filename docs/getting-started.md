@@ -20,7 +20,7 @@ of this page is the same lab from a terminal. See [The dashboard](dashboard.md) 
     Run `uv run --with pyyaml python newts.py --background` there. It keeps running after you log out
     and prints the one `ssh -L` line to use from your own computer. Or add the machine in your local
     dashboard (Labs & machines → Add a machine) and it connects for you. On a cluster, set how training
-    runs (SLURM or another scheduler) in Settings → System & compute. See [Machines & compute](compute.md).
+    runs (SLURM or another scheduler) in Settings → This machine & compute. See [Machines & compute](compute.md).
 
 ## Prerequisites
 

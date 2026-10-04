@@ -46,7 +46,7 @@
   const BUILT_IN = [{ id: 'study', icon: '◫', title: 'Work on a study', study: true, order: 4 },
     { id: 'campaign', icon: '⟳', title: 'Plan a campaign', campaign: true, order: 6,
       onramp: 'Sign a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.',
-      onrampTitle: 'Start a campaign and walk away' }];
+      onrampTitle: 'Start a campaign' }];
   // a one-line "what it does" under each tile — so near neighbours (one step vs pick a step) read apart
   const INTENT_WORDS = {
     study: { title: 'Work on a study', desc: 'pick what to do on it, or give it notes' },
@@ -99,11 +99,11 @@
       : 'Agents run on this machine, as you. Every gate still waits for your signature.';
     return html`<${NL.Sheet} title="Start something" sub=${sub} onClose=${onClose} wide>
       <div class="asknewt-big">
-        <label class="field-label">Ask Newt — or tell it what to do</label>
+        <label class="field-label">Ask a question or give an instruction</label>
         <${NL.Textarea} rows="3" value=${ask} onInput=${setAsk} onSubmit=${sendAsk} autofocus=${!initial && !initSkill}
-          placeholder="e.g. “Compare the last three pilots of moe and tell me which knob mattered” (Ctrl+Enter to send)" />
-        <div class="row"><span class="muted small">Runs as a free-form agent session in ${study ? html`<b>${study.title || study.id}</b>` : 'the lab'} — it can use every procedure; only you sign.</span><span class="grow"></span>
-          <${NL.Btn} kind="primary" disabled=${!ask.trim()} onClick=${sendAsk}>Send to Newt</${NL.Btn}></div>
+          placeholder="e.g. “Compare the last three trial runs of moe and say which setting mattered”. Ctrl+Enter sends." />
+        <div class="row"><span class="muted small">Starts a run in ${study ? html`<b>${study.title || study.id}</b>` : 'the lab'}. It can use any procedure, but only you can approve gates.</span><span class="grow"></span>
+          <${NL.Btn} kind="primary" disabled=${!ask.trim()} onClick=${sendAsk}>Send</${NL.Btn}></div>
       </div>
       <div class="or"><span>or start a procedure</span></div>
       <div class="intents">${INTENTS.map(i => html`<button type="button" class=${cls('intent', intent === i.id && 'on')} onClick=${() => setIntent(i.id)}>
@@ -140,7 +140,7 @@
     return html`<div class="askbar" role="search">
       <span class="askbar-newt" aria-hidden="true">🦎</span>
       <input class="askbar-in" value=${v} onInput=${e => setV(e.target.value)} onKeyDown=${e => e.key === 'Enter' && (e.preventDefault(), send())}
-        placeholder=${study ? `Ask Newt about ${NL.clip(study.title || study.id, 30)} — or tell it what to do…` : 'Ask Newt anything — or tell it what to do…'} aria-label="Ask Newt" />
+        placeholder=${study ? `Ask about ${NL.clip(study.title || study.id, 30)}, or give an instruction…` : 'Ask a question, or give the lab an instruction…'} aria-label="Ask Newt" />
       <button class="askbar-more" title="leave a note for the next agent instead" onClick=${() => NL.openNote(target, v)}>✉</button>
       <button class="askbar-go" disabled=${!v.trim()} onClick=${send} aria-label="send">➤</button></div>`;
   };
@@ -150,21 +150,21 @@
     const [tgt, setTgt] = useState(target);
     const [opts, setOpts] = useState(DEFAULT_OPTS);
     const go = async () => { const r = await NL.launch({ prompt: t.trim(), target: tgt || 'hub', ...optBody({ ...opts, chain: 'off' }) }); if (r) { onSent && onSent(); onClose(); } };
-    return html`<div class="dialog dialog-wide"><h3>Send to Newt</h3>
+    return html`<div class="dialog dialog-wide"><h3>New instruction</h3>
       <${NL.Textarea} rows="4" value=${t} onInput=${setT} onSubmit=${go} autofocus />
       <${StudyPicker} label="Where" value=${tgt} onChange=${setTgt} allowLab />
       <${LaunchOptions} opts=${opts} setOpts=${setOpts} />
-      <p class="muted small">A free-form agent session, as you, with your login. It can run any lab procedure; gates, envelopes and Gate 3 still wait for your signature — it cannot sign them.</p>
+      <p class="muted small">A run using your account. It can use any lab procedure. Gates still wait for your approval; it cannot approve them.</p>
       <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${go}>Send</${NL.Btn}></div></div>`;
   };
-  NL.openNote = (target, text) => NL.open(NoteDialog, { target: target || 'hub', text: text || '' }, { kind: 'dialog' });
-  const NoteDialog = ({ target, text, onClose }) => {
+  NL.openNote = (target, text, opts) => NL.open(NoteDialog, { target: target || 'hub', text: text || '', ...(opts || {}) }, { kind: 'dialog' });
+  const NoteDialog = ({ target, text, title, ok, sub, onClose }) => {
     const [t, setT] = useState(text || '');
     const go = async () => { const r = await NL.act('/api/directive', { target, text: t.trim() }, 'Note pinned — the next agent reads it at its next checkpoint'); if (r.ok) onClose(); };
-    return html`<div class="dialog"><h3>Leave a note for the next agent</h3>
-      <p class="muted small">Doesn't start anything. The next agent working ${target === 'hub' ? 'in the lab' : 'on this study'} reads it at its next checkpoint and acknowledges it.</p>
+    return html`<div class="dialog"><h3>${title || 'Leave a note for the next agent'}</h3>
+      <p class="muted small">${sub || html`Doesn't start anything. The next agent working ${target === 'hub' ? 'in the lab' : 'on this study'} reads it at its next checkpoint and acknowledges it.`}</p>
       <${NL.Textarea} rows="3" value=${t} onInput=${setT} onSubmit=${go} autofocus />
-      <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${go}>Pin the note</${NL.Btn}></div></div>`;
+      <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${go}>${ok || 'Pin the note'}</${NL.Btn}></div></div>`;
   };
 
   /* ── Plan a campaign (writes + signs lab/campaigns/<date>-<slug>.md) ───── */
@@ -195,7 +195,7 @@
     const spendCap = Math.max(0, +f.spend_cap || 0);   // blank / 0 = no cap
     const labName = (s.lab_info || {}).name || 'this lab';
     const machine = s.remote ? s.remote.name : 'this computer';
-    const G1_BOUNDS = 'Only when all hold: within the limits above, kill criteria + frozen eval present, novelty verdict “novel”, scoping passed. Gate 2 (each project’s FULL-run envelope) comes from the same limits. Anything outside them waits for you. Leave it unticked (the default) and every proposal waits for you.';
+    const G1_BOUNDS = 'Agents approve a proposal only if all of these hold: it is within the limits above, has kill criteria and a frozen evaluation, was judged novel, and passed scoping. Its full-run limits come from the same numbers. Anything else waits for you. Leave this unticked and every proposal waits for you.';
     const sign = async (launch) => {
       if (!f.direction.trim()) return NL.toast('Describe the direction first', 'warn');
       const body = html`<div><p>Your signature lets the lab work on its own <b>within these bounds</b>: ${f.gate1
@@ -205,7 +205,7 @@
         <p>${spendCap ? html`It stops when its runs have spent <b>$${spendCap.toFixed(2)}</b> (estimated from token use), and writes its final report.`
           : html`<b>No spending cap — it can spend until its hours or agent-hours run out.</b>`}</p>
         <p class="muted">It runs in ${labName} on ${machine} until ${NL.when(until)}${+agentHours ? ` or ${+agentHours} agent-hours, whichever comes first` : ''}, restarting after timeouts, usage limits and network errors. ${launch ? '' : 'Signing only records the brief; you start it later. '}Stop or pause it any time from the campaign card on Home or Studies.</p></div>`;
-      const ok = await NL.confirm({ title: 'Sign this campaign?', ok: launch ? 'Sign and start' : 'Sign', body,
+      const ok = await NL.confirm({ title: 'Approve this campaign?', ok: launch ? 'Approve and start' : 'Approve', body,
         typed: f.gate3 ? 'finalize' : undefined });
       if (!ok) return;
       // gate1 is always sent explicitly (the backend treats a missing field as "on", for older callers)
@@ -225,18 +225,18 @@
         <div class="grid2">
           <${NL.Field} label="Run for (hours)" hint=${'until ' + NL.when(until)}><${NL.Input} type="number" min="1" value=${f.hours} onInput=${v => set('hours', v)} /></${NL.Field}>
           <${NL.Field} label="Agent-hours" hint=${f.agent_hours == null ? 'hours × at once · 0 = only the clock' : html`0 = only the clock · <button type="button" class="link small" onClick=${() => set('agent_hours', null)}>back to ${autoAgentHours}</button>`}><${NL.Input} type="number" min="0" value=${agentHours} onInput=${v => set('agent_hours', v)} /></${NL.Field}>
-          <${NL.Field} label="FULL runs per project" hint="a FULL run is a full-scale experiment, after the pilot"><${NL.Input} type="number" min="0" value=${f.full_runs} onInput=${v => set('full_runs', v)} /></${NL.Field}>
+          <${NL.Field} label="Full runs per study" hint="A full run is the complete experiment, run after the trial runs."><${NL.Input} type="number" min="0" value=${f.full_runs} onInput=${v => set('full_runs', v)} /></${NL.Field}>
           <${NL.Field} label="Minutes per FULL run"><${NL.Input} type="number" min="0" value=${f.full_minutes} onInput=${v => set('full_minutes', v)} /></${NL.Field}>
-          <${NL.Field} label="Spend cap ($) — the campaign stops when its runs have spent this much (estimated from token use)"
-            hint=${spendCap ? 'it stops there and writes its final report' : 'blank or 0 = no cap'}><${NL.Input} type="number" min="0" step="1" value=${f.spend_cap} onInput=${v => set('spend_cap', v)} placeholder="no cap" /></${NL.Field}>
+          <${NL.Field} label="Spending cap ($)"
+            hint=${spendCap ? 'The campaign stops there and writes its final report. Estimated from token use.' : 'Blank = no cap. The campaign can then spend until its hours run out.'}><${NL.Input} type="number" min="0" step="1" value=${f.spend_cap} onInput=${v => set('spend_cap', v)} placeholder="no cap" /></${NL.Field}>
         </div>
-        <div class="muted small">Spend so far shows on the campaign card${spendCap ? '' : ' — with no cap, it can spend until its hours or agent-hours run out'}.</div></div>
+        <div class="muted small">Spend so far shows on the campaign card.</div></div>
       <div class="camp-group camp-group-soft"><div class="camp-group-h">Notes for the agents (not enforced)</div>
         <${NL.Field} label="Total compute" hint="written into the brief for the agents to plan by"><${NL.Input} value=${f.compute_total} onInput=${v => set('compute_total', v)} placeholder="e.g. 8 GPU-hours" /></${NL.Field}></div>
       <label class="check-row"><input type="checkbox" checked=${f.gate1} onChange=${e => set('gate1', e.target.checked)} />
-        <span><b>Proposals may pass Gate 1 without me when they fit these bounds</b><small>${G1_BOUNDS}</small></span></label>
+        <span><b>Gate 1 is approved for me when a proposal fits these limits</b><small>${G1_BOUNDS}</small></span></label>
       <label class="check-row"><input type="checkbox" checked=${f.gate3} onChange=${e => set('gate3', e.target.checked)} />
-        <span><b>Papers may finalize without me</b><small>The lab records Gate 3 only after internal review accepts the paper and its own re-run of the paper audits (claims, seeds, ablations, eval discipline) is clean. Nothing leaves the lab.</small></span></label>
+        <span><b>Papers can be finalized without me</b><small>Only after internal review accepts the paper and the lab re-runs the paper audits (claims, seeds, ablations, evaluation, pre-registration) cleanly. Nothing leaves the lab. You can take this back from the campaign card.</small></span></label>
       <button type="button" class="link small" onClick=${() => setMore(!more)}>${more ? 'Fewer options' : 'More options…'}</button>
       ${more ? html`<div class="grid3">
         <${NL.Field} label="A pass every (min)" hint="a pass: the lab checks every idea and starts its next step"><${NL.Input} type="number" min="5" value=${f.repeat_minutes} onInput=${v => set('repeat_minutes', v)} /></${NL.Field}>
@@ -245,8 +245,8 @@
         <${NL.Field} label="Research loops" hint=${f.mode === 'explore' ? 'Explore: a project may widen its plan within its envelope' : 'Follow the plan: run the approved plan, then stop'}><${NL.Seg} value=${f.mode} onChange=${v => set('mode', v)} options=${[{ value: 'execute', label: 'Follow the plan' }, { value: 'explore', label: 'Explore' }]} /></${NL.Field}>
         <${NL.Field} label="Name" hint="optional"><${NL.Input} value=${f.name} onInput=${v => set('name', v)} placeholder="e.g. routing-sprint" /></${NL.Field}>
       </div>` : null}
-      <${NL.Section} title="Before you walk away"><${NL.Preflight} onReady=${setReady} /></${NL.Section}>
-      <div class="row end"><span class="muted small">Sign only = record the signed brief now, start later.</span>
-        <${NL.Btn} onClick=${() => sign(false)} title="record the signed brief now, start later">Sign only</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!ready} title=${ready ? '' : 'fix the checks above first'} onClick=${() => sign(true)}>Sign and start</${NL.Btn}></div></div>`;
+      <${NL.Section} title="Checks before you start"><${NL.Preflight} onReady=${setReady} /></${NL.Section}>
+      <div class="row end"><span class="muted small">${ready ? `${f.ideas} ideas · ${f.hours} h · cap ${spendCap ? '$' + spendCap : 'none'}` : 'Fix the checks above before starting.'}</span>
+        <${NL.Btn} onClick=${() => sign(false)} title="Records your approval now. Start it later from the campaign card.">Approve, start later</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!ready} title=${ready ? '' : 'Fix the checks above first'} onClick=${() => sign(true)}>Approve and start</${NL.Btn}></div></div>`;
   };
 })();

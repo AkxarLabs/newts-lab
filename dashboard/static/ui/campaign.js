@@ -42,7 +42,7 @@
     return { n: st.length, waiting: st.filter(x => x.waiting).length, held: st.filter(x => x.hold).length }; };
 
   const act = async (c, action, extra) => {
-    const words = { stop: ['Stop this campaign?', 'It stops starting work, stops what is running, and writes a final report.', 'Stop'],
+    const words = { stop: ['End this campaign for good?', 'It stops starting work, stops what is running, and writes a final report. It cannot be resumed.', 'End campaign'],
       revoke_gate3: ['Take Gate 3 back?', 'No paper of this campaign will finalize without you. A /finalize already running is stopped.', 'Take it back'] };
     if (words[action] && !await NL.confirm({ title: words[action][0], body: words[action][1], ok: words[action][2], danger: action === 'stop' })) return;
     return NL.act('/api/campaign/control', { name: c.name, action, confirm: true, ...(extra || {}) });
@@ -77,9 +77,9 @@
         ${c.gate3_auto ? html`<${NL.Pill} tone="state" title="papers may finalize without you">Gate 3 delegated</${NL.Pill}>` : null}
         ${(c.questions || []).filter(q => !q.answer).length ? html`<${NL.Pill} tone="ask">${NL.plural(c.questions.filter(q => !q.answer).length, 'question')}</${NL.Pill}>` : null}</div>
       ${c.paused_reason && ['paused', 'stalled'].includes(c.status) ? html`<div class="small warn">${c.paused_reason}${c.paused_by_lab ? ' — it carries on when you resume the lab' : ''}</div>` : null}
-      <div class=${cls('row gap', compact && 'camp-ctl')}>${live ? html`<${NL.Btn} small onClick=${() => act(c, 'pause')} title="no new pass starts; what is running finishes">Pause</${NL.Btn}>` : null}
+      <div class=${cls('row gap', compact && 'camp-ctl')}>${live ? html`<${NL.Btn} small onClick=${() => act(c, 'pause')} title="Running work finishes; nothing new starts. Resume any time.">Pause</${NL.Btn}>` : null}
         ${['paused', 'stalled'].includes(c.status) && !c.paused_by_lab ? html`<${NL.Btn} small kind="primary" onClick=${() => act(c, 'resume')}>Resume</${NL.Btn}>` : null}
-        ${!['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')} title="stop for good: ends what is running and writes a final report">Stop…</${NL.Btn}>` : null}
+        ${!['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')} title="Ends the campaign for good and writes a final report.">End campaign…</${NL.Btn}>` : null}
         ${!compact ? html`<${NL.Btn} small kind="ghost" onClick=${() => NL.openCampaign(c.name)}>Details</${NL.Btn}>` : null}</div></div>`;
   };
 

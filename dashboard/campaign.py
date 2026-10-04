@@ -170,13 +170,13 @@ def campaign_preflight(q: dict) -> tuple[dict, int]:
     backend = prog.get("backend") or "claude"
     cli = (status.get("clis") or {}).get(backend) or {}
     checks = [{"id": "launch", "ok": bool(prog.get("enabled")), "label": "Agents may be started from the dashboard",
-               "detail": "Settings → Autonomy & limits → Let the dashboard start agents for you", "fix": "settings/autonomy"},
+               "detail": "Settings → Limits & permissions → Let the dashboard start agents for you", "fix": "settings/autonomy"},
               {"id": "cli", "ok": bool(cli.get("found") or cli.get("path") or cli.get("version")),
                "label": f"The {backend} CLI is installed", "detail": cli.get("version") or cli.get("error") or "",
                "fix": "settings/agents"}]
     li = cli.get("logged_in")
     checks.append({"id": "auth", "ok": li is not False, "label": f"{backend} is signed in",
-                   "detail": "" if li else ("not signed in — Settings → Agents → Sign in…" if li is False else
+                   "detail": "" if li else ("not signed in — Settings → Agents & models → Sign in…" if li is False else
                                             "can't tell from here — checked on the first run"), "fix": "settings/agents"})
     pm = str(prog.get("permission_mode") or "auto")
     checks.append({"id": "perm", "ok": pm in ("auto", "acceptEdits", "dontAsk"),

@@ -65,7 +65,7 @@ answers into `lab/config.yaml` (preserving comments); report what was set.
   via `/ideate` & `/scope`'s per-spawn Task `model`; other backends run them at the session model.
 - **Headless launch settings** (`agents.programmatic.*`: whether the dashboard may start agents, the
   backend, its model, the permission posture, limits) are the PI's dashboard settings — the setup
-  wizard's Agents and Autonomy steps, or Settings → Autonomy & limits. Don't write them from here (the
+  wizard's Agents and Autonomy steps, or Settings → Limits & permissions. Don't write them from here (the
   signature guard refuses it in a headless run); if the PI asks, point them there.
 - Semantic Scholar API key? (Free with an institutional email — strongly recommended;
   keyless access is saturated.) → tell them to set `S2_API_KEY`; same for

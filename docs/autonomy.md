@@ -158,7 +158,7 @@ From then on the **campaign keeper**, part of the executor's scheduler rather th
 doesn't stop anything, and Settings → About & server stops it. If the dashboard does stop with work
 queued, it hands the scheduling to a background `executor_cli serve --until-idle`, and a finishing run
 starts one if nobody is scheduling. While agents work or a campaign runs, the computer is kept awake
-(Settings → Lab → *Keep the computer awake*). Closing a laptop lid on battery still sleeps; that is the
+(Settings → Research defaults → *Keep the computer awake*). Closing a laptop lid on battery still sleeps; that is the
 OS's decision.
 
 The campaign card (Home and Studies) shows progress against the deadline, each study (waiting for you?

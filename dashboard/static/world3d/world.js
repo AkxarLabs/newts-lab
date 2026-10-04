@@ -49,6 +49,7 @@ L.createWorld = async function createWorld(canvas, opts) {
   async function loadLooks(sig) {
     if (sig === looksSig) return false;
     looksSig = sig;
+    if (window.NL && NL.DEMO) return;   // the demo shows the shipped looks only
     try { const r = await fetch('/api/rooms3d', { credentials: 'same-origin' }); if (r.ok) ((await r.json()).rooms || []).forEach(d => L.defineRoomData(d)); } catch (e) { /* a page with no lab behind it */ }
     return true;
   }

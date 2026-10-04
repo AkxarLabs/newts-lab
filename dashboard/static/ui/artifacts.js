@@ -82,7 +82,7 @@
     const stamp = (NL.artifactsOf(s).find(x => x.id === id) || {}).answered;
     useEffect(() => { let on = true; setD(null); fetchOne(id).then(x => { if (on) { setD(x); if (x && x.ok) { markSeen([id]); onLoaded && onLoaded(x.artifact); } } }); return () => { on = false; }; }, [id, stamp]);
     if (!d) return html`<${NL.Spinner} />`;
-    if (!d.ok) return html`<${NL.Empty} icon="❏">${d.error || 'It could not be read.'}</${NL.Empty}>`;
+    if (!d.ok) return html`<${NL.Empty} icon="❏">${d.error || 'Could not open this file. Check that it still exists in the lab folder.'}</${NL.Empty}>`;
     const a = d.artifact, it = a.study && NL.item(s, a.study);
     return html`<article class="artifact">
       <header class="art-head"><div class="kicker">${(KIND[a.kind] || ['Artifact'])[0]} · ${NL.ago(a.created)}</div><h2>${a.title}</h2>
@@ -98,7 +98,7 @@
 
   NL.ArtifactSheet = ({ id, onClose }) => {
     const [a, setA] = useState(null);
-    return html`<${NL.Sheet} title=${a ? a.title : 'For you'} sub=${a ? (KIND[a.kind] || ['Artifact'])[0] + ' an agent made for you' : ''} wide onClose=${onClose}>
+    return html`<${NL.Sheet} title=${a ? a.title : 'Results'} sub=${a ? (KIND[a.kind] || ['Artifact'])[0] + ' an agent made for you' : ''} wide onClose=${onClose}>
       <${Viewer} id=${id} onLoaded=${setA} />
       <div class="row end"><a class="link small" href=${'#/artifacts/' + id} onClick=${onClose}>Everything for you →</a></div></${NL.Sheet}>`;
   };
@@ -125,7 +125,7 @@
     const sel = (args && args[0]) || null;
     const studies = [...new Set(all.map(a => a.study).filter(Boolean))];
     return html`<div class="page page-split">
-      <aside class="split-left"><div class="split-head"><h1>For you</h1>
+      <aside class="split-left"><div class="split-head"><h1>Results</h1>
         <p class="muted small">Plans, results and figures your agents want you to see — and the questions they asked. Your reply goes straight back to the agent.</p></div>
         <div class="art-filters">${FILTERS.map(([v, t]) => html`<button type="button" class=${cls('lens', f === v && 'on')} onClick=${() => setF(v)}>${t}${v === 'asking' && NL.artifactsAsking(s).length ? ' · ' + NL.artifactsAsking(s).length : ''}</button>`)}</div>
         ${studies.length > 1 ? html`<${NL.Select} value=${study} onChange=${setStudy} options=${[{ value: '', label: 'Every study' }, ...studies.map(x => ({ value: x, label: (NL.item(s, x) || {}).title || x }))]} />` : null}

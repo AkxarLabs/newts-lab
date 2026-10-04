@@ -122,7 +122,7 @@
     useLeaveGuard();
     if (!d) return html`<div class="page"><${NL.Spinner} /></div>`;
     if (d.error && !d.stages) return html`<div class="compose"><${Nav} d=${{ ...d, stages: [], procedures: {}, roles: [], rooms: [], rules: {}, checks: [], types: [] }} where="" />
-      <main class="cmp-main"><${DemoNote} /><${DraftBar} d=${d} /><div class="cmp-page"><div class="kicker">Compose</div><h1>The workflow can't be read</h1>
+      <main class="cmp-main"><${DemoNote} /><${DraftBar} d=${d} /><div class="cmp-page"><div class="kicker">Workflow</div><h1>The workflow can't be read</h1>
         <div class="note note-warn">${d.error}</div><p class="muted">Fix the file below, or discard the draft.</p>
         <${FileEditor} path="workflow/stages.yaml" /></div></main></div>`;
     let body;
@@ -149,7 +149,7 @@
   const Nav = ({ d, where }) => {
     const on = id => where === id || (KINDS.find(k => k.id === id) || {}).item === where;
     const props = (d.proposals || []).length;
-    return html`<nav class="cmp-nav" aria-label="Compose">
+    return html`<nav class="cmp-nav" aria-label="Workflow">
       <a class=${cls('cmp-link', !where && 'on')} href="#/compose"><${NL.Icon} name="layers" /><span class="grow">Overview</span></a>
       <div class="cmp-nav-sec">The lab is made of</div>
       ${KINDS.map(k => html`<a class=${cls('cmp-link', on(k.id) && 'on')} href=${href(k.id)}><span class="grow">${k.label}</span>
@@ -162,7 +162,7 @@
 
   /* ── the draft: a bar on every page, the review, publish / discard ─────────── */
   const discard = async () => {
-    if (!await NL.confirm({ title: 'Discard the draft?', ok: 'Discard it', danger: true, body: 'Every edit since you last published is dropped. The lab stays exactly as it is.' })) return;
+    if (!await NL.confirm({ title: 'Discard the draft?', ok: 'Discard', danger: true, body: 'All edits since your last publish are lost. The lab is unchanged.' })) return;
     const r = await edit({ op: 'discard' }); if (r.ok) Tour.event('closed');
   };
   const openReview = () => NL.open(ReviewSheet, {}, { key: 'cmp-review' });
@@ -196,7 +196,7 @@
       if (r.ok) { NL.toast(r.note, 'ok'); onClose(); NL.refresh(); Tour.event('closed'); }
     };
     return html`<${NL.Sheet} wide kicker="Compose" title="Review your draft" sub="Exactly what publishing changes. Runs already going finish with what they started with. You can undo the latest publish from the Change log." onClose=${onClose}
-      footer=${html`<${NL.Btn} kind="ghost" onClick=${async () => { await discard(); if (!(C.d.draft || {}).active) onClose(); }}>Discard the draft</${NL.Btn}>
+      footer=${html`<${NL.Btn} kind="ghost" onClick=${async () => { await discard(); if (!(C.d.draft || {}).active) onClose(); }}>Discard draft</${NL.Btn}>
         <${NL.Btn} kind="primary" disabled=${!!probs.length || !ch.length} onClick=${publish}>Publish ${ch.length ? NL.plural(ch.length, 'change') : ''}</${NL.Btn}>`}>
       ${probs.length ? html`<div class="cmp-problems"><b>Fix ${probs.length === 1 ? 'this' : 'these'} first</b><ul>${probs.map(p => html`<li>${p}</li>`)}</ul></div>`
         : ch.length ? html`<div class="cmp-ok"><${NL.Icon} name="check" /> The lab reads consistently with these changes.</div>` : null}
@@ -216,10 +216,10 @@
     const { after, inside } = gatesBetween(d);
     const counts = d.studies_in || {};
     return html`<div class="cmp-page">
-      <header class="cmp-hero"><div class="row between"><div class="kicker">Compose</div><${TourLink} /></div><h1>How your lab works</h1>
-        <p class="lede">Everything the lab is made of, in one place. Change how any step is done, add procedures, rooms and rules of your own — nothing reaches an agent until you publish.</p>
+      <header class="cmp-hero"><div class="row between"><div class="kicker">Workflow</div><${TourLink} /></div><h1>How your lab works</h1>
+        <p class="lede">See and change how the lab works. Edit procedures, rooms and rules. Agents see nothing until you publish.</p>
         <div class="row"><${NL.Btn} kind="primary" onClick=${() => openNew('procedure')}><${NL.Icon} name="plus" /> New procedure</${NL.Btn}></div></header>
-      <section class="cmp-sec"><div class="cmp-sec-h"><h2>The pipeline</h2><span class="muted small grow">A study moves left to right. You sign the gates.</span><a class="link small" href=${href('stages')}>All stages →</a></div>
+      <section class="cmp-sec"><div class="cmp-sec-h"><h2>The pipeline</h2><span class="muted small grow">A study moves left to right. You approve the gates.</span><a class="link small" href=${href('stages')}>All stages →</a></div>
         <div class="cmp-pipe">${(d.stages || []).map((st, i) => html`
           <div class="cmp-stage" role="link" tabIndex="0" onClick=${() => go('stage', st.id)} onKeyDown=${e => e.key === 'Enter' && go('stage', st.id)}>
             <div class="cmp-stage-top"><span class="kicker">${String(i + 1).padStart(2, '0')}</span>${(st.states || []).reduce((a, s) => a + (counts[s] || 0), 0) ? html`<span class="cmp-n" title="studies here now">${(st.states || []).reduce((a, s) => a + (counts[s] || 0), 0)}</span>` : null}</div>
@@ -270,7 +270,7 @@
   };
 
   /* ── shared pieces: a page head, an item head, files ─────────────────────── */
-  const TourLink = () => html`<button type="button" class="link small cmp-tour-link" onClick=${() => NL.composeTour()}>New here? Take the one-minute tour</button>`;
+  const TourLink = () => html`<button type="button" class="link small cmp-tour-link" onClick=${() => NL.composeTour()}>New here? Take the one-minute tour of this page</button>`;
   const ListHead = ({ k, children }) => html`<header class="cmp-head"><div class="grow"><a class="kicker" href="#/compose">Compose</a><h1>${k.label}</h1><p class="lede">${k.blurb}</p></div>
     <div class="row">${children}${k.item !== 'stage' && k.item !== 'rule' ? html`<${NL.Btn} kind="primary" onClick=${() => openNew(k.item)}><${NL.Icon} name="plus" /> New ${k.one}</${NL.Btn}>` : null}</div></header>`;
   const ItemHead = ({ k, name, title, sub, chips, actions }) => html`<header class="cmp-head"><div class="grow">
@@ -660,7 +660,7 @@
 
   /* ── roles ────────────────────────────────────────────────────────────────── */
   const RolesList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
-    <p class="muted small">Which model each kind of subagent runs is under <a class="link" href="#/settings/agents">Settings → Agents</a>.</p>
+    <p class="muted small">Which model each kind of subagent runs is under <a class="link" href="#/settings/agents">Settings → Agents & models</a>.</p>
     <div class="cmp-rows">${d.roles.map(r => html`<a class="cmp-row" href=${href('role', r.name)}><${NL.RoleDot} role=${r.name} />
       <div class="cmp-row-main"><div class="row"><b>${r.label}</b><span class="mono muted small">${r.name}</span>${touched(d, `agent-roles/${r.name}.`, `lab/workflow/roles/${r.name}.`) ? html`<i class="cmp-dot"></i>` : null}</div><div class="muted small clip">${r.description}</div></div>
       <div class="cmp-row-side">${(d.custom.roles || {})[r.name] ? html`<span class="pill pill-state">+ instructions</span>` : null}${r.origin === 'yours' ? html`<${Origin} o="yours" like=${r.like} />` : null}</div></a>`)}</div></div>`;
@@ -702,7 +702,7 @@
         ${(d.rules[g] || []).map((r, i) => html`<${RuleCard} key=${r.id + r.text} r=${r} n=${g === 'hard' ? i + 1 : null} group=${g} checks=${checks} />`)}
         <${RuleAdd} group=${g} checks=${checks} /></section>`)}
       <details class="cmp-sec more"><summary><${NL.Icon} name="lock" /> Read by the lab's safety code — fixed here</summary>
-        <p class="muted small">What a headless run may never write, which settings only you change, the rigor floors no profile lowers, and the audits a delegated Gate 3 re-runs.</p>
+        <p class="muted small">What an unattended run may never write, which settings only you change, the rigor floors no profile lowers, and the audits a delegated Gate 3 re-runs.</p>
         <pre class="plain">${Object.entries(d.locked || {}).map(([k2, v]) => `${k2}: ${JSON.stringify(v, null, 1)}`).join('\n\n')}</pre></details>
       <p class="muted small cmp-foot">Under the hood: <a class="link" href=${href('rule', '_file')}>workflow/rules.yaml</a>.</p></div>`;
   };
@@ -744,12 +744,12 @@
   const ChecksList = ({ d, k }) => {
     const guard = d.checks.filter(c => c.guard), audits = d.checks.filter(c => !c.guard);
     return html`<div class="cmp-page"><${ListHead} k=${k} />
-      <section class="cmp-sec"><div class="cmp-sec-h"><h2>Guard checks</h2><span class="muted small grow">Procedures run these as they work, and rules name them.</span></div>
+      <section class="cmp-sec"><div class="cmp-sec-h"><h2>Safety checks</h2><span class="muted small grow">Procedures run these as they work, and rules name them.</span></div>
         <div class="cmp-rows">${guard.map(c => html`<${CheckRow} key=${c.file} c=${c} label=${c.name} />`)}</div></section>
       ${audits.length ? html`<section class="cmp-sec"><div class="cmp-sec-h"><h2>Paper audits</h2><span class="muted small grow">Run again on every paper before its last gate.</span></div>
         <div class="cmp-rows">${audits.map(c => html`<${CheckRow} key=${c.file} c=${c} label=${checkId(c).replace(/_/g, ' ')} />`)}</div></section>` : null}
       <details class="cmp-sec more cmp-hood"><summary>Under the hood</summary>
-        <p class="muted small">Guard checks run as <span class="mono">${'tools/guard.py <name>'}</span>; built into the guard as well: ${d.built_in_checks.map(c => html`<span class="chip mono">${c}</span> `)}</p>
+        <p class="muted small">Safety checks run as <span class="mono">${'tools/guard.py <name>'}</span>; built into the guard as well: ${d.built_in_checks.map(c => html`<span class="chip mono">${c}</span> `)}</p>
         <div class="cmp-hood-list">${d.checks.map(c => html`<div class="cmp-hood-row"><a class="link mono small" href=${href('check', checkId(c))}>${c.file}</a>
           ${(c.usage || []).map(u => html`<code class="mono small">${u}</code>`)}</div>`)}</div></details></div>`;
   };
@@ -758,7 +758,7 @@
     if (!c) return html`<${Missing} k=${KIND_OF.check} name=${name} />`;
     return html`<div class="cmp-page"><${ItemHead} k=${KIND_OF.check} name=${c.name} title=${c.name} sub=${c.doc} chips=${html`<${Origin} o=${c.origin} />`}
       actions=${html`${c.guard ? html`<${CopyBtn} kind="check" like=${c.name} />` : null}<${DeleteBtn} kind="check" name=${name.replace(/_/g, '-')} label=${'the check ' + c.name} />`} />
-      <${FileEditor} path=${c.file} rows=${30} intro="Python, run by the guard. NAME is how rules and procedures call it; run(args, guard) returns the problems it finds." /></div>`;
+      <${FileEditor} path=${c.file} rows=${30} intro="Python, run by the lab's safety code. NAME is how rules and procedures call it; run(args, guard) returns the problems it finds." /></div>`;
   };
   const TypesList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
     ${d.types.length ? html`<div class="cmp-rows">${d.types.map(t => html`<a class="cmp-row" href=${href('type', t.name)}><div class="cmp-row-main"><div class="row"><b>${t.title || t.name}</b>${t.title && t.title !== t.name ? html`<span class="mono muted small">${t.name}</span>` : null}</div>

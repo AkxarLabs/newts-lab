@@ -3,7 +3,7 @@ environment modules, and the tools the lab uses. Read-only; prints JSON.
 
     uv run --with pyyaml python tools/system_probe.py [--hub <lab>]
 
-The dashboard's Settings → System shows it (for a remote lab, it runs on that machine) and uses it to
+The dashboard's Settings → This machine & compute shows it (for a remote lab, it runs on that machine) and uses it to
 prefill `compute.scheduler` — the structured half of describing a machine. The prose half (quirks, data
 locations, site rules) is lab/SYSTEM.md.
 """

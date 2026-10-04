@@ -37,35 +37,36 @@
 
   /* ── command palette (/ or Ctrl+K) ─────────────────────────────────────── */
   /* the pages you can go to: [route, label, in the top bar] — the top bar and the palette both read this */
-  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['artifacts', 'For you', 1], ['compose', 'Compose', 1],
-    ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']];
+  // [route, label, in the top bar (1 = always, 2 = folds into "More" on a phone)]
+  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['artifacts', 'Results', 1], ['library', 'Library', 2], ['compose', 'Workflow', 2],
+    ['history', 'History'], ['labs', 'Labs & machines'], ['setup', 'Setup wizard']];
   function paletteActions(s) {
     const A = [];
     const add = (label, hint, run, kw) => A.push({ label, hint, run, kw: (label + ' ' + (hint || '') + ' ' + (kw || '')).toLowerCase() });
-    if (s.lab_paused) add('Resume the lab', 'agents may start again; paused runs can be resumed', () => NL.pauseLab(false), 'unpause start');
-    else add('Pause the lab…', 'stop every agent now (resumable); nothing new starts until you resume', () => NL.pauseLab(true), 'stop everything halt all kill');
     add('Start something', 'a procedure or an instruction', () => NL.openStart(), 'new launch run');
-    add('History', 'what happened in the lab, and what you sent', () => NL.go('history'), 'log events overnight');
-    add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
-    add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
+    if (s.lab_paused) add('Resume the lab', 'Agents may start again. Paused runs can be resumed.', () => NL.pauseLab(false), 'unpause start');
+    else add('Pause the lab…', 'Stops every agent. You can resume them.', () => NL.pauseLab(true), 'stop everything halt all kill');
+    add('Give an instruction…', 'Type a task in your own words', () => NL.openStart(), 'prompt chat ask newt');
+    add('Plan a campaign', 'Work through several ideas without you', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
+    add('History', 'What happened in the lab, and what you sent', () => NL.go('history'), 'log events overnight');
+    add('Theme: ' + ({ auto: 'System', day: 'Light', night: 'Dark' })[NL.prefs.theme || 'auto'], 'System → Light → Dark', () => NL.setPref('theme', ({ auto: 'day', day: 'night', night: 'auto' })[NL.prefs.theme || 'auto']), 'dark light night day toggle');
     (NL.liveCampaigns ? NL.liveCampaigns(s) : []).forEach(c => {
       const nm = c.name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
-      if (c.status === 'active' || c.status === 'finishing') add(`Pause campaign ${nm}`, 'no new pass starts; what is running finishes', () => NL.campaignAct(c, 'pause'), 'campaign autopilot pause');
+      if (c.status === 'active' || c.status === 'finishing') add(`Pause campaign ${nm}`, 'Running work finishes; nothing new starts', () => NL.campaignAct(c, 'pause'), 'campaign autopilot pause');
       if (c.status === 'paused' || c.status === 'stalled') add(`Resume campaign ${nm}`, 'carry on from where it paused', () => NL.campaignAct(c, 'resume'), 'campaign autopilot resume');
       if (!['done', 'stopped', 'stopping'].includes(c.status)) add(`Stop campaign ${nm}…`, 'stops its runs and writes a final report', () => NL.campaignAct(c, 'stop'), 'campaign autopilot stop end');
     });
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
-    add('New procedure…', 'Compose — start from a copy', () => { NL.go('compose'); setTimeout(() => NL.composeNew('procedure'), 50); }, 'skill add create workflow');
-    add('Tour of Compose', 'how to make the lab yours, in a minute', () => NL.composeTour(), 'customise customize workflow help');
+    add('New procedure…', 'Workflow: start from a copy', () => { NL.go('compose'); setTimeout(() => NL.composeNew('procedure'), 50); }, 'skill add create workflow compose');
+    add('Tour of the Workflow page', 'How to make the lab yours, in a minute', () => NL.composeTour(), 'customise customize workflow help compose');
     NAV.forEach(([p, l]) => add(l, 'go', () => NL.go(p)));
     (NL.SETTINGS_SECTIONS || []).forEach(x => add('Settings: ' + x.label, 'go', () => NL.go('settings/' + x.id), x.id));
     (s.items || []).forEach(i => {
       add(i.title || i.id, NL.STATE_LABEL[i.state] + ' · study', () => NL.go('study/' + i.id), i.id);
-      if (i.gate && !i.gate_signed) add(`Sign Gate ${i.gate} — ${i.title || i.id}`, 'review and sign', () => NL.openGate(i.id, i.gate), 'approve');
+      if (i.gate && !i.gate_signed) add(`Approve Gate ${i.gate}: ${i.title || i.id}`, 'Review and approve', () => NL.openGate(i.id, i.gate), 'sign approve');
     });
     (s.runs || []).filter(r => r.status === 'waiting_input' || NL.RUN_ACTIVE.has(r.status)).forEach(r => add(NL.runTitle(r), NL.RUN_WORD[r.status], () => NL.openRun(r.run_id), r.run_id));
     NL.needsYou(s).forEach(a => add(a.title, 'needs you', () => a.run_id ? NL.openRun(a.run_id) : a.kind === 'gate' ? NL.openGate(a.idea, (a.detail || {}).gate) : NL.open(NL.InboxSheet, {}, { key: 'inbox' }), 'sign answer ' + (a.kind || '')));
-    add('Toggle day / night', 'theme', () => NL.setPref('theme', NL.themeNow() === 'day' ? 'night' : 'day'), 'dark light');
     return A;
   }
   const Palette = ({ onClose }) => {
@@ -92,34 +93,52 @@
     const { needs } = NL.inboxItems(s);
     const li = s.lab_info || {};
     const x = NL.exec(s);
-    const nav = NAV.filter(x => x[2]).map(([to, label]) => [to || 'home', to, label]);
+    const nav = NAV.filter(x => x[2]).map(([to, label, tier]) => [to || 'home', to, label, tier]);
     const running = x.active || 0;
     const fl = NL.useFleet ? NL.useFleet() : null;
     useEffect(() => { const el = document.querySelector('.mainnav .navlink.on'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [page]);
     const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
-      <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
+      <a class="brand" href="#/labs" title="Switch lab, or connect a machine"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
         ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${NL.plural(elsewhere, 'thing')} in your other labs ${elsewhere === 1 ? 'needs' : 'need'} you — open Labs & machines`}>+${elsewhere} in other labs</span>` : null}</a>
-      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && (NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length) ? html` <span class=${cls('navcount', NL.artifactsAsking(s).length && 'warm')} title="questions for you, and new things to look at">${NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length}</span>` : null}</a>`)}</nav>
+      <nav class="mainnav">${nav.map(([id, to, label, tier]) => html`<a class=${cls('navlink', tier === 2 && 'secondary', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && (NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length) ? html` <span class=${cls('navcount', NL.artifactsAsking(s).length && 'warm')} title="questions for you, and new things to look at">${NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length}</span>` : null}</a>`)}<button type="button" class="navlink more" onClick=${NL.openPalette} title="Library, Workflow, History and more">More ▾</button></nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
+        <${PauseBtn} />
+        <${ThemeBtn} />
         <${SoundBtn} />
-        <button class="iconbtn" title="search and jump (/ or Ctrl+K)" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
-        <button class=${cls('iconbtn', needs.length && 'has')} title="what needs you" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
-        <a class=${cls('iconbtn', 'labelled', page === 'settings' && 'on')} title="Settings — agents, limits, notifications" href="#/settings"><${NL.Icon} name="sliders" /><span class="iconbtn-label">Settings</span></a>
+        <button class="iconbtn" title="Search (/ or Ctrl+K)" aria-label="Search" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
+        <button class=${cls('iconbtn', needs.length && 'has')} title="Needs you" aria-label=${needs.length ? `Needs you: ${needs.length}` : 'Needs you'} onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
+        <a class=${cls('iconbtn', 'labelled', page === 'settings' && 'on')} title="Settings" href="#/settings"><${NL.Icon} name="sliders" /><span class="iconbtn-label">Settings</span></a>
       </div></header>`;
+  };
+
+  /* ── theme: one visible button, System → Light → Dark (the full choice is in Settings → Appearance) ─── */
+  const THEME_NEXT = { auto: 'day', day: 'night', night: 'auto' }, THEME_WORD = { auto: 'System', day: 'Light', night: 'Dark' };
+  const ThemeBtn = () => {
+    const p = NL.usePrefs();
+    const cur = p.theme || 'auto', next = THEME_NEXT[cur];
+    return html`<button class="iconbtn" aria-label=${`Theme: ${THEME_WORD[cur]}`} title=${`Theme: ${THEME_WORD[cur]} (click for ${THEME_WORD[next]})`} onClick=${() => NL.setPref('theme', next)}><${NL.Icon} name=${cur === 'auto' ? 'theme' : cur === 'day' ? 'sun' : 'moon'} /></button>`;
+  };
+  /* ── pause: the one emergency control, always in reach while anything runs ─────────────────────────── */
+  const PauseBtn = () => {
+    const s = NL.useLab();
+    const running = (NL.exec(s).active || 0) + (NL.liveCampaigns ? NL.liveCampaigns(s).length : 0);
+    if (s.lab_paused) return html`<button class="topbtn paused" onClick=${() => NL.pauseLab(false)} title="The lab is paused. Click to resume.">▶ <span class="topbtn-label">Resume lab</span></button>`;
+    if (!running) return null;
+    return html`<button class="topbtn" onClick=${() => NL.pauseLab(true)} title="Stops every agent. You can resume them.">⏸ <span class="topbtn-label">Pause lab</span></button>`;
   };
 
   /* ── pause the lab: every agent stops now (resumable), nothing new starts until you resume ───────────── */
   NL.pauseLab = async on => {
-    if (on && !await NL.confirm({ title: 'Pause the lab?', ok: 'Pause everything', danger: true,
-      body: 'Every running agent stops now — each stays resumable. Queued runs and campaign passes wait, and nothing new starts until you resume.' })) return;
+    if (on && !await NL.confirm({ title: 'Pause the lab?', ok: 'Pause', danger: true,
+      body: 'All running agents stop now. You can resume them later. Nothing new starts until you resume.' })) return;
     return NL.act('/api/lab/pause', { paused: !!on, confirm: true }, on ? 'The lab is paused' : 'The lab is running again');
   };
   NL.PausedBar = () => {
     const s = NL.useLab();
     if (!s.lab_paused) return null;
-    return html`<div class="paused-bar" role="status"><b>The lab is paused</b><span class="muted small">since ${NL.when ? NL.when(s.lab_paused.since) : s.lab_paused.since} — agents are stopped; anything you start waits until you resume</span>
+    return html`<div class="paused-bar" role="status"><b>The lab is paused</b><span class="muted small">since ${NL.when ? NL.when(s.lab_paused.since) : s.lab_paused.since}. Agents are stopped. Anything you start waits until you resume.</span>
       <${NL.Btn} small kind="primary" onClick=${() => NL.pauseLab(false)}>Resume</${NL.Btn}></div>`;
   };
 
@@ -142,7 +161,7 @@
     if (!NL.Sound) return null;
     const on = p.chimes || p.music;
     return html`<span class="sound-wrap"><button class=${cls('iconbtn', on && 'on')} title="sound — chimes and music" aria-expanded=${open} onClick=${() => setOpen(!open)}><${NL.Icon} name=${on ? 'sound' : 'mute'} /></button>
-      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /><a class="link small" href="#/settings/notifications" onClick=${() => setOpen(false)}>More in Settings → Notifications</a></div>` : null}</span>`;
+      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /><a class="link small" href="#/settings/notifications" onClick=${() => setOpen(false)}>More in Settings → Notifications & sound</a></div>` : null}</span>`;
   };
 
   /* ── routing ───────────────────────────────────────────────────────────── */
@@ -154,6 +173,7 @@
     const route = NL.useRoute();
     NL.useLab();
     const page = PAGES[route.page] ? route.page : 'home';
+    useEffect(() => { if (route.page && !PAGES[route.page]) NL.toast(`No page called “${route.page}”. Showing Home.`, 'warn'); }, [route.page]);
     const P = PAGES[page]();
     const prevPage = useRef(page);
     useEffect(() => {

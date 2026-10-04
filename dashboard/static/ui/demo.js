@@ -89,6 +89,13 @@ NL.demoRead = (path, b) => {
   return f ? { ok: true, format: 'markdown', text: f(it), path: `(demo)/${b.rel}` } : { error: 'not in the demo' };
 };
 NL.demoGet = path => {
+  if (path.startsWith('/api/campaign/preflight')) return { ok: true, ready: true, checks: [
+    { id: 'launch', ok: true, label: 'The dashboard may start agents', detail: 'on' },
+    { id: 'backend', ok: true, label: 'Claude is signed in', detail: 'demo' },
+    { id: 'perm', ok: true, label: 'Agents won’t stop to ask for tool permissions', detail: 'permission mode: auto' },
+    { id: 'root', ok: true, label: 'The projects folder is writable', detail: 'demo/projects' },
+    { id: 'sched', ok: true, label: 'The scheduler is running', detail: 'last tick just now' },
+    { id: 'latex', ok: false, warn_only: true, label: 'LaTeX is installed', detail: 'optional: papers compile to PDF only with it' }] };
   if (path.startsWith('/api/lab/config')) return { ok: true, config: { name: 'Demo lab', projects_root: '../projects', max_concurrent_runs: 4, oversight: 'standard',
     loop_mode: 'execute', keep_awake: 'auto', claude_model: 'claude-sonnet-5-5', claude_effort: 'medium', codex_model: 'gpt-6-luna', codex_effort: 'low',
     opencode_model: '', opencode_variant: '', tier_strong: 'opus', tier_standard: 'inherit', tier_fast: 'haiku', reviewer_model: 'strong', runner_model: 'standard',
@@ -136,7 +143,7 @@ function demoState(T, items) {
   const done = [run('r-night1', 'lit-review', 'lit-1', 'completed', { finished: ago(300) }), run('r-night2', 'experiment', 'moe', 'completed', { finished: ago(180) })];
   const GATE_WHAT = { 1: 'approve the proposal', 2: 'approve full-scale runs', 3: 'finalize the paper' };
   const attention = items.filter(i => i.gate && !i.gate_signed).map(i => ({ id: 'gate:' + i.id, sev: 'block', kind: 'gate', title: `Gate ${i.gate} — ${i.title}: ${GATE_WHAT[i.gate]}`,
-    idea: i.id, detail: { gate: i.gate }, actions: [{ id: 'sign', label: 'review & sign' }] }));
+    idea: i.id, detail: { gate: i.gate }, actions: [{ id: 'sign', label: 'review & approve' }] }));
   attention.push({ id: 'q:r-paper', sev: 'block', kind: 'question', title: 'Lead the Results with the scaling law or the ablation?', body: 'Scaling laws note · the writing agent is paused until you answer',
     run_id: 'r-paper', actions: [{ id: 'answer', label: 'answer' }] });
   attention.push({ id: 'fail:r-sweep', sev: 'warn', kind: 'crashed', title: 'An RL fine-tuning experiment timed out', body: 'exp-019, seed 2 — after its 45-minute limit', run_id: 'r-sweep', actions: [{ id: 'tail', label: 'open' }] });

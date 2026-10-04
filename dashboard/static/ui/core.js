@@ -145,6 +145,7 @@
     };
   };
   NL.refresh = async () => {
+    if (NL.DEMO) return;   // the demo is its own lab; nothing real is fetched
     try { const r = await fetch('/api/state', { credentials: 'same-origin' }); if (r.ok) { NL.setState(await r.json()); store.conn = 'live'; } }
     catch (e) { store.conn = 'offline'; emit(); }
   };
@@ -162,7 +163,7 @@
     } catch (e) { return { error: 'could not reach the lab server — is it still running?' }; }
   };
   NL.get = async function get(path) {
-    if (NL.DEMO && NL.demoGet) { const x = NL.demoGet(path); if (x) return x; }   // the demo's own lab, not the server's
+    if (NL.DEMO) { const x = NL.demoGet && NL.demoGet(path); return x || { error: 'not in the demo', demo: true }; }   // the demo's own lab, never the server's
     try {
       const r = await fetch(path, { credentials: 'same-origin' });
       return await r.json().catch(() => ({ error: `server said ${r.status}` }));
@@ -172,7 +173,7 @@
   NL.act = async (path, body, okMsg) => {
     const r = await NL.api(path, body);
     if (r && r.ok) { NL.toast(okMsg || r.note || 'done', 'ok'); (r.warnings || []).forEach(w => NL.toast(w, 'warn')); setTimeout(NL.refresh, 300); }
-    else NL.toast((r && r.error) || 'that did not work', 'bad');
+    else NL.toast((r && r.error) || 'That did not work. Check the lab server is running, then try again.', 'bad');
     return r || {};
   };
 
@@ -276,11 +277,11 @@
   NL.launch = async (body, opts) => {
     const s = NL.getState();
     if (!NL.execOn(s)) {
-      const on = await NL.confirm({ title: 'Let the dashboard start agents?', ok: 'Turn it on',
-        body: 'Starting work from here runs the agent CLI on this machine, as you, with your own login. You can turn this off any time in Settings → Autonomy.' });
+      const on = await NL.confirm({ title: 'Let this dashboard start agents?', ok: 'Allow',
+        body: 'Agents will run on this computer using your own login. You can turn this off in Settings, under Limits & permissions.' });
       if (!on) return null;
       const r = await NL.api('/api/executor/enable', { enabled: true, confirm: true });
-      if (!r.ok) { NL.toast(r.error || 'could not turn launching on', 'bad'); return null; }
+      if (!r.ok) { NL.toast(r.error || 'Could not turn launching on. Check the lab server, then try again.', 'bad'); return null; }
     }
     const r = await NL.api('/api/run', { confirm: true, ...body });
     if (r && r.ok) {
@@ -289,7 +290,7 @@
       if (!opts || opts.open !== false) NL.openRun(r.run_id);
       return r;
     }
-    NL.toast((r && r.error) || 'could not start it', 'bad');
+    NL.toast((r && r.error) || 'Could not start the run. Check the lab server, then try again.', 'bad');
     return null;
   };
   NL.launchCommand = (cmd, fallbackTarget) => {

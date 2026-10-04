@@ -167,7 +167,7 @@
       <div class="report-h">${rep.needs_pi ? '✋ ' + (NEEDS[rep.needs_pi] || rep.needs_pi) : r.status === 'completed' ? '✓ Finished' : NL.RUN_WORD[r.status]}</div>
       ${rep.summary ? html`<${NL.Markdown} text=${rep.summary} />` : null}
       <div class="row">
-        ${rep.needs_pi && /^gate[123]$/.test(rep.needs_pi) && r.subject ? html`<${NL.Btn} kind="primary" onClick=${() => NL.openGate(r.subject, +rep.needs_pi.slice(-1))}>Review and sign</${NL.Btn}>` : null}
+        ${rep.needs_pi && /^gate[123]$/.test(rep.needs_pi) && r.subject ? html`<${NL.Btn} kind="primary" onClick=${() => NL.openGate(r.subject, +rep.needs_pi.slice(-1))}>Review and approve</${NL.Btn}>` : null}
         ${rep.next ? html`<${NL.Btn} small=${!!rep.needs_pi} kind=${rep.needs_pi ? '' : 'primary'} onClick=${() => NL.launchCommand(rep.next, r.subject)}
           title=${rep.needs_pi ? 'the step after your decision' : ''}>${rep.needs_pi ? 'then ▸ ' : '▸ '}${rep.next}</${NL.Btn}>` : null}
       </div></div>`;
@@ -202,13 +202,13 @@
         <${NL.Textarea} rows="2" value=${reply} onInput=${setReply} onSubmit=${sendReply} placeholder=${hint} />
         <${NL.Btn} kind="primary" onClick=${sendReply} disabled=${!reply.trim()}>Send</${NL.Btn}></div>` : null}
       <div class="row">
-        ${liveNow && active ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/interrupt', { run_id: r.run_id })} title="Stop the current step; the session stays open for your next message">⏸ Interrupt</${NL.Btn}>` : null}
-        ${active || (liveNow && r.status === 'waiting_input') ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }} title="End the session now — it stays resumable, so you can continue it later">■ Stop</${NL.Btn}>` : null}
+        ${liveNow && active ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/interrupt', { run_id: r.run_id })} title="Stops the current step. The run stays open for your next message.">⏸ Pause step</${NL.Btn}>` : null}
+        ${active || (liveNow && r.status === 'waiting_input') ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The run stops now. You can resume it later from this sheet.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }} title="Stops this run. You can resume it later.">■ Stop</${NL.Btn}>` : null}
         ${r.status === 'queued' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/cancel', { run_id: r.run_id }, 'Cancelled')}>Cancel</${NL.Btn}>` : null}
         ${NL.RUN_DONE.has(r.status) && r.session_id && r.status !== 'completed' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/resume', { run_id: r.run_id }, 'Resuming')}>↻ Resume</${NL.Btn}>` : null}
         <span class="grow"></span>
         ${r.transcript ? html`<${NL.EditorLink} path=${r.transcript}>transcript ↗</${NL.EditorLink}>` : null}
-        <button class="link small" onClick=${async () => { const x = await NL.get(`/api/run/log?${NL.qs({ run_id: r.run_id })}`); NL.open(NL.TextSheet, { title: 'Supervisor log', sub: r.run_id, text: x.text || '(empty)' }); }}>supervisor log</button>
+        <button class="link small" onClick=${async () => { const x = await NL.get(`/api/run/log?${NL.qs({ run_id: r.run_id })}`); NL.open(NL.TextSheet, { title: 'Technical log', sub: r.run_id, text: x.text || '(empty)' }); }}>technical log</button>
       </div></div>`;
     return html`<${NL.Sheet} title=${title} sub=${sub} onClose=${onClose} wide footer=${footer}>
       <div class="runmeta">
@@ -315,10 +315,10 @@
     const caps = x.caps || {};
     const working = (s.workers || []).filter(w => w.status === 'working');
     return html`<div class="page">
-      <header class="page-head"><div><h1>Runs</h1><p class="lede">Every agent session started from here — each one is a conversation you can open, answer and continue.</p></div>
+      <header class="page-head"><div><h1>Runs</h1><p class="lede">Every run started from here. Open one to read it, reply or continue.</p></div>
         <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}></header>
       <div class="statline">
-        <span><b>${nRun}</b> running${caps.total ? html` · limit ${caps.total}${nRun > caps.total ? html` <span class="muted small" title="a campaign's own limit, or runs started before the limit changed">(over it: a campaign's limit, or started before it changed)</span>` : ''}` : ''}</span><span><b>${all.filter(r => r.status === 'queued').length}</b> queued</span><span><b>${all.filter(r => r.status === 'waiting_input').length}</b> waiting for you</span>
+        <span><b>${nRun}</b> running${caps.total ? html` · <a class="link" href="#/settings/autonomy" title="Change the limit in Settings → Limits & permissions">limit ${caps.total}</a>${nRun > caps.total ? html` <span class="muted small" title="a campaign's own limit, or runs started before the limit changed">(over it: a campaign's limit, or started before it changed)</span>` : ''}` : ''}</span><span><b>${all.filter(r => r.status === 'queued').length}</b> queued</span><span><b>${all.filter(r => r.status === 'waiting_input').length}</b> waiting for you</span>
         ${x.brake ? html`<span class="warn">⚠ daily limit reached — ${x.brake}</span>` : null}
         ${!NL.execOn(s) && !NL.DEMO ? html`<span class="warn">Starting agents from the dashboard is off — <a class="link" href="#/settings/autonomy">turn it on</a></span>` : null}
       </div>
@@ -329,7 +329,7 @@
         <div class="agents-strip">${(s.workers || []).filter(w => w.interactive && w.status !== 'done').slice(0, 12).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
           <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.idea || w.project || 'the lab', 26)}</span><span class="muted small">${w.status}${(w.children || []).length ? ' · ' + NL.plural(w.children.length, 'subagent') : ''}</span></button>`)}</div></${NL.Section}>` : null}
       <div class="toolbar"><${NL.Tabs} tabs=${FILTERS.map(x2 => ({ id: x2.id, label: x2.label, count: x2.id === 'all' ? null : all.filter(x2.f).length || null }))} value=${f} onChange=${setF} />
-        <${NL.Select} value=${sort} onChange=${setSort} options=${[{ value: 'new', label: 'Newest first' }, { value: 'cost', label: 'Most expensive first' }]} />
+        <${NL.Select} value=${sort} onChange=${setSort} aria-label="Sort runs" options=${[{ value: 'new', label: 'Newest first' }, { value: 'cost', label: 'Most expensive first' }]} />
         <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></div>
       ${list.length ? html`<div class="runlist">${list.slice(0, 200).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} />`)}</div>`
         : html`<${NL.Empty} icon="▸" title=${all.length ? 'Nothing here' : 'No runs yet'}>${all.length ? 'Try another filter.' : html`Start one with <b>Start something</b>, or ask Newt from Home.`}</${NL.Empty}>`}

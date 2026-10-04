@@ -68,12 +68,12 @@
     const groups = (tree && tree.groups) || [];
     return html`<div class="page page-split">
       <aside class="split-left"><div class="split-head"><h1>Library</h1>
-        <p class="muted small">Everything the lab writes, study by study. What agents picked out for you is also under <a class="link" href="#/artifacts">For you</a>.</p>
+        <p class="muted small">Everything the lab writes, study by study. What agents picked out for you is also under <a class="link" href="#/artifacts">Results</a>.</p>
         <input class="input search" placeholder="Find a document…" value=${filter} onInput=${e => setFilter(e.target.value)} /></div>
         ${tree ? html`<${Shelf} groups=${groups} sel=${sel} filter=${filter} />` : html`<${NL.Spinner} />`}
         ${tree && filter && !groups.some(g => (g.sections || []).some(sec => sec.docs.some(d => `${g.title} ${NL.docLabel(d.title)} ${d.title} ${d.rel}`.toLowerCase().includes(filter.toLowerCase())))) ? html`<div class="muted small pad">No documents match “${filter}”.</div>` : null}
         <div class="shelf-foot"><button class="link small" onClick=${() => NL.open(NL.DocEditSheet, { which: 'open-questions' })}>Add an open question for the lab</button></div></aside>
-      <main class="split-right">${sel ? html`<${NL.DocReader} ...${sel} />` : html`<${NL.Empty} icon="📖" title="Pick a document">Ideation worksheets, proposals, critiques, experiment ledgers, papers — everything the lab writes, rendered here.</${NL.Empty}>`}</main>
+      <main class="split-right">${sel ? html`<${NL.DocReader} ...${sel} />` : html`<${NL.Empty} icon="📖" title="Pick a document">Ideation worksheets, proposals, critiques, experiment logs, papers — everything the lab writes, rendered here.</${NL.Empty}>`}</main>
     </div>`;
   };
 

@@ -234,7 +234,7 @@ uv run --with pyyaml python tools/system_probe.py [--hub <lab>]
 ```
 
 It prints JSON: CPUs, memory, GPUs, disk, schedulers (SLURM with its partitions and accounts, PBS, LSF),
-environment modules and tools, plus a suggested `compute.scheduler`. The dashboard's Settings → System &
+environment modules and tools, plus a suggested `compute.scheduler`. The dashboard's Settings → This machine &
 compute runs it on the lab's machine. See [Machines & compute](compute.md).
 
 ### `run.py` — the single entry point, with a real watchdog

@@ -56,7 +56,7 @@ project-level. Compose → a room → About has a "One per live project" toggle.
 ## Newts: who is where
 
 Every **run** (a headless main agent: claude, codex or opencode; many at once, one per study or project,
-within the caps in Settings → Autonomy) is a newt at the station of the procedure it runs. Each run has a
+within the caps in Settings → Limits & permissions) is a newt at the station of the procedure it runs. Each run has a
 family colour of its own (a hue from its run id) and an orchestrator badge. Its **subagents** are smaller
 newts (0.62 scale) in the same family colour, with a badge coloured by role, at the room's `roleStation`
 for that role.

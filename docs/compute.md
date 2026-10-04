@@ -55,7 +55,7 @@ everything they did.
 
 ## How training runs: `compute.scheduler`
 
-`lab/config.yaml → compute.scheduler` describes the machine. Edit it in **Settings → System &
+`lab/config.yaml → compute.scheduler` describes the machine. Edit it in **Settings → This machine &
 compute**, which shows what was detected and offers the matching setup.
 
 ```yaml
@@ -112,7 +112,7 @@ left alone and reported.
 ## `SYSTEM.md`: the rest of the description
 
 Structured settings cover what code acts on. Everything else about a machine goes in `lab/SYSTEM.md`
-(Settings → System & compute → *SYSTEM.md*), which agents read before running anything:
+(Settings → This machine & compute → *SYSTEM.md*), which agents read before running anything:
 
 - data locations and scratch space;
 - quotas;

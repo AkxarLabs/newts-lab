@@ -74,7 +74,7 @@
     <div class="onramps big">${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.onramp]).map(([id, ico, t, sub]) =>
       html`<button type="button" class="onramp" onClick=${() => { finish(); NL.openStart({ intent: id }); }}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}
       <button type="button" class="onramp onramp-compose" onClick=${async () => { await finish(); NL.composeTour(); }}><span class="intent-ico"><${NL.Icon} name="layers" /></span>
-        <span><b>Make the lab yours</b><small>A one-minute tour of Compose: copy a procedure, change how it works, publish it. Everything the lab does can be shaped this way.</small></span></button></div>
+        <span><b>Make the lab yours</b><small>A one-minute tour of the Workflow page: copy a procedure, change how it works, publish it. Everything the lab does can be shaped this way.</small></span></button></div>
     <div class="row end"><${NL.Btn} onClick=${back}>Back</${NL.Btn}><${NL.Btn} onClick=${finish}>Go to the lab</${NL.Btn}></div></div>`;
 
   NL.SetupPage = ({ args }) => {

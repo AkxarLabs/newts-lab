@@ -47,9 +47,9 @@
     const s = NL.useLab();
     const { needs, info, notes } = NL.inboxItems(s);
     return html`<${NL.Sheet} title="Needs you" sub=${needs.length ? NL.plural(needs.length, 'thing') + ' waiting on you' : 'Nothing is waiting on you'} onClose=${onClose}>
-      ${needs.length ? needs.map(it => html`<${InboxRow} key=${it.id} it=${it} />`) : html`<${NL.Empty} icon="✓">All clear. Agents ask here when they need a decision.</${NL.Empty}>`}
+      ${needs.length ? needs.map(it => html`<${InboxRow} key=${it.id} it=${it} />`) : html`<${NL.Empty} icon="✓">Nothing needs you. Agents ask here when they need a decision.</${NL.Empty}>`}
       ${info.length ? html`<${NL.Section} title="Finished" count=${info.length}>${info.slice(0, 20).map(it => html`<${InboxRow} key=${it.id} it=${it} compact />`)}</${NL.Section}>` : null}
-      ${notes.length ? html`<${NL.Section} title="Your notes, not read yet" count=${notes.length}>${notes.map(d => html`<div class="inrow sev-info"><div class="inrow-main"><span class="inrow-ico">✉</span><span class="inrow-t"><b>${NL.clip(d.text, 120)}</b><small>to ${d.target === 'hub' ? 'the lab' : d.target} · ${NL.hhmm(d.ts)}</small></span></div>
+      ${notes.length ? html`<${NL.Section} title="Notes no agent has read yet" count=${notes.length}>${notes.map(d => html`<div class="inrow sev-info"><div class="inrow-main"><span class="inrow-ico">✉</span><span class="inrow-t"><b>${NL.clip(d.text, 120)}</b><small>to ${d.target === 'hub' ? 'the lab' : d.target} · ${NL.hhmm(d.ts)}</small></span></div>
         <span class="inrow-acts"><${NL.Btn} small onClick=${() => NL.act('/api/withdraw', { target: d.target || 'hub', id: d.id, ts: d.ts }, 'Withdrawn')}>withdraw</${NL.Btn}></span></div>`)}</${NL.Section}>` : null}
       <div class="row end"><a class="link small" href="#/history" onClick=${onClose}>Full history →</a></div>
     </${NL.Sheet}>`;
@@ -79,7 +79,7 @@
     const s = NL.useLab();
     const fresh = NL.artifactsUnseen(s).filter(a => !a.question);
     if (!fresh.length) return null;
-    return html`<${NL.Section} title="For you to look at" count=${fresh.length} className="rail-sec">${fresh.slice(0, 3).map(a => html`<button type="button" class="art-mini" onClick=${() => NL.openArtifact(a.id)}>
+    return html`<${NL.Section} title="New results to look at" count=${fresh.length} className="rail-sec">${fresh.slice(0, 3).map(a => html`<button type="button" class="art-mini" onClick=${() => NL.openArtifact(a.id)}>
       <span class="art-ico">❏</span><span class="grow clip"><b>${a.title}</b><small class="muted">${(NL.item(s, a.study) || {}).title || a.study || 'the lab'} · ${NL.ago(a.created)}</small></span></button>`)}
       ${fresh.length > 3 ? html`<a class="link small" href="#/artifacts?f=new">all ${fresh.length} →</a>` : null}</${NL.Section}>`;
   };
@@ -110,7 +110,7 @@
     const cold = !(s.items || []).length && !(s.runs || []).length;
     if (!prefs.rail) return html`<button class="rail-open" onClick=${() => NL.setPref('rail', true)} title="show Today">${needs.length ? html`<b class="badge">${needs.length}</b>` : null} Today ◂</button>`;
     return html`<aside class="rail" aria-label="Today" data-world-inset="right">
-      <header class="rail-head"><h2>Today</h2>${s.lab_paused ? null : html`<button type="button" class="link small rail-pause" title="stop every agent now (resumable); nothing new starts until you resume" onClick=${() => NL.pauseLab(true)}>⏸ Pause the lab</button>`}<button class="x" title="hide" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
+      <header class="rail-head"><h2>Today</h2>${s.lab_paused ? null : html`<button type="button" class="link small rail-pause" title="Stops every agent. You can resume them." onClick=${() => NL.pauseLab(true)}>⏸ Pause lab</button>`}<button class="x" title="Hide the Today panel" aria-label="Hide the Today panel" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
       <${NL.PausedBar} />
       <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}>
       <${SinceVisit} />
@@ -181,8 +181,8 @@
   const Lenses = () => {
     const [l, setL] = useState(() => NL.ls.get('nl-lens', 'work'));
     useEffect(() => { if (NL.Scene) NL.Scene.setLens(l); NL.ls.set('nl-lens', l); }, [l]);
-    return html`<div class="lenses" role="radiogroup" aria-label="what the world shows">${LENSES.map(([v, t]) =>
-      html`<button type="button" role="radio" aria-checked=${l === v} class=${cls('lens', l === v && 'on')} onClick=${() => setL(v)}>${t}</button>`)}</div>`;
+    return html`<div class="lensbar"><div class="lenses" role="radiogroup" aria-label="what the world shows">${LENSES.map(([v, t]) =>
+      html`<button type="button" role="radio" aria-checked=${l === v} class=${cls('lens', l === v && 'on')} onClick=${() => setL(v)}>${t}</button>`)}</div><${Strapline} /></div>`;
   };
 
   /* your other labs, drawn past the table's back edge (the same list as Labs & machines) */
@@ -196,19 +196,27 @@
     return null;
   };
 
+  /* one line that says what this is, until you dismiss it (new labs show it; the demo too) */
+  const Strapline = () => {
+    const p = NL.usePrefs();
+    if (p.strapline === false) return null;
+    return html`<div class="strapline" role="note"><span>AI agents run your research here. They stop at three gates for your approval, and ask you when they need a decision.</span>
+      <a class="link small" href="#/compose">How the lab works</a><button class="x" title="Dismiss" aria-label="Dismiss" onClick=${() => NL.setPref('strapline', false)}>×</button></div>`;
+  };
   NL.Home = () => {
     const s = NL.useLab();
     const conn = NL.useConn();
     const prefs = NL.usePrefs();
     useEffect(() => { const t = setTimeout(() => NL.Scene && NL.Scene.insetsChanged(), 60); return () => clearTimeout(t); }, [prefs.rail]);
-    return html`<div class="home">
+    return html`<div class="home" role="main" aria-label="Lab home">
+      <h1 class="sr-only">Lab home</h1>
       <${Lenses} />
       <${Neighbours} />
       <${Crumb} />
       <${Rail} />
       <${Key} />
       <div class="home-bottom"><${NL.AskBar} target="hub" /></div>
-      ${conn === 'reconnecting' || conn === 'offline' ? html`<div class="veil">⟳ reconnecting to the lab — showing the last snapshot</div>` : null}
+      ${conn === 'reconnecting' || conn === 'offline' ? html`<div class="veil">⟳ Reconnecting. Showing the last known state.</div>` : null}
     </div>`;
   };
 

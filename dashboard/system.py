@@ -86,7 +86,7 @@ def _replace_block(text: str, parent: str, key: str, block: dict) -> str:
     import yaml
     body = yaml.safe_dump({key: block}, sort_keys=False, default_flow_style=False).rstrip("\n").split("\n")
     body = ["  " + ln for ln in body]
-    body[0] = body[0] + "                    # how training runs on this machine — Settings → System (docs/compute.md)"
+    body[0] = body[0] + "                    # how training runs on this machine — Settings → This machine & compute (docs/compute.md)"
     lines = text.replace("\r\n", "\n").split("\n")
     pi = next((i for i, ln in enumerate(lines) if re.match(rf"{re.escape(parent)}:\s*(#.*)?$", ln)), None)
     if pi is None:

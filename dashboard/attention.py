@@ -32,13 +32,13 @@ def lab_items(items: list[dict], escalations: list[dict], roster: list[dict]) ->
                         "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
                         "title": f"Gate {g} — {it.get('title') or it['id']}",
                         "body": it.get("next") or "", "detail": {"gate": g},
-                        "actions": [{"id": "sign", "label": f"review & sign Gate {g}"}]
+                        "actions": [{"id": "sign", "label": f"review & approve Gate {g}"}]
                         + [{"id": "bundle", "label": "review bundle"}]})
         for r in it.get("inflight") or []:
             if r.get("state") == "stalled":
                 out.append({"id": f"stalled:{it['id']}:{r.get('run_id')}", "kind": "stalled", "sev": "warn",
                             "ts": None, "target": it["id"], "idea": it["id"], "run_id": None, "skill": None,
-                            "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}",
+                            "title": f"Run {r.get('run_id')} looks stalled", "body": f"stage {r.get('stage')}. Open the run to check, or dismiss.",
                             "detail": r, "actions": [{"id": "dismiss", "label": "dismiss"}]})
     try:
         for pr in workflow.proposals(ctx.HUB):
@@ -80,14 +80,14 @@ def collect(items, escalations, roster, runs) -> list[dict]:
             if c.get("status") in ("stalled", "paused") and c.get("paused_reason") and c.get("paused_reason") != "paused by the PI":
                 extra.append({"id": f"campaign:{c['name']}:{c.get('status')}:{len(c.get('cycles') or [])}", "kind": "campaign",
                               "sev": "block", "ts": (c.get("events") or [{}])[-1].get("ts"), "target": "hub", "idea": None,
-                              "run_id": None, "skill": "autopilot", "title": f"Campaign {c['name']} stopped — it needs you",
+                              "run_id": None, "skill": "autopilot", "title": f"Campaign {c['name']} stopped and needs you",
                               "body": c.get("paused_reason") or "", "detail": {"campaign": c["name"]},
                               "actions": [{"id": "campaign", "label": "open the campaign"}]})
             for q in (c.get("questions") or [])[-3:]:
                 extra.append({"id": f"cq:{c['name']}:{q.get('ts')}", "kind": "question", "sev": "warn", "ts": q.get("ts"),
                               "target": "hub", "idea": None, "run_id": None, "skill": "autopilot",
                               "title": q.get("question") or "A campaign pass asked a question",
-                              "body": f"left by campaign {c['name']} — it moved on; answer with a note and the next pass reads it",
+                              "body": f"left by campaign {c['name']} . It carried on without an answer. Reply with a note and the next pass reads it.",
                               "detail": {"campaign": c["name"]}, "actions": [{"id": "campaign", "label": "open the campaign"}]})
     except Exception:  # noqa: BLE001
         pass

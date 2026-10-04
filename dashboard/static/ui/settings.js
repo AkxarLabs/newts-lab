@@ -55,18 +55,20 @@
   };
 
   // [key, label, hint, min, default — shown as the placeholder while the field is blank (tools/executor)]
+  // [key, label, hint, min, default — shown as the placeholder while the field is blank, group]
   const EXEC = [
-    ['max_minutes', 'Time limit per run', 'minutes', 5, 240],
-    ['max_concurrent_total', 'Agents running at once (whole lab)', 'Subagents an agent starts don’t count. Campaign limits apply on top; the lower one wins.', 1, 3],
-    ['hub_max_concurrent', 'Lab-wide jobs at once (ideation, registry edits — keep 1)', 'keep 1 so two jobs never edit the registry together', 1, 1],
-    ['max_concurrent', 'Agents at once per project (each project can have its own main agent)', '', 1, 3],
-    ['daily_max_runs', 'Daily run limit', '0 = no limit', 0, 0], ['daily_max_minutes', 'Daily agent-minutes limit', '0 = no limit', 0, 0],
-    ['chain_max_steps', 'Max steps when an agent runs on to the next gate', '', 1, 6],
-    ['park_minutes', 'Keep an agent waiting for your answer', 'minutes; then it pauses and your answer resumes it', 1, 60],
-    ['permission_minutes', 'Wait for your allow/deny on a risky action', 'minutes; then it is denied (campaigns: at once)', 1, 30],
-    ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1, 30],
-    ['linger_minutes', 'Keep Ask Newt (the chat box on Home) open after it answers', 'minutes, for your next message', 0, 10],
+    ['max_concurrent_total', 'Agents running at once', 'Across the whole lab. Subagents an agent starts don’t count. A campaign’s own limit applies on top.', 1, 3, 'pace'],
+    ['max_concurrent', 'Agents at once per study', 'Each study can have its own main agent.', 1, 3, 'pace'],
+    ['max_minutes', 'Time limit per run', 'minutes', 5, 240, 'cost'],
+    ['daily_max_runs', 'Runs per day', '0 = no limit', 0, 0, 'cost'], ['daily_max_minutes', 'Agent-minutes per day', '0 = no limit', 0, 0, 'cost'],
+    ['park_minutes', 'Wait for your answer', 'minutes; then the agent pauses, and your answer resumes it', 1, 60, 'wait'],
+    ['permission_minutes', 'Wait for your allow or deny', 'minutes; then the action is denied (in a campaign: at once)', 1, 30, 'wait'],
+    ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1, 30, 'wait'],
+    ['hub_max_concurrent', 'Lab-wide jobs at once', 'Keep at 1 so two jobs never edit the registry together.', 1, 1, 'advanced'],
+    ['chain_max_steps', 'Steps an agent may run on to the next gate', '', 1, 6, 'advanced'],
+    ['linger_minutes', 'Keep the Home chat open after it answers', 'minutes, for your next message', 0, 10, 'advanced'],
   ];
+  const EXEC_GROUPS = [['pace', 'How many at once'], ['cost', 'Time and cost'], ['wait', 'Waiting on you'], ['advanced', 'Advanced']];
   EXEC.forEach(([k, label]) => { LABELS[k] = label; });
   Object.assign(LABELS, { backend: 'Default agent', model: 'Default model (all tools)', permission_mode: 'What Claude may do without asking',
     auto_spawn_on_gate1: 'Create the project as soon as I sign Gate 1', live: 'Talk to agents while they run',
@@ -103,24 +105,28 @@
     const diff = changed(Object.keys(v), v, orig);
     const save = () => saveChanges('Save these settings?', '/api/executor/config', diff, v, orig);
     const set = (k, val) => setV(o => ({ ...o, [k]: val }));
+    const [adv, setAdv] = useState(false);
+    const field = ([k, label, hint, min, def]) => html`<${NL.Field} key=${k} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} placeholder=${def != null ? String(def) + ' (default)' : ''} /></${NL.Field}>`;
     return html`<div class="form">
-      <p class="muted small">Which agent and model: <a class="link" href="#/settings/agents">Settings → Agents</a>.</p>
-      <div class="grid2">
+      <${NL.Section} title="Permissions">
         <${NL.Field} label="What Claude may do without asking" hint="auto = its safety classifier decides; plan = read-only"><${NL.Select} value=${v.permission_mode} onChange=${x2 => set('permission_mode', x2)}
           options=${[{ value: 'auto', label: 'auto (recommended)' }, { value: 'acceptEdits', label: 'accept file edits' }, { value: 'default', label: 'ask for everything' }, { value: 'plan', label: 'plan only (read-only)' }, { value: 'dontAsk', label: 'deny anything that would ask' }]} /></${NL.Field}>
-        ${EXEC.map(([k, label, hint, min, def]) => html`<${NL.Field} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} placeholder=${def != null ? String(def) + ' (default)' : ''} /></${NL.Field}>`)}
-      </div>
-      <${NL.Toggle} on=${v.live} onChange=${x2 => set('live', x2)} label="Talk to agents while they run" sub="live sessions: questions, approvals and your messages reach the running agent; off = each answer restarts it" />
-      <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I sign Gate 1" sub="queues creating the project repo right after your signature" />
+        <${NL.Toggle} on=${v.live} onChange=${x2 => set('live', x2)} label="Talk to agents while they run" sub="Your questions, approvals and messages reach the running agent. Off: each answer restarts it." />
+        <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I approve Gate 1" sub="Queues the project repo right after your approval." />
+      </${NL.Section}>
+      ${EXEC_GROUPS.filter(([g]) => g !== 'advanced').map(([g, title]) => html`<${NL.Section} key=${g} title=${title}><div class="grid2">${EXEC.filter(x => x[5] === g).map(field)}</div></${NL.Section}>`)}
+      <button type="button" class="link small" onClick=${() => setAdv(!adv)}>${adv ? 'Hide advanced' : 'Advanced…'}</button>
+      ${adv ? html`<div class="grid2">${EXEC.filter(x => x[5] === 'advanced').map(field)}</div>` : null}
+      <p class="muted small">Which tool and model the agents use: <a class="link" href="#/settings/agents">Agents & models</a>. A campaign’s spending cap is set when you start it.</p>
       <div class="row end">${diff.length ? html`<span class="muted small">${NL.plural(diff.length, 'change')}</span><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save changes…</${NL.Btn}></div></div>`;
   };
 
   NL.LaunchSwitch = () => {
     const s = NL.useLab();
     const on = NL.execOn(s);
-    return html`<${NL.Toggle} on=${on} label="Let the dashboard start agents for you" sub=${on ? 'On — buttons here start headless Claude/Codex/opencode sessions on this machine, as you.' : 'Off — it only records what you ask, and you run it in your own terminal.'}
-      onChange=${async val => { if (await NL.confirm({ title: val ? 'Let the dashboard start agents?' : 'Stop starting agents from here?', ok: val ? 'Turn on' : 'Turn off',
-        body: val ? 'It runs the agent CLI on this machine, as you, with your login, within the limits below. Gates still wait for your signature.' : 'Nothing new starts from here. Runs already going finish on their own.' }))
+    return html`<${NL.Toggle} on=${on} label="Let the dashboard start agents for you" sub=${on ? 'On. Buttons here start Claude, Codex or opencode runs on this computer, as you.' : 'Off. The dashboard only records what you ask; you run it in your own terminal.'}
+      onChange=${async val => { if (await NL.confirm({ title: val ? 'Let this dashboard start agents?' : 'Stop starting agents from here?', ok: val ? 'Allow' : 'Turn off',
+        body: val ? 'Agents will run on this computer using your own login, within the limits below. Gates still wait for your approval.' : 'Nothing new starts from here. Runs already going finish on their own.' }))
         NL.act('/api/executor/enable', { enabled: val, confirm: true }, val ? 'Launching is on' : 'Launching is off'); }} />`;
   };
 
@@ -135,7 +141,7 @@
     const diff = changed(keys, v, c);
     const set = (k, x) => setV(o => ({ ...o, [k]: x }));
     const save = async () => { if ((await saveChanges('Save lab settings?', '/api/lab/config', diff, v, c)).ok) load(); };
-    const tier = async t => { if (await NL.confirm({ title: `Apply the ${t} budget tier?`, ok: 'Apply', body: 'Sets how many ideas, critics and parallel agents each procedure uses (lab/profiles/' + t + '.yaml). Integrity floors are never lowered.' }))
+    const tier = async t => { if (await NL.confirm({ title: `Apply the ${t} budget tier?`, ok: 'Apply', body: 'Sets how many ideas, critics and parallel agents each procedure uses (lab/profiles/' + t + '.yaml). The minimum checks that protect result quality are never lowered.' }))
       NL.act('/api/lab/config', { confirm: true, changes: { budget_tier: t } }, `Applied the ${t} tier`); };
     return html`<div class="form"><div class="grid2">
       <${NL.Field} label="Lab name"><${NL.Input} value=${v.name} onInput=${x => set('name', x)} /></${NL.Field}>
@@ -169,18 +175,18 @@
       ${(k.keys || []).map(x => html`<div class="keyrow"><b>${x.label}</b><span class="mono small muted">${x.key}</span><span class="grow"></span>
         <${NL.Pill} tone=${x.set ? 'ok' : 'muted'}>${x.set ? (x.where === 'environment' ? 'set in your environment' : 'saved') : 'not set'}</${NL.Pill}>
         <${NL.Btn} small onClick=${() => edit(x.key, x.label)}>${x.where === 'lab' ? 'Replace' : 'Add'}</${NL.Btn}>
-        ${x.where === 'lab' ? html`<${NL.Btn} small onClick=${async () => { await NL.act('/api/keys', { key: x.key, value: '' }, 'Removed'); load(); }}>Remove</${NL.Btn}>` : null}</div>`)}
+        ${x.where === 'lab' ? html`<${NL.Btn} small onClick=${async () => { if (!await NL.confirm({ title: `Remove ${x.label}?`, body: 'Procedures that need this key will skip the step or ask you for it.', ok: 'Remove', danger: true })) return; await NL.act('/api/keys', { key: x.key, value: '' }, 'Removed'); load(); }}>Remove</${NL.Btn}>` : null}</div>`)}
       <div class="row"><${NL.Input} value=${custom} onInput=${v => setCustom(v.toUpperCase())} placeholder="OTHER_API_KEY" mono /><${NL.Btn} disabled=${!/^[A-Z][A-Z0-9_]{1,40}$/.test(custom)} onClick=${() => edit(custom, custom)}>Add another</${NL.Btn}></div></div>`;
   };
 
   const Appearance = () => {
     const p = NL.usePrefs();
     return html`<div class="form">
-      <${NL.Field} label="Theme"><${NL.Seg} value=${p.theme} onChange=${v => NL.setPref('theme', v)} options=${[{ value: 'auto', label: 'Match my system' }, { value: 'day', label: 'Day — the atelier' }, { value: 'night', label: 'Night — the cave' }]} /></${NL.Field}>
+      <${NL.Field} label="Theme" hint="Also the sun/moon button in the top bar."><${NL.Seg} value=${p.theme} onChange=${v => NL.setPref('theme', v)} options=${[{ value: 'auto', label: 'System' }, { value: 'day', label: 'Light' }, { value: 'night', label: 'Dark' }]} /></${NL.Field}>
       <${NL.Field} label="Density"><${NL.Seg} value=${p.density} onChange=${v => NL.setPref('density', v)} options=${[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></${NL.Field}>
       <${NL.Toggle} on=${p.motion} onChange=${v => { NL.setPref('motion', v); NL.Scene && NL.Scene.setAmbient(v); }} label="Ambient motion" sub="drifting motes, swaying plants (off also when your system asks for reduced motion)" />
       <${NL.Toggle} on=${p.rail} onChange=${v => NL.setPref('rail', v)} label="Show the Today rail on Home" />
-      <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Newt narrates" sub="short speech bubbles quoting what just happened" />
+      <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Speech bubbles on Home" sub="the big character quotes what just happened" />
       <p class="muted small">Who plays the agents on Home: <a class="link" href="#/settings/agents">Agents → The cast</a>.</p></div>`;
   };
 
@@ -204,10 +210,10 @@
     return html`<div class="form">
       <${NL.Toggle} on=${p.notify && perm === 'granted'} onChange=${async v => { if (v && window.Notification && Notification.permission !== 'granted') { const r = await Notification.requestPermission(); if (r !== 'granted') return NL.toast('The browser blocked notifications', 'warn'); } NL.setPref('notify', v); }}
         label="Desktop notifications" sub="when an agent asks you something, a gate opens, or a run finishes or fails — even with this tab in the background" />
-      ${perm === 'denied' ? html`<div class="note note-warn">Notifications are blocked for this page in your browser's site settings.</div>` : null}
+      ${perm === 'denied' ? html`<div class="note note-warn">Your browser blocks notifications for this page. Click the lock icon in the address bar → Site settings → Notifications → Allow, then reload.</div>` : null}
       <p class="muted small">The tab title always shows how many things are waiting on you.</p>
       <${NL.Section} title="Sound"><${NL.SoundControls} /></${NL.Section}>
-      <${NL.Section} title="On your phone"><${PhoneNotify} /></${NL.Section}></div>`;
+      <${NL.Section} title="Phone & chat (ntfy, Slack, a webhook)"><${PhoneNotify} /></${NL.Section}></div>`;
   };
 
   /* questions, approvals and gates → ntfy / a webhook, sent by the lab's scheduler (works with this page closed) */
@@ -353,25 +359,34 @@
         <a class="agent-link" href="#/compose/procedures"><b>Procedures</b><small>what a main agent does at each step — add your own instructions, or rewrite the method</small></a>
         <a class="agent-link" href="#/compose/roles"><b>Roles</b><small>the subagents: what each specialist is told, and new ones copied from an old</small></a>
         <a class="agent-link" href="#/compose/rules"><b>Rules</b><small>what every agent always does</small></a>
-        <a class="agent-link" href="#/settings/autonomy"><b>Autonomy & limits</b><small>whether the dashboard may start agents, how many at once, how long each may run</small></a>
+        <a class="agent-link" href="#/settings/autonomy"><b>Limits & permissions</b><small>whether the dashboard may start agents, how many at once, how long each may run</small></a>
       </div></${NL.Section}>
   </div>`;
 
+  // group: 'lab' = saved in the lab's config, for everyone who opens it · 'browser' = this browser only
   const SECTIONS = [
-    { id: 'agents', label: 'Agents', C: AgentsPage },
-    { id: 'autonomy', label: 'Autonomy & limits', C: () => html`<${NL.LaunchSwitch} /><${ExecForm} />` },
-    { id: 'lab', label: 'Lab', C: LabForm },
-    { id: 'system', label: 'System & compute', C: System },
-    { id: 'keys', label: 'Research keys', C: Keys },
-    { id: 'appearance', label: 'Appearance', C: Appearance },
-    { id: 'notifications', label: 'Notifications', C: Notifications },
-    { id: 'about', label: 'About & server', C: About },
+    { id: 'agents', label: 'Agents & models', group: 'lab', C: AgentsPage, blurb: 'Which tools run the agents, and which model each uses.' },
+    { id: 'autonomy', label: 'Limits & permissions', group: 'lab', C: () => html`<${NL.PausedBar} /><${NL.LaunchSwitch} /><${ExecForm} />`, blurb: 'What agents may do on their own, how many at once, for how long.' },
+    { id: 'lab', label: 'Research defaults', group: 'lab', C: LabForm, blurb: 'The lab’s name, venue, page limit, loop mode, compute slots.' },
+    { id: 'system', label: 'This machine & compute', group: 'lab', C: System, blurb: 'The computer the lab runs on, its scheduler and keep-awake.' },
+    { id: 'keys', label: 'Research keys', group: 'lab', C: Keys, blurb: 'API keys for literature search and other research services.' },
+    { id: 'about', label: 'About & server', group: 'lab', C: About, blurb: 'Version, the server, the setup wizard.' },
+    { id: 'appearance', label: 'Appearance', group: 'browser', C: Appearance, blurb: 'Theme, density, motion, who plays the agents.' },
+    { id: 'notifications', label: 'Notifications & sound', group: 'browser', C: Notifications, blurb: 'Desktop notifications, chimes and music, your phone.' },
   ];
+  // the lab's own definition lives on the Workflow page (a draft you publish); Settings links there so it is one place
+  const WORKFLOW_LINKS = [['', 'Overview'], ['procedures', 'Procedures'], ['roles', 'Roles'], ['rules', 'Rules'], ['rooms', 'Rooms'], ['types', 'Project types'], ['history', 'Change log']];
   NL.SETTINGS_SECTIONS = SECTIONS;
+  const GROUPS = [['lab', 'This lab'], ['browser', 'This browser']];
   NL.SettingsPage = ({ args }) => {
     const cur = SECTIONS.find(x => x.id === args[0]) || SECTIONS[0];
     return html`<div class="page page-split">
-      <aside class="split-left"><div class="split-head"><h1>Settings</h1></div><nav class="side-nav">${SECTIONS.map(x => html`<a class=${cls('side-link', x.id === cur.id && 'on')} href=${'#/settings/' + x.id}>${x.label}</a>`)}</nav></aside>
-      <main class="split-right"><h2>${cur.label}</h2><${cur.C} /></main></div>`;
+      <aside class="split-left"><div class="split-head"><h1>Settings</h1></div><nav class="side-nav">
+        ${GROUPS.map(([g, title]) => html`<div class="side-sec">${title}</div>${SECTIONS.filter(x => x.group === g).map(x => html`<a class=${cls('side-link', x.id === cur.id && 'on')} href=${'#/settings/' + x.id}>${x.label}</a>`)}`)}
+        <div class="side-sec">How the lab works</div>
+        ${WORKFLOW_LINKS.map(([w, l]) => html`<a class="side-link ext" href=${'#/compose' + (w ? '/' + w : '')}>${l} <span class="muted">↗</span></a>`)}
+        <p class="muted small side-note">Procedures, roles, rules and rooms are edited as a draft on the Workflow page and published together.</p></nav></aside>
+      <main class="split-right"><h2>${cur.label} <span class=${cls('pill', 'scope-pill', cur.group)} title=${cur.group === 'lab' ? 'Saved in this lab’s configuration; everyone who opens the lab sees it' : 'Saved in this browser only'}>${cur.group === 'lab' ? 'this lab' : 'this browser'}</span></h2>
+        ${cur.blurb ? html`<p class="lede">${cur.blurb}</p>` : null}<${cur.C} /></main></div>`;
   };
 })();

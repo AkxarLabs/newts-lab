@@ -53,7 +53,7 @@ def attention_items() -> list[dict]:
                 out.append({"id": f"artifact:{m['id']}", "kind": "artifact", "sev": "warn", "ts": m.get("created"),
                             "target": m.get("study") or "hub", "idea": m.get("study"), "run_id": m.get("run_id"),
                             "skill": m.get("skill"), "title": m["title"],
-                            "body": f"asks you: {m.get('question') or m['title']} — the agent keeps working meanwhile",
+                            "body": f"asks you: {m.get('question') or m['title']}. The agent keeps working.",
                             "detail": {"artifact": m["id"]}, "actions": [{"id": "artifact", "label": "answer"}]})
     except Exception:  # noqa: BLE001
         pass

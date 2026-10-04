@@ -102,14 +102,14 @@ def test_stages_states_and_rooms_without_yaml(m, hub):
     assert [s["id"] for s in d["stages"]].index("replication") == [s["id"] for s in d["stages"]].index("analysis") + 1
     assert "replicating" in next(r for r in d["rooms"] if r["id"] == "lab")["states"]
     assert d["tracks"]["paper"].index("replicating") == d["tracks"]["paper"].index("analysis") + 1
-    _op(m, op="copy", kind="room", like="lab", name="bench", plain=True)
-    _op(m, op="state", id="replicating", fields={"room": "bench", "label": "Replication"})
+    _op(m, op="copy", kind="room", like="lab", name="replication", plain=True)
+    _op(m, op="state", id="replicating", fields={"room": "replication", "label": "Replication"})
     d = _stages(m.compose._draft())
-    assert next(r for r in d["rooms"] if r["id"] == "bench")["states"] == ["replicating"]
+    assert next(r for r in d["rooms"] if r["id"] == "replication")["states"] == ["replicating"]
     assert "replicating" not in next(r for r in d["rooms"] if r["id"] == "lab")["states"]
-    _op(m, op="room", id="bench", fields={"title": "The Bench", "floor": 1, "order": 3})
+    _op(m, op="room", id="replication", fields={"title": "The Bench", "floor": 1, "order": 3})
     assert m.compose.problems() == []
-    _op(m, op="delete", kind="room", name="bench", move_to="lab")
+    _op(m, op="delete", kind="room", name="replication", move_to="lab")
     _op(m, op="delete", kind="stage", name="replication")
     assert m.compose.problems() == []
     assert "# the PI's gates" in (m.compose._draft() / "workflow/stages.yaml").read_text(encoding="utf-8")   # comments kept

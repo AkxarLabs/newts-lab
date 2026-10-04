@@ -337,7 +337,7 @@ NEEDS_PI_TITLES = {   # the run footer's needs_pi → what Needs you says
     "kill_criteria": "Kill criteria fired — kill or park?",
     "null_result": "Null / negative result — how to proceed?",
     "spawn_type": "Confirm the project type before spawning",
-    "other": "The agent needs a PI decision",
+    "other": "The agent needs your decision",
 }
 
 def run_env(m: dict, env: dict) -> None:

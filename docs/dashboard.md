@@ -75,7 +75,7 @@ Settings → About.
    place.
 5. **First step.** The on-ramps: *Explore a new direction* (`/ideate`), *Bring in what I have*
    (`/adopt`), *Talk it through* (`/discuss`), *Compete on a target* (`/compete`), *Start a campaign*,
-   and *Make the lab yours* — a one-minute tour of Compose (copy a procedure, change how it works,
+   and *Make the lab yours* — a one-minute tour of the Workflow page (copy a procedure, change how it works,
    publish it).
 
 <figure markdown>
@@ -98,7 +98,7 @@ On the right, the **Today** rail (collapsible) has:
 - **Running**: live and queued runs, with elapsed time against their budget and what each is doing
   now.
 - **Up next**: each study's natural next step as a one-click button.
-- **For you to look at**: [artifacts](#artifacts-what-agents-made-for-you) agents published that you
+- **New results to look at**: [artifacts](#artifacts-what-agents-made-for-you) agents published that you
   haven't opened yet.
 - **Just finished**: the latest runs and their reports.
 - **Since you were last here**: what changed while you were away.
@@ -118,7 +118,7 @@ In the world itself:
 - The **Key** (bottom-left) lists the roles with live counts. Click a role to highlight its agents.
 
 The same list as *Needs you* sits behind the 🔔 in the top bar. The tab title shows how many things
-are waiting, and **desktop notifications** (⚙ Settings → Notifications) tell you when an agent asks
+are waiting, and **desktop notifications** (⚙ Settings → Notifications & sound) tell you when an agent asks
 something, a gate opens, or a run finishes or fails.
 
 **On your phone.** In the same place, give an [ntfy](https://ntfy.sh) topic and/or a webhook (Slack,
@@ -160,7 +160,7 @@ repo) and **where it stops**. **Options** override, for that run only:
 
 The first time you start something, the dashboard asks once to turn on **starting agents from the
 dashboard** (the `agents.programmatic.enabled` switch). Runs are queued first and start as soon as a
-slot is free, within the concurrency caps and the daily limits set in Settings → Autonomy.
+slot is free, within the concurrency caps and the daily limits set in Settings → Limits & permissions.
 
 <figure markdown>
 ![Start something](assets/dashboard-start.png){ .as-shot }
@@ -240,7 +240,7 @@ python tools/artifact.py publish --title "Which eval set?" --question "Freeze A 
 ```
 
 and it appears on the **Artifacts** page (`#/artifacts`; the nav shows how many you haven't seen) and in
-the Today rail under *For you to look at*. Each is rendered in place, by its file:
+the Today rail under *New results to look at*. Each is rendered in place, by its file:
 
 - `.md`: rendered, with maths;
 - `.html`: in a sandboxed frame, and served with a CSP sandbox, so a page an agent wrote can never act as
@@ -260,7 +260,7 @@ how an agent asks for a look; it is never a gate signature.
 
 ## Sound
 
-The speaker button in the top bar (and Settings → Notifications → Sound) turns on two things, each off
+The speaker button in the top bar (and Settings → Notifications & sound → Sound) turns on two things, each off
 by default, each with its own volume and a button to hear a sample:
 
 - **Chimes** when an agent asks you something, a gate waits for you, a run finishes or fails, or a new
@@ -281,7 +281,7 @@ A **study page** (`#/study/<slug>`) has:
 
 - **a lifecycle stepper** from seed to final. The gates are drawn as doors between steps: one glows
   when it waits for you, and it opens once signed.
-- **one primary button** for the natural next step: *Review and sign Gate 1*, *Run experiments*,
+- **one primary button** for the natural next step: *Review and approve Gate 1*, *Run experiments*,
   *Answer its question*, and so on. **Work on it…** offers everything else that fits.
 - the tabs:
   - **Overview**: the idea write-up (`IDEA.md`), where it stands now, its agents, any notes still
@@ -379,7 +379,7 @@ Gate 3 safe to offer.
   | Section | What it holds |
   |---|---|
   | Agents & sign-in | the CLI cards from the wizard |
-  | Autonomy & limits | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
+  | Limits & permissions | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
   | Lab | name, where projects go, training runs at once, projects per campaign, oversight, venue, page limit, budget tier; anything else goes to an agent via `/configure` |
   | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
   | Appearance | theme day / night / system, density, motion, narration; *The cast*: who plays the agents in the world |
@@ -426,7 +426,7 @@ Rooms have no roofs: everything is visible from above.
   there; click one to go to it.
 - Day and night themes follow the lamp. Without WebGL the dashboard works the same, minus the world.
 
-Rooms, their places on the table and their looks are yours to change (Compose → Rooms; see
+Rooms, their places on the table and their looks are yours to change (Workflow → Rooms; see
 [Extending](extending.md)). How the world works is in [The world's design](world-design.md).
 
 ## How it stays honest (the bus)
@@ -454,14 +454,14 @@ The event kinds are listed in `tools/lab_bus.py`. The main ones:
 
 The bus lives in the git-ignored `lab/.bus/` (hub) and `<project>/.bus/` (each project).
 
-## Compose
+## Workflow (Compose)
 
-**Compose** (top nav) is everything the lab is made of, all of it editable: the pipeline of stages and the
+**Workflow** (top nav; the code calls it Compose) is everything the lab is made of, all of it editable: the pipeline of stages and the
 building of rooms as a map, then procedures (their definition, method, your instructions, their files),
 roles, rooms, rules, checks and project types. Adding anything starts from a copy of the closest thing.
 Every edit goes into a **draft**; **Review & publish** shows the diff and whether the lab still reads
 consistently, and a publish can be undone. A short tour walks through it. Agents' suggested changes arrive
-in Needs you and under Compose → Agents' suggestions, with a diff, for you to accept or decline. A study's
+in Needs you and under Workflow → Agents' suggestions, with a diff, for you to accept or decline. A study's
 page has an **Instructions** tab for that study alone. See [Customising the lab](customising.md).
 
 ## Traceability: one log per worker

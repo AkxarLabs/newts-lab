@@ -50,7 +50,7 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | Key | Default | Owner | Effect |
 |---|---|---|---|
 | `lab.projects_root` | `../newts-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
-| `lab.keep_awake` | `auto` | PI | hold the computer awake while agents work or a campaign runs; `off` never (Settings → Lab) |
+| `lab.keep_awake` | `auto` | PI | hold the computer awake while agents work or a campaign runs; `off` never (Settings → Research defaults) |
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |

@@ -14,7 +14,7 @@
 
   /* ── every lab at once: GET /api/fleet, polled while a page shows it (shared by the top bar) ─────── */
   const fleet = { data: null, t: null, subs: new Set(), at: 0 };
-  const pull = async () => { const x = await NL.get('/api/fleet'); if (x && x.ok) { fleet.data = x; fleet.at = Date.now(); fleet.subs.forEach(f => f(x)); } };
+  const pull = async () => { if (NL.DEMO) return; const x = await NL.get('/api/fleet'); if (x && x.ok) { fleet.data = x; fleet.at = Date.now(); fleet.subs.forEach(f => f(x)); } };
   /* demo mode: the synthetic fleet (NL.demoFleet, demo.js) in /api/fleet's shape — never the real labs */
   const slug = x => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   let demoFl = null;

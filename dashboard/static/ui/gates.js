@@ -20,9 +20,9 @@
   };
 
   const Revoke = ({ slug, what, label }) => html`<button class="link small danger" onClick=${async () => {
-    if (await NL.confirm({ title: 'Withdraw your signature?', body: label || 'The agents will treat it as unsigned again. Logged.', ok: 'Withdraw', danger: true }))
-      NL.act('/api/gate/revoke', { idea: slug, what, confirm: true }, 'Signature withdrawn');
-  }}>Withdraw my signature</button>`;
+    if (await NL.confirm({ title: 'Withdraw your approval?', body: label || 'Agents will treat this as not approved. The change is logged.', ok: 'Withdraw', danger: true }))
+      NL.act('/api/gate/revoke', { idea: slug, what, confirm: true }, 'Approval withdrawn');
+  }}>Withdraw my approval</button>`;
 
   /* ── Gate 1 ─────────────────────────────────────────────────────────────── */
   const Gate1 = ({ it, readable }) => {
@@ -30,22 +30,22 @@
     const signed = it.gate_signed || it.state !== NL.gateAt(1) && !it.gate;
     const then = NL.nextSkill(NL.gateAt(1), true);   // what runs once Gate 1 is signed (spawn-project)
     const sign = async () => {
-      const ok = await NL.confirm({ title: `Sign Gate 1 for “${it.title || it.id}”?`, ok: 'Sign the proposal',
-        body: html`<p>This records your approval in <span class="mono">studies/${it.id}/proposal.md</span>${env ? ' — including the full-scale runs it pre-approves (§5, the Gate 2 envelope)' : ''}, logged. Next: create the project repo.</p>` });
+      const ok = await NL.confirm({ title: `Approve the proposal “${it.title || it.id}”?`, ok: 'Approve',
+        body: html`<p>Your approval is recorded in the proposal${env ? ', including the full runs it pre-approves (§5)' : ''}, and logged. Next, the project repo is created. Spending starts only when experiments run.</p>` });
       if (!ok) return;
       const r = await NL.act('/api/gate', { idea: it.id, gate: 1, envelope: env, confirm: true }, 'Proposal signed');
       if (r.ok && !(r.launch && r.launch.run_id)) {
-        if (await NL.confirm({ title: 'Create the project repo now?', body: 'Runs /spawn-project: the repo, its config from the proposal, and a green smoke test.', ok: 'Create it', cancel: 'Later' }))
+        if (await NL.confirm({ title: 'Create the project repo now?', body: 'Creates the project repo and its settings from the proposal, then runs a quick check.', ok: 'Create it', cancel: 'Later' }))
           NL.launch({ skill: then, target: it.id });
       } else if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
     };
     return html`<div class="signbox">
       <div class="signbox-h">Gate 1 · approve the proposal</div>
-      <p>You approve the hypothesis, the frozen evaluation, the staged plan with its promotion criteria, the budgets and the kill criteria. Nothing is built or spent before this.</p>
+      <p>You approve the hypothesis, the frozen evaluation and analysis plan, the staged experiments with their criteria, the budget and the kill criteria. Nothing is built or spent before this. Approving creates the project repo next; you can withdraw your approval later.</p>
       ${signed ? html`<div class="note note-ok">✓ Signed${it.state === NL.gateAt(1) ? ' — the project repo is created next' : ''}.</div>
         ${it.state === NL.gateAt(1) ? html`<div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: then, target: it.id })}>Create the project repo</${NL.Btn}><${Revoke} slug=${it.id} what="gate1" /></div>` : null}`
-        : html`<label class="check"><input type="checkbox" checked=${env} onChange=${e => setEnv(e.target.checked)} /> Also pre-approve full-scale runs that stay within the proposal's budget and limits (§5 — the “Gate 2 envelope”), so they can start once the project exists without asking you again</label>
-        <div class="row"><${NL.Btn} kind="primary" disabled=${readable === false} onClick=${sign}>Sign Gate 1</${NL.Btn}>${readable === false ? html`<span class="muted small">The proposal couldn't be read — open the study and check it before signing.</span>` : null}</div>`}
+        : html`<label class="check"><input type="checkbox" checked=${env} onChange=${e => setEnv(e.target.checked)} /> Also pre-approve the full runs listed in the proposal's §5 (count, minutes each, total), so they start without asking you again. Otherwise each full run waits for Gate 2.</label>
+        <div class="row"><${NL.Btn} kind="primary" disabled=${readable === false} onClick=${sign}>Approve Gate 1</${NL.Btn}>${readable === false ? html`<span class="muted small">The proposal couldn't be read — open the study and check it before signing.</span>` : null}</div>`}
     </div>`;
   };
 
@@ -57,14 +57,14 @@
     const changed = +v.full_runs !== +(e.full_cap || 0) || +v.per_run_max_minutes !== +(e.per_cap || 0) || +v.total_max_minutes !== +(e.total_cap || 0) || (v.expires || '') !== (e.expires && e.expires !== 'None' ? e.expires : '');
     const used = (e.full_done || 0) + (e.full_resv || 0), usedMin = (e.min_done || 0) + (e.min_resv || 0);
     const save = async (sign) => {
-      const ok = await NL.confirm({ title: sign ? 'Sign Gate 2 — approve these full-scale runs?' : 'Save the limits (unsigned)?', ok: sign ? 'Sign Gate 2' : 'Save',
+      const ok = await NL.confirm({ title: sign ? 'Approve these full runs?' : 'Save the limits without approving?', ok: sign ? 'Approve' : 'Save',
         body: sign ? html`<p>Authorizes up to <b>${v.full_runs}</b> FULL runs of at most <b>${v.per_run_max_minutes}</b> min each, <b>${v.total_max_minutes}</b> min in total${v.expires ? `, until ${v.expires}` : ''}. Written to the project's <span class="mono">control.yaml</span>, logged.</p>`
-          : html`<p>${e.signed && changed ? 'Changing the values withdraws the current signature until you sign again.' : 'Saved without a signature — FULL runs still need your approval.'}</p>` });
+          : html`<p>${e.signed && changed ? 'Changing the values withdraws the current approval until you approve again.' : 'Saved without approval. Full runs still need your approval.'}</p>` });
       if (ok) NL.act('/api/envelope', { idea: it.id, confirm: true, sign, values: v }, sign ? 'Envelope signed' : 'Envelope saved');
     };
     return html`<div class="signbox">
       <div class="signbox-h">Gate 2 · approve full-scale runs ${e.signed ? html`<${NL.Pill} tone=${e.status === 'active' ? 'ok' : 'warn'}>${e.status}</${NL.Pill}>` : html`<${NL.Pill} tone="muted">unsigned</${NL.Pill}>`}</div>
-      <p>Small trial runs go ahead on their own. Full-scale runs need your signature — one at a time, or in advance for a batch within the limits below (the “envelope”).</p>
+      <p>Trial runs start on their own. Full runs need your approval: one at a time, or in advance as a batch within the limits below.</p>
       <div class="grid2">
         <${NL.Field} label="FULL runs" hint=${e.full_cap ? `${used} used or reserved` : null}><${NL.Input} type="number" min="0" value=${v.full_runs} onInput=${x => set('full_runs', x)} /></${NL.Field}>
         <${NL.Field} label="Minutes per run"><${NL.Input} type="number" min="0" value=${v.per_run_max_minutes} onInput=${x => set('per_run_max_minutes', x)} /></${NL.Field}>
@@ -73,7 +73,7 @@
       </div>
       ${e.full_cap ? html`<div class="capacity"><span>FULL runs <${NL.Bar} value=${used} max=${e.full_cap} tone=${used >= e.full_cap ? 'warn' : ''} /> ${used}/${e.full_cap}</span>
         ${e.total_cap ? html`<span>minutes <${NL.Bar} value=${usedMin} max=${e.total_cap} tone=${usedMin >= e.total_cap ? 'warn' : ''} /> ${usedMin}/${e.total_cap}</span>` : null}</div>` : null}
-      <div class="row">${!e.signed || changed ? html`<${NL.Btn} kind="primary" disabled=${!(+v.full_runs || +v.per_run_max_minutes || +v.total_max_minutes)} onClick=${() => save(true)}>Sign Gate 2</${NL.Btn}>` : null}
+      <div class="row">${!e.signed || changed ? html`<${NL.Btn} kind="primary" disabled=${!(+v.full_runs || +v.per_run_max_minutes || +v.total_max_minutes)} onClick=${() => save(true)}>Approve Gate 2</${NL.Btn}>` : null}
         ${changed ? html`<${NL.Btn} onClick=${() => save(false)}>Save without signing</${NL.Btn}>` : null}
         ${e.signed && !changed ? html`<${Revoke} slug=${it.id} what="gate2" />` : null}</div>
     </div>`;
@@ -86,7 +86,7 @@
     const load = () => NL.get(`/api/gate3/readiness?${NL.qs({ idea: it.id })}`).then(setR);
     useEffect(() => { load(); }, [it.id, it.state]);
     const sign = async () => {
-      const typed = await NL.confirm({ title: 'Sign Gate 3', typed: it.id, ok: 'Sign Gate 3', danger: true,
+      const typed = await NL.confirm({ title: 'Approve Gate 3', typed: it.id, ok: 'Approve Gate 3', danger: true,
         body: html`<p>Gate 3 authorizes <b>finalization</b>: the reproducibility pass, locking artifacts, and anything that leaves the lab. It is the one gate agents are never allowed near.</p>
           ${r && r.checks.some(c => !c.ok) ? html`<p class="warn">You're signing despite: ${r.checks.filter(c => !c.ok).map(c => c.label).join('; ')}.</p>` : null}` });
       if (!typed) return;
@@ -102,7 +102,7 @@
             const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); }}>Start /finalize</${NL.Btn}>` : null}
           ${it.state !== NL.gateOpens(3) ? html`<${Revoke} slug=${it.id} what="gate3" />` : null}</div>`
         : html`<label class="check"><input type="checkbox" checked=${launch} onChange=${e => setLaunch(e.target.checked)} /> Start it right after signing, and watch it here</label>
-        <div class="row"><${NL.Btn} kind="danger" disabled=${!r || !r.can_sign} onClick=${sign}>Sign Gate 3…</${NL.Btn}>
+        <div class="row"><${NL.Btn} kind="danger" disabled=${!r || !r.can_sign} onClick=${sign}>Approve Gate 3…</${NL.Btn}>
           ${r && !r.can_sign ? html`<span class="muted small">${r.checks.filter(c => c.blocking && !c.ok).map(c => c.detail).join('; ')}</span>` : null}</div>`}
     </div>`;
   };
@@ -114,12 +114,12 @@
     if (!it) return html`<${NL.Sheet} title="Gate" onClose=${onClose}><${NL.Empty}>No such study.</${NL.Empty}></${NL.Sheet}>`;
     const G = gate === 3 ? Gate3 : gate === 2 ? NL.EnvelopeEditor : Gate1;
     const [readable, setReadable] = useState(null);   // Gate 1 is never signed unseen
-    const back = () => { onClose(); NL.openNote(it.id, `Before I sign Gate ${gate}, please change: `); };
-    const footer = it.gate === gate && !it.gate_signed ? html`<div class="row"><span class="muted small grow">Not ready to sign? Nothing goes ahead until you do.</span>
-      <${NL.Btn} onClick=${back} title="your notes go to the next agent working on this study; nothing is signed">Send back with notes…</${NL.Btn}><${NL.Btn} onClick=${onClose}>Not now</${NL.Btn}></div>` : null;
+    const back = () => { onClose(); NL.openNote(it.id, `Before I approve Gate ${gate}, please change: `, { title: 'Ask for changes', ok: 'Send notes', sub: 'The gate stays open. The next agent working on this study reads your notes before its next step.' }); };
+    const footer = it.gate === gate && !it.gate_signed ? html`<div class="row"><span class="muted small grow">Nothing continues until you approve.</span>
+      <${NL.Btn} onClick=${back} title="The gate stays open; the next agent reads your notes.">Ask for changes…</${NL.Btn}><${NL.Btn} onClick=${onClose}>Not now</${NL.Btn}></div>` : null;
     return html`<${NL.Sheet} wide title=${`Gate ${gate} · ${it.title || it.id}`} footer=${footer} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
       <div class="gate-grid"><div class="gate-sign"><${G} it=${it} readable=${readable} /></div>
-        <div class="gate-read"><h4>What you're signing</h4><${Bundle} slug=${slug} gate=${gate} onLoaded=${setReadable} />
+        <div class="gate-read"><h4>What you're approving</h4><${Bundle} slug=${slug} gate=${gate} onLoaded=${setReadable} />
           ${gate === 3 && it.has_paper ? html`<div class="row"><${NL.Btn} small onClick=${() => NL.openPaper(it.id)}>Open the paper</${NL.Btn}><${NL.Btn} small onClick=${() => NL.openClaims(it.id)}>Claims ↔ evidence</${NL.Btn}></div>` : null}</div></div>
     </${NL.Sheet}>`;
   };
@@ -136,7 +136,7 @@
     const signed = doc && doc.ok && /-\s*\[[xX]\]\s*Authorized/.test(doc.text || '');
     useEffect(() => { const m = doc && doc.ok && /\*\*Mode:\*\*\s*`(execute|explore)`/.exec(doc.text || ''); if (m) setMode(m[1]); }, [doc]);
     const sign = async (launch) => {
-      if (!await NL.confirm({ title: 'Authorize the research loop?', ok: launch ? 'Authorize and start' : 'Authorize',
+      if (!await NL.confirm({ title: 'Approve the research loop?', ok: launch ? 'Approve and start' : 'Authorize',
         body: html`<p>The loop runs unattended within this brief, the project's frozen set and its signed envelope, in <b>${mode}</b> mode, until its stop conditions. Logged.</p>` })) return;
       const r = await NL.act('/api/loopbrief/sign', { idea: slug, mode, confirm: true, launch }, 'Loop authorized');
       if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
@@ -148,7 +148,7 @@
           ${signed ? html`<div class="note note-ok">✓ Authorized.</div><div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: 'research-loop', target: slug })}>Start the loop</${NL.Btn}><${Revoke} slug=${slug} what="loop" /></div>`
             : html`<${NL.Field} label="Mode"><${NL.Seg} value=${mode} onChange=${setMode} options=${[{ value: 'execute', label: 'Execute the plan' }, { value: 'explore', label: 'Explore' }]} /></${NL.Field}>
             <p class="muted small">${mode === 'explore' ? 'May expand the frontier and reopen non-headline decisions within the envelope.' : 'Runs PLAN.md and stops when it is done.'}</p>
-            <div class="row"><${NL.Btn} onClick=${() => sign(false)}>Authorize</${NL.Btn}><${NL.Btn} kind="primary" onClick=${() => sign(true)}>Authorize and start</${NL.Btn}></div>`}</div></div>
+            <div class="row"><${NL.Btn} onClick=${() => sign(false)}>Authorize</${NL.Btn}><${NL.Btn} kind="primary" onClick=${() => sign(true)}>Approve and start</${NL.Btn}></div>`}</div></div>
         <div class="gate-read"><h4>The brief</h4><${NL.Markdown} text=${doc.text} /></div></div>`}
     </${NL.Sheet}>`;
   };
