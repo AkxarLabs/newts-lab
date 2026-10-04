@@ -61,13 +61,16 @@
     const [base] = useState(() => NL.ls.get('nl-seen-through', ''));
     const [hidden, setHidden] = useState(false);
     const ev = (s.events || []).filter(e => base && (e.ts || '') > base);
-    useEffect(() => { const t = setTimeout(() => { const last = (s.events || []).slice(-1)[0]; if (last) NL.ls.set('nl-seen-through', last.ts); }, 4000); return () => clearTimeout(t); }, []);
+    // what you've seen moves on when you dismiss the line or open History — not just by glancing at Home
+    useEffect(() => { if (!NL.ls.get('nl-seen-through', '')) { const last = (s.events || []).slice(-1)[0]; if (last) NL.ls.set('nl-seen-through', last.ts); } }, []);
     if (!base || hidden || !ev.length) return null;
     const count = k => ev.filter(e => k.includes(e.kind)).length;
-    const bits = [[count(['run_finished', 'agent_finished']), 'runs finished'], [count(['gate_waiting']), 'gates opened'], [count(['escalation']), 'escalations'],
-      [count(['kill']), 'kills'], [count(['state_change']), 'stage changes']].filter(([n]) => n);
+    const failed = ev.filter(e => e.kind === 'run_finished' && ['failed', 'timeout', 'killed'].includes(e.status)).length;
+    const bits = [[count(['run_finished', 'agent_finished']) - failed, 'runs finished'], [failed, 'failed'], [count(['gate_waiting']), 'gates opened'],
+      [ev.filter(e => /self-approved|campaign/.test(e.detail || '') && /gate/i.test(e.detail || '')).length, 'approved by a campaign'],
+      [count(['escalation']), 'escalations'], [count(['kill']), 'kills'], [count(['state_change']), 'stage changes'], [count(['artifact']), 'things for you']].filter(([n]) => n > 0);
     if (!bits.length) return null;
-    return html`<div class="since"><span>Since you were last here: ${bits.map(([n, l]) => `${n} ${l}`).join(' · ')}</span><button class="x" onClick=${() => setHidden(true)} aria-label="dismiss">✕</button></div>`;
+    return html`<div class="since"><a class="grow" href=${'#/history?since=' + encodeURIComponent(base)}>Since you were last here: ${bits.map(([n, l]) => `${n} ${l}`).join(' · ')} — see what happened →</a><button class="x" onClick=${() => { setHidden(true); const last = (s.events || []).slice(-1)[0]; if (last) NL.ls.set('nl-seen-through', last.ts); }} aria-label="dismiss">✕</button></div>`;
   };
 
   /* what agents made for you to look at, not opened yet (a question with one is already in Needs you) */
@@ -130,9 +133,23 @@
     const count = r => workers.filter(w => w.role === r).length;
     const pick = r => { const v = hl === r ? null : r; setHl(v); NL.Scene && NL.Scene.highlight(v); };
     if (!(s.items || []).length && !workers.length) return null;
+    const prefs = NL.usePrefs(), c = prefs.cast || {}, chars = (window.Lab3D && Lab3D.CHARACTERS) || [];
+    const charName = id => ((chars.find(x => x.id === id) || {}).label || id || 'Newt').toLowerCase();
+    const lens = NL.Scene && NL.Scene.lens ? NL.Scene.lens() : 'work';
+    const LENS = { work: 'what each agent is doing — hover one to read it', cost: "today's spend: a brighter floor means more spent; the tags are each run's cost so far",
+      waiting: 'only what waits on you: agents asking you something, and gates to sign', risk: 'runs that failed, were blocked, or have gone quiet' };
     return html`<div class=${cls('key', open && 'open')}>
       <button class="key-btn" onClick=${() => setOpen(!open)} aria-expanded=${open}>Key ${open ? '▾' : '▴'}</button>
-      ${open ? html`<div class="key-body"><div class="key-h">Agents</div>${Object.entries(NL.ROLE).map(([r, v]) => html`<button type="button" class=${cls('key-row', hl === r && 'on')} onClick=${() => pick(r)}>
+      ${open ? html`<div class="key-body">
+        <div class="key-h">Reading the table</div>
+        <div class="key-note"><b>Rooms</b> are the stages a study moves through (their short name is on the label); each live project gets its own <b>Lab</b>.</div>
+        <div class="key-note"><b>A figure</b> is one agent at work; <b>a small one</b> is a subagent it started, in the same colours.</div>
+        <div class="key-note"><b>?</b> = it's asking you something · <b>zzz</b> = gone quiet · <b>cards</b> on shelves are studies · <b>sheets</b> on a board = something for you · <b>scaffolding</b> = a project repo being set up</div>
+        <div class="key-note"><b>Experiments</b> go SMOKE (a tiny check it runs at all) → PILOT (a small trial) → FULL (the full-scale run, within the budget you approved at Gate 2).</div>
+        <div class="key-note"><b>This lens:</b> ${LENS[lens] || LENS.work}</div>
+        <div class="key-h">Tools</div>
+        <div class="key-note">${c.mode === 'one' ? `every agent is a ${charName(c.one)}` : `Claude = ${charName(c.claude || 'newt')} · Codex = ${charName(c.codex || 'human')} · opencode = ${charName(c.opencode || 'robot')}`} — <a class="link" href="#/settings/appearance">change</a></div>
+        <div class="key-h">Agents</div>${Object.entries(NL.ROLE).map(([r, v]) => html`<button type="button" class=${cls('key-row', hl === r && 'on')} onClick=${() => pick(r)}>
           <i class="role-dot" style=${{ background: v.color }}></i><span class="grow">${v.label}${r === 'orchestrator' ? ' (Newt)' : ''}</span><span class="muted">${count(r) || ''}</span></button>`)}
         <div class="key-h">Studies</div>${(s.items || []).filter(i => !NL.isTerminal(i.state)).slice(0, 12).map(i => html`<button type="button" class="key-row" onClick=${() => NL.Scene && NL.Scene.focusProject(i.id)}>
           <i class="role-dot" style=${{ background: `hsl(${window.VivScene ? window.VivScene.projectHue(i.id) : 180} 45% 55%)` }}></i><span class="grow clip">${i.title || i.id}</span></button>`)}</div>` : null}</div>`;
@@ -191,20 +208,28 @@
   };
 
   /* ── History: commands, notes, events ───────────────────────────────────── */
-  NL.HistoryPage = () => {
+  NL.HistoryPage = ({ query }) => {
     const s = NL.useLab();
     const [q, setQ] = useState('');
     const [tab, setTab] = useState('events');
-    const evs = (s.events || []).slice().reverse().filter(e => !q || JSON.stringify(e).toLowerCase().includes(q.toLowerCase()));
+    const [since, setSince] = useState((query && query.since) || '');
+    // opening History counts as catching up
+    useEffect(() => { const last = (s.events || []).slice(-1)[0], prev = NL.ls.get('nl-seen-through', ''); if (prev) NL.ls.set('nl-seen-through-prev', prev); if (last) NL.ls.set('nl-seen-through', last.ts); }, []);
+    const evs = (s.events || []).slice().reverse().filter(e => (!since || (e.ts || '') > since) && (!q || JSON.stringify(e).toLowerCase().includes(q.toLowerCase())));
+    const where = e => { const id = e.idea || (e.source !== 'hub' ? e.source : null), it = id && NL.item(s, id); return id ? html`<a class="link" href=${'#/study/' + id}>${NL.clip(it ? it.title || id : id, 28)}</a>` : 'the lab'; };
+    const who = e => /campaign/i.test(`${e.detail || ''} ${(e.data || {}).by || ''}`) ? 'a campaign' : /PI|you\b|dashboard/.test(`${(e.data || {}).by || ''} ${e.source || ''}`) ? 'you' : e.run_id || /run|agent/.test(e.kind || '') ? 'an agent' : '';
+    const outcome = e => e.kind === 'run_finished' && e.status ? html` <${NL.Pill} tone=${e.status === 'completed' ? 'ok' : 'bad'}>${e.status === 'completed' ? 'done' : e.status}</${NL.Pill}>` : null;
     const dirs = [...(s.directives || []), ...(s.items || []).flatMap(i => (i.directives || []).map(d => ({ ...d, target: d.target || i.id })))]
       .sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).filter(d => !q || (d.text || '').toLowerCase().includes(q.toLowerCase()));
     return html`<div class="page">
       <header class="page-head"><div><h1>History</h1><p class="lede">What happened in the lab, and every command and note you sent — with whether an agent has acted on it.</p></div>
-        <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></header>
+        <div class="row"><button type="button" class=${cls('lens', since && 'on')} onClick=${() => setSince(since ? '' : (NL.ls.get('nl-seen-through-prev', '') || (s.events || []).slice(-20)[0]?.ts || ''))}>Since my last visit</button>
+          <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></div></header>
       <${NL.Tabs} tabs=${[{ id: 'events', label: 'Events', count: evs.length }, { id: 'commands', label: 'Your commands & notes', count: dirs.length }]} value=${tab} onChange=${setTab} />
-      ${tab === 'events' ? html`<table class="table"><thead><tr><th>When</th><th>Where</th><th>What</th><th>Detail</th></tr></thead><tbody>
-        ${evs.slice(0, 300).map(e => html`<tr><td class="mono small">${(e.ts || '').replace('T', ' ').slice(5, 16)}</td><td>${e.source === 'hub' ? 'lab' : html`<a class="link" href=${'#/study/' + e.source}>${e.source}</a>`}</td>
-          <td><b>${(e.kind || '').replace(/_/g, ' ')}</b></td><td class="small">${NL.clip(e.detail, 160)}</td></tr>`)}</tbody></table>`
+      ${tab === 'events' ? (!evs.length ? html`<${NL.Empty} icon="◷">${since ? 'Nothing has happened since your last visit.' : q ? 'Nothing matches that filter.' : 'Nothing has happened in this lab yet.'}</${NL.Empty}>`
+        : html`<table class="table"><thead><tr><th>When</th><th>Where</th><th>What</th><th>By</th><th>Detail</th></tr></thead><tbody>
+        ${evs.slice(0, 300).map(e => html`<tr class=${cls(e.run_id && 'click')} onClick=${e.run_id ? () => NL.openRun(e.run_id) : null}><td class="mono small">${NL.when ? NL.when(e.ts) : (e.ts || '').replace('T', ' ').slice(5, 16)}</td><td>${where(e)}</td>
+          <td><b>${(e.kind || '').replace(/_/g, ' ')}</b>${outcome(e)}</td><td class="small muted">${who(e)}</td><td class="small">${NL.clip(e.detail, 160) || html`<span class="muted">—</span>`}${e.run_id ? html` <span class="link small">open ↗</span>` : null}</td></tr>`)}</tbody></table>`)
       : html`<table class="table"><thead><tr><th>When</th><th>To</th><th>What</th><th>State</th></tr></thead><tbody>
         ${dirs.map(d => html`<tr><td class="mono small">${(d.ts || '').replace('T', ' ').slice(5, 16)}</td><td>${d.target === 'hub' || !d.target ? 'lab' : d.target}</td>
           <td>${d.kind === 'command' ? html`<b>${(d.action || '').replace(/_/g, ' ')}</b> ` : null}${NL.clip(d.text, 160)}</td>

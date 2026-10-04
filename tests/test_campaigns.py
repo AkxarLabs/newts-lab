@@ -492,3 +492,29 @@ def test_needs_you_shows_the_campaign_not_its_retried_runs(camp, monkeypatch):
     monkeypatch.setattr(sources.ctx, "LAB", lab.lab)
     items = sources.attention.collect([], [], [], [])
     assert any(i["kind"] == "campaign" and i["sev"] == "block" for i in items)
+
+
+# ── the campaign form: Gate 1 by delegation is the PI's switch ──────────────────────────────────────
+@pytest.mark.parametrize("gate1", [True, False])
+def test_the_form_carries_the_gate1_choice_into_the_signed_brief(hub, monkeypatch, tmp_path, gate1):
+    import shutil
+    from conftest import load
+    (hub.root / "templates" / "loop").mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO / "templates" / "loop" / "CAMPAIGN.md", hub.root / "templates" / "loop")
+    monkeypatch.setenv("NEWTS_HOME", str(tmp_path / "home"))
+    monkeypatch.syspath_prepend(str(REPO / "dashboard"))
+    m = load("dashboard/serve")
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
+    out, code = m.campaign.campaign_create({"confirm": True, "fields": {
+        "direction": "sparse routing", "ideas": 2, "parallel": 1, "full_runs": 3, "full_minutes": 60, "gate1": gate1}})
+    assert code == 200, out
+    assert out["gate1_auto"] is gate1
+    text = (hub.root / out["file"]).read_text(encoding="utf-8")
+    g1 = text.split("## Gate 1 delegation", 1)[1].split("\n## ", 1)[0]
+    assert "FULL runs ≤ 3 × 60 min" in g1
+    if gate1:
+        assert "- [x] Kill criteria" in g1 and "NOT DELEGATED" not in g1
+    else:
+        assert "- [x]" not in g1 and "NOT DELEGATED" in g1 and "no proposal is self-approved" in g1
+    assert "- [x] Authorized as scoped above" in text     # signed either way

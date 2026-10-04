@@ -20,11 +20,15 @@
   .tag { position: fixed; transform: translate(-50%, 0); z-index: 2; text-align: center; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .09em; text-transform: uppercase; opacity: .7; width: 180px; pointer-events: none; }
   .tag.side { width: auto; transform: translate(-100%, -50%); }
   .tag small { display: block; opacity: .7; letter-spacing: .04em; text-transform: none; }
+  #back { position: fixed; top: 22px; right: 20px; z-index: 3; font: 500 12px 'IBM Plex Mono', monospace; color: inherit; opacity: .75; text-decoration: none; }
+  #back:hover { opacity: 1; text-decoration: underline; }
+  #means { position: fixed; top: 92px; left: 20px; right: 20px; z-index: 2; font: 400 16px 'Newsreader', Georgia, serif; opacity: .85; }
+  #means b { font-weight: 600; }
 </style>
 <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
 </head>
 <body>
-<h1>The cast</h1><div id="bar"></div>
+<h1>The cast</h1><a id="back" href="/#/settings/appearance">&larr; back to Settings</a><div id="bar"></div><div id="means"></div>
 <canvas id="c"></canvas>
 <script src="kit.js"></script>
 <script src="newt.js"></script>
@@ -44,6 +48,9 @@ sun.shadow.camera.left = sun.shadow.camera.bottom = -8; sun.shadow.camera.right 
 const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64), K.mat(theme === 'night' ? '#33464a' : '#efe7d6')); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 
 const POSES = ['idle', 'work', 'walk', 'wait', 'carry', 'sleep', 'fail'];
+// what each pose means on Home
+const MEANS = { idle: 'waiting at the desk', work: 'working at its station', walk: 'moving between rooms', wait: 'asking you something',
+  carry: 'carrying a study to its next room', sleep: 'stalled — no word for a while', fail: 'its run failed', mix: 'each character in a different pose' };
 const BADGES = ['#e0b44e', '#3fb8a6', '#6f9be6', '#9b84ea', '#e57ab5', '#e0a346'];
 const CH = Lab3D.CHARACTERS, gap = 1.45;
 let pose = POSES.includes(q.get('pose')) ? q.get('pose') : 'mix';
@@ -68,15 +75,18 @@ CH.forEach((c, i) => {
   }
 });
 if (q.has('debug')) console.log('meshes per character: ' + CH.map(c => { let n = 0; Lab3D.makeCharacter(K, c.id, {}).group.traverse(m => { n += m.isMesh ? 1 : 0; }); return c.id + '=' + n; }).join(' '));
-if (grid) POSES.forEach((p, j) => tag(p, gx(j), gz(CH.length - 1) + 0.55));
+if (grid) POSES.forEach((p, j) => tag(`${p}<small>${MEANS[p]}</small>`, gx(j), gz(CH.length - 1) + 0.55));
 // in the mix view each character shows a different pose, so a glance covers them all
 const poseOf = o => o.fixed || (pose === 'mix' ? POSES[o.idx % POSES.length] : pose);
 
 // the pose switcher and the lamp
 const bar = document.getElementById('bar');
 function drawBar() {
-  bar.innerHTML = (grid ? [] : ['mix', ...POSES]).map(p => `<button data-p="${p}" class="${p === pose ? 'on' : ''}">${p}</button>`).join('')
+  bar.innerHTML = (grid ? [] : ['mix', ...POSES]).map(p => `<button data-p="${p}" title="${MEANS[p]}" class="${p === pose ? 'on' : ''}">${p}</button>`).join('')
     + `<span class="sep"></span><button data-t>${theme === 'night' ? 'day' : 'night'}</button><button data-g>${grid ? 'row view' : 'every pose'}</button>`;
+  document.getElementById('means').innerHTML = grid ? 'Every pose, and what it means on Home.'
+    : pose === 'mix' ? 'Each character in a different pose. Pick one to see what it means on Home.'
+    : `On Home, <b>${pose}</b> means ${MEANS[pose]}.`;
 }
 bar.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;

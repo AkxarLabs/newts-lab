@@ -8,9 +8,9 @@
   const NL = window.NL;
   const { html, useState, useEffect, cls } = NL;
 
-  const Bundle = ({ slug, gate }) => {
+  const Bundle = ({ slug, gate, onLoaded }) => {
     const [b, setB] = useState(null);
-    useEffect(() => { let on = true; NL.api('/api/read', { what: 'gate', idea: slug, gate }).then(x => on && setB(x)); return () => { on = false; }; }, [slug, gate]);
+    useEffect(() => { let on = true; NL.api('/api/read', { what: 'gate', idea: slug, gate }).then(x => { if (on) { setB(x); onLoaded && onLoaded(!!(x && x.ok && (x.sections || []).length)); } }); return () => { on = false; }; }, [slug, gate]);
     if (!b) return html`<${NL.Spinner} />`;
     if (!b.ok) return html`<div class="note note-warn">${b.error || 'could not read the review bundle'}</div>`;
     return html`<div class="bundle">${(b.sections || []).map((s2, i) => html`<details class="bundle-sec" open=${i < 3}>
@@ -25,13 +25,13 @@
   }}>Withdraw my signature</button>`;
 
   /* ── Gate 1 ─────────────────────────────────────────────────────────────── */
-  const Gate1 = ({ it }) => {
+  const Gate1 = ({ it, readable }) => {
     const [env, setEnv] = useState(false);
     const signed = it.gate_signed || it.state !== NL.gateAt(1) && !it.gate;
     const then = NL.nextSkill(NL.gateAt(1), true);   // what runs once Gate 1 is signed (spawn-project)
     const sign = async () => {
       const ok = await NL.confirm({ title: `Sign Gate 1 for “${it.title || it.id}”?`, ok: 'Sign the proposal',
-        body: html`<p>This records your approval in <span class="mono">studies/${it.id}/proposal.md</span>${env ? ' — including its Gate-2 envelope (§5)' : ''}, logged. Next: create the project repo.</p>` });
+        body: html`<p>This records your approval in <span class="mono">studies/${it.id}/proposal.md</span>${env ? ' — including the full-scale runs it pre-approves (§5, the Gate 2 envelope)' : ''}, logged. Next: create the project repo.</p>` });
       if (!ok) return;
       const r = await NL.act('/api/gate', { idea: it.id, gate: 1, envelope: env, confirm: true }, 'Proposal signed');
       if (r.ok && !(r.launch && r.launch.run_id)) {
@@ -44,8 +44,8 @@
       <p>You approve the hypothesis, the frozen evaluation, the staged plan with its promotion criteria, the budgets and the kill criteria. Nothing is built or spent before this.</p>
       ${signed ? html`<div class="note note-ok">✓ Signed${it.state === NL.gateAt(1) ? ' — the project repo is created next' : ''}.</div>
         ${it.state === NL.gateAt(1) ? html`<div class="row"><${NL.Btn} kind="primary" onClick=${() => NL.launch({ skill: then, target: it.id })}>Create the project repo</${NL.Btn}><${Revoke} slug=${it.id} what="gate1" /></div>` : null}`
-        : html`<label class="check"><input type="checkbox" checked=${env} onChange=${e => setEnv(e.target.checked)} /> Also approve the proposal's Gate-2 envelope (§5), so FULL runs within it can proceed once the project exists</label>
-        <div class="row"><${NL.Btn} kind="primary" onClick=${sign}>Sign Gate 1</${NL.Btn}></div>`}
+        : html`<label class="check"><input type="checkbox" checked=${env} onChange=${e => setEnv(e.target.checked)} /> Also pre-approve full-scale runs that stay within the proposal's budget and limits (§5 — the “Gate 2 envelope”), so they can start once the project exists without asking you again</label>
+        <div class="row"><${NL.Btn} kind="primary" disabled=${readable === false} onClick=${sign}>Sign Gate 1</${NL.Btn}>${readable === false ? html`<span class="muted small">The proposal couldn't be read — open the study and check it before signing.</span>` : null}</div>`}
     </div>`;
   };
 
@@ -96,12 +96,12 @@
     };
     return html`<div class="signbox signbox-g3">
       <div class="signbox-h">Gate 3 · finalize</div>
-      <p>The paper passed internal review. Signing lets <span class="mono">/finalize</span> run for this study — once, started by you.</p>
+      <p>The paper passed internal review. Signing lets an agent prepare the final version — a reproducibility pass, the evidence locked, what the lab learned written back (<span class="mono">/finalize</span>). It runs once, when you start it.</p>
       ${!r ? html`<${NL.Spinner} />` : html`<ul class="checklist">${r.checks.map(c => html`<li class=${c.ok ? 'ok' : c.blocking ? 'bad' : 'warn'}><span>${c.ok ? '✓' : c.blocking ? '✕' : '!'}</span><div><b>${c.label}</b><small>${c.detail}</small></div></li>`)}</ul>`}
       ${r && r.signed ? html`${String(r.signed_via || '').startsWith('campaign:') ? html`<div class=${cls('note', r.valid ? 'note-ok' : 'note-warn')}>${r.valid ? '✓ Gate 3 was recorded by delegation' : 'Gate 3 was recorded by delegation, but it no longer counts'} — <span class="mono">${r.signed_via.slice(9)}</span>${r.valid ? ': the lab re-ran the paper audits and they were clean. Take it back (or hold this study) on the campaign card.' : ': ' + (r.valid_why || '')}</div>` : html`<div class="note note-ok">✓ Gate 3 is signed.</div>`}<div class="row">${it.state !== 'final' ? html`<${NL.Btn} kind="primary" onClick=${async () => {
             const x = await NL.act('/api/finalize', { idea: it.id, confirm: true }, '/finalize queued'); if (x.run_id) NL.openRun(x.run_id); }}>Start /finalize</${NL.Btn}>` : null}
           ${it.state !== NL.gateOpens(3) ? html`<${Revoke} slug=${it.id} what="gate3" />` : null}</div>`
-        : html`<label class="check"><input type="checkbox" checked=${launch} onChange=${e => setLaunch(e.target.checked)} /> Start <span class="mono">/finalize</span> right after signing, and watch it here</label>
+        : html`<label class="check"><input type="checkbox" checked=${launch} onChange=${e => setLaunch(e.target.checked)} /> Start it right after signing, and watch it here</label>
         <div class="row"><${NL.Btn} kind="danger" disabled=${!r || !r.can_sign} onClick=${sign}>Sign Gate 3…</${NL.Btn}>
           ${r && !r.can_sign ? html`<span class="muted small">${r.checks.filter(c => c.blocking && !c.ok).map(c => c.detail).join('; ')}</span>` : null}</div>`}
     </div>`;
@@ -113,9 +113,10 @@
     const it = NL.item(s, slug);
     if (!it) return html`<${NL.Sheet} title="Gate" onClose=${onClose}><${NL.Empty}>No such study.</${NL.Empty}></${NL.Sheet}>`;
     const G = gate === 3 ? Gate3 : gate === 2 ? NL.EnvelopeEditor : Gate1;
+    const [readable, setReadable] = useState(null);   // Gate 1 is never signed unseen
     return html`<${NL.Sheet} wide title=${`Gate ${gate} · ${it.title || it.id}`} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
-      <div class="gate-grid"><div class="gate-sign"><${G} it=${it} /></div>
-        <div class="gate-read"><h4>What you're signing</h4><${Bundle} slug=${slug} gate=${gate} />
+      <div class="gate-grid"><div class="gate-sign"><${G} it=${it} readable=${readable} /></div>
+        <div class="gate-read"><h4>What you're signing</h4><${Bundle} slug=${slug} gate=${gate} onLoaded=${setReadable} />
           ${gate === 3 && it.has_paper ? html`<div class="row"><${NL.Btn} small onClick=${() => NL.openPaper(it.id)}>Open the paper</${NL.Btn}><${NL.Btn} small onClick=${() => NL.openClaims(it.id)}>Claims ↔ evidence</${NL.Btn}></div>` : null}</div></div>
     </${NL.Sheet}>`;
   };

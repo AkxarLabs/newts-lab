@@ -14,7 +14,7 @@ const BASE_ITEMS = [
   { id: 'prop-1', title: 'Curriculum distillation', state: 'proposal', gate: 1, next: 'Gate 1' },
   { id: 'prop-2', title: 'Retrieval heads', state: 'proposal', gate: 1, gate_signed: true, next: 'spawn-project' },
   { id: 'moe', title: 'Sparse MoE routing', state: 'active', has_project: true, project_type: 'ml', loop_active: true, next: 'experiment',
-    best: { series: [{ value: 2.0 }, { value: 1.74 }, { value: 1.55 }, { value: 1.4 }, { value: 1.31 }] } },
+    best: { val_loss: 1.31, run_id: 'exp-012' } },
   { id: 'rl', title: 'RL fine-tuning', state: 'active', has_project: true, project_type: 'ml', gate: 2, next: 'Gate 2' },
   { id: 'ana-1', title: 'Scaling probes', state: 'analysis', has_project: true, project_type: 'simulation', next: 'analyze' },
   { id: 'paper-1', title: 'Scaling laws note', state: 'writing', has_project: true, project_type: 'theory', has_paper: true, next: 'write-paper' },
@@ -34,6 +34,11 @@ const SUBS = { experiment: ['experiment-runner', 'overseer'], improve: ['experim
   'review-paper': ['fresh-context-reviewer', 'fresh-context-reviewer'], ideate: ['ideation-critic'] };
 
 
+// the demo happens now: every time is minutes before this page loaded (local time, like the lab's own stamps)
+const T0 = Date.now();
+const iso = ms => { const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+const ago = min => iso(T0 - min * 60e3);
+
 /* artifacts the demo agents "published": the page, the rail and the world show them; nothing is written */
 const SVG_LOSS = (() => {
   const line = (k, c) => { let d = ''; for (let i = 0; i <= 40; i++) { const x = 40 + i * 13, y = 40 + 200 * Math.exp(-i / (9 + k * 2)) + 30 + Math.sin(i * 0.9 + k) * 4; d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); } return `<path d="${d}" fill="none" stroke="${c}" stroke-width="2.5"/>`; };
@@ -41,18 +46,18 @@ const SVG_LOSS = (() => {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 })();
 const ARTS = [
-  { id: 'a-20260619-081200-0001', title: 'Pilot results — sparse MoE routing', kind: 'md', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: '2026-06-19T08:12:00',
+  { id: 'a-20260619-081200-0001', title: 'Pilot results — sparse MoE routing', kind: 'md', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: ago(52),
     note: 'The pilot beats the dense baseline on 2 of 3 seeds; one seed diverged at step 6k — details below.',
     text: '# Pilot results\n\n| run | seed | val loss | Δ vs dense |\n|---|---|---|---|\n| exp-012 | 1 | **1.31** | −0.09 |\n| exp-013 | 2 | 1.36 | −0.04 |\n| exp-014 | 3 | 1.52 | +0.12 |\n\nThe router load stays balanced ($\\mathrm{CV} < 0.15$) except seed 3, where one expert takes\n$41\\%$ of tokens after step 6k.\n\n## What I would do next\n\n1. Re-run seed 3 with the auxiliary balance loss at $\\lambda = 10^{-2}$.\n2. If it holds, scale to PILOT-L (4× tokens).\n\n> Every number above links to `runs/exp-01x/metrics.json` in the project.' },
-  { id: 'a-20260619-082500-0002', title: 'Which eval set should we freeze?', kind: 'choice', study: 'scope-1', run_id: 'r-scope', skill: 'scope', created: '2026-06-19T08:25:00',
+  { id: 'a-20260619-082500-0002', title: 'Which eval set should we freeze?', kind: 'choice', study: 'scope-1', run_id: 'r-scope', skill: 'scope', created: ago(38),
     question: 'Freeze the held-out benchmark (slower, standard) or the synthetic suite (fast, ours)?', choices: ['Held-out benchmark', 'Synthetic suite', 'Both — synthetic for pilots'] },
-  { id: 'a-20260619-083000-0003', title: 'Loss curves, seeds 1–3', kind: 'image', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: '2026-06-19T08:30:00', src: SVG_LOSS },
-  { id: 'a-20260619-084000-0004', title: 'Ablation explorer', kind: 'html', study: 'ana-1', run_id: 'r-ana', skill: 'analyze', created: '2026-06-19T08:40:00',
+  { id: 'a-20260619-083000-0003', title: 'Loss curves, seeds 1–3', kind: 'image', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: ago(31), src: SVG_LOSS },
+  { id: 'a-20260619-084000-0004', title: 'Ablation explorer', kind: 'html', study: 'ana-1', run_id: 'r-ana', skill: 'analyze', created: ago(22),
     note: 'Drag the slider to see how the probe accuracy moves with model scale.',
     html: '<body style="font-family:sans-serif;margin:24px;background:#fbf8f2"><h3>Probe accuracy vs scale</h3><input id=s type=range min=0 max=4 value=2 style="width:300px"><p id=o></p><script>const v=[0.61,0.68,0.74,0.79,0.81],n=["70M","160M","410M","1B","2.8B"];const f=()=>o.textContent=n[s.value]+": "+(v[s.value]*100).toFixed(1)+"%";s.oninput=f;f();</script></body>' },
-  { id: 'a-20260619-085000-0005', title: 'Routing ablation table', kind: 'table', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: '2026-06-19T08:50:00',
+  { id: 'a-20260619-085000-0005', title: 'Routing ablation table', kind: 'table', study: 'moe', run_id: 'r-moe', skill: 'experiment', created: ago(14),
     rows: [['variant', 'top-k', 'val loss', 'tokens/s'], ['dense', '-', '1.40', '41k'], ['switch', '1', '1.36', '58k'], ['ours', '2', '1.31', '52k'], ['ours + balance', '2', '1.30', '51k']] },
-  { id: 'a-20260619-090000-0006', title: 'Plan: the next three experiments', kind: 'md', study: 'rl', run_id: 'r-rl', skill: 'improve', created: '2026-06-19T09:00:00',
+  { id: 'a-20260619-090000-0006', title: 'Plan: the next three experiments', kind: 'md', study: 'rl', run_id: 'r-rl', skill: 'improve', created: ago(6),
     question: 'Good to run these three at PILOT scale?', choices: ['Yes, go', 'Only the first two', 'Not yet — let’s talk'],
     text: '# Plan\n\n- **E1** — KL penalty sweep $\\beta \\in \\{0.01, 0.05, 0.1\\}$, 3 seeds each.\n- **E2** — reward-model ensemble of 3 vs 1.\n- **E3** — curriculum on prompt difficulty.\n\nBudget: ~2.5 GPU-hours in total, inside the Gate-2 envelope.' },
 ];
@@ -66,38 +71,81 @@ NL.demoFleet = { ok: true, labs: [
   { kind: 'remote', key: 'demo::cluster', name: 'Protein folding', machine: 'gpu-cluster', state: 'connected', summary: { needs: 2, running: 5 } },
   { kind: 'local', key: 'demo::side', name: 'Side project', machine: 'This computer', state: 'here', summary: { needs: 0, running: 1 } },
   { kind: 'remote', key: 'demo::lab-pc', name: 'Wet-lab analysis', machine: 'lab-pc', state: 'idle', summary: null }] };
+NL.demoRunFile = f => ({ ok: true, kind: f.kind, path: f.path, text: f.kind === 'md'
+  ? '# Experiment log\n\n## exp-014 — PILOT, seed 3\n- config: `configs/experiments/exp-014.yaml`\n- val loss **1.52** (diverged at step 6k: one expert took 41% of tokens)\n- next: rerun with the balance loss at 1e-2\n\n## exp-013 — PILOT, seed 2\n- val loss 1.36\n'
+  : 'def route(x, experts, k=2):\n    scores = x @ experts.T\n    top = scores.topk(k)\n    return top.indices, top.values.softmax(-1)\n' });
+const PROPOSAL = it => `# Proposal — ${it.title}\n\n## Hypothesis\nA curriculum ordered by teacher confidence distils a 7B teacher into a 1B student with **≥ 2 points** less accuracy loss than random order.\n\n## Frozen evaluation\nThe held-out split of the benchmark, fixed before any run; reported over 3 seeds.\n\n## Staged plan\n| stage | what | promote when |\n|---|---|---|\n| SMOKE | 100 steps, 1 seed | it runs end to end |\n| PILOT | 2k steps, 3 seeds | ≥ 1 point better than random order |\n| FULL | 20k steps, 3 seeds | — |\n\n## Budget\nPILOT ≈ 6 GPU-hours · FULL ≈ 40 GPU-hours.\n\n## Kill criteria\nStop if PILOT shows no gain over random order on 2 of 3 seeds.\n\n## §5 Gate 2 envelope\nUp to **3 FULL runs**, ≤ 15 GPU-hours each.`;
+const DOCS = { 'IDEA.md': it => `# ${it.title}\n\nState: **${it.state}**.\n\nThe idea in one paragraph, its scores from triage, and the state log the lab keeps.`,
+  'lit-review.md': it => `# Literature review — ${it.title}\n\n**Verdict: incremental.** Three close papers; none orders the curriculum by teacher confidence.`,
+  'proposal.md': PROPOSAL, 'PLAN.md': it => `# Plan — ${it.title}\n\n| exp | stage | status |\n|---|---|---|\n| exp-012 | PILOT | done |\n| exp-014 | PILOT | rerun |`,
+  'EXPERIMENT_LOG.md': () => NL.demoRunFile({ kind: 'md' }).text };
+NL.demoRead = (path, b) => {
+  const it = BASE_ITEMS.find(i => i.id === (b.idea || b.slug)) || BASE_ITEMS[4];
+  if (path === '/api/read' && b.what === 'gate') return { ok: true, sections: b.gate === 3
+    ? [{ title: 'Meta-review', path: 'paper/reviews/meta-review.md', text: '# Meta-review\n\n**Verdict: accept.** All three reviewers agree the claims are supported; two minor fixes were made.' }]
+    : [{ title: 'proposal.md', path: `studies/${it.id}/proposal.md`, text: PROPOSAL(it) }], note: 'Demo — a made-up proposal.' };
+  if (path === '/api/read') return { ok: true, sections: [{ title: 'metrics.json', path: 'runs/exp-014/metrics.json', text: '{"val_loss": 1.52, "step": 6000}' }] };
+  const f = DOCS[(b.rel || '').split('/').pop()];
+  return f ? { ok: true, format: 'markdown', text: f(it), path: `(demo)/${b.rel}` } : { error: 'not in the demo' };
+};
+NL.demoGet = path => {
+  if (!path.startsWith('/api/library')) return null;
+  const groups = BASE_ITEMS.filter(i => i.state !== 'parked').map(i => {
+    const order = ['seed', 'triaged', 'lit-review', 'scoping', 'proposal', 'active', 'analysis', 'writing', 'internal-review', 'final'], at = order.indexOf(i.state);
+    const study = ['IDEA.md', ...(at > 2 ? ['lit-review.md'] : []), ...(at > 3 ? ['proposal.md'] : [])].map(rel => ({ scope: 'study', slug: i.id, rel, title: rel }));
+    const proj = i.has_project ? ['PLAN.md', 'EXPERIMENT_LOG.md'].map(rel => ({ scope: 'project', slug: i.id, rel, title: rel })) : [];
+    return { kind: 'study', key: 'study:' + i.id, slug: i.id, title: i.title, state: i.state,
+      sections: [{ title: 'Study', icon: '📋', docs: study }, ...(proj.length ? [{ title: 'Project repo', icon: '🛠', docs: proj }] : [])] };
+  });
+  return { ok: true, groups };
+};
 NL.demoRunFiles = r => r.run_id === 'r-moe' ? [{ path: 'C:/demo/projects/moe/EXPERIMENT_LOG.md', name: 'EXPERIMENT_LOG.md', exists: true, kind: 'md', size: 2048 },
   { path: 'C:/demo/projects/moe/src/router.py', name: 'router.py', exists: true, kind: 'text', size: 4096 }] : [];
-const artifactsAt = T => ARTS.filter((a, i) => i < 2 + Math.floor(T / 2)).map(a => ({ id: a.id, title: a.title, kind: a.kind, study: a.study, run_id: a.run_id, skill: a.skill,
+const artifactsAt = T => ARTS.filter((a, i) => i < ARTS.length - 1 || T >= 3).map(a => ({ id: a.id, title: a.title, kind: a.kind, study: a.study, run_id: a.run_id, skill: a.skill,
   created: a.created, question: a.question || null, choices: (a.choices || []).length, seen: demoSeen.has(a.id), answered: !!demoReplied[a.id] }));
 
 function demoState(T, items) {
-  const stamp = k => { const sec = k * 7; const p = n => String(n).padStart(2, '0'); return `2026-06-19T${p((8 + ((sec / 3600) | 0)) % 24)}:${p(((sec / 60) | 0) % 60)}:${p(sec % 60)}`; };
+  const h = id => [...id].reduce((a, c) => a + c.charCodeAt(0), 0);
   const run = (id, skill, subject, status, extra) => {
     const subs = (SUBS[skill] || []).map((type, i) => ({ id: `${id}-s${i}`, type, status: (T + i) % 7 === 0 ? 'done' : 'running', last_action: (ACT[skill] || ACT.ask)[(T + i + 1) % (ACT[skill] || ACT.ask).length] }));
     const a = ACT[skill] || ACT.ask;
-    return Object.assign({ run_id: id, skill, subject, target: subject || 'hub', status, backend: ['claude', 'codex', 'opencode'][[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % 3], created: stamp(T),
-      label: skill === 'ask' ? 'Summarise what moved overnight' : null, last_action: { summary: a[T % a.length] }, subagents: subs, usage: { cost_usd: 0.12 + ((T * id.length) % 40) / 20 } }, extra || {});
+    return Object.assign({ run_id: id, skill, subject, target: subject || 'hub', status, backend: ['claude', 'codex', 'opencode'][h(id) % 3], created: ago(20 + h(id) % 70), session_id: 'S-' + id, transport: 'live', pid: 1000 + h(id),
+      label: skill === 'ask' ? 'Summarise what moved overnight' : null, last_action: { summary: a[T % a.length] }, subagents: subs, n_actions: 12 + T * 3 + h(id) % 20, elapsed_s: (20 + h(id) % 70) * 60 + T * 4,
+      usage: { cost_usd: +(0.15 + (h(id) % 9) * 0.11 + T * (0.004 + (h(id) % 5) * 0.002)).toFixed(2) } }, extra || {});
   };
   const runs = [
     run('r-moe', 'experiment', 'moe', 'running'),
     run('r-rl', 'improve', 'rl', 'running'),
     run('r-ana', 'analyze', 'ana-1', T % 9 < 5 ? 'running' : 'completed'),
-    run('r-lit', 'lit-review', 'lit-1', 'running'),
+    run('r-lit', 'lit-review', 'lit-1', 'running', { heartbeat_age_s: 420, reason: 'no word from it for 7 minutes' }),
     run('r-scope', 'scope', 'scope-1', 'running'),
-    run('r-paper', 'write-paper', 'paper-1', T % 8 < 4 ? 'waiting_input' : 'running', { pending_question: { question: 'Lead with the scaling law or the ablation?' } }),
+    run('r-paper', 'write-paper', 'paper-1', 'waiting_input', { pending_question: { tool_use_id: 'tq-paper', asked_at: ago(9), live: true, input: { questions: [
+      { header: 'Paper structure', question: 'Lead the Results section with the scaling law or with the ablation?', options: [
+        { label: 'The scaling law', description: 'the headline claim first; the ablation backs it up' },
+        { label: 'The ablation', description: 'build up to the law from what each part contributes' }] }] } } }),
+    run('r-sweep', 'experiment', 'rl', 'failed', { reason: 'timed out after its 45-minute limit (exp-019, seed 2)', finished: ago(95) }),
     run('r-rev', 'review-paper', 'rev-1', 'running'),
     run('r-ask', 'ask', null, 'running'),
     run('r-spawn', 'spawn-project', 'prop-2', items.find(i => i.id === 'prop-2' && !i.has_project) ? 'running' : 'completed'),
     run('r-ideate', 'ideate', null, T % 10 < 6 ? 'queued' : 'running'),
   ].filter(r => r.status !== 'completed');
-  const attention = [{ id: 'a1', sev: 'block', kind: 'gate', title: 'Gate 1 — Curriculum distillation', idea: 'prop-1', detail: { gate: 1 } },
-    { id: 'a3', sev: 'block', kind: 'gate', title: 'Gate 3 — Long-context eval', idea: 'rev-1', detail: { gate: 3 } }];
-  if (runs.some(r => r.status === 'waiting_input')) attention.push({ id: 'a2', sev: 'block', kind: 'question', title: 'A question about Scaling laws note', run_id: 'r-paper' });
+  const done = [run('r-night1', 'lit-review', 'lit-1', 'completed', { finished: ago(300) }), run('r-night2', 'experiment', 'moe', 'completed', { finished: ago(180) })];
+  const GATE_WHAT = { 1: 'approve the proposal', 2: 'approve full-scale runs', 3: 'finalize the paper' };
+  const attention = items.filter(i => i.gate && !i.gate_signed).map(i => ({ id: 'gate:' + i.id, sev: 'block', kind: 'gate', title: `Gate ${i.gate} — ${i.title}: ${GATE_WHAT[i.gate]}`,
+    idea: i.id, detail: { gate: i.gate }, actions: [{ id: 'sign', label: 'review & sign' }] }));
+  attention.push({ id: 'q:r-paper', sev: 'block', kind: 'question', title: 'Lead the Results with the scaling law or the ablation?', body: 'Scaling laws note · the writing agent is paused until you answer',
+    run_id: 'r-paper', actions: [{ id: 'answer', label: 'answer' }] });
+  attention.push({ id: 'fail:r-sweep', sev: 'warn', kind: 'crashed', title: 'An RL fine-tuning experiment timed out', body: 'exp-019, seed 2 — after its 45-minute limit', run_id: 'r-sweep', actions: [{ id: 'tail', label: 'open' }] });
   const artifacts = artifactsAt(T);
-  for (const x of artifacts.filter(x => x.question && !x.answered)) attention.push({ id: 'artifact:' + x.id, sev: 'warn', kind: 'artifact', title: x.question, body: `with “${x.title}”`, idea: x.study, run_id: x.run_id, detail: { artifact: x.id }, actions: [{ id: 'artifact', label: 'open' }] });
-  return { artifacts, now: stamp(T), items: items.map(it => ({ inflight: [], events: [], directives: [], ...it })), runs, attention, workers: [],
-    slots: { cap: 3, in_use: 2 }, directives: [], gates_waiting: 2, cold: false, events: [],
+  for (const x of artifacts.filter(x => x.question && !x.answered)) attention.push({ id: 'artifact:' + x.id, sev: 'warn', kind: 'artifact', title: x.title, body: `asks you: ${x.question} — the agent keeps working meanwhile`, idea: x.study, run_id: x.run_id, detail: { artifact: x.id }, actions: [{ id: 'artifact', label: 'open' }] });
+  const events = [['state_change', 'Distillation curricula moved to literature review', 420, 'lit-1'], ['run_finished', 'lit-review finished', 300, 'lit-1', 'completed'],
+    ['gate_waiting', 'Gate 1 is waiting — Curriculum distillation', 260, 'prop-1'], ['run_finished', 'experiment finished — exp-014', 180, 'moe', 'completed'],
+    ['run_finished', 'exp-019 timed out', 95, 'rl', 'failed'], ['agent_waiting', 'the writing agent asked you something', 9, 'paper-1']]
+    .map(([kind, detail, min, idea, status]) => ({ ts: ago(min), source: 'hub', kind, detail, idea, ...(status ? { status } : {}) }));
+  return { artifacts, now: iso(Date.now()), items: items.map(it => ({ inflight: [], events: [], directives: [], ...it })), runs: runs.concat(done), attention, workers: [],
+    slots: { cap: 3, in_use: 2 }, directives: [], gates_waiting: attention.filter(a => a.kind === 'gate').length, cold: false, events,
+    executor: { available: true, enabled: true, caps: { total: 6 } },
+    campaign_states: NL.demoCampaignStates ? NL.demoCampaignStates(T) : [],
     campaigns: [{ name: 'scaling-laws', title: 'Scaling-laws sweep', status: 'active', signed: 'PI · 2026-06-12',
       budget: { full_runs: 12, total_max_minutes: 480, pi_signed: true, expires: '2026-06-30' }, projects: ['moe', 'rl', 'ana-1'] }] };
 }

@@ -15,17 +15,44 @@
   /* ── every lab at once: GET /api/fleet, polled while a page shows it (shared by the top bar) ─────── */
   const fleet = { data: null, t: null, subs: new Set(), at: 0 };
   const pull = async () => { const x = await NL.get('/api/fleet'); if (x && x.ok) { fleet.data = x; fleet.at = Date.now(); fleet.subs.forEach(f => f(x)); } };
+  /* demo mode: the synthetic fleet (NL.demoFleet, demo.js) in /api/fleet's shape — never the real labs */
+  const slug = x => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  let demoFl = null;
+  const demoFleet = () => {
+    if (demoFl) return demoFl;
+    const src = NL.demoFleet || { labs: [] };
+    const labs = (src.labs || []).map(l => ({ ...l, path: l.path || (l.kind === 'remote' ? '~/labs/' : 'C:/demo/labs/') + slug(l.name),
+      machine_id: l.machine_id || (l.kind === 'remote' ? slug(l.machine) : null),
+      keep_connected: l.keep_connected != null ? l.keep_connected : l.kind === 'remote' && l.state === 'connected' }));
+    const sum = (xs, k) => xs.reduce((a, l) => a + (+((l.summary || {})[k]) || 0), 0);
+    demoFl = { ...src, labs, needs_elsewhere: sum(labs.filter(l => !l.current), 'needs'), needs_total: sum(labs, 'needs'), running_total: sum(labs, 'running') };
+    return demoFl;
+  };
+  // what GET /api/labs and /api/machines would say, built from the demo fleet
+  const demoLabs = () => { const fl = demoFleet(), here = fl.labs.find(l => l.current) || {};
+    return { current: here.path, labs: fl.labs.filter(l => l.kind === 'local').map((l, i) => ({ name: l.name, path: l.path, current: !!l.current, exists: true,
+      ideas: l.current ? 13 : 4, opened: new Date(Date.now() - (i + 1) * 26 * 3600e3).toISOString() })) }; };
+  const demoMachines = () => { const by = {};
+    demoFleet().labs.filter(l => l.kind === 'remote').forEach(l => {
+      const m = by[l.machine_id] = by[l.machine_id] || { id: l.machine_id, name: l.machine, host: `you@${l.machine}.example.org`, reach: { ok: true }, labs: [],
+        facts: { os: 'Linux', arch: 'x86_64', cpus: l.machine === 'gpu-cluster' ? 64 : 16, gpus: l.machine === 'gpu-cluster' ? ['GPU 0: NVIDIA A100 80GB', 'GPU 1: NVIDIA A100 80GB', 'GPU 2: NVIDIA A100 80GB', 'GPU 3: NVIDIA A100 80GB'] : [],
+          scheduler: l.machine === 'gpu-cluster' ? 'slurm' : null, partitions: l.machine === 'gpu-cluster' ? [{ name: 'gpu' }, { name: 'cpu' }] : [], tools: { uv: true, git: true, claude: true, codex: l.machine !== 'lab-pc', opencode: false } } };
+      m.labs.push({ path: l.path, lab_name: l.name, state: l.state, exists: true, keep_connected: !!l.keep_connected });
+    });
+    return { machines: Object.values(by), suggestions: [] }; };
+
   NL.useFleet = () => {
-    const [d, setD] = useState(fleet.data);
+    const [d, setD] = useState(NL.DEMO ? null : fleet.data);
     useEffect(() => {
+      if (NL.DEMO) return undefined;
       fleet.subs.add(setD);
       if (!fleet.t) { pull(); fleet.t = setInterval(() => { if (!document.hidden) pull(); }, 15000); }
       else if (Date.now() - fleet.at > 15000) pull();
       return () => { fleet.subs.delete(setD); if (!fleet.subs.size && fleet.t) { clearInterval(fleet.t); fleet.t = null; } };
     }, []);
-    return d;
+    return NL.DEMO ? demoFleet() : d;
   };
-  NL.refreshFleet = pull;
+  NL.refreshFleet = () => NL.DEMO ? null : pull();
 
   /* go to a lab (and optionally straight to one thing in it) */
   NL.goToLab = async (l, then) => {
@@ -97,10 +124,12 @@
       <div class="grow"><b>${lab.lab_name || lab.name || lab.path.split('/').filter(Boolean).pop()}</b> <${NL.Pill} tone=${st[0]}>${st[1]}</${NL.Pill}>
         ${lab.exists === false ? html` <${NL.Pill} tone="warn">no lab there yet</${NL.Pill}>` : null}
         <div class="mono small muted">${lab.path}</div>${lab.error ? html`<div class="small warn">${lab.error}</div>` : null}
-        <${LabStatus} l=${fleetLab(fl, 'remote', lab.path, m.id)} /></div>
+        <${LabStatus} l=${fleetLab(fl, 'remote', lab.path, m.id)} />
+        <div class="small muted keep-why">${lab.keep_connected ? 'Kept connected in the background: what it needs shows here, on Home and in the top bar, refreshed every 15 s.'
+          : 'Not kept connected: you see what it needs only while you have it open. Tick “keep connected” to watch it from here.'}</div></div>
       <div class="row">${lab.state === 'waiting' ? html`<${NL.Spinner} /><span class="small muted">sign in in the terminal window…</span>` : html`<${NL.Btn} small kind="primary" busy=${busy} onClick=${() => open(false)}>Open</${NL.Btn}>`}
         ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { const r = await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); if (r.was_current) { NL.go('labs'); location.reload(); } else reload(); }}>disconnect</button>` : null}
-        <label class="small keep" title="stay connected in the background so the overview (and the top bar) shows what it needs"><input type="checkbox" checked=${!!lab.keep_connected}
+        <label class="small keep keep-vis" title="stay connected in the background so Home and the top bar show what it needs"><input type="checkbox" checked=${!!lab.keep_connected}
           onChange=${async e => { await NL.act('/api/fleet/keep', { id: m.id, path: lab.path, keep: e.target.checked }); reload(); NL.refreshFleet(); }} /> keep connected</label></div></div>`;
   }
 
@@ -176,7 +205,7 @@
       <header class="machine-head"><div class="grow"><h3>This computer</h3></div></header>
       ${!d ? html`<${NL.Spinner} />` : (d.labs || []).map(l => html`<div class=${cls('labrow', l.current && !s.remote && 'on', !l.exists && 'gone')}>
         <div class="grow"><b>${l.name}</b>${l.current && !s.remote ? html` <${NL.Pill} tone="ok">open</${NL.Pill}>` : null}<div class="mono small muted">${l.path}</div>
-          ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') : 'no studies yet'}${l.opened ? ' · opened ' + NL.ago(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}
+          ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') : 'no studies yet'}${l.opened ? ' · opened ' + NL.when(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}
           <${LabStatus} l=${fleetLab(fl, 'local', l.path)} /></div>
         <div class="row">${l.current && !s.remote ? html`<${NL.Btn} small onClick=${() => NL.go('')}>Go to it</${NL.Btn}>` : l.exists ? html`<${NL.Btn} small kind="primary" onClick=${() => open(l.path)}>Open</${NL.Btn}>` : null}
           ${!l.current ? html`<button class="link small" onClick=${async () => { await NL.api('/api/labs/forget', { path: l.path }); reload(); }}>forget</button>` : null}</div></div>`)}
@@ -193,14 +222,15 @@
     const [local, setLocal] = useState(null);
     const [mach, setMach] = useState(null);
     const s = NL.useLab();
-    const load = () => { NL.get('/api/labs').then(setLocal); NL.get('/api/machines').then(setMach); };
-    useEffect(() => { load(); const t = setInterval(() => NL.get('/api/machines').then(setMach), 8000); return () => clearInterval(t); }, []);
+    const load = () => { if (NL.DEMO) { setLocal(demoLabs()); setMach(demoMachines()); return; } NL.get('/api/labs').then(setLocal); NL.get('/api/machines').then(setMach); };
+    useEffect(() => { load(); if (NL.DEMO) return undefined; const t = setInterval(() => NL.get('/api/machines').then(setMach), 8000); return () => clearInterval(t); }, []);
     const cur = s.remote;
     const fl = NL.useFleet();
     return html`<div class="page page-narrow">
       <header class="page-head"><div><h1>Labs & machines</h1><p class="lede">A lab is one folder: its ideas, studies, papers and knowledge. It can live on this computer or on any machine you reach over SSH — the lab and its agents run where it lives; this page is your window onto each.</p></div></header>
       ${cur ? html`<div class="note">Showing <b>${cur.lab_name || cur.lab}</b> on <b>${cur.name}</b> (${cur.host}). <button class="link" onClick=${async () => { await NL.api('/api/machines/local', {}); NL.go(''); location.reload(); }}>Back to this computer</button></div>` : null}
-      ${fl && (fl.labs || []).length > 1 ? html`<p class="muted">${fl.needs_total ? html`<b class="warn">${NL.plural(fl.needs_total, 'thing')}</b> need you` : 'Nothing needs you'} across ${NL.plural(fl.labs.length, 'lab')} · ${NL.plural(fl.running_total || 0, 'run')} working. Remote labs set to stay connected refresh every 15 s.</p>` : null}
+      ${fl && (fl.labs || []).length > 1 ? html`<p class="muted">${fl.needs_total ? html`<b class="warn">${NL.plural(fl.needs_total, 'thing')}</b> need you` : 'Nothing needs you'} across ${NL.plural(fl.labs.length, 'lab')} · ${NL.plural(fl.running_total || 0, 'run')} working. Remote labs with “keep connected” ticked refresh every 15 s.</p>` : null}
+      ${NL.DEMO ? html`<div class="note small">Demo — these labs and machines are made up; nothing connects.</div>` : null}
       <${LocalLabs} d=${local} reload=${load} fl=${fl} />
       ${mach ? (mach.machines || []).map(m => html`<${MachineCard} key=${m.id} m=${m} reload=${load} fl=${fl} />`) : html`<${NL.Spinner} />`}
       <${AddMachine} suggestions=${mach && mach.suggestions} reload=${load} />

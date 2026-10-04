@@ -13,7 +13,7 @@
   if (NL.Scene) {
     NL.Scene.onClick(id => NL.open(StudyPeek, { id }, { key: 'peek' }), () => NL.open(NL.InboxSheet, {}, { key: 'inbox' }));
     NL.Scene.onWorker(id => NL.openWorker(id));
-    NL.Scene.onRun(id => NL.openRun(id));
+    NL.Scene.onRun((id, sub) => NL.openRun(id, sub));
     NL.Scene.onArtifact(id => NL.openArtifact(id));
     NL.Scene.onNewt(() => NL.openStart());
     NL.Scene.onView(info => { NL.viewInfo = info; NL.viewListeners.forEach(f => f(info)); });
@@ -28,16 +28,16 @@
     const runs = NL.runsOf(s, id).sort((a, b) => (b.created || '').localeCompare(a.created || '')).slice(0, 4);
     return html`<${NL.Sheet} title=${it.title || it.id} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} />${it.next && it.next !== '-' ? html`<span class="muted">${it.next}</span>` : null}</span>`} onClose=${onClose}>
       <div class="stack">${nx ? html`<${NL.Btn} kind="primary" icon=${nx.icon} onClick=${() => { onClose(); nx.run(); }}>${nx.label}</${NL.Btn}>` : null}
-        <${NL.Btn} onClick=${() => { onClose(); NL.go('study/' + it.id); }}>Open the study</${NL.Btn}>
-        ${it.has_project ? html`<${NL.Btn} onClick=${() => { onClose(); NL.Scene.focusProject(it.id); }}>Enter its lab</${NL.Btn}>` : null}
-        <${NL.Btn} onClick=${() => { onClose(); NL.openStart({ intent: 'study', target: it.id }); }}>Work on it…</${NL.Btn}></div>
+        <${NL.Btn} onClick=${() => { onClose(); NL.go('study/' + it.id); }}>Open the study page<small class="btn-sub">its documents, runs and decisions</small></${NL.Btn}>
+        ${it.has_project ? html`<${NL.Btn} onClick=${() => { onClose(); NL.Scene.focusProject(it.id); }}>Zoom to its lab<small class="btn-sub">see its agents at work on the table</small></${NL.Btn}>` : null}
+        <${NL.Btn} onClick=${() => { onClose(); NL.openStart({ intent: 'study', target: it.id }); }}>Start new work on it…<small class="btn-sub">pick a step, or tell an agent what to do</small></${NL.Btn}></div>
       ${runs.length ? html`<${NL.Section} title="Runs">${runs.map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} compact />`)}</${NL.Section}>` : null}
     </${NL.Sheet}>`;
   };
 
   /* ── command palette (/ or Ctrl+K) ─────────────────────────────────────── */
   /* the pages you can go to: [route, label, in the top bar] — the top bar and the palette both read this */
-  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['artifacts', 'Artifacts', 1], ['compose', 'Compose', 1],
+  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['artifacts', 'For you', 1], ['compose', 'Compose', 1],
     ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']];
   function paletteActions(s) {
     const A = [];
@@ -45,6 +45,12 @@
     add('Start something', 'a procedure or an instruction', () => NL.openStart(), 'new launch run');
     add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
     add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
+    (NL.liveCampaigns ? NL.liveCampaigns(s) : []).forEach(c => {
+      const nm = c.name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
+      if (c.status === 'active' || c.status === 'finishing') add(`Pause campaign ${nm}`, 'no new pass starts; what is running finishes', () => NL.campaignAct(c, 'pause'), 'campaign autopilot pause');
+      if (c.status === 'paused' || c.status === 'stalled') add(`Resume campaign ${nm}`, 'carry on from where it paused', () => NL.campaignAct(c, 'resume'), 'campaign autopilot resume');
+      if (!['done', 'stopped', 'stopping'].includes(c.status)) add(`Stop campaign ${nm}…`, 'stops its runs and writes a final report', () => NL.campaignAct(c, 'stop'), 'campaign autopilot stop end');
+    });
     add('Explore a new direction', '/ideate', () => NL.openStart({ intent: 'ideate' }));
     add('New procedure…', 'Compose — start from a copy', () => { NL.go('compose'); setTimeout(() => NL.composeNew('procedure'), 50); }, 'skill add create workflow');
     add('Tour of Compose', 'how to make the lab yours, in a minute', () => NL.composeTour(), 'customise customize workflow help');
@@ -90,8 +96,8 @@
     const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
-        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${elsewhere} thing(s) need you in your other labs`}>+${elsewhere}</span>` : null}</a>
-      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && NL.artifactsUnseen(s).length ? html` <span class="navcount">${NL.artifactsUnseen(s).length}</span>` : null}</a>`)}</nav>
+        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${NL.plural(elsewhere, 'thing')} in your other labs ${elsewhere === 1 ? 'needs' : 'need'} you — open Labs & machines`}>+${elsewhere} ${elsewhere === 1 ? 'needs' : 'need'} you</span>` : null}</a>
+      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && NL.artifactsAsking(s).length ? html` <span class="navcount warm" title="questions waiting on you">${NL.artifactsAsking(s).length}</span>` : id === 'artifacts' && NL.artifactsUnseen(s).length ? html` <i class="navdot" title="something new to look at"></i>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
         <${SoundBtn} />

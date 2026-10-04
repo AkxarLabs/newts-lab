@@ -120,13 +120,21 @@ The procedures above spawn parallel subagents defined in `.claude/agents/*.md` (
 
 ## Showing the PI something (artifacts)
 
-When you want the PI to *look* at something — a plan before you start it, results, a figure, a table, an HTML
-page you built to explore them — publish it rather than burying it in a file or a final message:
-`uv run python tools/artifact.py publish --title "…" --file <path> [--note "one line"]`. Add
-`--question "…" --choices "A;B;C"` when you need a decision; the PI's answer comes back to your run as its next
-message (and `tools/artifact.py replies` prints it). It shows in the dashboard's Artifacts page and as a sheet
-pinned in your room. Publish sparingly — what the PI would genuinely want to see — and never as a substitute
-for a gate: an artifact's reply is not a signature, and it never authorizes a FULL run.
+Publish an artifact when the PI would want to see something **unprompted**: a plan before you spend real
+compute, a result that changes what happens next, a figure or table the paper will use. Your procedure's
+contract says what it shows ("Show the PI"). Use
+`uv run python tools/artifact.py publish --title "…" --file <path> [--note "why you're showing this"]`.
+- **At most one per milestone.** Bundle the milestone into one `.md` (tables, links, a figure) rather than
+  several small artifacts. Never publish logs, per-seed plots, progress updates or "done" notices — those
+  belong in your run's final message.
+- **Revising:** republish under the same title prefixed `v2:` and say what changed in `--note`.
+- **A decision you can't make yourself:** add `--question "…" --choices "A;B;Not yet — let's talk"`. Make the
+  choices mutually exclusive, and say in the question what you'll do with each. Don't stop and wait: carry on
+  with whatever doesn't depend on the answer. The reply arrives as your next message (`tools/artifact.py
+  replies` prints it). If your run ends first, it is kept as a note for the next agent on this study, so name
+  what is pending in your final message. If you cannot go on **at all** without the answer, ask in the run
+  instead (the PI sees "your answer resumes it").
+- An artifact and its reply are **never** a gate signature, and never authorize a FULL run.
 
 ## Writing standards
 

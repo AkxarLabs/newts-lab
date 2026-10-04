@@ -482,9 +482,10 @@ L.createWorld = async function createWorld(canvas, opts) {
     for (const r of (s.runs || [])) {
       const rid = placeOfRun(s, r); if (!st[rid]) continue;
       if (now - Date.parse(r.created || r.started || 0) < 86400e3) st[rid].cost += runCost(r);   // (today by the lab's clock)
-      if ((r.denials || 0) > 0 || r.status === 'failed' || r.status === 'timeout') st[rid].risk += 1;
+      if ((r.denials || 0) > 0 || ['failed', 'timeout', 'killed'].includes(r.status) || (ACTIVE.has(r.status) && (r.heartbeat_age_s || 0) > 180)) st[rid].risk += 1;
     }
     for (const a of actors.values()) if (!a.leaving && st[a.room]) { st[a.room].n += 1; if (a.spec.pose === 'wait') st[a.room].asks += 1; }
+    for (const it of (s.items || [])) if (it.gate && !it.gate_signed) { const rid = roomOfItem(s, it); if (st[rid]) st[rid].gate = it.gate; }
     return st;
   }
   function overlays() {
@@ -496,10 +497,17 @@ L.createWorld = async function createWorld(canvas, opts) {
     for (const o of Object.values(W.rooms).sort((a, b) => busy(b) - busy(a))) {
       const [sx, sy, vis] = toScreen(o.x, 1.7, o.z - o.ez / 2 + 0.6); if (!vis) continue;
       const x = stats[o.id] || {};
-      const hw = Math.max(50, o.title.length * 4.6), box = [sx - hw, sy - 36, sx + hw, sy];
+      const hw = Math.max(56, o.title.length * 5.2, 70), box = [sx - hw, sy - 44, sx + hw, sy + 2];
       const free = sy - 36 > insets.top + 40 && sy < (insets.cut || innerHeight) && !placed.some(q => box[0] < q[2] && q[0] < box[2] && box[1] < q[3] && q[1] < box[3]);
-      const line = lens === 'cost' ? `<span class="hot">$${x.cost.toFixed(2)} today</span>` : lens === 'risk' ? `<span class="${x.risk ? 'hot' : ''}">${x.risk} flagged</span>`
-        : o.building ? '<span class="hot">being built</span>' : `<span>${o.kicker ? esc(o.kicker) + ' · ' : ''}${x.n} agent${x.n === 1 ? '' : 's'}${x.asks ? ` · <em class="hot">${x.asks} asking you</em>` : ''}</span>`;
+      // a project's lab whose agent is working elsewhere (writing, say) says where, rather than looking idle
+      const away = o.study && !x.n ? [...actors.values()].find(a => !a.leaving && a.spec.run && a.spec.run.subject === o.study && a.room !== o.id && W.rooms[a.room]) : null;
+      const kick = o.kicker ? esc(o.kicker) + ' · ' : '';
+      const line = lens === 'cost' ? `<span class="hot">$${x.cost.toFixed(2)} today</span>`
+        : lens === 'risk' ? (x.risk ? `<span class="hot">${x.risk} to look at — failed, blocked or gone quiet</span>` : `<span>${kick}nothing risky</span>`)
+        : lens === 'waiting' ? (x.asks || x.gate ? `<span class="hot">${[x.asks ? `${x.asks} asking you` : '', x.gate ? `Gate ${x.gate} to sign` : ''].filter(Boolean).join(' · ')}</span>` : `<span>${kick}nothing for you</span>`)
+        : o.building ? '<span class="hot">being built — its project repo is being set up</span>'
+        : away ? `<span>${kick}its agent is in ${esc(W.rooms[away.room].title)}</span>`
+        : `<span>${kick}${x.n} agent${x.n === 1 ? '' : 's'}${x.asks ? ` · <em class="hot">${x.asks} asking you</em>` : ''}</span>`;
       if (free) { placed.push(box); out.push(`<div class="wl-room" style="left:${sx}px;top:${sy}px"><b>${esc(o.title)}</b>${line}</div>`); }
       // the floor tells the lens
       let tint = null, k = 0;
@@ -512,15 +520,15 @@ L.createWorld = async function createWorld(canvas, opts) {
       const [sx, sy, vis] = toScreen(nb._at[0], 2.2, nb._at[1]); if (!vis || sy < insets.top + 30) continue;
       const state = [nb.needs ? `<em class="hot">${nb.needs} need${nb.needs === 1 ? 's' : ''} you</em>` : '', nb.running ? `${nb.running} at work` : '',
         nb.state !== 'here' && nb.state !== 'connected' ? 'not connected' : ''].filter(Boolean).join(' · ');
-      const hw = Math.max(nb.name.length * 4.2, (nb.machine || '').length * 3.6, 40), hit = bx => placed.some(q => bx[0] < q[2] && q[0] < bx[2] && bx[1] < q[3] && q[1] < bx[3]);
-      let at = [sx, sy], box = [sx - hw, sy - 46, sx + hw, sy];
+      const hw = Math.max(nb.name.length * 4.6, (nb.machine || '').length * 3.8, 56), hit = bx => placed.some(q => bx[0] < q[2] && q[0] < bx[2] && bx[1] < q[3] && q[1] < bx[3]);
+      let at = [sx, sy], box = [sx - hw, sy - 62, sx + hw, sy];
       if (hit(box)) {            // above its table is taken: try beside it, toward the middle of the view
         const side = sx < innerWidth / 2 ? 1 : -1, [tx, ty] = toScreen(nb._at[0] + side * 7.5, 0.6, nb._at[1]);
-        at = [tx, ty]; box = [tx - hw, ty - 46, tx + hw, ty];
+        at = [tx, ty]; box = [tx - hw, ty - 62, tx + hw, ty];
         if (hit(box)) continue;
       }
       placed.push(box);
-      out.push(`<div class="wl-room wl-nb" style="left:${at[0]}px;top:${at[1]}px"><b>${esc(nb.name)}</b><span>${esc(nb.machine || '')}</span>${state ? `<span>${state}</span>` : ''}</div>`);
+      out.push(`<div class="wl-room wl-nb" style="left:${at[0]}px;top:${at[1]}px"><b>${esc(nb.name)}</b><span>${esc(nb.machine || '')}</span>${state ? `<span>${state}</span>` : ''}<span class="wl-go">click to go there</span></div>`);
     }
     for (const a of actors.values()) {
       if (a.leaving && a.spec.kind === 'sub') continue;
@@ -536,6 +544,8 @@ L.createWorld = async function createWorld(canvas, opts) {
       if (highlightRole && sp.badge !== ROLE_BADGE[highlightRole]) continue;
       if (txt) out.push(`<div class="wl-bub ${cls}${txt.length < 4 ? ' icon' : ''}" style="left:${sx}px;top:${sy}px">${esc(txt)}</div>`);
     }
+    if (lens === 'cost') { const total = Object.values(stats).reduce((a, x) => a + x.cost, 0);
+      out.push(`<div class="wl-total"><b>$${total.toFixed(2)}</b> spent today across the lab<small>estimated from each run's token use · brighter floor = more spent</small></div>`); }
     overlay.innerHTML = out.join('');
   }
 

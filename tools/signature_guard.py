@@ -128,6 +128,23 @@ def _via_signed_campaign(text: str) -> bool:
     return any(_campaign_signed(n) for n in CAMPAIGN_REF_RE.findall(text or ""))
 
 
+def _gate1_delegated(name: str) -> bool:
+    """A signed brief delegates Gate 1 only if its "## Gate 1 delegation" section does: not marked NOT DELEGATED,
+    and at least one of its bounds ticked. (A brief with no such section — an older, hand-written one — is read as
+    it always was: its signature is the delegation.)"""
+    text = _read(HUB / "lab" / "campaigns" / name) or ""
+    sec = text.split("## Gate 1 delegation", 1)
+    if len(sec) < 2:
+        return True
+    head, _, body = sec[1].partition("\n")
+    body = body.split("\n## ", 1)[0]
+    return "NOT DELEGATED" not in head.upper() and bool(re.search(r"^\s*- \[[xX]\]", body, re.M))
+
+
+def _via_gate1_delegation(text: str) -> bool:
+    return any(_campaign_signed(n) and _gate1_delegated(n) for n in CAMPAIGN_REF_RE.findall(text or ""))
+
+
 def _added(old: str | None, new: str) -> str:
     """The lines of `new` that were not in `old` (a multiset diff — enough to read a new marker)."""
     from collections import Counter
@@ -181,10 +198,11 @@ def _rule_proposal(path: Path, old: str | None, new: str) -> str | None:
     if path.name != "proposal.md":
         return None
     if _count(GATE1_RE, new) > _count(GATE1_RE, old):
-        if _via_signed_campaign(_added(old, new)):
+        if _via_gate1_delegation(_added(old, new)):
             return None
         return ("a Gate-1 approval can only be recorded by the PI (the dashboard's Sign button), or under a "
-                "PI-signed campaign brief that is referenced in the marker")
+                "PI-signed campaign brief that delegates Gate 1 (its '## Gate 1 delegation' bounds ticked) and is "
+                "referenced in the marker")
     return None
 
 

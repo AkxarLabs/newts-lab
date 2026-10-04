@@ -180,3 +180,13 @@ def test_the_room_brief_for_design_room(m, hub):
     text = wf.room_brief("lab", hub.root)
     assert "experiment" in text and "Gate 2" in text and "lab/.bus/designs/lab/room.json" in text
     assert wf.room_brief("nope", hub.root) is None
+
+def test_a_project_type_can_start_blank(m, hub):
+    """A lab with no project type to copy can still add one: a TYPE.md to fill in, in the draft."""
+    _op(m, op="copy", kind="type", like="", name="field-notes", title="Fieldwork and interviews.")
+    card = m.compose._draft() / "lab/templates/project-types/field-notes/TYPE.md"
+    assert card.is_file() and "`field-notes`" in card.read_text(encoding="utf-8")
+    assert not (hub.root / "lab/templates/project-types/field-notes").exists()   # the lab: untouched
+    assert "field-notes" in {t["name"] for t in m.compose.view()[0]["types"]}
+    out, code = m.compose.op({"op": "copy", "kind": "type", "like": "", "name": "field-notes"})
+    assert code != 200 and "already" in out["error"]

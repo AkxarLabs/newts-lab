@@ -27,10 +27,10 @@
   M.roomList = function roomList(s) {
     const wf = M.wfOf(s), items = (s && s.items) || [], out = [];
     for (const r of wf.rooms || []) {
-      if (!M.perProject(wf, r)) { out.push({ id: r.id, base: r, title: r.title || r.label || r.id, states: r.states || [], place: r.place, facing: r.facing }); continue; }
+      if (!M.perProject(wf, r)) { out.push({ id: r.id, base: r, title: r.title || r.label || r.id, kicker: r.title && r.label && r.label !== r.title ? r.label : null, states: r.states || [], place: r.place, facing: r.facing }); continue; }
       const live = items.filter(i => i.has_project && !terminal(wf, i.state));
       const raising = items.filter(i => !i.has_project && M.building(s, i));
-      if (!live.length && !raising.length) out.push({ id: r.id, base: r, title: r.title || r.id, states: r.states || [], place: r.place, facing: r.facing, empty: true });
+      if (!live.length && !raising.length) out.push({ id: r.id, base: r, title: r.title || r.id, kicker: r.label || null, states: r.states || [], place: r.place, facing: r.facing, empty: true });
       live.forEach((it, k) => out.push({ id: `${r.id}:${it.id}`, base: r, title: it.title || it.id, kicker: r.label || 'Lab', states: r.states || [], study: it.id, type: it.project_type,
         place: k === 0 ? r.place : null, facing: k === 0 ? r.facing : null, extra: k > 0 }));
       raising.forEach(it => out.push({ id: `${r.id}:${it.id}`, base: r, title: it.title || it.id, kicker: 'a lab being built', states: [], study: it.id, building: true, extra: true }));

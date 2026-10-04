@@ -10,11 +10,16 @@
   const WORD = { active: 'Running', finishing: 'Wrapping up', stopping: 'Stopping', paused: 'Paused', stalled: 'Needs you',
     done: 'Done', stopped: 'Stopped' };
   const TONE = { active: 'live', finishing: 'live', stopping: 'muted', paused: 'warn', stalled: 'bad', done: 'ok', stopped: 'muted' };
-  NL.campaignsOf = s => (s.campaign_states || []);
+  const when = ts => NL.when(ts);   // "Sun 4 Oct, 13:47" (core.js)
+
+  NL.campaignsOf = s => (s.campaign_states || (NL.DEMO && NL.demoCampaignStates ? NL.demoCampaignStates(0) : []));
   NL.liveCampaigns = s => NL.campaignsOf(s).filter(c => ['active', 'finishing', 'stopping', 'paused', 'stalled'].includes(c.status));
 
+  // what the campaign's runs cost so far (from the runs this page sees; a subscription login may report none)
+  const spentOf = (s, c) => c.spent_usd != null ? c.spent_usd
+    : ((s && s.runs) || []).filter(r => r.campaign === c.name).reduce((a, r) => a + (+((r.usage || {}).cost_usd) || 0), 0);
   const left = c => { if (!c.deadline) return null; const ms = new Date(c.deadline) - Date.now(); if (ms <= 0) return 'deadline passed';
-    const h = Math.floor(ms / 3600e3), m = Math.round((ms % 3600e3) / 60e3); return (h ? `${h} h ` : '') + `${m} min left`; };
+    const tm = Math.round(ms / 60e3), h = Math.floor(tm / 60), m = tm % 60; return (h ? `${h} h ` : '') + (m || !h ? `${m} min ` : '') + 'left'; };
   const nextIn = c => { if (!c.next_cycle_at || c.status !== 'active') return null; const ms = new Date(c.next_cycle_at) - Date.now();
     return ms > 60e3 ? `next pass in ${Math.round(ms / 60e3)} min` : 'next pass now'; };
   const counts = c => { const st = Object.values(c.studies || {}).filter(x => x.member);
@@ -27,33 +32,39 @@
     return NL.act('/api/campaign/control', { name: c.name, action, confirm: true, ...(extra || {}) });
   };
 
+  NL.campaignAct = act;   // the palette's Pause / Stop entries (app.js) go through the same confirms
+
   /* a question a pass left: answer it here and the next pass gets the answer */
   const CampaignQuestion = ({ c, q }) => {
     const [text, setText] = useState('');
     const send = async () => { if (!text.trim()) return; const x = await act(c, 'answer', { index: q.index, text: text.trim() }); if (x && x.ok) setText(''); };
     return html`<div class=${cls('inrow', q.answer ? 'sev-info' : 'sev-warn')}><div class="inrow-main"><span class="inrow-ico">?</span><span class="inrow-t"><b>${q.question}</b>
-      <small>${NL.hhmm(q.ts)}${q.answer ? html` — you answered: <b>${NL.clip(q.answer, 120)}</b>${q.delivered ? ' (the next pass got it)' : ' (the next pass gets it)'}` : ' — your answer goes to the next pass'}</small></span></div>
+      <small>${when(q.ts)}${q.answer ? html` — you answered: <b>${NL.clip(q.answer, 120)}</b>${q.delivered ? ' (the next pass got it)' : ' (the next pass gets it)'}` : ' — your answer goes to the next pass'}</small></span></div>
       ${q.answer ? null : html`<div class="row grow"><${NL.Input} value=${text} onInput=${setText} onEnter=${send} placeholder="Your answer…" /><${NL.Btn} small kind="primary" onClick=${send} disabled=${!text.trim()}>Answer</${NL.Btn}></div>`}</div>`;
   };
 
   NL.CampaignCard = ({ c, compact }) => {
+    const s = NL.useLab();
     const k = counts(c);
     const b = c.budget || {};
     const pct = b.agent_minutes ? Math.min(100, Math.round(100 * (c.used_minutes || 0) / b.agent_minutes)) : null;
+    const spent = spentOf(s, c);
+    const live = c.status === 'active' || c.status === 'finishing';
     return html`<div class=${cls('camp-card', 'st-' + c.status, compact && 'compact')}>
       <div class="row between"><button type="button" class="link camp-title" onClick=${() => NL.openCampaign(c.name)}>${NL.clip(c.name.replace(/^\d{4}-\d{2}-\d{2}-/, ''), compact ? 28 : 60)}</button>
         <${NL.Pill} tone=${TONE[c.status] || 'muted'}>${TONE[c.status] === 'live' ? html`<i class="dot-live"></i>` : null}${WORD[c.status] || c.status}</${NL.Pill}></div>
-      <div class="muted small">${[`pass ${c.cycles || 0}`, left(c), nextIn(c), `${Math.round(c.used_minutes || 0)} agent-min${b.agent_minutes ? ' of ' + Math.round(b.agent_minutes) : ''}`].filter(Boolean).join(' · ')}</div>
+      <div class="muted small" title=${c.deadline ? 'runs until ' + when(c.deadline) : ''}>${[`pass ${c.cycles || 0}`, left(c), nextIn(c), `${Math.round(c.used_minutes || 0)} agent-min${b.agent_minutes ? ' of ' + Math.round(b.agent_minutes) : ''}`, spent ? `≈ $${spent.toFixed(2)} spent` : null].filter(Boolean).join(' · ')}</div>
+      ${!compact && c.deadline ? html`<div class="muted small">Runs until ${when(c.deadline)}${c.created ? ` · started ${when(c.created)}` : ''}</div>` : null}
       ${pct != null ? html`<${NL.Bar} value=${pct} max=${100} />` : null}
       <div class="row gap wrap small">${k.n ? html`<span>${NL.plural(k.n, 'study', 'studies')}</span>` : html`<span class="muted">no studies yet</span>`}
         ${k.waiting ? html`<${NL.Pill} tone="ask">${k.waiting} waiting for you</${NL.Pill}>` : null}
         ${c.gate3_auto ? html`<${NL.Pill} tone="state" title="papers may finalize without you">Gate 3 delegated</${NL.Pill}>` : null}
-        ${(c.questions || []).length ? html`<${NL.Pill} tone="ask">${c.questions.length} question${c.questions.length > 1 ? 's' : ''}</${NL.Pill}>` : null}</div>
+        ${(c.questions || []).filter(q => !q.answer).length ? html`<${NL.Pill} tone="ask">${NL.plural(c.questions.filter(q => !q.answer).length, 'question')}</${NL.Pill}>` : null}</div>
       ${c.paused_reason && ['paused', 'stalled'].includes(c.status) ? html`<div class="small warn">${c.paused_reason}</div>` : null}
-      ${!compact ? html`<div class="row gap">${c.status === 'active' || c.status === 'finishing' ? html`<${NL.Btn} small onClick=${() => act(c, 'pause')}>Pause</${NL.Btn}>` : null}
+      <div class=${cls('row gap', compact && 'camp-ctl')}>${live ? html`<${NL.Btn} small onClick=${() => act(c, 'pause')} title="no new pass starts; what is running finishes">Pause</${NL.Btn}>` : null}
         ${['paused', 'stalled'].includes(c.status) ? html`<${NL.Btn} small kind="primary" onClick=${() => act(c, 'resume')}>Resume</${NL.Btn}>` : null}
-        ${!['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')}>Stop…</${NL.Btn}>` : null}
-        <${NL.Btn} small kind="ghost" onClick=${() => NL.openCampaign(c.name)}>Details</${NL.Btn}></div>` : null}</div>`;
+        ${!['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')} title="stop for good: ends what is running and writes a final report">Stop…</${NL.Btn}>` : null}
+        ${!compact ? html`<${NL.Btn} small kind="ghost" onClick=${() => NL.openCampaign(c.name)}>Details</${NL.Btn}>` : null}</div></div>`;
   };
 
   NL.CampaignSheet = ({ name, onClose }) => {
@@ -74,7 +85,7 @@
           ${c.gate3_auto && !v.gate3_done ? html`<button type="button" class="link small" onClick=${() => act(c, v.hold ? 'unhold' : 'hold', { study: slug })}>${v.hold ? 'let it auto-finalize' : 'hold from auto-finalizing'}</button>` : null}</div>`)
         : html`<p class="muted">None yet — the first pass files ideas and adds them to the campaign log.</p>`}</${NL.Section}>
       <${NL.Section} title="What it did" count=${(c.events || []).length}>
-        <div class="camp-events">${(c.events || []).slice().reverse().map(e => html`<div><span class="mono muted">${NL.hhmm(e.ts)}</span> ${e.what}</div>`)}</div></${NL.Section}>
+        <div class="camp-events">${(c.events || []).slice().reverse().map(e => html`<div><span class="mono muted">${when(e.ts)}</span> ${e.what}</div>`)}</div></${NL.Section}>
       <${NL.Section} title="Steps it started" count=${(c.dispatch_log || []).length}>
         ${(c.dispatch_log || []).slice().reverse().map(d => html`<div class=${cls('camp-disp', d.result !== 'started' && 'refused')}>
           <span class="mono">/${d.skill} ${d.target !== 'hub' ? d.target : ''}</span>
@@ -86,4 +97,42 @@
     </${NL.Sheet}>`;
   };
   NL.openCampaign = name => NL.open(NL.CampaignSheet, { name }, { key: 'campaign:' + name });
+
+  /* demo mode: one campaign in the shape the keeper's summary() serves (tools/executor/campaigns.py) —
+     demo.js puts NL.demoCampaignStates(T) into the synthetic state as `campaign_states`. T = the demo tick (4 s). */
+  const DEMO_T0 = Date.now();
+  NL.demoCampaignStates = (T) => {
+    T = T || 0;
+    const iso = ms => { const d = new Date(ms), p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
+    const start = DEMO_T0 - 5 * 3600e3, at = min => iso(start + min * 60e3);
+    const name = iso(start).slice(0, 10) + '-sparse-routing-sprint';
+    const passes = 14 + Math.floor(T / 15);
+    const nextMin = 20 - (Math.floor(T / 3) % 20);
+    const dispatch = [
+      { ts: at(212), skill: 'experiment', target: 'moe', result: 'started', run_id: 'r-moe' },
+      { ts: at(236), skill: 'improve', target: 'rl', result: 'refused: rl is waiting for the PI (Gate 2 — more FULL runs than the brief allows)' },
+      { ts: at(251), skill: 'analyze', target: 'ana-1', result: 'started', run_id: 'r-ana' },
+      { ts: at(268), skill: 'lit-review', target: 'lit-1', result: 'started', run_id: 'r-lit' },
+      { ts: at(284), skill: 'ideate', target: 'hub', result: 'refused: the brief allows 2 idea(s) in flight' }];
+    return [{
+      name, file: `lab/campaigns/${name}.md`, status: 'active', created: at(0), deadline: iso(start + 12 * 3600e3),
+      budget: { agent_minutes: 12 * 2 * 60, max_cycles: 0 }, used_minutes: 618 + T * 1.5, cycle_minutes: 90, repeat_minutes: 20,
+      gate3_auto: false, consecutive_failures: 0, max_failures: 4, next_cycle_at: iso(Date.now() + nextMin * 60e3),
+      paused_reason: null, last_error: null, cycles: passes, spent_usd: 11.4 + T * 0.03,
+      last_cycles: [{ run_id: 'c-' + passes, outcome: 'completed', progress: true }],
+      studies: { moe: { member: true, waiting: null, hold: false, gate3_done: false },
+        rl: { member: true, waiting: 'Gate 2 — more FULL runs than the brief allows', hold: false, gate3_done: false },
+        'ana-1': { member: true, waiting: null, hold: false, gate3_done: false },
+        'lit-1': { member: true, waiting: null, hold: false, gate3_done: false } },
+      dispatch_log: dispatch,
+      questions: [{ ts: at(262), run_id: 'r-c13', index: 0,
+        question: 'Two seeds of moe diverge at step 6k. Re-run them with the balance loss, or drop the seed and move on?' }],
+      gate3_log: [],
+      events: [{ ts: at(0), what: 'started' }, { ts: at(41), what: 'pass 2: filed 3 ideas into the Campaign Log' },
+        { ts: at(97), what: 'moe: Gate 1 approved within the signed bounds' }, { ts: at(150), what: 'pass 7 hit a usage limit — resumed when it lifted' },
+        { ts: at(236), what: 'rl: waiting for you (Gate 2)' }, { ts: at(262), what: 'a pass left a question for you' },
+        { ts: at(284), what: `pass ${passes}: 2 steps started, 1 refused` }],
+    }];
+  };
 })();

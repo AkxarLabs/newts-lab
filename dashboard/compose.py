@@ -687,6 +687,15 @@ def _op_rule(b: dict) -> str:
     return f"rule {rid} updated"
 
 
+def _blank_type(name: str, title: str | None) -> None:
+    """A project type from nothing — for a lab that has none to copy yet: one TYPE.md to fill in."""
+    rel = f"lab/templates/project-types/{name}/TYPE.md"
+    if (_begin() / rel).exists() or (_begin() / f"templates/project-types/{name}/TYPE.md").exists():
+        raise ComposeError(f"there is already a project type '{name}'")
+    _put(rel, f"# Project type: `{name}`\n\n{title or 'What a project of this type is, in a sentence or two.'}\n\n"
+              "- **An experiment is:** …\n- **Runner:** …\n- **Conventions:** what every agent in a project of this type should know.\n")
+
+
 def _op_copy(b: dict) -> str:
     """Add a component by copying the closest one (tools/new.py, run on the draft)."""
     new, d = ctx.tool("new"), _begin()
@@ -702,6 +711,8 @@ def _op_copy(b: dict) -> str:
             new.new_role(d, name, like, label=title)
         elif kind == "check":
             new.new_check(d, name, like)
+        elif kind == "type" and not like:
+            _blank_type(new._name(name), title)
         elif kind == "type":
             new.new_type(d, name, like)
         elif kind == "rule":

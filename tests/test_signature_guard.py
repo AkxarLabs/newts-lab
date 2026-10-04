@@ -298,3 +298,19 @@ def test_the_rules_the_manuals_and_the_checks_are_the_pis(g, hub):
     assert g.decide(write(hub.root / "studies" / "idea-a" / "notes.md", "fine\n")) is None
     assert g.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(hub.root),
                      "tool_input": {"command": "echo '14. new rule' >> AGENTS.md"}})
+
+
+def test_a_signed_brief_that_does_not_delegate_gate1_cannot_be_cited_for_it(g, hub):
+    """The PI can sign a campaign but keep Gate 1: then no proposal may claim self-approval under it."""
+    p = hub.root / "studies" / "idea-a" / "proposal.md"
+    d = hub.lab / "campaigns"
+    d.mkdir(parents=True, exist_ok=True)
+    signed = "## PI authorization\n\n- [x] Authorized as scoped above · **PI:** me\n"
+    head = "## Gate 1 delegation (the PI pre-authorizes proposal approval WITHIN these bounds)\n\n"
+    (d / "keep.md").write_text("# C\n\n## Gate 1 delegation — NOT DELEGATED (every proposal waits for the PI)\n\n"
+                               "- [ ] Compute budget ≤ 10\n\n" + signed, encoding="utf-8")
+    (d / "give.md").write_text("# C\n\n" + head + "- [x] Compute budget ≤ 10\n\n" + signed, encoding="utf-8")
+    (d / "unticked.md").write_text("# C\n\n" + head + "- [ ] Compute budget ≤ ___\n\n" + signed, encoding="utf-8")
+    assert g.decide(edit(p, "pending", "Gate 1 approved (self-approved within lab/campaigns/keep.md)"))
+    assert g.decide(edit(p, "pending", "Gate 1 approved (self-approved within lab/campaigns/unticked.md)"))
+    assert g.decide(edit(p, "pending", "Gate 1 approved (self-approved within lab/campaigns/give.md)")) is None

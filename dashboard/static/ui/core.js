@@ -14,6 +14,13 @@
   NL.hhmm = ts => (ts || '').slice(11, 16);
   NL.plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
   NL.mins = s => s == null ? '' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${(s / 3600).toFixed(1)}h`;
+  /** one way to write a moment everywhere: "Sun 4 Oct, 13:47" (the year only when it isn't this one) */
+  NL.when = ts => {
+    const d = ts ? new Date(ts) : null;
+    if (!d || isNaN(d)) return '';
+    const p = n => String(n).padStart(2, '0'), now = new Date();
+    return `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}${d.getFullYear() !== now.getFullYear() ? ' ' + d.getFullYear() : ''}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
   NL.ago = ts => {
     if (!ts) return '';
     const t = Date.parse(ts.length <= 19 ? ts : ts); if (isNaN(t)) return '';
@@ -91,7 +98,13 @@
     completed: 'ok', failed: 'bad', timeout: 'bad', killed: 'muted' };
   NL.RUN_ACTIVE = new Set(['starting', 'running', 'resuming']);
   NL.RUN_DONE = new Set(['completed', 'failed', 'timeout', 'killed']);
-  NL.runTitle = r => r ? (r.kind === 'ask' ? (r.label || r.prompt_summary || 'Instruction') : (r.command || r.label || r.prompt_summary || r.run_id)) : '';
+  NL.runTitle = r => {
+    if (!r) return '';
+    if (r.kind === 'ask' || r.skill === 'ask') return r.label || r.prompt_summary || 'Instruction';
+    const it = r.subject && NL.getState && (NL.getState().items || []).find(i => i.id === r.subject);
+    const what = r.skill && NL.PROC && NL.PROC[r.skill] ? NL.PROC[r.skill].title : (r.label || r.command || r.prompt_summary);
+    return what ? what + (it ? ' · ' + (it.title || it.id) : r.subject ? ' · ' + r.subject : '') : r.run_id;
+  };
 
   NL.roleOf = r => NL.ROLE[r] || { label: r || 'Agent', color: 'var(--ink-soft)' };
 
@@ -137,7 +150,9 @@
   };
 
   /* ── API ───────────────────────────────────────────────────────────────── */
+  const DEMO_READS = new Set(['/api/read', '/api/libdoc']);   // POSTs that only read: the demo answers them itself
   NL.api = async function api(path, body) {
+    if (NL.DEMO && DEMO_READS.has(path)) return NL.demoRead ? NL.demoRead(path, body || {}) : { error: 'not in the demo' };
     if (NL.DEMO) return { error: 'demo mode — nothing is written', demo: true };
     try {
       const r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -147,6 +162,7 @@
     } catch (e) { return { error: 'could not reach the lab server — is it still running?' }; }
   };
   NL.get = async function get(path) {
+    if (NL.DEMO && NL.demoGet) { const x = NL.demoGet(path); if (x) return x; }   // the demo's own lab, not the server's
     try {
       const r = await fetch(path, { credentials: 'same-origin' });
       return await r.json().catch(() => ({ error: `server said ${r.status}` }));

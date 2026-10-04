@@ -29,6 +29,8 @@
     const term = async (purpose, backend) => { const how = await NL.runOnLabMachine(purpose, backend); if (how) setWatch(purpose === 'login' ? backend : null); };
     return html`<div class=${cls('clis', compact && 'compact')}>${['claude', 'codex', 'opencode'].map(b => {
       const c = clis[b] || {};
+      if (NL.DEMO) return html`<div class="cli cli-unknown"><div class="cli-top"><b>${b}</b><${NL.Pill} tone="muted">demo — not checked</${NL.Pill}></div>
+        <div class="muted small">${WHAT[b]}</div><div class="muted small">The demo doesn't look at this computer's agents.</div></div>`;
       const st = !c.found ? 'missing' : c.logged_in === true ? 'ok' : c.logged_in === false ? 'out' : 'unknown';
       return html`<div class=${cls('cli', 'cli-' + st)}>
         <div class="cli-top"><b>${b}</b><${NL.Pill} tone=${st === 'ok' ? 'ok' : st === 'missing' ? 'muted' : 'warn'}>${st === 'ok' ? 'signed in' : st === 'missing' ? 'not installed' : st === 'out' ? 'not signed in' : 'sign-in unknown'}</${NL.Pill}></div>
@@ -49,16 +51,18 @@
     return NL.act(path, { confirm: true, changes: Object.fromEntries(keys.map(k => [k, v[k]])) }, 'Saved');
   };
 
+  // [key, label, hint, min, default — shown as the placeholder while the field is blank (tools/executor)]
   const EXEC = [
-    ['max_minutes', 'Time limit per run', 'minutes', 5],
-    ['max_concurrent_total', 'Runs at once, lab-wide', '', 1], ['hub_max_concurrent', 'Lab-level runs at once', 'keep 1 so two runs never edit the registry together', 1],
-    ['max_concurrent', 'Runs at once per project', '', 1],
-    ['daily_max_runs', 'Daily run limit', '0 = no limit', 0], ['daily_max_minutes', 'Daily agent-minutes limit', '0 = no limit', 0],
-    ['chain_max_steps', '“Keep going until a gate” step limit', '', 1],
-    ['park_minutes', 'Keep an agent waiting for your answer', 'minutes; then it pauses and your answer resumes it', 1],
-    ['permission_minutes', 'Wait for your allow/deny on a risky action', 'minutes; then it is denied (campaigns: at once)', 1],
-    ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1],
-    ['linger_minutes', 'Keep Ask Newt open after it answers', 'minutes, for your next message', 0],
+    ['max_minutes', 'Time limit per run', 'minutes', 5, 240],
+    ['max_concurrent_total', 'Agents running at once (whole lab)', 'Subagents an agent starts don’t count. Campaign limits apply on top; the lower one wins.', 1, 3],
+    ['hub_max_concurrent', 'Lab-wide jobs at once (ideation, registry edits — keep 1)', 'keep 1 so two jobs never edit the registry together', 1, 1],
+    ['max_concurrent', 'Agents at once per project (each project can have its own main agent)', '', 1, 3],
+    ['daily_max_runs', 'Daily run limit', '0 = no limit', 0, 0], ['daily_max_minutes', 'Daily agent-minutes limit', '0 = no limit', 0, 0],
+    ['chain_max_steps', 'Max steps when an agent runs on to the next gate', '', 1, 6],
+    ['park_minutes', 'Keep an agent waiting for your answer', 'minutes; then it pauses and your answer resumes it', 1, 60],
+    ['permission_minutes', 'Wait for your allow/deny on a risky action', 'minutes; then it is denied (campaigns: at once)', 1, 30],
+    ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1, 30],
+    ['linger_minutes', 'Keep Ask Newt (the chat box on Home) open after it answers', 'minutes, for your next message', 0, 10],
   ];
   const ExecForm = () => {
     const s = NL.useLab();
@@ -75,17 +79,17 @@
         <${NL.Field} label="Default model" hint="blank or “inherit” = the agent's own default"><${NL.Input} value=${v.model} onInput=${x2 => set('model', x2)} mono /></${NL.Field}>
         <${NL.Field} label="What claude may do without asking" hint="auto = its safety classifier decides; plan = read-only"><${NL.Select} value=${v.permission_mode} onChange=${x2 => set('permission_mode', x2)}
           options=${[{ value: 'auto', label: 'auto (recommended)' }, { value: 'acceptEdits', label: 'accept file edits' }, { value: 'default', label: 'ask for everything' }, { value: 'plan', label: 'plan only (read-only)' }, { value: 'dontAsk', label: 'deny anything that would ask' }]} /></${NL.Field}>
-        ${EXEC.map(([k, label, hint, min]) => html`<${NL.Field} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} /></${NL.Field}>`)}
+        ${EXEC.map(([k, label, hint, min, def]) => html`<${NL.Field} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} placeholder=${def != null ? String(def) + ' (default)' : ''} /></${NL.Field}>`)}
       </div>
       <${NL.Toggle} on=${v.live} onChange=${x2 => set('live', x2)} label="Talk to agents while they run" sub="live sessions: questions, approvals and your messages reach the running agent; off = each answer restarts it" />
-      <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I sign Gate 1" sub="queues /spawn-project right after your signature" />
+      <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I sign Gate 1" sub="queues creating the project repo right after your signature" />
       <div class="row end">${diff.length ? html`<span class="muted small">${NL.plural(diff.length, 'change')}</span><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div></div>`;
   };
 
   NL.LaunchSwitch = () => {
     const s = NL.useLab();
     const on = NL.execOn(s);
-    return html`<${NL.Toggle} on=${on} label="Start agents from the dashboard" sub=${on ? 'On — buttons here start agent sessions on this machine, as you.' : 'Off — the dashboard only records commands and signatures; agents act when you next run a session.'}
+    return html`<${NL.Toggle} on=${on} label="Let the dashboard start agents for you" sub=${on ? 'On — buttons here start headless Claude/Codex/opencode sessions on this machine, as you.' : 'Off — it only records what you ask, and you run it in your own terminal.'}
       onChange=${async val => { if (await NL.confirm({ title: val ? 'Let the dashboard start agents?' : 'Stop starting agents from here?', ok: val ? 'Turn on' : 'Turn off',
         body: val ? 'It runs the agent CLI on this machine, as you, with your login, within the limits below. Gates still wait for your signature.' : 'Nothing new starts from here. Runs already going finish on their own.' }))
         NL.act('/api/executor/enable', { enabled: val, confirm: true }, val ? 'Launching is on' : 'Launching is off'); }} />`;

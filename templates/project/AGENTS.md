@@ -132,7 +132,9 @@ block you can't justify is a finding, not an obstacle to remove.
 To ask the PI to look at a plan, results, a figure or a page you made, publish it to the lab's dashboard:
 `python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>` (outside a dashboard run, the hub is
 `hub_path` in `control.yaml`). `--question "…" --choices "A;B"` asks for a decision; the answer comes back to your
-run. Never a substitute for a gate or a Gate-2 envelope.
+run — don't stop and wait for it; if your run ends first it becomes a note for the next agent. One artifact per
+milestone (a plan before real compute, a result that changes the next step, a paper figure) — never logs or progress
+updates. Never a substitute for a gate or a Gate-2 envelope.
 
 ## Subagents (you decide when)
 

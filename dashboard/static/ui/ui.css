@@ -656,3 +656,52 @@ details.cmp-sec > summary { cursor: pointer; font-weight: 600; display: flex; al
 .sound-vol { display: flex; align-items: center; gap: 10px; } .sound-vol input { flex: 1; accent-color: var(--accent); }
 .cmp-look-variants { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .wl-nb b { font-size: 15px; } .wl-nb span { display: block; text-transform: none; letter-spacing: 0; }
+
+/* the run sheet: the question first, the subagent you clicked */
+.ask-q.plain { display: flex; flex-direction: column; gap: 8px; } .ask-text { font-size: 16px; }
+.sub-row.focus { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+/* For you: picking an answer, and the answered state */
+.art-choice { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--edge-2); background: var(--paper); color: var(--ink); font: inherit; }
+.art-choice.pickable { cursor: pointer; } .art-choice.pickable:hover { border-color: var(--accent); }
+.art-choice.chosen { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--paper)); font-weight: 600; }
+.art-choice.not { opacity: .5; }
+.art-ask.done { border-color: var(--edge); background: var(--paper); }
+.navcount.warm { background: var(--warm); color: #231400; }
+.navdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+
+/* the cost lens: the lab's total */
+.wl-total { position: fixed; top: calc(var(--top) + 62px); left: 14px; padding: 8px 12px; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-edge); backdrop-filter: blur(10px); font-size: 13px; }
+.wl-total b { color: var(--warm); font: 600 18px var(--mono); margin-right: 4px; } .wl-total small { display: block; color: var(--ink-soft); font-size: 11px; }
+
+/* ── Compose UX fixes (compose.js owns these classes): the demo note, the undo hint by Review & publish,
+   the tour link, states shown by name with their id muted, the method tab's intro, the hard-rules note ── */
+.cmp-demo { display: flex; align-items: center; gap: 8px; padding: 8px 32px; font-size: 13px; color: var(--ink); background: var(--accent-wash); border-bottom: 1px solid var(--edge); }
+.cmp-bar.draft { flex-wrap: wrap; row-gap: 4px; }
+.cmp-bar-undo { flex: 1 0 100%; text-align: right; font-size: 11.5px; margin-top: -4px; }
+.cmp-tour-link { margin-left: 12px; }
+.cmp-li-head { display: flex; gap: 8px; padding: 2px 10px; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.cmp-li-head-room { min-width: 12em; }
+.cmp-state-name { display: flex; align-items: center; gap: 8px; min-width: 0; } .cmp-state-name .input { flex: 1 1 auto; min-width: 8em; }
+.cmp-state-name .cmp-state-id { min-width: 0; white-space: nowrap; }
+.cmp-method-intro { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-wash); border-radius: 0 10px 10px 0; font-size: 13.5px; margin: 0 0 14px; }
+.cmp-rules-note { margin: -4px 0 8px; }
+@media (max-width: 760px) { .cmp-demo { padding: 8px 16px; } .cmp-bar-undo { text-align: left; } .cmp-li-head-room { min-width: 0; } }
+
+/* the Key: how to read the table */
+.key-note { font-size: 12px; line-height: 1.45; color: var(--ink-soft); padding: 2px 4px 6px; max-width: 300px; } .key-note b { color: var(--ink); font-weight: 600; }
+.since a { color: inherit; text-decoration: none; } .since a:hover { text-decoration: underline; }
+
+/* ── campaign form, campaign card controls, keep connected (campaign.js · composer.js · machines.js) ── */
+.camp-where { padding: 8px 12px; border-radius: var(--r); background: var(--paper-2); border: 1px solid var(--edge); margin-bottom: 10px; }
+.camp-group { border: 1px solid var(--edge); border-radius: var(--r); padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 6px; }
+.camp-group-soft { border-style: dashed; }
+.camp-group-h { font-weight: 700; font-size: 13px; }
+.camp-group-soft .camp-group-h { font-weight: 600; color: var(--ink-soft); }
+.camp-card .camp-ctl { flex-wrap: wrap; }
+label.keep.keep-vis { padding: 3px 8px; border: 1px solid var(--edge); border-radius: 999px; background: var(--paper-2); color: var(--ink); white-space: nowrap; }
+.keep-why { margin-top: 3px; }
+.table tr.click { cursor: pointer; } .table tr.click:hover td { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.btn .btn-sub, .btn-sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--ink-soft); }
+.stack .btn:has(.btn-sub) { flex-direction: column; align-items: flex-start; text-align: left; }
+.wl-nb .wl-go { font-style: italic; opacity: .7; }

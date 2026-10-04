@@ -44,6 +44,10 @@ def campaign_create(body: dict) -> tuple[dict, int]:
         return {"error": "hours and minutes must be numbers"}, 400
     if not (0 < hours <= 24 * 30) or agent_hours < 0 or not (10 <= cycle_minutes <= 24 * 60) or not (5 <= repeat_minutes <= 24 * 60):
         return {"error": "wall-clock 0–720 h; each cycle 10–1440 min; a pass every 5–1440 min"}, 400
+    # Gate 1 by delegation is the PI's choice on the form ("Proposals may pass Gate 1 without me when they fit
+    # these bounds"); absent = on (the form's default, and briefs signed before the switch existed)
+    g1 = f.get("gate1", True)
+    gate1_auto = not (g1 is False or str(g1).strip().lower() in ("false", "0", "no", "off"))
     gate3_auto = bool(f.get("gate3"))
     if gate3_auto and str(body.get("gate3_typed") or "").strip().lower() != "finalize":
         return {"error": "to let papers finalize without you, type finalize to confirm"}, 400
@@ -71,12 +75,20 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     t = t.replace("**Research direction(s):** <!-- from the PI -->", f"**Research direction(s):** {direction}")
     t = t.replace("carry up to ___ ideas", f"carry up to {ideas} ideas")
     t = t.replace("≤ ___ ideas in flight", f"≤ {parallel} ideas in flight")
+    box = "[x]" if gate1_auto else "[ ]"
     t = t.replace("- [ ] Compute budget ≤ ___ total, FULL runs ≤ ___ × ___ min",
-                  f"- [x] Compute budget ≤ {budget_total} total, FULL runs ≤ {full_runs} × {full_min} min")
-    t = t.replace("- [ ] Kill criteria + frozen eval", "- [x] Kill criteria + frozen eval")
-    t = t.replace("- [ ] Novelty verdict", "- [x] Novelty verdict")
+                  f"- {box} Compute budget ≤ {budget_total} total, FULL runs ≤ {full_runs} × {full_min} min")
+    t = t.replace("- [ ] Kill criteria + frozen eval", f"- {box} Kill criteria + frozen eval")
+    t = t.replace("- [ ] Novelty verdict", f"- {box} Novelty verdict")
     t = t.replace("- [ ] Scoping value re-verification passed with ≤ ___ open questions",
-                  f"- [x] Scoping value re-verification passed with ≤ {open_q} open questions")
+                  f"- {box} Scoping value re-verification passed with ≤ {open_q} open questions")
+    if not gate1_auto:
+        t = t.replace("## Gate 1 delegation (the PI pre-authorizes proposal approval WITHIN these bounds)",
+                      "## Gate 1 delegation — NOT DELEGATED (every proposal waits for the PI)")
+        t = t.replace("A proposal may be self-approved by the agent only if ALL hold:",
+                      "**Gate 1 is not delegated in this campaign: no proposal is self-approved.** Every proposal queues "
+                      "for the PI's Gate 1 and the campaign moves on to other work. The bounds below still apply "
+                      "(they become each project's envelope once the PI approves it):")
     t = re.sub(r"\*\*Loop mode for spawned projects:\*\* `execute`", f"**Loop mode for spawned projects:** `{mode}`", t)
     t = t.replace("caps: ___ expansion rounds, ___ new lines/round", f"caps: {rounds} expansion rounds, {lines_per} new lines/round")
     t = re.sub(r"\*\*Total wall-clock:\*\* ___ \([^)]*\)", f"**Total wall-clock:** {wall}", t)
@@ -95,7 +107,7 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     rel = f"lab/campaigns/{name}"
     ctx.emit_hub("campaign_signed", detail=f"campaign {rel} signed (PI via dashboard)")
     ctx.pi_log({"action": "campaign.sign", "file": rel, "fields": f})
-    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate3_auto": gate3_auto}
+    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate1_auto": gate1_auto, "gate3_auto": gate3_auto}
     if body.get("launch"):
         try:
             from executor import campaigns  # noqa: PLC0415 — tools/ is on sys.path via sources
@@ -109,7 +121,8 @@ def campaign_create(body: dict) -> tuple[dict, int]:
             out["warnings"] = [str(e)]
             return out, 200
         ctx.pi_log({"action": "campaign.start", "file": rel, "hours": hours, "agent_hours": agent_hours,
-                   "cycle_minutes": cycle_minutes, "repeat_minutes": repeat_minutes, "gate3_auto": gate3_auto})
+                   "cycle_minutes": cycle_minutes, "repeat_minutes": repeat_minutes, "gate1_auto": gate1_auto,
+                   "gate3_auto": gate3_auto})
         out.update(campaign=st["name"], note=f"campaign signed and started — the lab keeps it going until {deadline}")
     return out, 200
 

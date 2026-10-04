@@ -34,6 +34,41 @@
   const changes = d => (d && d.draft && d.draft.changes) || [];
   const touched = (d, ...prefixes) => changes(d).some(c => prefixes.some(p => c.path === p || c.path.startsWith(p)));
 
+  /* ── unsaved text: every Compose form says whether it holds edits not yet saved to the draft; leaving the
+     page (another route, a tab of the same item, closing the browser tab) asks first ───────────────────── */
+  const DIRTY = new Map();
+  let dirtySeq = 0;
+  const anyDirty = () => [...DIRTY.values()].some(Boolean);
+  /** mark the calling form dirty (true) or clean; it is forgotten when the form goes away */
+  const useDirty = flag => {
+    const id = NL.useRef(null);
+    if (id.current == null) id.current = ++dirtySeq;
+    useEffect(() => { DIRTY.set(id.current, !!flag); }, [!!flag]);
+    useEffect(() => () => { DIRTY.delete(id.current); }, []);
+  };
+  const LEAVE = 'You have unsaved changes — leave without saving?';
+  /** true when it is fine to leave: nothing unsaved, or the PI said to drop it */
+  const leaveOk = () => { if (!anyDirty()) return true; if (!window.confirm(LEAVE)) return false; DIRTY.clear(); return true; };
+  /** while Compose is open: guard route changes and closing the tab */
+  const useLeaveGuard = () => {
+    useEffect(() => {
+      let last = location.hash;
+      // capture, so it runs before the router's own hashchange listener and can stop it
+      const onHash = e => {
+        if (location.hash === last) return;
+        if (leaveOk()) { last = location.hash; return; }
+        e.stopImmediatePropagation();
+        history.replaceState(history.state, '', last || '#/');
+      };
+      const onUnload = e => { if (anyDirty()) { e.preventDefault(); e.returnValue = LEAVE; return LEAVE; } };
+      window.addEventListener('hashchange', onHash, true);
+      window.addEventListener('beforeunload', onUnload);
+      return () => { window.removeEventListener('hashchange', onHash, true); window.removeEventListener('beforeunload', onUnload); };
+    }, []);
+  };
+  /** a tab switch inside one item also drops what the open tab holds */
+  const guardTab = set => v => { if (leaveOk()) set(v); };
+
   const KINDS = [
     { id: 'stages', item: 'stage', label: 'Stages', one: 'stage', n: d => d.stages.length, blurb: 'The steps a study moves through, and where you sign the gates.',
       dirty: d => touched(d, 'workflow/stages.yaml', 'lab/workflow/stage.') },
@@ -57,10 +92,10 @@
     const d = useCompose();
     const where = args[0] || '', name = args[1] || '';
     useEffect(() => { if (query && query.tour !== undefined) Tour.start(); }, [query && query.tour]);
-    if (NL.DEMO) return html`<div class="page"><div class="kicker">Compose</div><h1>How your lab works</h1><p class="lede">Compose edits a real lab's files — open it from that lab's own dashboard.</p></div>`;
+    useLeaveGuard();
     if (!d) return html`<div class="page"><${NL.Spinner} /></div>`;
     if (d.error && !d.stages) return html`<div class="compose"><${Nav} d=${{ ...d, stages: [], procedures: {}, roles: [], rooms: [], rules: {}, checks: [], types: [] }} where="" />
-      <main class="cmp-main"><${DraftBar} d=${d} /><div class="cmp-page"><div class="kicker">Compose</div><h1>The workflow can't be read</h1>
+      <main class="cmp-main"><${DemoNote} /><${DraftBar} d=${d} /><div class="cmp-page"><div class="kicker">Compose</div><h1>The workflow can't be read</h1>
         <div class="note note-warn">${d.error}</div><p class="muted">Fix the file below, or discard the draft.</p>
         <${FileEditor} path="workflow/stages.yaml" /></div></main></div>`;
     let body;
@@ -79,8 +114,10 @@
     }
     return html`<div class="compose">
       <${Nav} d=${d} where=${where} />
-      <main class="cmp-main"><${DraftBar} d=${d} />${body}</main></div>`;
+      <main class="cmp-main"><${DemoNote} /><${DraftBar} d=${d} />${body}</main></div>`;
   };
+  /** the demo reads the lab like any page; NL.api refuses every write there (with a toast) */
+  const DemoNote = () => NL.DEMO ? html`<div class="cmp-demo" role="note"><${NL.Icon} name="alert" /> Demo — look around; nothing you change here is saved.</div>` : null;
 
   const Nav = ({ d, where }) => {
     const on = id => where === id || (KINDS.find(k => k.id === id) || {}).item === where;
@@ -110,7 +147,8 @@
     return html`<div class=${cls('cmp-bar', 'draft', p && 'bad')}><span class="cmp-bar-dot"></span>
       <span class="grow"><b>Draft</b> · ${n ? NL.plural(n, 'file') + ' changed' : 'nothing changed yet'}${n ? html` · ${p ? html`<button type="button" class="link danger" onClick=${openReview}>${NL.plural(p, 'problem')} to fix</button>` : html`<span class="ok-t">ready to publish</span>`}` : null}</span>
       <${NL.Btn} small kind="ghost" onClick=${discard}>Discard</${NL.Btn}>
-      <${NL.Btn} small kind="primary" disabled=${!n} onClick=${openReview}>Review & publish</${NL.Btn}></div>`;
+      <${NL.Btn} small kind="primary" disabled=${!n} onClick=${openReview}>Review & publish</${NL.Btn}>
+      <span class="cmp-bar-undo muted small">You can undo the latest publish from <a class="link" href=${href('history')}>Published</a>.</span></div>`;
   };
 
   const ChangeRow = ({ c, open: open0 }) => {
@@ -131,7 +169,7 @@
       const r = await edit({ op: 'publish', note }, false);
       if (r.ok) { NL.toast(r.note, 'ok'); onClose(); NL.refresh(); Tour.event('closed'); }
     };
-    return html`<${NL.Sheet} wide kicker="Compose" title="Review your draft" sub="Exactly what publishing changes. Runs already going finish with what they started with." onClose=${onClose}
+    return html`<${NL.Sheet} wide kicker="Compose" title="Review your draft" sub="Exactly what publishing changes. Runs already going finish with what they started with. You can undo the latest publish from Published." onClose=${onClose}
       footer=${html`<${NL.Btn} kind="ghost" onClick=${async () => { await discard(); if (!(C.d.draft || {}).active) onClose(); }}>Discard the draft</${NL.Btn}>
         <${NL.Btn} kind="primary" disabled=${!!probs.length || !ch.length} onClick=${publish}>Publish ${ch.length ? NL.plural(ch.length, 'change') : ''}</${NL.Btn}>`}>
       ${probs.length ? html`<div class="cmp-problems"><b>Fix ${probs.length === 1 ? 'this' : 'these'} first</b><ul>${probs.map(p => html`<li>${p}</li>`)}</ul></div>`
@@ -152,10 +190,9 @@
     const { after, inside } = gatesBetween(d);
     const counts = d.studies_in || {};
     return html`<div class="cmp-page">
-      <header class="cmp-hero"><div class="kicker">Compose</div><h1>How your lab works</h1>
+      <header class="cmp-hero"><div class="row between"><div class="kicker">Compose</div><${TourLink} /></div><h1>How your lab works</h1>
         <p class="lede">Everything the lab is made of, in one place. Change how any step is done, add procedures, rooms and rules of your own — nothing reaches an agent until you publish.</p>
-        <div class="row"><${NL.Btn} kind="primary" onClick=${() => openNew('procedure')}><${NL.Icon} name="plus" /> New procedure</${NL.Btn}>
-          <${NL.Btn} onClick=${Tour.start}>Take the one-minute tour</${NL.Btn}></div></header>
+        <div class="row"><${NL.Btn} kind="primary" onClick=${() => openNew('procedure')}><${NL.Icon} name="plus" /> New procedure</${NL.Btn}></div></header>
       <section class="cmp-sec"><div class="cmp-sec-h"><h2>The pipeline</h2><span class="muted small grow">A study moves left to right. You sign the gates.</span><a class="link small" href=${href('stages')}>All stages →</a></div>
         <div class="cmp-pipe">${(d.stages || []).map((st, i) => html`
           <div class="cmp-stage" role="link" tabIndex="0" onClick=${() => go('stage', st.id)} onKeyDown=${e => e.key === 'Enter' && go('stage', st.id)}>
@@ -198,8 +235,8 @@
         onClick=${() => setPick(pick === id ? null : id)} title=${`${r.title || id}${p.auto ? ' — placed by the lab' : ''}`}>
         <b>${r.title || r.label || id}</b><span class="lg-states">${(r.states || []).map(s => stateLabel(d, s)).join(' · ')}</span>
         <span class="lg-acts"><button type="button" class="lg-turn" title="turn its door" onClick=${e => turn(id, e)}>${ARROW[p.facing]}</button>
-          <a class="lg-open" href=${href('room', id)} onClick=${e => e.stopPropagation()}>open</a>${p.auto ? html`<span class="kicker">auto</span>` : null}</span>
-        ${r.gate ? html`<span class="lg-gate"><${NL.Icon} name="lock" /> ${r.gate}</span>` : null}</div>`);
+          <a class="lg-open" href=${href('room', id)} onClick=${e => e.stopPropagation()}>open</a>${p.auto ? html`<span class="kicker" title="placed automatically — drag it to pin it here">auto</span>` : null}</span>
+        ${r.gate ? html`<span class="lg-gate" title=${`Gate ${r.gate} is signed in this room`}>Gate ${r.gate}</span>` : null}</div>`);
     }
     return html`<div><div class="lg" style=${{ gridTemplateColumns: `repeat(${c1 - c0 + 1}, minmax(0, 1fr))` }}>${rows}</div>
       <div class="row lg-foot"><span class="muted small grow">${pick ? 'Now click an empty plot to move it there.' : 'Drag a room (or click it, then a plot). The arrow is its door; the lab places any room you don’t.'}</span>
@@ -207,15 +244,16 @@
   };
 
   /* ── shared pieces: a page head, an item head, files ─────────────────────── */
-  const ListHead = ({ k, children }) => html`<header class="cmp-head"><div class="grow"><a class="kicker" href="#/compose">Compose</a><h1>${k.label}</h1><p class="lede">${k.blurb}</p></div>
+  const TourLink = () => html`<button type="button" class="link small cmp-tour-link" onClick=${() => NL.composeTour()}>New here? Take the 1-minute tour</button>`;
+  const ListHead = ({ k, children }) => html`<header class="cmp-head"><div class="grow"><div class="row"><a class="kicker" href="#/compose">Compose</a><${TourLink} /></div><h1>${k.label}</h1><p class="lede">${k.blurb}</p></div>
     <div class="row">${children}${k.item !== 'stage' && k.item !== 'rule' ? html`<${NL.Btn} kind="primary" onClick=${() => openNew(k.item)}><${NL.Icon} name="plus" /> New ${k.one}</${NL.Btn}>` : null}</div></header>`;
   const ItemHead = ({ k, name, title, sub, chips, actions }) => html`<header class="cmp-head"><div class="grow">
       <div class="kicker"><a href=${href(k.id)}>${k.label}</a> / ${name}</div><h1>${title}</h1>${sub ? html`<p class="lede">${sub}</p>` : null}
       ${chips ? html`<div class="row cmp-chips">${chips}</div>` : null}</div><div class="row">${actions}</div></header>`;
   const Origin = ({ o, like }) => html`<span class=${cls('pill', o === 'yours' ? 'pill-live' : '')}>${o === 'yours' ? (like ? `yours · from ${like}` : 'yours') : 'built in'}</span>`;
   const CopyBtn = ({ kind, like }) => html`<${NL.Btn} small onClick=${() => openNew(kind, { like })}><${NL.Icon} name="copy" /> Make a copy</${NL.Btn}>`;
-  const DeleteBtn = ({ kind, name, label, body, extra }) => html`<${NL.Btn} small kind="ghost" onClick=${async () => {
-    if (!await NL.confirm({ title: `Remove ${label}?`, ok: 'Remove', danger: true, body: body || 'It is removed in your draft; the lab keeps it until you publish.' })) return;
+  const DeleteBtn = ({ kind, name, label, body, title, extra }) => html`<${NL.Btn} small kind="ghost" onClick=${async () => {
+    if (!await NL.confirm({ title: title || `Remove ${label}?`, ok: 'Remove', danger: true, body: body || 'It is removed in your draft; the lab keeps it until you publish.' })) return;
     const r = await edit({ op: 'delete', kind, name, ...(extra || {}) }); if (r.ok) go(KIND_OF[kind].id); }}><${NL.Icon} name="trash" /> Remove</${NL.Btn}>`;
 
   /** one definition file: edit it in the draft, compare it with the published one */
@@ -225,9 +263,10 @@
     const [view, setView] = useState('edit');
     const load = () => getFile(path).then(x => { setF(x); setT((x && x.text) || ''); });
     useEffect(() => { setF(null); setView('edit'); load(); }, [path]);
+    const dirty = !!f && !f.error && t !== (f.text || '');
+    useDirty(dirty);
     if (!f) return html`<${NL.Spinner} />`;
     if (f.error) return html`<div class="note note-warn">${f.error}</div>`;
-    const dirty = t !== (f.text || '');
     const state = f.text == null ? 'removed' : f.published == null ? 'new' : f.text !== f.published ? 'edited' : null;
     const save = async () => { const r = await edit({ op: 'write', path, text: t }, 'Saved to the draft'); if (r.ok) { await load(); onSaved && onSaved(); } };
     const revert = async () => { const r = await edit({ op: 'write', path, text: f.published }, 'Back to the published version'); if (r.ok) load(); };
@@ -246,7 +285,7 @@
     const [sel, setSel] = useState(files[0]);
     useEffect(() => { if (!files.includes(sel)) setSel(files[0]); }, [files.join('|')]);
     if (!files.length) return html`<div class="muted">No files.</div>`;
-    return html`<div class="cmp-files">${files.length > 1 ? html`<div class="cmp-file-list">${files.map(f => html`<button type="button" class=${cls('cmp-file-pick', f === sel && 'on')} onClick=${() => setSel(f)}>${f.split('/').slice(-1)[0]}<small class="mono">${f.split('/').slice(0, -1).join('/')}</small></button>`)}</div>` : null}
+    return html`<div class="cmp-files">${files.length > 1 ? html`<div class="cmp-file-list">${files.map(f => html`<button type="button" class=${cls('cmp-file-pick', f === sel && 'on')} onClick=${() => f !== sel && leaveOk() && setSel(f)}>${f.split('/').slice(-1)[0]}<small class="mono">${f.split('/').slice(0, -1).join('/')}</small></button>`)}</div>` : null}
       <div class="grow"><${FileEditor} key=${sel} path=${sel} intro=${intro} /></div></div>`;
   };
   /** text the brief adds (instructions) or swaps in (a method) — edited as plain text, saved to the draft */
@@ -255,6 +294,7 @@
     const [t, setT] = useState('');
     const load = () => getFile(path).then(x => { const v = stripFm(x && x.text); setCur(v); setT(v); });
     useEffect(() => { load(); }, [path]);
+    useDirty(cur != null && t.trim() !== cur);
     if (cur == null) return html`<${NL.Spinner} />`;
     const save = async text => { const r = await edit({ op: 'instructions', kind, name, text }, text.trim() ? 'Saved to the draft' : 'Removed in the draft'); if (r.ok) { await load(); onSaved && onSaved(text); } };
     return html`<div class="wf-editor">
@@ -266,7 +306,7 @@
   const useTab = (query, first) => {
     const [t, setT] = useState((query && query.tab) || first);
     useEffect(() => { if (query && query.tab) setT(query.tab); }, [query && query.tab]);
-    return [t, setT];
+    return [t, guardTab(setT)];
   };
 
   /* ── procedures ───────────────────────────────────────────────────────────── */
@@ -324,6 +364,7 @@
     const fields = Object.fromEntries(Object.entries(f).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(init[k])));
     const stDirty = JSON.stringify(stages) !== JSON.stringify(p.stages || []);
     const dirty = Object.keys(fields).length || stDirty;
+    useDirty(dirty);
     const from = k => p.like && !(p.own || []).includes(k) ? html`<span class="muted">from /${p.like}</span>` : null;
     const save = () => edit({ op: 'procedure', name, fields, ...(stDirty ? { stages } : {}) }, 'Saved to the draft');
     return html`<div class="cmp-form">
@@ -363,19 +404,37 @@
     if (def == null) return html`<${NL.Spinner} />`;
     if (yours) return html`<div><p class="muted">How the work is done — this procedure is yours, so its method is its own file. Its contract (in Files) still binds whatever this says.</p>
       <${FileEditor} path=${`.claude/skills/${name}/METHOD.md`} onSaved=${() => Tour.event('method')} /></div>`;
-    if (!p.replaceable) return html`<div class="note">This procedure is all contract: what it does is written in its SKILL.md (Files). You can still add your own instructions.</div>`;
-    if (mode === 'edit') return html`<div><p class="muted">Write the method the way you want this step done. The contract still holds, and the brief lists what the step must still produce.</p>
-      <${LayerText} path=${`lab/workflow/${name}.method.md`} kind="method" name=${name} rows=${24} saveLabel="Save the method to draft"
-        onSaved=${() => { setMode('read'); load(); Tour.event('method'); }} />
-      <div class="row"><button type="button" class="link small" onClick=${() => setMode('read')}>← back</button></div></div>`;
-    const startEdit = async () => { if (!rep) await edit({ op: 'instructions', kind: 'method', name, text: def || ' ' }, false); setMode('edit'); };
-    return html`<div>
-      <div class="row between"><p class="muted">${rep ? html`<b>Your method</b> replaces the default for the whole lab.` : html`The <b>default method</b> that ships with the lab.`}</p>
+    const intro = html`<p class="cmp-method-intro">The contract (SKILL.md) says what this step must produce and isn't changed here. The method is how it gets done — add instructions on top, or rewrite it.</p>`;
+    if (!p.replaceable) return html`<div>${intro}<div class="note">This procedure is all contract: what it does is written in its SKILL.md (Files). You can still add your own instructions.</div></div>`;
+    const defText = stripFm(def);
+    // the editor is local until the PI saves: nothing reaches the draft on opening it
+    if (mode === 'edit') return html`<div>${intro}<p class="muted">Write the method the way you want this step done. The contract still holds, and the brief lists what the step must still produce.</p>
+      <${MethodEditor} name=${name} start=${rep || defText} onCancel=${() => setMode('read')}
+        onSaved=${() => { setMode('read'); load(); Tour.event('method'); }} /></div>`;
+    return html`<div>${intro}
+      <div class="row between"><p class="muted">${rep ? html`<b>Your method</b> replaces the default for the whole lab.` : defText ? html`The <b>default method</b> that ships with the lab.` : null}</p>
         ${rep ? html`<${NL.Seg} value=${view} onChange=${setView} options=${[{ value: 'text', label: 'Yours' }, { value: 'diff', label: 'Compare with the default' }]} />` : null}</div>
       ${cu.stale ? html`<div class="note note-warn">The default changed after you replaced it — compare them and decide whether to keep yours.</div>` : null}
-      ${view === 'diff' && rep ? html`<${NL.Diff} a=${def} b=${rep} context=${4} />` : html`<div class="wf-method"><${NL.Markdown} text=${rep || def || '_(empty)_'} /></div>`}
+      ${view === 'diff' && rep ? html`<${NL.Diff} a=${def} b=${rep} context=${4} />`
+        : rep || defText ? html`<div class="wf-method"><${NL.Markdown} text=${rep || defText} /></div>`
+        : html`<div class="note">This procedure has no separate method — it is all contract (see Files). You can still add your own instructions.</div>`}
       <div class="row end">${rep ? html`<${NL.Btn} small kind="ghost" onClick=${async () => { await edit({ op: 'instructions', kind: 'method', name, text: '' }, 'Back to the default (in the draft)'); load(); }}>Use the default</${NL.Btn}>` : null}
-        <${NL.Btn} small kind=${rep ? '' : 'primary'} onClick=${startEdit}>${rep ? 'Edit your method' : 'Rewrite the method…'}</${NL.Btn}></div></div>`;
+        <${NL.Btn} small kind=${rep ? '' : 'primary'} onClick=${() => setMode('edit')}>${rep ? 'Edit your method' : 'Rewrite the method…'}</${NL.Btn}></div></div>`;
+  };
+  /** the method being written: prefilled with the current one (or empty); only "Save the method to draft" writes */
+  const MethodEditor = ({ name, start, onCancel, onSaved }) => {
+    const [t, setT] = useState(start || '');
+    const dirty = t !== (start || '');
+    useDirty(dirty);
+    const save = async () => {
+      if (!t.trim()) return NL.toast('Write the method first — or go back to keep the default.', 'warn');
+      const r = await edit({ op: 'instructions', kind: 'method', name, text: t }, 'Saved the method to the draft'); if (r.ok) onSaved && onSaved(t);
+    };
+    const cancel = async () => { if (dirty && !await NL.confirm({ title: 'Drop what you wrote?', ok: 'Drop it', danger: true, body: 'The method you were writing is not saved anywhere.' })) return; onCancel(); };
+    return html`<div class="wf-editor">
+      <${NL.Textarea} value=${t} rows=${24} onInput=${setT} mono autofocus onSubmit=${save} placeholder=${'How this step should be done, step by step. e.g.\n1. Skim only the ten most-cited papers.\n2. …'} />
+      <div class="row end"><${NL.Btn} small kind="ghost" onClick=${cancel}>Cancel</${NL.Btn}>
+        <${NL.Btn} small kind="primary" disabled=${!t.trim()} onClick=${save}>Save the method to draft</${NL.Btn}></div></div>`;
   };
 
   /* ── stages ───────────────────────────────────────────────────────────────── */
@@ -411,6 +470,7 @@
     const [procs, setProcs] = useState(st.procedures || []);
     const [add, setAdd] = useState('');
     const dirty = title !== st.title || JSON.stringify(procs) !== JSON.stringify(st.procedures || []);
+    useDirty(dirty);
     const move = (i, dlt) => setProcs(xs => { const a = xs.slice(); const j = i + dlt; if (j < 0 || j >= a.length) return a; [a[i], a[j]] = [a[j], a[i]]; return a; });
     const others = Object.keys(d.procedures).filter(p => !procs.includes(p));
     return html`<div class="cmp-form">
@@ -423,17 +483,20 @@
         <div class="row"><${NL.Select} value=${add} onChange=${setAdd} options=${[{ value: '', label: 'Add a procedure…' }, ...others.map(p => ({ value: p, label: `${(d.procedures[p] || {}).title} (/${p})` }))]} />
           <${NL.Btn} small disabled=${!add} onClick=${() => { setProcs(xs => [...xs, add]); setAdd(''); }}>Add</${NL.Btn}></div></div></${NL.Field}>
       <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'stage', id: st.id, fields: { title, procedures: procs } }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div>
-      <${NL.Section} title="Its states">${(st.states || []).map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`)}</${NL.Section}>
+      <${NL.Section} title="Its states"><${StatesHead} />${(st.states || []).map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`)}</${NL.Section}>
       ${gates.map(g => html`<div class="cmp-lock"><${NL.Icon} name="lock" /><div><b>${g.title}</b><div class="muted small">${g.means} — signed at ${stateLabel(d, g.at)}. The three gates are fixed: no customisation moves one.</div></div></div>`)}
     </div>`;
   };
+  const StatesHead = () => html`<div class="cmp-li-head"><span class="grow">State</span><span class="cmp-li-head-room">Stands in room</span></div>`;
   const StateRow = ({ d, id }) => {
     const s = (d.states || []).concat(d.side_states || []).find(x => x.id === id) || {};
     const [label, setLabel] = useState(s.label || id);
     const n = (d.studies_in || {})[id] || 0;
-    return html`<div class="cmp-li"><span class="mono muted small cmp-state-id">${id}</span>
-      <input class="input grow" value=${label} onInput=${e => setLabel(e.target.value)} aria-label="label" />
-      <${NL.Select} value=${s.room} onChange=${room => edit({ op: 'state', id, fields: { room } }, `${label} now stands in ${room}`)} options=${d.rooms.map(r => ({ value: r.id, label: 'in ' + (r.title || r.label) }))} />
+    useDirty(label !== (s.label || id));
+    const roomName = rid => ((d.rooms || []).find(r => r.id === rid) || {}).title || rid;
+    return html`<div class="cmp-li"><span class="cmp-state-name grow"><input class="input" value=${label} onInput=${e => setLabel(e.target.value)} aria-label=${'the name of the state ' + id} />
+        <span class="muted small cmp-state-id">· id <span class="mono">${id}</span></span></span>
+      <${NL.Select} value=${s.room} onChange=${room => edit({ op: 'state', id, fields: { room } }, `${label} now stands in ${roomName(room)}`)} options=${d.rooms.map(r => ({ value: r.id, label: r.title || r.label }))} />
       ${n ? html`<span class="cmp-n" title="studies in this state now">${n}</span>` : null}
       ${label !== (s.label || id) ? html`<${NL.Btn} small kind="primary" onClick=${() => edit({ op: 'state', id, fields: { label } }, 'Saved to the draft')}>Save</${NL.Btn}>` : null}</div>`;
   };
@@ -475,6 +538,7 @@
     const [pick, setPick] = useState('');
     const set = (k, v) => setF(o => ({ ...o, [k]: v }));
     const dirty = JSON.stringify(f) !== JSON.stringify(init);
+    useDirty(dirty);
     const here = r.states || [];
     const elsewhere = (d.states || []).concat(d.side_states || []).filter(s => !here.includes(s.id));
     return html`<div class="cmp-form">
@@ -484,8 +548,8 @@
         sub="Each project gets a room of its own, titled by its study — built while /spawn-project runs, in the look for its project type. Off: one room for the whole lab." />
       <p class="muted small">Where it stands on the table: drag it on the table under Rooms.</p>
       <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'room', id: r.id, fields: f }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div>
-      <${NL.Section} title="What stands here">${here.length ? here.map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`) : html`<div class="muted small">No state stands here yet.</div>`}
-        <div class="row"><${NL.Select} value=${pick} onChange=${setPick} options=${[{ value: '', label: 'Move a state here…' }, ...elsewhere.map(s => ({ value: s.id, label: `${s.label} (now in ${s.room})` }))]} />
+      <${NL.Section} title="What stands here">${here.length ? html`<${StatesHead} />${here.map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`)}` : html`<div class="muted small">No state stands here yet.</div>`}
+        <div class="row"><${NL.Select} value=${pick} onChange=${setPick} options=${[{ value: '', label: 'Move a state here…' }, ...elsewhere.map(s => ({ value: s.id, label: `${s.label || s.id} (now in ${((d.rooms || []).find(x => x.id === s.room) || {}).title || s.room})` }))]} />
           <${NL.Btn} small disabled=${!pick} onClick=${async () => { await edit({ op: 'state', id: pick, fields: { room: r.id } }); setPick(''); }}>Move</${NL.Btn}></div></${NL.Section}>
       ${r.gate ? html`<div class="cmp-lock"><${NL.Icon} name="lock" /><div><b>Gate ${r.gate} is signed in this room</b><div class="muted small">A room with a gate stays.</div></div></div>` : null}</div>`;
   };
@@ -513,6 +577,7 @@
     const [mine, setMine] = useState(undefined);
     const [show, setShow] = useState(null);       // a design being previewed
     const [ask, setAsk] = useState('');
+    useDirty(!!ask.trim());
     const s = NL.useLab();
     const procs = procsOf(d, r), designs = (d.designs || []).filter(x => x.room === lookId);
     const path = `lab/rooms3d/${lookId}.json`;
@@ -523,7 +588,10 @@
     const design = async () => { if (!ask.trim()) return; const x = await NL.launch({ skill: 'design-room', args: `${lookId} ${ask.trim()}` }, { open: false }); if (x) setAsk(''); };
     const starter = starters[lookId] || null;
     const showing = show && designData ? designData.data : mine || starter;
-    const types = r.per_project ? (d.types || []).map(t => t.name || t).filter(Boolean) : [];
+    // the project types the lab has, and those a starter look exists for (keys like lab.ml) — so the switch
+    // shows for a per-project room even before the lab has a project type of its own
+    const types = r.per_project ? [...new Set([...(d.types || []).map(t => t.name || t),
+      ...Object.keys(starters).filter(k => k.startsWith(r.id + '.')).map(k => k.slice(r.id.length + 1))].filter(Boolean))] : [];
     if (mine === undefined) return html`<${NL.Spinner} />`;
     return html`<div class="cmp-look">
       <div class="cmp-look-view"><${RoomPreview} r=${r} data=${showing} procs=${procs} />
@@ -535,7 +603,8 @@
         <h3>Describe it</h3>
         <p class="muted small">A coding agent (Claude, Codex…) designs the room from your words: furniture from the kit, new pieces where it needs them, a station for each of ${procs.length ? procs.map(p => '/' + p).join(', ') : 'its procedures'}. You see it here before you take it.</p>
         <${NL.Textarea} rows=${4} value=${ask} onInput=${setAsk} onSubmit=${design} placeholder="e.g. A quiet data room: a wall of big screens, two long desks, a server cupboard, plants by the window." />
-        <div class="row end"><${NL.Btn} kind="primary" disabled=${!ask.trim()} onClick=${design}><${NL.Icon} name="spark" /> Design it</${NL.Btn}></div>
+        <div class="row end"><${NL.Btn} kind="primary" disabled=${!ask.trim()} onClick=${design}><${NL.Icon} name="spark" /> Design it — starts an agent run</${NL.Btn}></div>
+        <div class="field-hint">Uses your default agent and takes a few minutes. Nothing changes until you click <b>Use this design</b> and publish.</div>
         ${running.length ? html`<div class="note">An agent is designing it now — <button type="button" class="link" onClick=${() => NL.openRun(running[0].run_id)}>watch</button>.</div>` : null}
         ${designs.map(x => html`<div class=${cls('cmp-design', show === x.room && 'on')}>
           <div class="row between"><b>A design</b><span class="mono muted small">${NL.ago(x.ts)}</span></div>
@@ -567,7 +636,8 @@
     if (!r) return html`<${Missing} k=${KIND_OF.role} name=${name} />`;
     return html`<div class="cmp-page">
       <${ItemHead} k=${KIND_OF.role} name=${name} title=${r.label} sub=${r.description} chips=${html`<${Origin} o=${r.origin} like=${r.like} />`}
-        actions=${html`<${CopyBtn} kind="role" like=${name} /><${DeleteBtn} kind="role" name=${name} label=${'the role ' + r.label} />`} />
+        actions=${html`<${CopyBtn} kind="role" like=${name} /><${DeleteBtn} kind="role" name=${name} label=${'the role ' + r.label}
+          ...${r.origin === 'yours' ? {} : { title: `Remove the built-in role ${r.label}?`, body: 'This is a built-in role — procedures may rely on it. Remove it anyway?' }} />`} />
       <${NL.Tabs} tabs=${[{ id: 'about', label: 'About' }, { id: 'instructions', label: 'Your instructions' }, { id: 'files', label: 'Files' }]} value=${tab} onChange=${setTab} />
       <div class="tabpane">
         ${tab === 'about' ? html`<${RoleAbout} key=${r.label + r.description} r=${r} />` : null}
@@ -580,6 +650,7 @@
     const [label, setLabel] = useState(r.label);
     const [desc, setDesc] = useState(r.description);
     const dirty = label !== r.label || desc !== r.description;
+    useDirty(dirty);
     return html`<div class="cmp-form"><${NL.Field} label="Its name in the dashboard"><${NL.Input} value=${label} onInput=${setLabel} /></${NL.Field}>
       <${NL.Field} label="What it is for" hint="agents read this to decide when to call it"><${NL.Textarea} rows=${3} value=${desc} onInput=${setDesc} /></${NL.Field}>
       <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'role', name: r.name, fields: { label, description: desc } }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div></div>`;
@@ -593,6 +664,7 @@
     const checks = [...d.built_in_checks, ...d.checks.filter(c => c.guard).map(c => c.name), ...d.checks.filter(c => !c.guard).map(c => c.file.split('/').pop().replace(/\.py$/, ''))];
     return html`<div class="cmp-page"><${ListHead} k=${k} />
       ${RULE_GROUPS.map(([g, title, sub]) => html`<section class="cmp-sec"><div class="cmp-sec-h"><h2>${title}</h2><span class="muted small grow">${sub}</span><span class="cmp-n">${(d.rules[g] || []).length}</span></div>
+        ${g === 'hard' ? html`<p class="muted small cmp-rules-note">Hard rules can be edited but not removed — skills cite them by number.</p>` : null}
         ${(d.rules[g] || []).map((r, i) => html`<${RuleCard} key=${r.id + r.text} r=${r} n=${g === 'hard' ? i + 1 : null} group=${g} checks=${checks} />`)}
         <${RuleAdd} group=${g} checks=${checks} /></section>`)}
       <details class="cmp-sec more"><summary><${NL.Icon} name="lock" /> Read by the lab's safety code — fixed here</summary>
@@ -604,13 +676,14 @@
     const [ed, setEd] = useState(false);
     const [t, setT] = useState(r.text);
     const [cs, setCs] = useState(r.checks || []);
+    useDirty(ed && (t !== r.text || JSON.stringify(cs) !== JSON.stringify(r.checks || [])));
     if (!ed) return html`<div class="cmp-rule">${n ? html`<span class="cmp-num">${n}</span>` : null}<div class="grow"><${NL.Markdown} text=${r.text} />
         <div class="row"><span class="mono muted small">${r.id}</span>${(r.checks || []).map(c => html`<span class="chip">checked by ${c}</span>`)}</div></div>
       <div class="cmp-rule-acts"><button type="button" class="link small" onClick=${() => setEd(true)}>Edit</button>
         ${group !== 'hard' ? html`<button type="button" class="link small danger" onClick=${async () => { if (await NL.confirm({ title: `Remove the rule “${r.id}”?`, ok: 'Remove', danger: true, body: 'Removed in your draft; every manual drops it when you publish.' })) edit({ op: 'rule', id: r.id, remove: true }); }}>Remove</button>` : null}</div></div>`;
     return html`<div class="cmp-rule editing">${n ? html`<span class="cmp-num">${n}</span>` : null}<div class="grow">
       <${NL.Textarea} rows=${4} value=${t} onInput=${setT} autofocus />
-      <div class="row">${checks.map(c => html`<button type="button" class=${cls('chip', 'click', cs.includes(c) && 'on')} onClick=${() => setCs(x => x.includes(c) ? x.filter(y => y !== c) : [...x, c])}>${c}</button>`)}</div>
+      <div class="row"><span class="muted small">Enforced by these checks:</span>${checks.map(c => html`<button type="button" class=${cls('chip', 'click', cs.includes(c) && 'on')} onClick=${() => setCs(x => x.includes(c) ? x.filter(y => y !== c) : [...x, c])}>${c}</button>`)}</div>
       <div class="row end"><${NL.Btn} small kind="ghost" onClick=${() => { setEd(false); setT(r.text); setCs(r.checks || []); }}>Cancel</${NL.Btn}>
         <${NL.Btn} small kind="primary" onClick=${async () => { const x = await edit({ op: 'rule', id: r.id, text: t, checks: cs }, 'Saved to the draft'); if (x.ok) setEd(false); }}>Save to draft</${NL.Btn}></div></div></div>`;
   };
@@ -619,6 +692,7 @@
     const [t, setT] = useState('');
     const [id, setId] = useState('');
     const [c, setC] = useState('');
+    useDirty(open && !!t.trim());
     const rid = id || slugify(t.replace(/\*\*/g, '').split(/[.!?]/)[0]).slice(0, 30);
     if (!open) return html`<button type="button" class="cmp-add" onClick=${() => setOpen(true)}><${NL.Icon} name="plus" /> Add a rule</button>`;
     return html`<div class="cmp-rule editing"><div class="grow">
@@ -645,7 +719,8 @@
       <${FileEditor} path=${c.file} rows=${30} intro="Python, run by the guard. NAME is how rules and procedures call it; run(args, guard) returns the problems it finds." /></div>`;
   };
   const TypesList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
-    <div class="cmp-rows">${d.types.map(t => html`<a class="cmp-row" href=${href('type', t.name)}><div class="cmp-row-main"><b>${t.name}</b><div class="muted small clip">${t.title}</div></div>${t.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`)}</div>
+    ${d.types.length ? html`<div class="cmp-rows">${d.types.map(t => html`<a class="cmp-row" href=${href('type', t.name)}><div class="cmp-row-main"><b>${t.name}</b><div class="muted small clip">${t.title}</div></div>${t.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`)}</div>`
+      : html`<${NL.Empty} title="No project types yet">Add one (e.g. ml, theory) to give its projects their own conventions and room look.</${NL.Empty}>`}
     ${d.domains.length ? html`<section class="cmp-sec"><div class="cmp-sec-h"><h2>Domain profiles</h2><span class="muted small grow">Field conventions a study can adopt.</span></div>
       <div class="cmp-rows">${d.domains.filter(x => x.file).map(x => html`<a class="cmp-row" href=${href('domain', x.name)}><div class="cmp-row-main"><b>${x.name}</b><div class="mono muted small">${x.file}</div></div></a>`)}</div></section>` : null}</div>`;
   const TypeEditor = ({ d, name }) => {
@@ -699,20 +774,21 @@
     const [plain, setPlain] = useState(false);
     const nm = name || slugify(title);
     const k = KIND_OF[kind];
+    const blank = kind === 'type' && !opts.length;    // nothing to copy yet: compose.py starts it blank
     const list = opts.filter(o => !q || `${o.id} ${o.title} ${o.sub}`.toLowerCase().includes(q.toLowerCase()));
     const make = async () => {
-      const r = await edit({ op: 'copy', kind, like, name: nm, title: title || undefined, plain }, `Made ${nm} from ${like} — now make it its own`);
+      const r = await edit({ op: 'copy', kind, like: blank ? '' : like, name: nm, title: title || undefined, plain }, blank ? `Added ${nm} — now fill in its TYPE.md` : `Made ${nm} from ${like} — now make it its own`);
       if (r.ok) { onClose(); go(kind, kind === 'check' ? nm.replace(/-/g, '_') : nm); Tour.event('copied', nm); }
     };
     return html`<div class="dialog dialog-wide cmp-new"><h3>A new ${k.one}</h3>
-      <p class="muted">Start from the closest one the lab has. The copy keeps everything; you change what makes yours different.</p>
-      <${NL.Field} label="Start from">${opts.length > 6 ? html`<input class="input" placeholder="Find…" value=${q} onInput=${e => setQ(e.target.value)} />` : null}
+      ${blank ? null : html`<p class="muted">Start from the closest one the lab has. The copy keeps everything; you change what makes yours different.</p>`}
+      ${blank ? html`<p class="note">The lab has no project type to start from yet, so this one starts blank: a TYPE.md for you to fill in.</p>` : html`<${NL.Field} label="Start from">${opts.length > 6 ? html`<input class="input" placeholder="Find…" value=${q} onInput=${e => setQ(e.target.value)} />` : null}
         <div class="cmp-pick">${list.map(o => html`<button type="button" class=${cls('cmp-pick-row', like === o.id && 'on')} onClick=${() => setLike(o.id)}>
-          <span class="grow"><b>${o.title}</b>${o.tag ? html` <span class="mono muted small">${o.tag}</span>` : null}<small class="clip">${o.sub || ''}</small></span>${like === o.id ? html`<${NL.Icon} name="check" />` : null}</button>`)}</div></${NL.Field}>
-      <div class="grid2"><${NL.Field} label=${`Name your ${k.one}`}><${NL.Input} value=${title} onInput=${setTitle} autofocus placeholder=${kind === 'procedure' ? 'e.g. Quick literature scan' : kind === 'room' ? 'e.g. The Data Room' : 'e.g. Data wrangler'} onEnter=${() => nm && like && make()} /></${NL.Field}>
+          <span class="grow"><b>${o.title}</b>${o.tag ? html` <span class="mono muted small">${o.tag}</span>` : null}<small class="clip">${o.sub || ''}</small></span>${like === o.id ? html`<${NL.Icon} name="check" />` : null}</button>`)}</div></${NL.Field}>`}
+      <div class="grid2"><${NL.Field} label=${`Name your ${k.one}`}><${NL.Input} value=${title} onInput=${setTitle} autofocus placeholder=${kind === 'procedure' ? 'e.g. Quick literature scan' : kind === 'room' ? 'e.g. The Data Room' : kind === 'type' ? 'e.g. fieldwork' : 'e.g. Data wrangler'} onEnter=${() => nm && (like || blank) && make()} /></${NL.Field}>
         <${NL.Field} label="Its id" hint=${kind === 'procedure' ? 'agents run it as /' + (nm || 'its-id') : 'lower-case, dashes'}><${NL.Input} mono value=${nm} onInput=${setName} /></${NL.Field}></div>
       ${kind === 'room' ? html`<label class="check"><input type="checkbox" checked=${plain} onChange=${e => setPlain(e.target.checked)} /> Draw it plain (no art of its own yet)</label>` : null}
-      <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!nm || !like} onClick=${make}>Make it</${NL.Btn}></div></div>`;
+      <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!nm || !(like || blank)} onClick=${make}>Make it</${NL.Btn}></div></div>`;
   };
   NL.composeNew = openNew;
 
@@ -741,17 +817,25 @@
     { title: 'Publish it — or don’t', body: 'Review shows exactly what changes, and whether the lab still reads consistently. Publish when it reads right, or discard the draft if you were only trying.', cta: 'Review the draft', act: openReview },
     { title: 'That’s the whole idea', body: 'Copy the closest thing, change what is different, publish. Stages, rooms, roles, rules, checks and project types all work this way — and agents can only suggest changes, which you accept here.', cta: 'Done', act: () => Tour.stop() },
   ];
+  // in the demo nothing is saved, so the steps that wait for a save also offer Next, and say why
+  const DEMO_NOTE = { 1: 'In the demo the copy isn’t saved — open the dialog to see it, then press Next to carry on with “Review the literature” itself.',
+    2: 'In the demo saving is off — look at the method and the editor, then press Next.', 3: 'In the demo there is no draft to publish — press Next.' };
+  const demoNext = t => {
+    const ps = (C.d && C.d.procedures) || {};
+    Tour.set({ ...t, step: t.step + 1, made: t.made || (ps['lit-review'] ? 'lit-review' : Object.keys(ps)[0]) });
+  };
   /** the tour's card — the app shell draws it over the Compose page */
   NL.ComposeTourCard = () => {
     const [, force] = NL.useReducer(x => x + 1, 0);
     useEffect(() => { C.listeners.add(force); return () => C.listeners.delete(force); }, []);
     const t = Tour.get();
     if (!t || !STEPS[t.step]) return null;
-    const st = STEPS[t.step];
+    const st = STEPS[t.step], demo = NL.DEMO ? DEMO_NOTE[t.step] : null;
     return html`<aside class="tour" role="dialog" aria-label="tour">
       <div class="row between"><span class="kicker">Tour · ${t.step + 1} of ${STEPS.length}</span><button type="button" class="x" aria-label="end the tour" onClick=${Tour.stop}><${NL.Icon} name="x" /></button></div>
-      <h3>${st.title}</h3><p>${st.body}</p>
+      <h3>${st.title}</h3><p>${st.body}</p>${demo ? html`<p class="muted small">${demo}</p>` : null}
       <div class="row between"><span class="tour-dots">${STEPS.map((_, i) => html`<i class=${cls(i === t.step && 'on', i < t.step && 'done')}></i>`)}</span>
-        <${NL.Btn} small kind="primary" onClick=${() => st.act(t)}>${st.cta}</${NL.Btn}></div></aside>`;
+        <span class="row">${demo ? html`<${NL.Btn} small kind="ghost" onClick=${() => demoNext(t)}>Next</${NL.Btn}>` : null}
+          <${NL.Btn} small kind=${demo ? '' : 'primary'} onClick=${() => st.act(t.made || !NL.DEMO ? t : { ...t, made: 'lit-review' })}>${st.cta}</${NL.Btn}></span></div></aside>`;
   };
 })();

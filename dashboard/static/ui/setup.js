@@ -46,9 +46,9 @@
     };
     return html`<div class="wz-body"><h2>How much should the lab do on its own?</h2>
       <p class="lede">You can change all of this later in Settings. Nothing here lets an agent sign a gate.</p>
-      <${NL.Toggle} on=${v.launching} onChange=${x2 => set('launching', x2)} label="Start agents from the dashboard" sub="Every button that starts work runs the agent CLI here, as you. Off = the dashboard only records your commands." />
+      <${NL.Toggle} on=${v.launching} onChange=${x2 => set('launching', x2)} label="Let the dashboard start agents for you" sub="Headless Claude/Codex/opencode on this machine, as you. Off = it only records what you ask, and you run it in your own terminal." />
       <div class="grid2">
-        <${NL.Field} label="Default agent"><${NL.Select} value=${v.backend} onChange=${x2 => set('backend', x2)} options=${NL.backends(s).map(b => ({ value: b.id, label: b.id + (b.found ? '' : ' (not installed)'), disabled: !b.found }))} /></${NL.Field}>
+        <${NL.Field} label="Default agent"><${NL.Select} value=${v.backend} onChange=${x2 => set('backend', x2)} options=${NL.backends(s).map(b => ({ value: b.id, label: b.id + (NL.DEMO ? '' : b.found ? '' : ' (not installed)'), disabled: !NL.DEMO && !b.found }))} /></${NL.Field}>
         <${NL.Field} label="Budget" hint="how many ideas, critics and parallel agents each step uses"><${NL.Seg} value=${v.tier} onChange=${x2 => set('tier', x2)} options=${[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]} /></${NL.Field}>
         <${NL.Field} label="Training runs at once" hint="how many experiments this machine can run in parallel (≈ GPUs)"><${NL.Input} type="number" min="1" value=${v.slots} onInput=${x2 => set('slots', x2)} /></${NL.Field}>
         <${NL.Field} label="Oversight" hint="strict = an independent overseer checks more steps"><${NL.Seg} value=${v.oversight} onChange=${x2 => set('oversight', x2)} options=${[{ value: 'standard', label: 'Standard' }, { value: 'strict', label: 'Strict' }]} /></${NL.Field}>

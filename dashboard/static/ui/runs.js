@@ -108,7 +108,11 @@
 
   /* ── the question card (AskUserQuestion) ───────────────────────────────── */
   const AskCard = ({ r }) => {
-    const qs = (((r.pending_question || {}).input || {}).questions) || [];
+    const pq = r.pending_question || {};
+    // a question that came as plain text (or didn't come through) still gets a box to answer it in
+    const plain = pq.question || pq.text || (pq.input && (pq.input.question || pq.input.text)) || '';
+    const qs = ((pq.input || {}).questions) || [];
+    const [free, setFree] = useState('');
     const [ans, setAns] = useState({});
     const [other, setOther] = useState({});
     const key = (r.pending_question || {}).tool_use_id;
@@ -120,9 +124,15 @@
     });
     const answers = () => { const o = { ...ans }; for (const [k, v] of Object.entries(other)) if (v.trim()) o[k] = v.trim(); return o; };
     const send = async () => {
+      if (!qs.length) {
+        if (!free.trim()) return NL.toast('Type your answer first', 'warn');
+        const x = await NL.act('/api/run/answer', { run_id: r.run_id, text: free.trim() }, 'Sent — the agent carries on with it');
+        if (x.ok) setFree('');
+        return x;
+      }
       const a = answers();
       if (!Object.keys(a).length) return NL.toast('Pick an option, or type your own answer', 'warn');
-      const x = await NL.act('/api/run/answer', { run_id: r.run_id, answers: a });
+      const x = await NL.act('/api/run/answer', { run_id: r.run_id, answers: a }, 'Sent — the agent carries on with it');
       return x;
     };
     return html`<div class="ask">
@@ -135,6 +145,8 @@
         })}
         <${NL.Input} value=${other[q.question] || ''} onInput=${v => setOther(o => ({ ...o, [q.question]: v }))} placeholder="…or type your own answer" onEnter=${send} />
       </fieldset>`)}
+      ${!qs.length ? html`<div class="ask-q plain">${plain ? html`<b class="ask-text">${plain}</b>` : html`<span class="muted">Its question didn't come through in full — the transcript or the supervisor log below has the context. Whatever you write reaches it as your answer.</span>`}
+        <${NL.Textarea} rows="2" value=${free} onInput=${setFree} onSubmit=${send} placeholder="Your answer (Ctrl+Enter)" /></div>` : null}
       <div class="ask-actions"><${NL.Btn} kind="primary" onClick=${send}>Answer and continue</${NL.Btn}></div></div>`;
   };
 
@@ -162,7 +174,7 @@
   };
 
   /* ── the run sheet ─────────────────────────────────────────────────────── */
-  NL.RunSheet = ({ id, onClose }) => {
+  NL.RunSheet = ({ id, focusSub, onClose }) => {
     const { run: r, lines, err, skipped } = useRun(id);
     const s = NL.useLab();
     const blocks = useMemo(() => toBlocks(lines), [lines]);
@@ -183,7 +195,8 @@
     const title = NL.runTitle(r);
     const sub = html`<span class="row-wrap"><${NL.RunPill} r=${r} />
       ${it ? html`<a class="chip" href=${'#/study/' + it.id}>${NL.clip(it.title || it.id, 40)}</a>` : html`<span class="chip">the lab</span>`}
-      <span class="muted">${r.backend}${r.model_used || r.model ? ' · ' + (r.model_used || r.model) : ''}${r.attempt > 1 ? ' · attempt ' + r.attempt : ''}</span></span>`;
+      <span class="muted">${r.backend}${r.model_used || r.model ? ' · ' + (r.model_used || r.model) : ''}${r.attempt > 1 ? ' · attempt ' + r.attempt : ''}</span>
+      <span class="mono muted small" title="this run's id">${r.run_id}</span></span>`;
     const footer = html`<div class="runfoot">
       ${r.status === 'waiting_input' && r.pending_question ? null : canReply ? html`<div class="reply">
         <${NL.Textarea} rows="2" value=${reply} onInput=${setReply} onSubmit=${sendReply} placeholder=${hint} />
@@ -201,21 +214,21 @@
       <div class="runmeta">
         ${r.elapsed_s != null ? html`<span><b>${NL.mins(r.elapsed_s)}</b>${budget ? html` of ${Math.round(r.max_minutes)}m <${NL.Bar} value=${r.elapsed_s} max=${budget} tone=${r.elapsed_s > budget * 0.85 ? 'warn' : ''} />` : null}</span>` : null}
         ${r.n_actions ? html`<span><b>${r.n_actions}</b> actions</span>` : null}
-        ${(r.subagents || []).length ? html`<span><b>${r.subagents.length}</b> subagents</span>` : null}
+        ${(r.subagents || []).length ? html`<span>${NL.plural(r.subagents.length, 'subagent')}</span>` : null}
         ${r.usage && r.usage.cost_usd != null ? html`<span>≈ $${(+r.usage.cost_usd).toFixed(2)}</span>` : null}
         ${r.status === 'queued' ? html`<span>${r.not_before ? 'scheduled for ' + NL.hhmm(r.not_before) : 'starts as soon as a slot is free'}</span>` : null}
       </div>
       ${r.reason && !active && !['completed', 'waiting_input', 'queued'].includes(r.status) ? html`<div class="note note-warn">${r.reason}</div>` : null}
+      ${r.status === 'waiting_input' && r.pending_question ? html`<${AskCard} r=${r} />` : null}
       <${Lineage} r=${r} />
-      <${Subagents} r=${r} />
+      <${Subagents} r=${r} focus=${focusSub} />
       <${NL.RunFiles} r=${r} />
       <div class="convo" ref=${scroller} onScroll=${onScroll}>
         ${skipped ? html`<div class="msg-div"><span>earlier output skipped (${Math.round(skipped / 1024)} KB)</span></div>` : null}
-        ${!blocks.length ? html`<div class="muted pad">${r.status === 'queued' ? 'Waiting for a free slot…' : active ? 'Starting up…' : 'No transcript yet.'}</div>` : null}
+        ${!blocks.length ? html`<div class="muted pad">${r.status === 'queued' ? 'Waiting for a free slot…' : active ? (r.last_action ? 'Working — its latest step is below.' : 'Starting up…') : 'No transcript yet.'}</div>` : null}
         ${blocks.map((b, i) => html`<${Block} key=${i} b=${b} last=${i === blocks.length - 1 && active} />`)}
         ${active && r.last_action ? html`<div class="now"><i class="dot-live"></i> <b>${r.last_action.tool || ''}</b> ${NL.clip(r.last_action.summary, 140)}</div>` : null}
         <${PermissionRows} r=${r} />
-        ${r.status === 'waiting_input' && r.pending_question ? html`<${AskCard} r=${r} />` : null}
         <${Report} r=${r} />
         ${(r.qa || []).length ? html`<details class="qa"><summary>${NL.plural(r.qa.length, 'earlier answer')}</summary>${r.qa.map(q => html`<div class="qa-row"><span class="muted">${NL.hhmm(q.answered_at)}</span>
           ${((q.question || {}).questions || []).map(x => x.question).join(' · ')} → <b>${Object.values(q.answers || {}).map(v => Array.isArray(v) ? v.join(', ') : v).join(' · ') || q.response || ''}</b></div>`)}</details>` : null}
@@ -241,7 +254,7 @@
   };
 
   /* subagents as a tree (a subagent may spawn its own), each linked to its own trace */
-  const Subagents = ({ r }) => {
+  const Subagents = ({ r, focus }) => {
     const s = NL.useLab();
     const subs = r.subagents || [];
     if (!subs.length) return null;
@@ -251,7 +264,7 @@
     const traceOf = sa => (s.workers || []).find(w => (w.spawn_id && w.spawn_id === sa.id) || (sa.session && w.worker_id === sa.session));
     const Row = ({ sa, depth }) => {
       const w = traceOf(sa);
-      return html`<div class=${cls('sub-row', sa.status === 'working' && 'on')} style=${{ marginLeft: (depth * 18) + 'px' }}>
+      return html`<div class=${cls('sub-row', sa.status === 'working' && 'on', focus === sa.id && 'focus')} style=${{ marginLeft: (depth * 18) + 'px' }}>
         ${depth ? html`<span class="muted">↳</span>` : null}<${NL.RoleDot} role=${sa.type} /><b>${NL.roleOf(sa.type).label}</b><span class="grow clip">${sa.description || ''}</span>
         ${sa.background ? html`<span class="muted small" title="started in the background">bg</span>` : null}
         <span class="muted">${sa.status || ''}${sa.n_actions ? ' · ' + sa.n_actions + ' actions' : ''}</span>
@@ -260,10 +273,10 @@
         ${sa.result ? html`<details class="sub-res"><summary>result</summary><div>${sa.result}</div></details>` : null}</div>
         ${kidsOf(sa.id).map(k => html`<${Row} key=${k.id} sa=${k} depth=${depth + 1} />`)}`;
     };
-    return html`<details class="subs" open=${live > 0}><summary>${NL.plural(subs.length, 'subagent')}${live ? html` · <b>${live} working</b>` : null}</summary>
+    return html`<details class="subs" open=${live > 0 || !!focus}><summary>${NL.plural(subs.length, 'subagent')}${live ? html` · <b>${live} working</b>` : null}</summary>
       ${kidsOf(null).slice().reverse().map(sa => html`<${Row} key=${sa.id} sa=${sa} depth=${0} />`)}</details>`;
   };
-  NL.openRun = id => { if (id) NL.open(NL.RunSheet, { id }, { key: 'run:' + id }); };
+  NL.openRun = (id, sub) => { if (id) NL.open(NL.RunSheet, { id, focusSub: sub || null }, { key: 'run:' + id }); };
 
   NL.TextSheet = ({ title, sub, text, onClose }) => html`<${NL.Sheet} title=${title} sub=${sub} onClose=${onClose} wide><pre class="plain">${text}</pre></${NL.Sheet}>`;
 
@@ -302,16 +315,16 @@
       <header class="page-head"><div><h1>Runs</h1><p class="lede">Every agent session started from here — each one is a conversation you can open, answer and continue.</p></div>
         <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}></header>
       <div class="statline">
-        <span><b>${x.active || 0}</b> running of ${caps.total || '—'} slots</span><span><b>${x.queued || 0}</b> queued</span><span><b>${x.waiting || 0}</b> waiting for you</span>
+        <span><b>${all.filter(r => NL.RUN_ACTIVE.has(r.status)).length}</b> running${caps.total ? ` of ${caps.total} at once` : ''}</span><span><b>${all.filter(r => r.status === 'queued').length}</b> queued</span><span><b>${all.filter(r => r.status === 'waiting_input').length}</b> waiting for you</span>
         ${x.brake ? html`<span class="warn">⚠ daily limit reached — ${x.brake}</span>` : null}
-        ${!NL.execOn(s) ? html`<span class="warn">Starting agents from the dashboard is off — <a class="link" href="#/settings/autonomy">turn it on</a></span>` : null}
+        ${!NL.execOn(s) && !NL.DEMO ? html`<span class="warn">Starting agents from the dashboard is off — <a class="link" href="#/settings/autonomy">turn it on</a></span>` : null}
       </div>
       ${working.length ? html`<${NL.Section} title="Agents at work now" count=${working.length}><div class="agents-strip">${working.slice(0, 24).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
         <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.label || NL.roleOf(w.role).label, 34)}</span>${w.in_tool ? html`<span class="muted small">▸ ${w.in_tool.tool}</span>` : null}</button>`)}</div></${NL.Section}>` : null}
       ${(s.workers || []).some(w => w.interactive && w.status !== 'done') ? html`<${NL.Section} title="Sessions started outside the dashboard" count=${(s.workers || []).filter(w => w.interactive && w.status !== 'done').length}>
         <p class="muted small">Claude Code, Codex or opencode sessions opened in a terminal or an editor in this lab. The lab's hooks trace them; they aren't runs, so their questions stay in that session.</p>
         <div class="agents-strip">${(s.workers || []).filter(w => w.interactive && w.status !== 'done').slice(0, 12).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
-          <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.idea || w.project || 'the lab', 26)}</span><span class="muted small">${w.status}${(w.children || []).length ? ' · ' + w.children.length + ' subagents' : ''}</span></button>`)}</div></${NL.Section}>` : null}
+          <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.idea || w.project || 'the lab', 26)}</span><span class="muted small">${w.status}${(w.children || []).length ? ' · ' + NL.plural(w.children.length, 'subagent') : ''}</span></button>`)}</div></${NL.Section}>` : null}
       <div class="toolbar"><${NL.Tabs} tabs=${FILTERS.map(x2 => ({ id: x2.id, label: x2.label, count: x2.id === 'all' ? null : all.filter(x2.f).length || null }))} value=${f} onChange=${setF} />
         <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></div>
       ${list.length ? html`<div class="runlist">${list.slice(0, 200).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} />`)}</div>`

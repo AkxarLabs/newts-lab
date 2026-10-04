@@ -10,7 +10,7 @@
   NL.nextFor = (s, it) => {
     if (!it) return null;
     const live = NL.runsOf(s, it.id).find(r => NL.RUN_ACTIVE.has(r.status) || r.status === 'queued' || r.status === 'waiting_input');
-    if (live) return { label: live.status === 'waiting_input' ? 'Answer its question' : 'Watch it work', icon: '▸', run: () => NL.openRun(live.run_id), live };
+    if (live) return { label: live.status === 'waiting_input' ? 'Answer its question' : 'Watch the agent live', icon: '▸', run: () => NL.openRun(live.run_id), live };
     if (it.gate && !it.gate_signed) return { label: `Review and sign Gate ${it.gate}`, icon: '✉', run: () => NL.openGate(it.id, it.gate), gate: it.gate };
     if (it.state === NL.gateAt(3) && it.gate === 3 && it.gate_signed) return { label: 'Finalize', icon: '▸', run: async () => {
       if (!await NL.confirm({ title: `Finalize “${it.title || it.id}”?`, ok: 'Start /finalize', body: 'The reproducibility pass, artifact locking and knowledge write-back — under your Gate 3 signature.' })) return;
@@ -139,8 +139,10 @@
     const docs = g ? g.sections.flatMap(sec => sec.docs.map(d => ({ ...d, sec: sec.title }))) : [];
     const [sel, setSel] = useState(null);
     const cur = sel || (rel ? docs.find(d => d.rel === rel) : null) || docs[0];
+    const shown = NL.artifactsOf(NL.useLab()).filter(a => a.study === it.id);
     return html`<div class="page-split inner">
-      <aside class="split-left">${!tree ? html`<${NL.Spinner} />` : !docs.length ? html`<div class="muted">No documents yet.</div>` :
+      <aside class="split-left">${shown.length ? html`<div class="shelf-sec"><div class="shelf-sec-h">❏ For you (${shown.length})</div>${shown.map(a => html`<button type="button" class="shelf-doc" onClick=${() => NL.openArtifact(a.id)}>${a.title}${a.question && !a.answered ? ' · asks you' : ''}</button>`)}</div>` : null}
+        ${!tree ? html`<${NL.Spinner} />` : !docs.length ? html`<div class="muted small">No documents in the study or its project yet.</div>` :
         g.sections.map(sec => html`<div class="shelf-sec"><div class="shelf-sec-h">${sec.icon || ''} ${sec.title}</div>${sec.docs.map(d => html`<button type="button" class=${cls('shelf-doc', cur && cur.rel === d.rel && cur.scope === d.scope && 'on')} onClick=${() => setSel(d)}>${d.title}</button>`)}</div>`)}</aside>
       <main class="split-right">${cur ? html`<${NL.DocReader} scope=${cur.scope} slug=${cur.slug} rel=${cur.rel} />` : null}</main></div>`;
   };
