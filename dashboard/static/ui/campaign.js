@@ -69,7 +69,8 @@
     return html`<div class=${cls('camp-card', 'st-' + c.status, compact && 'compact')}>
       <div class="row between"><button type="button" class="link camp-title" onClick=${() => NL.openCampaign(c.name)}>${NL.clip(c.name.replace(/^\d{4}-\d{2}-\d{2}-/, ''), compact ? 28 : 60)}</button>
         <${NL.Pill} tone=${TONE[c.status] || 'muted'}>${TONE[c.status] === 'live' ? html`<i class="dot-live"></i>` : null}${WORD[c.status] || c.status}</${NL.Pill}></div>
-      <div class="muted small" title=${c.deadline ? 'runs until ' + when(c.deadline) : ''}>${[`pass ${c.cycles || 0}`, left(c), nextIn(c), `${Math.round(c.used_minutes || 0)} agent-min${b.agent_minutes ? ' of ' + Math.round(b.agent_minutes) : ''}`, spendLine(c, spent)].filter(Boolean).join(' · ')}</div>
+      ${compact ? html`<div class="muted small" title=${[`pass ${c.cycles || 0}`, nextIn(c), `${Math.round(c.used_minutes || 0)} agent-min used`, c.deadline ? 'runs until ' + when(c.deadline) : ''].filter(Boolean).join(' · ')}>${[left(c), `$${(spent || 0).toFixed(2)} spent${(+(c.spend_cap_usd || b.spend_usd) || 0) ? ` of $${(+(c.spend_cap_usd || b.spend_usd)).toFixed(0)}` : ''}`].filter(Boolean).join(' · ')}</div>`
+        : html`<div class="muted small" title=${c.deadline ? 'runs until ' + when(c.deadline) : ''}>${[`pass ${c.cycles || 0}`, left(c), nextIn(c), `${Math.round(c.used_minutes || 0)} agent-min${b.agent_minutes ? ' of ' + Math.round(b.agent_minutes) : ''}`, spendLine(c, spent)].filter(Boolean).join(' · ')}</div>`}
       ${!compact && c.deadline ? html`<div class="muted small">Runs until ${when(c.deadline)}${c.created ? ` · started ${when(c.created)}` : ''}</div>` : null}
       ${pct != null ? html`<${NL.Bar} value=${pct} max=${100} />` : null}
       <div class="row gap wrap small">${k.n ? html`<span>${NL.plural(k.n, 'study', 'studies')}</span>` : html`<span class="muted">no studies yet</span>`}
@@ -79,8 +80,8 @@
       ${c.paused_reason && ['paused', 'stalled'].includes(c.status) ? html`<div class="small warn">${c.paused_reason}${c.paused_by_lab ? ' — it carries on when you resume the lab' : ''}</div>` : null}
       <div class=${cls('row gap', compact && 'camp-ctl')}>${live ? html`<${NL.Btn} small onClick=${() => act(c, 'pause')} title="Running work finishes; nothing new starts. Resume any time.">Pause</${NL.Btn}>` : null}
         ${['paused', 'stalled'].includes(c.status) && !c.paused_by_lab ? html`<${NL.Btn} small kind="primary" onClick=${() => act(c, 'resume')}>Resume</${NL.Btn}>` : null}
-        ${!['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')} title="Ends the campaign for good and writes a final report.">End campaign…</${NL.Btn}>` : null}
-        ${!compact ? html`<${NL.Btn} small kind="ghost" onClick=${() => NL.openCampaign(c.name)}>Details</${NL.Btn}>` : null}</div></div>`;
+        ${!compact && !['done', 'stopped', 'stopping'].includes(c.status) ? html`<${NL.Btn} small kind="ghost" onClick=${() => act(c, 'stop')} title="Ends the campaign for good and writes a final report.">End campaign…</${NL.Btn}>` : null}
+        <${NL.Btn} small kind="ghost" onClick=${() => NL.openCampaign(c.name)}>Details</${NL.Btn}></div></div>`;
   };
 
   NL.CampaignSheet = ({ name, onClose }) => {

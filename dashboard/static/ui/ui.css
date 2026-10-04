@@ -44,6 +44,7 @@ html[data-density="compact"] { font-size: 13px; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; font-feature-settings: 'ss01' 0; }
 #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; display: block; }
+:root:not([data-lamp="day"]) #scene { background: radial-gradient(ellipse 70% 60% at 45% 55%, #123038 0%, #0d1a1f 45%, var(--bg) 80%); }
 #app { position: relative; z-index: 1; }
 a { color: inherit; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -751,7 +752,7 @@ label.keep.keep-vis { padding: 3px 8px; border: 1px solid var(--edge); border-ra
 .navlink.more { background: none; border: 0; font: inherit; cursor: pointer; white-space: nowrap; }
 @media (min-width: 641px) { .navlink.more { display: none; } }
 @media (max-width: 640px) { .topbtn-label, .iconbtn-label { display: none; } .topbtn { padding: 0 8px; } .sound-wrap { display: none; } .navlink { padding: 6px 5px; } }
-.topbtn { height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--edge); background: var(--paper-2); color: var(--ink); font: 500 13px/1 var(--sans); cursor: pointer; white-space: nowrap; }
+.topbtn { height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 500 13px/1 var(--sans); cursor: pointer; white-space: nowrap; }
 .topbtn:hover { background: var(--accent-wash); } .topbtn.paused { background: color-mix(in srgb, var(--warm) 22%, var(--paper)); border-color: color-mix(in srgb, var(--warm) 50%, var(--edge)); }
 @media (max-width: 860px) { .topbtn { padding: 0 7px; font-size: 12px; } }
 /* Settings: grouped side nav, the scope pill */

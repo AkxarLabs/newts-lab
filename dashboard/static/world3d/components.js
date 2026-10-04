@@ -130,6 +130,9 @@
   C('parkBench', { build(K) {
     return K.group(K.box(1.4, 0.05, 0.45, 'wood', 0, 0.42, 0), K.box(1.4, 0.35, 0.05, 'wood', 0, 0.5, -0.2), K.box(0.05, 0.42, 0.4, 'black', -0.6, 0, 0), K.box(0.05, 0.42, 0.4, 'black', 0.6, 0, 0));
   } });
+  C('streetLamp', { build(K) {
+    return K.group(K.cyl(0.05, 0.07, 1.9, 'steel'), K.box(0.34, 0.05, 0.05, 'steel', -0.15, 1.88, 0), K.sphere(0.11, 'lamp', -0.3, 1.78, 0, { glow: 'lamp', gi: K.night ? 2.2 : 0.3 }));
+  } });
   C('tree', { build(K, p) {
     const s = p.size || 1;
     return K.group(K.cyl(0.08 * s, 0.12 * s, 0.9 * s, 'woodDark'), K.cone(0.6 * s, 1.1 * s, 'leaf', 0, 0.7 * s, 0, { seg: 8 }), K.cone(0.45 * s, 0.9 * s, 'plant', 0, 1.3 * s, 0, { seg: 8 }));

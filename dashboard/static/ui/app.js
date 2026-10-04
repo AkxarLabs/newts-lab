@@ -49,6 +49,7 @@
     add('Give an instruction…', 'Type a task in your own words', () => NL.openStart(), 'prompt chat ask newt');
     add('Plan a campaign', 'Work through several ideas without you', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
     add('History', 'What happened in the lab, and what you sent', () => NL.go('history'), 'log events overnight');
+    if (NL.Sound) { const sp = NL.Sound.prefs(); add(sp.music ? 'Turn music off' : 'Turn music on', 'Soft generated music', () => NL.Sound.set({ music: !sp.music }), 'sound audio music mute'); add(sp.chimes ? 'Turn chimes off' : 'Turn chimes on', 'A soft bell when something needs you', () => NL.Sound.set({ chimes: !sp.chimes }), 'sound audio chime bell mute'); }
     add('Theme: ' + ({ auto: 'System', day: 'Light', night: 'Dark' })[NL.prefs.theme || 'auto'], 'System → Light → Dark', () => NL.setPref('theme', ({ auto: 'day', day: 'night', night: 'auto' })[NL.prefs.theme || 'auto']), 'dark light night day toggle');
     (NL.liveCampaigns ? NL.liveCampaigns(s) : []).forEach(c => {
       const nm = c.name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
@@ -103,10 +104,9 @@
         ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${NL.plural(elsewhere, 'thing')} in your other labs ${elsewhere === 1 ? 'needs' : 'need'} you — open Labs & machines`}>+${elsewhere} in other labs</span>` : null}</a>
       <nav class="mainnav">${nav.map(([id, to, label, tier]) => html`<a class=${cls('navlink', tier === 2 && 'secondary', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && (NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length) ? html` <span class=${cls('navcount', NL.artifactsAsking(s).length && 'warm')} title="questions for you, and new things to look at">${NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length}</span>` : null}</a>`)}<button type="button" class="navlink more" onClick=${NL.openPalette} title="Library, Workflow, History and more">More ▾</button></nav>
       <div class="topright">
-        <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
+        ${conn === 'live' || NL.DEMO ? null : html`<span class=${cls('conn', 'conn-' + conn)} title=${conn}><i></i>${conn === 'offline' ? 'Offline' : 'Reconnecting…'}</span>`}
         <${PauseBtn} />
         <${ThemeBtn} />
-        <${SoundBtn} />
         <button class="iconbtn" title="Search (/ or Ctrl+K)" aria-label="Search" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
         <button class=${cls('iconbtn', needs.length && 'has')} title="Needs you" aria-label=${needs.length ? `Needs you: ${needs.length}` : 'Needs you'} onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
         <a class=${cls('iconbtn', 'labelled', page === 'settings' && 'on')} title="Settings" href="#/settings"><${NL.Icon} name="sliders" /><span class="iconbtn-label">Settings</span></a>
@@ -154,14 +154,6 @@
       <div class="row-wrap">${(NL.Sound.KINDS || []).map(k => html`<button type="button" class="link small" onClick=${() => NL.Sound.test(k)}>▸ ${k}</button>`)}</div>
       <${NL.Toggle} on=${!!p.music} onChange=${v => set({ music: v })} label="Music" sub="calm, generated as you listen — it breathes with the lab: sparser when it is quiet, a little brighter when agents are at work" />
       <label class="sound-vol"><span class="muted small">music volume</span><input type="range" min="0" max="1" step="0.05" value=${p.musicVolume} onInput=${e => set({ musicVolume: +e.target.value })} /></label></div>`;
-  };
-  const SoundBtn = () => {
-    const p = useSound();
-    const [open, setOpen] = useState(false);
-    if (!NL.Sound) return null;
-    const on = p.chimes || p.music;
-    return html`<span class="sound-wrap"><button class=${cls('iconbtn', on && 'on')} title="sound — chimes and music" aria-expanded=${open} onClick=${() => setOpen(!open)}><${NL.Icon} name=${on ? 'sound' : 'mute'} /></button>
-      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /><a class="link small" href="#/settings/notifications" onClick=${() => setOpen(false)}>More in Settings → Notifications & sound</a></div>` : null}</span>`;
   };
 
   /* ── routing ───────────────────────────────────────────────────────────── */

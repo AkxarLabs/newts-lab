@@ -90,9 +90,9 @@ L.createWorld = async function createWorld(canvas, opts) {
     const group = new THREE.Group(); scene.add(group);
     // lights
     while (scene.children.some(c => c.isLight)) scene.remove(scene.children.find(c => c.isLight));
-    scene.add(new THREE.HemisphereLight(theme === 'night' ? 0x7f9fb0 : 0xffffff, theme === 'night' ? 0x1a2024 : 0xd8cbb4, TH.hemi));
+    scene.add(new THREE.HemisphereLight(theme === 'night' ? 0x8fb4c4 : 0xffffff, theme === 'night' ? 0x1f2a2c : 0xd8cbb4, TH.hemi));
     const sun = new THREE.DirectionalLight(theme === 'night' ? 0x9fc7ff : 0xfff3df, TH.sun); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; scene.add(sun);
-    renderer.toneMappingExposure = theme === 'night' ? 1.1 : 1.0;
+    renderer.toneMappingExposure = theme === 'night' ? 1.22 : 1.0;
     // where every room stands
     const plan = M.placeRooms(list, wf);      // the plan, then the lab district
     const DIR = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] }, RY = { s: 0, n: Math.PI, e: Math.PI / 2, w: -Math.PI / 2 };
@@ -142,12 +142,35 @@ L.createWorld = async function createWorld(canvas, opts) {
     for (const x of XS) { const st = flat(new THREE.PlaneGeometry(STREET - 0.6, EXT.z1 - EXT.z0 + STREET), TH.path); st.position.set(x, 0.012, (EXT.z0 + EXT.z1) / 2); group.add(st); }
     for (const z of ZS) { const st = flat(new THREE.PlaneGeometry(EXT.x1 - EXT.x0 + STREET, STREET - 0.6), TH.path, 0.013); st.position.set((EXT.x0 + EXT.x1) / 2, 0.013, z); group.add(st); }
     group.add(K.cyl(Math.min(colW[0], rowH[0]) / 2 - 2.0, Math.min(colW[0], rowH[0]) / 2 - 1.9, 0.1, TH.path, 0, 0, 0, { seg: 48 }));
+    const night = theme === 'night', glowLines = [];
+    if (night) {
+      const neon = K.mat(TH.neon, { glow: TH.neon, gi: 0.35 }), line = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.02, d), neon); m.position.set(x, 0.025, z); group.add(m); glowLines.push(m); };
+      const LX = EXT.x1 - EXT.x0 + STREET, LZ = EXT.z1 - EXT.z0 + STREET, e = STREET / 2 - 0.3;
+      for (const x of XS) for (const s of [-1, 1]) line(0.035, LZ, x + s * e, (EXT.z0 + EXT.z1) / 2);
+      for (const z of ZS) for (const s of [-1, 1]) line(LX, 0.035, (EXT.x0 + EXT.x1) / 2, z + s * e);
+      const rim = K.mat('teal', { glow: 'teal', gi: 0.7 }), R0x = EXT.x0 - RIM + 0.25, R1x = EXT.x1 + RIM - 0.25, R0z = EXT.z0 - RIM + 0.25, R1z = EXT.z1 + RIM - 0.25;
+      for (const [w, d, x, z] of [[R1x - R0x, 0.06, (R0x + R1x) / 2, R0z], [R1x - R0x, 0.06, (R0x + R1x) / 2, R1z], [0.06, R1z - R0z, R0x, (R0z + R1z) / 2], [0.06, R1z - R0z, R1x, (R0z + R1z) / 2]]) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), rim); m.position.set(x, 0.36, z); group.add(m);
+      }
+      for (const x of XS) for (const z of ZS) {
+        if (Math.hypot(x, z) < Math.min(colW[0], rowH[0]) / 2) continue;      // not on the plaza
+        group.add(K.at(K.build('streetLamp'), x + e + 0.15, 0, z + e + 0.15));
+      }
+    }
     const taken = new Set(cells.map(c => c.join(',')));
+    const flies = [];
     let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     for (let c = C0; c <= C1; c++) for (let w = R0; w <= R1; w++) {
       if (taken.has(c + ',' + w)) continue;
       const pw = colW[c] - STREET, ph = rowH[w] - STREET; group.add(K.box(pw, 0.08, ph, TH.grass, cx(c), 0, cz(w)));
       for (let i = 0; i < 5; i++) group.add(K.at(K.build('tree', { size: 0.8 + rnd() * 0.6 }), cx(c) + (rnd() - 0.5) * (pw - 2), 0.08, cz(w) + (rnd() - 0.5) * (ph - 2)));
+      if (night) for (let i = 0; i < 14; i++) flies.push([cx(c) + (rnd() - 0.5) * (pw - 1), 0.5 + rnd() * 1.6, cz(w) + (rnd() - 0.5) * (ph - 1), rnd() * 6.28]);
+    }
+    let fireflies = null;
+    if (flies.length) {
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(flies.flatMap(f => f.slice(0, 3)), 3));
+      fireflies = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xd8ff9a, size: 0.2, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      fireflies.userData.seed = flies; group.add(fireflies);
     }
     for (let i = 0; i < 18; i++) { const sd = i % 4, u = rnd(); const x = sd < 2 ? EXT.x0 + u * (EXT.x1 - EXT.x0) : (sd === 2 ? EXT.x0 - M * 0.55 : EXT.x1 + M * 0.55), z = sd < 2 ? (sd ? EXT.z1 + M * 0.55 : EXT.z0 - M * 0.55) : EXT.z0 + u * (EXT.z1 - EXT.z0); group.add(K.at(K.build('tree', { size: 0.55 + rnd() * 0.4 }), x, 0, z)); }
     // your desk, Newt at it, the inbox tray
@@ -168,7 +191,7 @@ L.createWorld = async function createWorld(canvas, opts) {
       gates[g.n] = { arch, lamp, g, pos: p, host };
     }
     group.traverse(m => { if (m.isMesh && m.geometry && m.geometry.type === 'PlaneGeometry') m.castShadow = false; });
-    W = { group, rooms, XS, ZS, colW, rowH, EXT, SPAN, hub, inbox, bigNewt, gates, sun, hubExits: Object.values(DIR).map(d => [d[0] * colW[0] / 2, d[1] * rowH[0] / 2]) };
+    W = { group, rooms, XS, ZS, colW, rowH, EXT, SPAN, hub, inbox, bigNewt, gates, sun, fireflies, glowLines, hubExits: Object.values(DIR).map(d => [d[0] * colW[0] / 2, d[1] * rowH[0] / 2]) };
     buildNeighbours();
     fitCamera(true);
     return true;
@@ -239,12 +262,13 @@ L.createWorld = async function createWorld(canvas, opts) {
     const sp = o.spec, [w, d] = sp.size, g = new THREE.Group(); g.position.set(o.x, 0, o.z); g.rotation.y = o.ry; group.add(g); o.g = g;
     o.floorMat = K.mat(sp.floor === 'grass' ? TH.grass : sp.floor).clone(); o.floorBase = o.floorMat.color.clone();
     const fl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), o.floorMat); fl.position.y = 0.07; fl.receiveShadow = true; fl.userData.pick = { kind: 'room', id: o.id }; g.add(fl); pickables.add(fl); o.floor = fl;
-    g.add(K.box(w, 0.05, 0.22, sp.accent, 0, 0.14, d / 2 - 0.11));
+    const trim = theme === 'night' ? { glow: sp.accent, gi: 0.55 } : undefined;
+    g.add(K.box(w, 0.05, 0.22, sp.accent, 0, 0.14, d / 2 - 0.11, trim));
     o.walls = [];
     const wallH = o.building ? 0.5 : 1.5;
     if (sp.walls !== false) for (const [lx, lz, len, nx, nz] of [[0, -d / 2, w, 0, -1], [-w / 2, 0, d, -1, 0], [w / 2, 0, d, 1, 0]]) {
       const wall = K.box(nz ? len : 0.16, wallH, nz ? 0.16 : len, sp.wall || 'plaster', lx, 0.14, lz, o.building ? { alpha: 0.55 } : undefined); g.add(wall);
-      const cap = K.box(nz ? len + 0.02 : 0.2, 0.06, nz ? 0.2 : len + 0.02, sp.accent, lx, 0.14 + wallH + 0.0, lz); g.add(cap);
+      const cap = K.box(nz ? len + 0.02 : 0.2, 0.06, nz ? 0.2 : len + 0.02, sp.accent, lx, 0.14 + wallH + 0.0, lz, trim); g.add(cap);
       o.walls.push({ wall, cap, n: [nx, nz], lx, lz, h: wallH });
     }
     const sign = K.sign(o.title, { h: 0.42 }); sign.position.set(0, 1.25, -d / 2 + 0.1); g.add(sign);
@@ -259,7 +283,7 @@ L.createWorld = async function createWorld(canvas, opts) {
     for (const p of (sp.props || []).concat(o.extraProps)) { const m = K.build(p.c, p.props); m.position.set(p.at[0], 0.14, p.at[1]); m.rotation.y = p.rot || 0; g.add(m); }
     g.add(K.box(Math.min(3.4, w * 0.4), 0.42, 0.5, 'woodLight', o.shelfAt[0] + Math.min(3.4, w * 0.4) / 2, 0.14, o.shelfAt[1]));
     if (o.empty) { const s2 = K.sign('No projects yet — a lab is built for each one', { h: 0.28, font: 'italic 500 34px Newsreader, Georgia, serif' }); s2.position.set(0, 0.6, d / 2 - 0.05); g.add(s2); }
-    if (theme === 'night') { const pl = new THREE.PointLight(0xffc98a, 14, 10, 1.6); pl.position.set(0, 2.8, 0); g.add(pl); }
+    if (theme === 'night') { const pl = new THREE.PointLight(0xffc98a, 18, 11, 1.5); pl.position.set(0, 2.8, 0); g.add(pl); }
   }
 
   // ── streets: a walk between any two places ───────────────────────────────────────────────────────
@@ -493,7 +517,7 @@ L.createWorld = async function createWorld(canvas, opts) {
     if (!W || !snap) return;
     const out = [], close = cam.r < 48, stats = roomStats(snap), maxCost = Math.max(0.01, ...Object.values(stats).map(x => x.cost));
     // labels never pile up: the busiest rooms are named first, and a label that would cover one is left out
-    const lensBar = document.querySelector('.lenses'), lr = lensBar && lensBar.getBoundingClientRect();   // never under the lens bar
+    const lensBar = document.querySelector('.lensbar') || document.querySelector('.lenses'), lr = lensBar && lensBar.getBoundingClientRect();   // never under the lens bar
     const placed = lr && lr.width ? [[lr.left - 6, lr.top - 6, lr.right + 6, lr.bottom + 6]] : [], busy = o => { const x = stats[o.id] || {}; return (x.asks || 0) * 100 + (x.n || 0) * 10 + (o.building ? 5 : 0); };
     for (const o of Object.values(W.rooms).sort((a, b) => busy(b) - busy(a))) {
       const [sx, sy, vis] = toScreen(o.x, 1.7, o.z - o.ez / 2 + 0.6); if (!vis) continue;
@@ -506,9 +530,10 @@ L.createWorld = async function createWorld(canvas, opts) {
       const line = lens === 'cost' ? `<span class="hot">$${x.cost.toFixed(2)} today</span>`
         : lens === 'risk' ? (x.risk ? `<span class="hot">${x.risk} to look at — failed, blocked or gone quiet</span>` : `<span>${kick}nothing risky</span>`)
         : lens === 'waiting' ? (x.asks || x.gate ? `<span class="hot">${[x.asks ? `${x.asks} asking you` : '', x.gate ? `Gate ${x.gate} to sign` : ''].filter(Boolean).join(' · ')}</span>` : `<span>${kick}nothing for you</span>`)
-        : o.building ? '<span class="hot">being built — its project repo is being set up</span>'
+        : o.building ? '<span class="hot">being set up</span>'
         : away ? `<span>${kick}its agent is in ${esc(W.rooms[away.room].title)}</span>`
-        : `<span>${kick}${x.n} agent${x.n === 1 ? '' : 's'}${x.asks ? ` · <em class="hot">${x.asks} asking you</em>` : ''}</span>`;
+        : x.n || x.asks ? `<span>${x.n ? `${x.n} at work` : ''}${x.n && x.asks ? ' · ' : ''}${x.asks ? `<em class="hot">${x.asks} asking you</em>` : ''}</span>`
+        : `<span>${kick.replace(/ · $/, '')}</span>`;
       if (free) { placed.push(box); out.push(`<div class="wl-room" style="left:${sx}px;top:${sy}px"><b>${esc(o.title)}</b>${line}</div>`); }
       // the floor tells the lens
       let tint = null, k = 0;
@@ -529,7 +554,7 @@ L.createWorld = async function createWorld(canvas, opts) {
         if (hit(box)) continue;
       }
       placed.push(box);
-      out.push(`<div class="wl-room wl-nb" style="left:${at[0]}px;top:${at[1]}px"><b>${esc(nb.name)}</b><span>${esc(nb.machine || '')}</span>${state ? `<span>${state}</span>` : ''}<span class="wl-go">click to go there</span></div>`);
+      out.push(`<div class="wl-room wl-nb" style="left:${at[0]}px;top:${at[1]}px"><b>${esc(nb.name)}</b><span>${esc(nb.machine || '')}</span>${state ? `<span>${state}</span>` : ''}</div>`);
     }
     for (const a of actors.values()) {
       if (a.leaving && a.spec.kind === 'sub') continue;
@@ -592,6 +617,12 @@ L.createWorld = async function createWorld(canvas, opts) {
       W.inbox.children.forEach((e, i) => { e.visible = i < n; });
       W.bigNewt.update(t, { pose: pose === 'gate' || n ? 'wait' : pose === 'sleep' ? 'sleep' : pose === 'failure' ? 'fail' : pose === 'running' ? 'work' : 'idle' });
       const waitingGates = new Set(((snap.items) || []).filter(i => i.gate && !i.gate_signed).map(i => i.gate));
+      if (W.fireflies && ambient && !reduced) {
+        const P = W.fireflies.geometry.attributes.position, sd = W.fireflies.userData.seed;
+        for (let i = 0; i < sd.length; i++) { const f = sd[i]; P.setXYZ(i, f[0] + Math.sin(t * 0.4 + f[3]) * 0.6, f[1] + Math.sin(t * 0.9 + f[3] * 2) * 0.25, f[2] + Math.cos(t * 0.33 + f[3]) * 0.6); }
+        P.needsUpdate = true; W.fireflies.material.opacity = 0.6 + Math.sin(t * 1.7) * 0.25;
+        if (W.glowLines[0]) W.glowLines[0].material.emissiveIntensity = 0.32 + Math.sin(t * 0.8) * 0.1;
+      }
       for (const g of Object.values(W.gates)) g.lamp.material.emissiveIntensity = waitingGates.has(g.g.n) ? 1.6 + Math.sin(t * 6) * 0.6 : 0.15;
       // the camera: follow, ease, keep clear of the rail
       if (followKey) { const a = actors.get(followKey); if (a) { camT.tx = a.pos[0]; camT.tz = a.pos[1]; } else { followKey = null; if (onFollow) onFollow(null); } }

@@ -32,11 +32,11 @@
         carpet: '#c98f7d', rug: '#7f9fb8', paper: '#fbf7ef', ink: '#2d2a26', metal: '#9aa7ad', steel: '#6f7f86', glass: '#bfe3ea', screen: '#2f4d57',
         plant: '#6faf6c', leaf: '#5d9c5d', soil: '#6f5640', pot: '#c97c5d', teal: '#2d8a7c', rose: '#cf7a8f', ochre: '#d9a441', blue: '#5b86b8', violet: '#8b74c2',
         lamp: '#ffd98a', liquid: '#44e8cf', cream: '#f1e4da', amber: '#f0b24a', red: '#d0584a', green: '#5fae6e', white: '#ffffff', black: '#1d1d1f' } },
-    night: { sky: ['#0b1622', '#101b1f'], table: '#33464a', tableSide: '#18211f', soil: '#0d1214', path: '#46595b', grass: '#2b5446',
-      sun: 0.8, hemi: 0.6, ambient: 0.12, fog: '#0d161a',
+    night: { sky: ['#0b1622', '#101b1f'], table: '#3a5257', tableSide: '#1a2624', soil: '#0d1214', path: '#4f6668', grass: '#2f5f50',
+      sun: 0.95, hemi: 0.85, ambient: 0.16, fog: '#0d161a', neon: '#3fbfae',
       colors: { wood: '#7a5f47', woodLight: '#93775c', woodDark: '#4d3a2b', plaster: '#3a4446', plasterDark: '#2f383a', boards: '#5e4a39', tiles: '#38494a',
         carpet: '#6b4a4a', rug: '#3d5568', paper: '#cfd6d2', ink: '#1a1d1f', metal: '#5f6b70', steel: '#46545a', glass: '#4f8f99', screen: '#2b6f7a',
-        plant: '#3f7a5c', leaf: '#356b4f', soil: '#2a2420', pot: '#7d4f3e', teal: '#5ccfbc', rose: '#d27b98', ochre: '#c99a45', blue: '#6d93c9', violet: '#9b85d6',
+        plant: '#478a68', leaf: '#3c7858', soil: '#2a2420', pot: '#7d4f3e', teal: '#5ccfbc', rose: '#d27b98', ochre: '#c99a45', blue: '#6d93c9', violet: '#9b85d6',
         lamp: '#ffcf7a', liquid: '#5ff0d8', cream: '#e9ddd2', amber: '#f0c26c', red: '#e06a5a', green: '#6fd39a', white: '#e9efed', black: '#0c0e10' } },
   };
 

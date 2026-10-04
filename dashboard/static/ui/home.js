@@ -110,7 +110,7 @@
     const cold = !(s.items || []).length && !(s.runs || []).length;
     if (!prefs.rail) return html`<button class="rail-open" onClick=${() => NL.setPref('rail', true)} title="show Today">${needs.length ? html`<b class="badge">${needs.length}</b>` : null} Today ◂</button>`;
     return html`<aside class="rail" aria-label="Today" data-world-inset="right">
-      <header class="rail-head"><h2>Today</h2>${s.lab_paused ? null : html`<button type="button" class="link small rail-pause" title="Stops every agent. You can resume them." onClick=${() => NL.pauseLab(true)}>⏸ Pause lab</button>`}<button class="x" title="Hide the Today panel" aria-label="Hide the Today panel" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
+      <header class="rail-head"><h2>Today</h2><button class="x" title="Hide the Today panel" aria-label="Hide the Today panel" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
       <${NL.PausedBar} />
       <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}>
       <${SinceVisit} />
