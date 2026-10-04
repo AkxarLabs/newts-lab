@@ -72,13 +72,16 @@ stages:
   - {id: review,       title: Internal review,   states: [internal-review], procedures: [review-paper, critique-paper], gate: 3}
   - {id: finalization, title: Finalization,      states: [final],           procedures: [finalize]}
 
-# the rooms of the dashboard's building = the Studies board's columns. floor: 1 upper · 0 ground · -1 cellar;
-# order: left to right on its floor. A room's look is dashboard/static/world/rooms/<id>.js (or the lab's own
-# lab/rooms/<id>.js); a room with neither is drawn as a plain room — adding a room is adding a line here.
+# the rooms on the dashboard's table = the Studies board's columns. A room stands on a plot round the PI's desk:
+# `place: [column, row]` and `facing: n|e|s|w` put it there (Compose → Rooms: drag it); without them it takes
+# the next free plot. `per_project: true` makes it one room PER LIVE PROJECT (each project its own lab). How a
+# room looks is dashboard/static/world3d/rooms/<id>.js, or the lab's own lab/rooms3d/<id>.json (Compose → a
+# room → Look: describe it and an agent designs it); a room with neither is drawn plain — adding a room is
+# adding a line here.
 rooms:
   - {id: incubator, label: Ideas,   title: The Incubator,    states: [seed, triaged],                 floor: 0,  order: 1}
   - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], floor: 0,  order: 2, gate: 1}
-  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis],              floor: 0,  order: 3, gate: 2}
+  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis],              floor: 0,  order: 3, gate: 2, per_project: true}
   - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review],       floor: 1,  order: 1, gate: 3}
   - {id: archive,   label: Done,    title: The Archive,      states: [final],                         floor: 1,  order: 2}
   - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed],                floor: -1, order: 1}

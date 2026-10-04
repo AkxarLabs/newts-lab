@@ -142,12 +142,22 @@
     return html`<div class="crumb"><button class="btn btn-sm" onClick=${() => NL.Scene.back()}>◂ back</button><span class="crumb-t">${info.label || ''}</span>${map}</div>`;
   };
 
+  /* what the world shows: the work, its cost, what waits on you, what went wrong */
+  const LENSES = [['work', 'Work'], ['cost', 'Cost'], ['waiting', 'Waiting on you'], ['risk', 'Risk']];
+  const Lenses = () => {
+    const [l, setL] = useState(() => NL.ls.get('nl-lens', 'work'));
+    useEffect(() => { if (NL.Scene) NL.Scene.setLens(l); NL.ls.set('nl-lens', l); }, [l]);
+    return html`<div class="lenses" role="radiogroup" aria-label="what the world shows">${LENSES.map(([v, t]) =>
+      html`<button type="button" role="radio" aria-checked=${l === v} class=${cls('lens', l === v && 'on')} onClick=${() => setL(v)}>${t}</button>`)}</div>`;
+  };
+
   NL.Home = () => {
     const s = NL.useLab();
     const conn = NL.useConn();
     const prefs = NL.usePrefs();
     useEffect(() => { const t = setTimeout(() => NL.Scene && NL.Scene.insetsChanged(), 60); return () => clearTimeout(t); }, [prefs.rail]);
     return html`<div class="home">
+      <${Lenses} />
       <${Crumb} />
       <${Rail} />
       <${Key} />

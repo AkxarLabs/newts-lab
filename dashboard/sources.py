@@ -430,6 +430,13 @@ def campaigns(rows: list[dict] | None = None) -> list[dict]:
 
 # ── the snapshot ──────────────────────────────────────────────────────────────
 
+def _rooms3d_sig() -> str:
+    """Changes when the lab's own room looks (lab/rooms3d/*.json) do — the world fetches them again."""
+    d = ctx.LAB / "rooms3d"
+    fs = sorted(d.glob("*.json")) if d.is_dir() else []
+    return ",".join(f"{f.stem}:{int(f.stat().st_mtime)}" for f in fs)
+
+
 def snapshot() -> dict:
     rows = parse_registry()
     hub_bus = ctx.LAB / ".bus"
@@ -467,7 +474,9 @@ def snapshot() -> dict:
             item["agents"] = workers.launched_agents(pdir)
             item["directives"] = _directive_threads(pdir / ".bus", default_target=row["id"])
             ctrl = pdir / "control.yaml"
-            env = (labfiles.load_yaml(ctrl).get("gate2_envelope") if ctrl.exists() else None)
+            cfg = labfiles.load_yaml(ctrl) if ctrl.exists() else {}
+            item["project_type"] = str(cfg.get("project_type") or "ml")   # the world draws its lab by it
+            env = cfg.get("gate2_envelope")
             if env:   # only projects with an envelope block carry the burn-down chip
                 item["envelope"] = envelope_accounting(pdir, env)
             pevents = labfiles.read_jsonl(pdir / ".bus" / "events.jsonl", tail=80)
@@ -512,6 +521,7 @@ def snapshot() -> dict:
         "executor": attention.executor_status(),
         "skills": (executor.registry(ctx.HUB) if executor else {}),
         "workflow": _workflow_view(),
+        "rooms3d_sig": _rooms3d_sig(),
         **_autonomy_view(),
     }
 

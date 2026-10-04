@@ -22,14 +22,15 @@
 <script src="static/vendor/preact/preact.umd.js"></script>
 <script src="static/vendor/preact/hooks.umd.js"></script>
 <script src="static/vendor/preact/htm.umd.js"></script>
-<script src="static/vendor/pixi/pixi.min.js"></script>
-<script src="static/world/noise.js"></script>
-<script src="static/world/tokens.js"></script>
-<script src="static/world/paper.js"></script>
-<script src="static/world/components.js"></script>
-<script src="static/world/building.js"></script>
-<!-- newts:rooms — the server puts one <script> per room file here (static/world/rooms/*.js, then lab/rooms/*.js) -->
-<script src="static/world/engine.js"></script>
+<script type="module">import * as THREE from './static/vendor/three/three.module.min.js'; window.THREE = THREE; dispatchEvent(new Event('three:ready'));</script>
+<script src="static/world3d/kit.js"></script>
+<script src="static/world3d/newt.js"></script>
+<script src="static/world3d/components.js"></script>
+<script src="static/world3d/layout.js"></script>
+<script src="static/world3d/model.js"></script>
+<!-- newts:rooms3d — the server puts one <script> per built-in room look here (static/world3d/rooms/*.js); the lab's own are data (/api/rooms3d) -->
+<!-- /newts:rooms3d -->
+<script src="static/world3d/world.js"></script>
 <script src="static/world/scene.js"></script>
 <script src="static/ui/workflow-default.js"></script>
 <script src="static/ui/core.js"></script>
@@ -42,7 +43,6 @@
 <script src="static/ui/library.js"></script>
 <script src="static/ui/studies.js"></script>
 <script src="static/ui/workflow.js"></script>
-<script src="static/world3d/layout.js"></script>
 <script src="static/ui/compose.js"></script>
 <script src="static/ui/home.js"></script>
 <script src="static/ui/settings.js"></script>

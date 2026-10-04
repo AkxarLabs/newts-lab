@@ -8,13 +8,11 @@
 
   /* ── the world ─────────────────────────────────────────────────────────── */
   NL.viewListeners = new Set();
-  NL.Scene = window.VivScene ? window.VivScene.create({
-    motion: NL.prefs.motion, toast: m => NL.toast(m),
-    runTool: async (name, idea) => { const r = await NL.api('/api/tool', { name, idea }); NL.open(NL.TextSheet, { title: name, text: r.output || r.error || '(no output)' }); },
-  }) : null;
+  NL.Scene = window.VivScene ? window.VivScene.create({ motion: NL.prefs.motion }) : null;
   if (NL.Scene) {
     NL.Scene.onClick(id => NL.open(StudyPeek, { id }, { key: 'peek' }), () => NL.open(NL.InboxSheet, {}, { key: 'inbox' }));
     NL.Scene.onWorker(id => NL.openWorker(id));
+    NL.Scene.onRun(id => NL.openRun(id));
     NL.Scene.onNewt(() => NL.openStart());
     NL.Scene.onView(info => { NL.viewInfo = info; NL.viewListeners.forEach(f => f(info)); });
   }

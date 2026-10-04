@@ -36,7 +36,7 @@ def test_every_ui_file_parses(name):
 def test_script_order():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     order = ["vendor/preact/preact.umd.js", "vendor/preact/hooks.umd.js", "vendor/preact/htm.umd.js",
-             "vendor/pixi/pixi.min.js", "world/engine.js", "world/scene.js"] + [f"ui/{n}.js" for n in UI_ORDER]
+             "vendor/three/three.module.min.js", "world3d/world.js", "world/scene.js"] + [f"ui/{n}.js" for n in UI_ORDER]
     pos = [html.index(o) for o in order]
     assert pos == sorted(pos), order
     assert set(_js()) == set(UI_ORDER), "every ui/*.js is loaded, in order"

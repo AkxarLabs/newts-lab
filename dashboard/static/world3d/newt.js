@@ -3,7 +3,9 @@
  * side and a curled tail, both shading pink → lavender → sky blue (they glow a little at night). A role
  * badge on its chest says what kind of agent it is.
  *
- *   const n = Lab3D.makeNewt(K, { role: 'experiment-runner', color: '#5ccfbc', scale: 1 });
+ *   const n = Lab3D.makeNewt(K, { color: '#5ccfbc', hue: 40, scale: 1 });
+ *     color: the role badge on its chest · hue: turns its gills and tail round the colour wheel (a main agent's
+ *     family colour — its subagents are smaller newts in the same colours) · scale: its size
  *   n.group                       — add it to the scene
  *   n.update(t, { pose, moving }) — pose: idle | work | walk | wait | sleep | fail | carry
  */
@@ -13,6 +15,7 @@
   const GILL = ['#ff9fd6', '#c9a7ff', '#8fd8ff'];
   const TAIL = ['#f7a6d2', '#c39cf3', '#9fd3ff'];
 
+  const turn = (THREE, c, deg) => (deg ? '#' + new THREE.Color(c).offsetHSL(deg / 360, 0, 0).getHexString() : c);
   function lerpColor(THREE, cs, u) {
     const n = cs.length - 1, i = Math.min(n - 1, Math.floor(u * n)), f = u * n - i;
     return new THREE.Color(cs[i]).lerp(new THREE.Color(cs[i + 1]), f);
@@ -53,6 +56,7 @@
   L.makeNewt = function makeNewt(K, o) {
     o = o || {};
     const { THREE } = K, root = new THREE.Group(), body = new THREE.Group(), head = new THREE.Group();
+    const gill = GILL.map(c => turn(THREE, c, o.hue || 0)), tailC = TAIL.map(c => turn(THREE, c, o.hue || 0));
     const skin = K.mat(o.skin || 'cream', { smooth: true, rough: 0.7 }), dark = K.mat('#151517', { smooth: true, rough: 0.3 });
     root.add(body);
     // legs + feet
@@ -77,12 +81,12 @@
     // gills: three fronds a side, fanned out behind the cheeks
     const gills = [-1, 1].map(s => {
       const g = new THREE.Group(); g.position.set(s * 0.25, 0.02, -0.05); g.scale.setScalar(1.5);
-      [[0.32, 0.35, GILL[0]], [0.27, 0.9, GILL[1]], [0.22, 1.45, GILL[2]]].forEach(([len, ang, c]) => { const f = frond(K, len, c); f.rotation.z = -s * ang; f.rotation.x = -0.25; g.add(f); });
+      [[0.32, 0.35, gill[0]], [0.27, 0.9, gill[1]], [0.22, 1.45, gill[2]]].forEach(([len, ang, c]) => { const f = frond(K, len, c); f.rotation.z = -s * ang; f.rotation.x = -0.25; g.add(f); });
       head.add(g); return g;
     });
     // the curled tail
     const tail = new THREE.Group(); tail.position.set(0, 0.14, -0.14); body.add(tail);
-    tail.add(taperedTube(K, [[0, 0.02, 0], [0, -0.02, -0.2], [0.04, 0.03, -0.4], [0.09, 0.17, -0.5], [0.08, 0.3, -0.44]], 0.12, 0.025, TAIL));
+    tail.add(taperedTube(K, [[0, 0.02, 0], [0, -0.02, -0.2], [0.04, 0.03, -0.4], [0.09, 0.17, -0.5], [0.08, 0.3, -0.44]], 0.12, 0.025, tailC));
     root.traverse(m => { if (m.isMesh) m.castShadow = true; });
     if (o.scale) root.scale.setScalar(o.scale);
 

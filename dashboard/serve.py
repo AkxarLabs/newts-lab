@@ -347,7 +347,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             seed = "null"
         demo = "true" if self.demo else "false"
-        html = _with_rooms(html, "static/world/rooms/", lab_rooms=True)
+        html = _with_rooms3d(html, "static/world3d/rooms/")
         html = html.replace(
             "</head>", f"<script>window.__STATE__={seed};window.__VIV_DEMO__={demo};</script></head>", 1)
         body = html.encode("utf-8")
@@ -379,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
         if target.suffix == ".html" and target.parent.name == "world":   # the world's authoring pages load the room files the same way
             body = _with_rooms(body.decode("utf-8"), "rooms/", lab_rooms=False).encode("utf-8")
         if target.suffix == ".html" and target.parent.name == "world3d":
-            body = _with_rooms3d(body.decode("utf-8")).encode("utf-8")
+            body = _with_rooms3d(body.decode("utf-8"), "rooms/").encode("utf-8")
         # the 3D world's code and three.js may load into a sandboxed frame (a room preview: an opaque origin
         # that /api refuses); a module import from there needs CORS. Static code only — never /api.
         cors = {"Access-Control-Allow-Origin": "*"} if rel.startswith(("world3d/", "vendor/three/", "vendor/fonts/", "ui/workflow-default.js")) else None
@@ -513,7 +513,7 @@ def _with_rooms(html: str, prefix: str, lab_rooms: bool) -> str:
 ROOMS3D_MARK = "<!-- newts:rooms3d"
 
 
-def _with_rooms3d(html: str) -> str:
+def _with_rooms3d(html: str, prefix: str) -> str:
     """The 3D world's built-in room files where the page marks them (up to <!-- /newts:rooms3d -->). The lab's
     own rooms are data (GET /api/rooms3d), built by the page itself."""
     i = html.find(ROOMS3D_MARK)
@@ -521,7 +521,7 @@ def _with_rooms3d(html: str) -> str:
         return html
     j = html.find("<!-- /newts:rooms3d -->", i)
     end = j + len("<!-- /newts:rooms3d -->") if j >= 0 else html.index("-->", i) + 3
-    tags = [f'<script src="rooms/{f.name}"></script>' for f in sorted((STATIC / "world3d" / "rooms").glob("*.js"))]
+    tags = [f'<script src="{prefix}{f.name}"></script>' for f in sorted((STATIC / "world3d" / "rooms").glob("*.js"))]
     return html[:i] + "\n".join(tags) + html[end:]
 
 

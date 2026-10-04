@@ -1,194 +1,155 @@
-"""The diorama world (dashboard/static/world/): the design language and the room contract.
+"""The world (dashboard/static/world3d/): the room contract, and what the world decides from a snapshot.
 
-Loads the real world scripts under node with a bare `window` (no DOM, no Pixi — registering tokens,
-components and rooms and laying out the building need neither) and checks what the engine and the rest of
-the dashboard rely on: every lifecycle state lands in exactly one room, stations/paths/props are valid,
-the building layout is deterministic and non-overlapping, both themes define the same tokens, and
-components/rooms never hard-code a colour (they name tokens, so both themes and future palettes work).
+Loads the real world scripts under node with a bare `window` (no DOM, no WebGL — registering furniture and
+room looks, and the model that decides which rooms stand where and who goes in which, need neither) and checks
+what the dashboard relies on: every lifecycle state lands in exactly one room, every built-in look keeps the
+station contract, a per-project room stands once per live project (and is built while /spawn-project runs),
+the lab district keeps a lab's projects together without two rooms on one plot, and every run stands where its
+work is.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 
 import pytest
 import yaml
 
-from conftest import REPO
+from conftest import REPO, load
 
 NODE = shutil.which("node")
 STATIC = REPO / "dashboard" / "static"
-WORLD = STATIC / "world"
-CORE = ["noise.js", "tokens.js", "paper.js", "components.js", "building.js"]
-ROOM_FILES = sorted(p.name for p in (WORLD / "rooms").glob("*.js"))
+W3 = STATIC / "world3d"
+CORE = ["kit.js", "components.js", "layout.js", "model.js"]
+ROOM_FILES = sorted(p.name for p in (W3 / "rooms").glob("*.js"))
 _WF = yaml.safe_load((REPO / "workflow" / "stages.yaml").read_text(encoding="utf-8"))
-LIFECYCLE = [s["id"] for s in _WF["states"] + _WF["side_states"]]    # the workflow manifest's states
+LIFECYCLE = [s["id"] for s in _WF["states"] + _WF["side_states"]]
 WF_ROOM = {s["id"]: s["room"] for s in _WF["states"] + _WF["side_states"]}
-WF_STATION = {s["id"]: s["station"] for s in _WF["states"] + _WF["side_states"]}
-
-
-def _world(wf: dict | None = None, extra_js: str = "") -> dict:
-    """Load the world scripts under node, apply the workflow (the manifest's rooms + states), report."""
-    files = [str(WORLD / f) for f in CORE] + [str(WORLD / "rooms" / f) for f in ROOM_FILES]
-    wf = wf if wf is not None else {k: _WF[k] for k in ("rooms", "states", "side_states")}
-    js = f"""
-      global.window = global; const fs = require('fs');
-      for (const f of {json.dumps(files)}) eval(fs.readFileSync(f, 'utf8'));
-      {extra_js}
-      window.console.warn = () => {{}};
-      const W = window.VivWorld; W.applyWorkflow({json.dumps(wf)});
-      const lay = W.layoutBuilding(), lay2 = W.layoutBuilding();
-      const comps = {{}};
-      for (const [k, c] of Object.entries(W.components)) comps[k] = {{ size: c.size(k === 'shell' ? {{ w: 1000, h: 600 }} : {{}}),
-        parts: !!c.parts, fx: typeof c.fx === 'function' ? c.fx({{}}).map(f => f.kind) : [], hover: typeof c.hover }};
-      const flat = o => Object.keys(o).sort().map(k => (o[k] && typeof o[k] === 'object') ? k + '{{' + flat(o[k]) + '}}' : k).join(',');
-      console.log(JSON.stringify({{ rooms: W.rooms, lay, same: JSON.stringify(lay) === JSON.stringify(lay2), comps,
-        tokens: {{ day: flat(W.tokens.day), night: flat(W.tokens.night) }}, back: W.BOX.back, stateRoom: W.stateRoom(),
-        art: Object.keys(W.roomArt) }}));
-    """
-    out = subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=60)
-    assert out.returncode == 0, out.stderr
-    return json.loads(out.stdout)
-
 
 pytestmark = pytest.mark.skipif(not NODE, reason="node is needed to load the world scripts")
 
 
-@pytest.fixture(scope="module")
-def world():
-    return _world()
+def _node(body: str) -> dict:
+    """Run `body` under node with the world scripts loaded (window.Lab3D as L, the manifest as WF)."""
+    files = [str(W3 / f) for f in CORE] + [str(W3 / "rooms" / f) for f in ROOM_FILES]
+    js = f"""
+      global.window = global; const fs = require('fs');
+      for (const f of {json.dumps(files)}) eval(fs.readFileSync(f, 'utf8'));
+      const L = window.Lab3D, M = L.model, WF = {json.dumps(_WF)};
+      const out = (() => {{ {body} }})();
+      console.log(JSON.stringify(out));
+    """
+    r = subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
 
 
-def test_every_lifecycle_state_lives_in_exactly_one_room(world):
+def test_every_lifecycle_state_lives_in_exactly_one_room():
     owners = {}
-    for key, r in world["rooms"].items():
+    for r in _WF["rooms"]:
         for st in r["states"]:
-            assert st not in owners, f"{st} claimed by {owners[st]} and {key}"
-            owners[st] = key
+            assert st not in owners, f"{st} claimed by {owners[st]} and {r['id']}"
+            owners[st] = r["id"]
     assert set(LIFECYCLE) <= set(owners), set(LIFECYCLE) - set(owners)
-    assert world["stateRoom"] == owners
     assert {st: owners[st] for st in LIFECYCLE} == WF_ROOM
-    for st, room in WF_ROOM.items():   # every state's station exists in its room's art (not drawn plain)
-        assert WF_STATION[st] in world["rooms"][room]["stations"], (st, room, WF_STATION[st])
-    assert set(world["art"]) == set(WF_ROOM.values()), "every shipped room has its art"
+    assert [r["id"] for r in _WF["rooms"] if r.get("per_project")] == ["lab"]
 
 
-def test_rooms_keep_the_station_contract(world):
-    comps = world["comps"]
-    for key, r in world["rooms"].items():
-        st = r["stations"]
-        assert st, key
-        for name, p in st.items():
-            assert 0 < p["x"] < 1 and world["back"] <= p["y"] <= 1, (key, name, p)
-        for m in ("stateStation", "roleStation"):
-            for k, v in r[m].items():
-                assert v in st, f"{key}.{m}[{k}] → unknown station {v}"
-        for s in r["states"]:
-            assert s in r["stateStation"], f"{key}: state {s} has no station"
-        assert len(r["paths"]) >= 4 and all(0 <= a <= 1 and 0 <= b <= 1 for a, b in r["paths"]), key
+def test_every_room_has_a_look_that_keeps_the_station_contract():
+    """Stations and props stand inside the room, props name known furniture, stations are [x, z, facing]."""
+    got = _node("return { rooms: L.rooms, comps: Object.keys(L.components) };")
+    assert {r["id"] for r in _WF["rooms"]} == set(got["rooms"]), "every shipped room has its look"
+    for f in ROOM_FILES:
+        assert f[:-3] in got["rooms"], f"{f} defines a room keyed by its file name"
+    for key, r in got["rooms"].items():
+        hw, hd = r["size"][0] / 2, r["size"][1] / 2
+        for kind in ("stations", "roleStation"):
+            for name, p in r[kind].items():
+                assert len(p) == 3 and abs(p[0]) < hw and abs(p[1]) < hd, (key, kind, name, p)
         for pr in r["props"]:
-            assert pr["c"] in comps, f"{key}: unknown component {pr['c']}"
-            assert 0 <= pr["at"][0] <= 1 and 0 <= pr["at"][1] <= 1, (key, pr)
-        if r.get("gate"):
-            assert any(pr["c"] == "door" and pr["props"].get("gate") == r["gate"] for pr in r["props"]), f"{key}: gate {r['gate']} has no door"
+            assert pr["c"] in got["comps"], f"{key}: unknown furniture {pr['c']}"
+            assert abs(pr["at"][0]) <= hw and abs(pr["at"][1]) <= hd, (key, pr)
+    lab = got["rooms"]["lab"]
+    assert lab["size"][0] >= 13, "the Lab is the biggest room (a project's own)"
+    assert {"experiment", "improve", "analyze"} <= set(lab["stations"]) and "experiment-runner" in lab["roleStation"]
 
 
-def test_role_default_stations_exist(world):
-    """Workers stand at their room's roleStation, else the role's default station (scene.js ROLE_STATION)."""
-    app = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
-    role_station = dict(re.findall(r"'([\w-]+)':\s*'([\w-]+)'", re.search(r"const ROLE_STATION = \{(.*?)\};", app).group(1)))
-    for key, r in world["rooms"].items():
-        for role, stn in r["roleStation"].items():
-            assert stn in r["stations"], (key, role, stn)
-    assert role_station.get("experiment-runner") in world["rooms"]["lab"]["stations"]
+SNAP = {
+    "items": [
+        {"id": "moe", "title": "Sparse MoE", "state": "active", "has_project": True, "project_type": "ml"},
+        {"id": "rl", "title": "RL", "state": "active", "has_project": True},
+        {"id": "ana", "title": "Probes", "state": "analysis", "has_project": True},
+        {"id": "old", "title": "Done", "state": "final", "has_project": True},
+        {"id": "new", "title": "New", "state": "proposal", "gate_signed": True},
+        {"id": "lit", "title": "Lit", "state": "lit-review"},
+    ],
+    "runs": [
+        {"run_id": "r1", "skill": "spawn-project", "subject": "new", "status": "running"},
+        {"run_id": "r2", "skill": "experiment", "subject": "moe", "status": "running"},
+        {"run_id": "r3", "skill": "lit-review", "subject": "lit", "status": "running"},
+        {"run_id": "r4", "skill": "ask", "status": "running"},
+        {"run_id": "r5", "skill": "design-room", "args": "writing a cosier room", "status": "running"},
+        {"run_id": "r6", "skill": "analyze", "subject": "ana", "status": "running"},
+    ],
+}
 
 
-def test_building_layout_is_deterministic_and_non_overlapping(world):
-    lay, boxes = world["lay"], list(world["lay"]["boxes"].items())
-    assert world["same"]
-    assert set(lay["boxes"]) == set(world["rooms"])
-    for i, (ka, a) in enumerate(boxes):
-        for kb, b in boxes[i + 1:]:
-            sep = a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or a["y"] + a["h"] <= b["y"] or b["y"] + b["h"] <= a["y"]
-            assert sep, f"{ka} overlaps {kb}"
-    floors = {b["floor"] for _, b in boxes}
-    assert {0, 1, -1} <= floors                                  # ground, upper floor, cellar (the cutaway)
+def test_a_per_project_room_stands_once_per_live_project():
+    got = _node(f"""
+      const s = Object.assign({json.dumps(SNAP)}, {{ workflow: WF }});
+      const list = M.roomList(s), none = M.roomList({{ workflow: WF, items: [], runs: [] }});
+      return {{ list: list.map(r => ({{ id: r.id, building: !!r.building, extra: !!r.extra, type: r.type || null }})),
+               none: none.map(r => [r.id, !!r.empty]) }};""")
+    labs = {r["id"]: r for r in got["list"] if r["id"].startswith("lab")}
+    assert set(labs) == {"lab:moe", "lab:rl", "lab:ana", "lab:new"}, "a lab per live project (not a finished one), one being built"
+    assert labs["lab:new"]["building"] and labs["lab:moe"]["type"] == "ml"
+    assert [labs[k]["extra"] for k in ("lab:moe", "lab:rl", "lab:ana")] == [False, True, True]
+    assert ["lab", True] in got["none"], "no projects yet: the bare Lab stands, marked empty"
 
 
-def test_both_themes_define_the_same_design_tokens(world):
-    assert world["tokens"]["day"].replace("name,", "") == world["tokens"]["night"].replace("name,", "")
+def test_the_lab_district_keeps_projects_together_on_their_own_plots():
+    got = _node("""
+      const items = Array.from({ length: 9 }, (_, i) => ({ id: 'p' + i, title: 'P' + i, state: 'active', has_project: true }));
+      const s = { workflow: WF, items, runs: [] };
+      const a = M.placeRooms(M.roomList(s), WF), b = M.placeRooms(M.roomList(s), WF);
+      return { a, same: JSON.stringify(a) === JSON.stringify(b) };""")
+    cells = [tuple(v["cell"]) for v in got["a"].values()]
+    assert got["same"], "the same lab lays out the same way every time"
+    assert len(cells) == len(set(cells)) and (0, 0) not in cells, "one room per plot, the plaza kept free"
+    first = got["a"]["lab:p0"]["cell"]
+    near = [abs(v["cell"][0] - first[0]) + abs(v["cell"][1] - first[1]) for k, v in got["a"].items() if k.startswith("lab:")]
+    assert max(near) <= 4, f"a lab's projects cluster round its first lab: {near}"
+    assert all(v["facing"] in "nesw" for v in got["a"].values())
 
 
-def test_components_and_rooms_name_tokens_never_colours():
-    literal = re.compile(r"(?<![\w&])#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(")
-    files = [WORLD / "components.js", WORLD / "building.js"] + sorted((WORLD / "rooms").glob("*.js"))
-    for f in files:
-        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            code = line.split("//")[0]
-            assert not literal.search(code), f"{f.name}:{i} hard-codes a colour: {line.strip()[:120]}"
-
-
-def test_components_declare_size_and_known_fx(world):
-    known_fx = {"bubbles", "steam", "leds", "screen", "ring", "flicker", "clock", "pulse"}
-    for name, c in world["comps"].items():
-        w, h = c["size"]
-        assert w > 0 and h > 0, name
-        assert set(c["fx"]) <= known_fx, (name, c["fx"])
+def test_every_run_stands_where_its_work_is():
+    got = _node(f"""
+      const s = Object.assign({json.dumps(SNAP)}, {{ workflow: WF }});
+      const rooms = Object.fromEntries(M.roomList(s).map(r => [r.id, r]));
+      return Object.fromEntries(s.runs.map(r => [r.run_id, M.placeOfRun(s, r, rooms)]));""")
+    assert got == {"r1": "lab:new", "r2": "lab:moe", "r3": WF_ROOM["lit-review"], "r4": "hub", "r5": "writing", "r6": "lab:ana"}
 
 
 def test_world_scripts_load_before_the_app():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    order = ["vendor/pixi/pixi.min.js"] + [f"world/{f}" for f in CORE] + ["newts:rooms", "world/engine.js", "world/scene.js",
-                                                                           "ui/core.js", "ui/app.js"]
+    order = ["vendor/three/three.module.min.js"] + [f"world3d/{f}" for f in ["kit.js", "newt.js", "components.js", "layout.js", "model.js"]] \
+        + ["newts:rooms3d", "world3d/world.js", "world/scene.js", "ui/core.js", "ui/app.js"]
     pos = [html.index(o) for o in order]
-    assert pos == sorted(pos), order      # the room files go after the building registry, before the engine
-    assert (STATIC / "vendor" / "pixi" / "LICENSE-pixi").exists()
+    assert pos == sorted(pos), order
+    assert "pixi" not in html
 
 
-def test_the_server_loads_every_room_file_and_the_labs_own(tmp_path, monkeypatch):
-    """No hand-kept <script> list: the server puts one per room file where the page marks it — this code's,
-    then the lab's own lab/rooms/<id>.js (served by /api/room)."""
-    import sys
-    monkeypatch.syspath_prepend(str(REPO / "dashboard"))
-    from conftest import load
+def test_the_server_puts_every_built_in_room_on_the_page():
     serve = load("dashboard/serve")
-    monkeypatch.setattr(serve.ctx, "LAB", tmp_path)
-    (tmp_path / "rooms").mkdir()
-    (tmp_path / "rooms" / "data.js").write_text("VivWorld.defineRoom({key: 'data', stations: {a: {x: .5, y: .7}}});\n", encoding="utf-8")
-    page = serve._with_rooms((STATIC / "index.html").read_text(encoding="utf-8"), "static/world/rooms/", lab_rooms=True)
+    page = serve._with_rooms3d((STATIC / "index.html").read_text(encoding="utf-8"), "static/world3d/rooms/")
     for f in ROOM_FILES:
-        assert f'<script src="static/world/rooms/{f}"></script>' in page, f
-    assert '<script src="api/room?name=data"></script>' in page and "newts:rooms" not in page
-    assert page.index("world/building.js") < page.index("rooms/" + ROOM_FILES[0]) < page.index("world/engine.js")
-    assert serve._lab_room("data")[0].name == "data.js" and serve._lab_room("../x") is None
-    gallery = serve._with_rooms((WORLD / "gallery.html").read_text(encoding="utf-8"), "rooms/", lab_rooms=False)
-    assert all(f'<script src="rooms/{f}"></script>' in gallery for f in ROOM_FILES) and "api/room" not in gallery
-
-
-def test_a_room_is_a_line_in_the_workflow():
-    """A room the workflow names with no art is drawn plain — a station per state, its gate's door — and the
-    building makes room for it; art for it, when it comes, replaces the plain room with no other edit."""
-    wf = {k: _WF[k] for k in ("rooms", "states", "side_states")}
-    wf = json.loads(json.dumps(wf))
-    wf["states"].append({"id": "data-prep", "label": "Data prep", "stage": "experiments", "room": "data", "station": "prep"})
-    wf["rooms"].append({"id": "data", "label": "Data", "title": "The Data Room", "states": ["data-prep"], "floor": 0, "order": 4, "gate": 2})
-    w = _world(wf)
-    r = w["rooms"]["data"]
-    assert r["plain"] and r["title"] == "The Data Room" and r["stateStation"] == {"data-prep": "prep"}
-    assert "prep" in r["stations"] and any(p["c"] == "door" and p["props"]["gate"] == 2 for p in r["props"])
-    assert w["stateRoom"]["data-prep"] == "data" and set(w["lay"]["boxes"]) == set(w["rooms"])
-    boxes = list(w["lay"]["boxes"].values())
-    assert all(a["x"] + a["w"] <= b["x"] or b["x"] + b["w"] <= a["x"] or a["y"] + a["h"] <= b["y"] or b["y"] + b["h"] <= a["y"]
-               for i, a in enumerate(boxes) for b in boxes[i + 1:])
-    art = "VivWorld.defineRoom({key: 'data', stations: {prep: {x: 0.4, y: 0.7}}, props: [], paths: [[.2,.7],[.4,.7],[.6,.7],[.8,.7]]});"
-    w2 = _world(wf, extra_js=art)
-    assert not w2["rooms"]["data"].get("plain") and w2["rooms"]["data"]["title"] == "The Data Room"
+        assert f'<script src="static/world3d/rooms/{f}"></script>' in page, f
+    assert "newts:rooms3d" not in page
+    assert page.index("world3d/model.js") < page.index("rooms/" + ROOM_FILES[0]) < page.index("world3d/world.js")
 
 
 def test_the_scene_has_a_quiet_stand_in_without_webgl():
     sc = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
-    assert "createPixiWorld" in sc and "quietWorld(" in sc
-    assert "createWorld" not in sc and "classic" not in sc
+    assert "Lab3D.createWorld" in sc and "quietWorld(" in sc and "Pixi" not in sc
