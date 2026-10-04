@@ -9,8 +9,9 @@ A local-only, no-build dashboard: start it, pick or create a lab, and do everyth
 - **Decide**: answer the agents' questions, and sign the three gates, envelopes, loop briefs and
   campaigns. Only you can sign: a signature guard in every run makes sure of it.
 
-The lab is drawn behind it as a living paper diorama: a room per lifecycle stage, a critter per idea
-or project, a sub-newt per working agent, and Newt, the orchestrator. Delete this folder and the lab
+The lab is drawn behind it as a living 3D tabletop: the workflow's rooms round your desk (a lab per
+live project), a card per study, a newt per run and a smaller one per subagent, and Newt, your
+assistant, at the desk. Delete this folder and the lab
 still works from a terminal.
 
 ```bash
@@ -57,15 +58,16 @@ simulated no-ops (blocked client-side) and record nothing.
 - `static/`    — the single-page frontend: `index.html`, `ui/` (Preact + htm, no build: `core.js`,
                  `components.js`, `runs.js`, `composer.js`, `gates.js`, `library.js`, `studies.js`,
                  `home.js`, `settings.js`, `setup.js`, `demo.js`, `app.js`, `ui.css`) over the world in
-                 `world/` (the PixiJS diorama; `world/scene.js` = the Scene wrapper + the classic
-                 painted Canvas-2D fallback). Fully offline.
+                 `world3d/` (three.js: `world.js` the live world, `scene.js` the VivScene wrapper +
+                 a quiet stand-in without WebGL, `model.js` / `layout.js` the logic and the plots,
+                 `kit.js` / `components.js` / `newt.js` the pieces, `rooms/*.js` the built-in looks;
+                 see docs/world-design.md). Fully offline.
 - `static/vendor/` — the **Library** reader's pinned, offline renderers (marked · DOMPurify ·
-                 KaTeX + woff2 fonts). The one place third-party code lives; provenance, versions,
-                 and licenses in `static/vendor/README.md`. Everything else stays dependency-free.
+                 KaTeX + woff2 fonts), and three.js (r169) for the world. The one place third-party
+                 code lives; provenance, versions, and licenses in `static/vendor/README.md`. Everything else stays dependency-free.
 - `static/assets/` — the only **runtime** art, served at `/static/assets/`: `buddy/` (the layered
-                 axolotl — `body`, `body_closed`, `gills`, `tail`, plus the 8-frame `walk` sheet) and
-                 `dark/` + `light/` room close-ups (one per room). This is the complete set the page
-                 loads; nothing here is optional.
+                 axolotl — `body`, `body_closed`, `gills`, `tail`, plus the 8-frame `walk` sheet). This is
+                 the complete set the page loads; nothing here is optional.
 - `assets-src/` — the **source** art (NOT served, **gitignored**): the raw generations under
                  `buddy/` & `rooms/{dark,light}/`, plus `previews/`. Local provenance/regeneration
                  only — the dashboard never reads it, so it's kept out of git history (it's large)

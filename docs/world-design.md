@@ -1,149 +1,203 @@
-# The world's design language
+# The world's design
 
-The dashboard's world is a **paper diorama**: the whole lab is drawn as one cutaway building, and each
-workflow stage is a room built from cut paper. It is drawn by code (`dashboard/static/world/`, rendered
-with PixiJS), so anyone adding a workflow can add a room, or a new piece of furniture, and it will
-automatically match everything else in both themes.
+Behind Home, the dashboard draws your lab as an **open tabletop in 3D**: your desk in the middle, the
+workflow's rooms standing round it on plots, streets between them, and a newt for every agent at work. It
+is drawn by code (`dashboard/static/world3d/`, rendered with three.js), from the same snapshot the rest of
+the dashboard reads. Nothing in it writes anything: a click calls back into the dashboard.
 
-This page is the style guide and the recipe book.
+This page is the design and the recipe book.
 
-## Two inks, one diorama
+## Why a world at all
 
-| | Day: *the atelier* | Night: *the cave* |
-|---|---|---|
-| Paper | parchment and card, cream to ochre | deep teal and indigo card |
-| Lines | sepia ink with a slight hand wobble | faint luminous rims (cyan) |
-| Shading | cross-hatching on the shadow side | a soft dark gradient |
-| Colour | watercolour washes | washes turn into glow |
-| Light | even daylight, windows show the garden | the room lights itself: lamps, screens, specimens, mushrooms |
-| Air | dust motes drifting | spores drifting |
-| Outside | a sketched landscape under a watercolour sky | cave rock with hanging roots and fungi |
+Function over decoration. Terminals can't scale research: you can follow one or two agent sessions in a
+terminal, not a dozen runs across many studies at once. The world exists so one scientist can keep
+oversight of many agents at a glance: who is working, where, on what, who is stuck, and who is waiting on
+you.
 
-Day and night are **the same drawing**. Every piece is drawn once and the painter renders it in the
-active theme's inks, so both themes always match.
+So every space is **openly interpretable**. Rooms have no roofs and you never go inside a building:
+everything is visible from above, and zooming into a room only brings the camera closer. Every newt, card,
+lamp and arch is a readout of something real. If a piece of the picture means nothing, it shouldn't be
+there.
 
-## The rules
+## The table
 
-1. **Everything is a paper piece.** Draw with `P.piece(shape, {…})`, never raw fills. A piece gets:
-   - a deckled edge;
-   - paper fibre;
-   - an ink outline or luminous rim;
-   - a soft shadow on whatever is under it.
-2. **Depth is `lift`.** How far a piece stands off the page: `0` is flat on its backing, `1–2` is a layer
-   of card, and `3–4` is a thick cut-out. Shadows grow with lift, which is what makes the diorama read as
-   layered.
-3. **Colours are tokens, never literals.** Write `'wood.mid'`, `'glass.liquid'`, `'wash.teal'` or
-   `'glow.primary'`. The token table in `world/tokens.js` is the only place colours live; a test fails
-   on any `#hex`, `rgb()` or `hsl()` in components or rooms. Retune the palette there and the whole world
-   follows.
-4. **Shade with `hatch`, colour with `wash`.** `hatch: 0.3, hatchSide: 'right'` becomes cross-hatching
-   by day and a gradient by night. `wash: 'wash.ochre'` is a watercolour blotch with pooled edges.
-5. **Only say `glow:` for things that shine.** Liquids, bulbs, screens, window light, specimens. By day
-   glow is faint (`glow.strength` 0.28); by night it carries the room.
-6. **Labels are lettered in the serif** (`P.text`, or the `plaque` / `sign` components): the theme's
-   label font (Newsreader, bundled with the dashboard) in the theme's label ink.
-7. **Every object is a live readout** where it can be:
-   - the compute rack's LEDs are the real slots in use;
-   - the FULL reactor bubbles with load;
-   - screens scroll while an agent works in the room;
-   - a gate's door is sealed and glowing while something waits for your signature, and folds open when
-     nothing does;
-   - the clock is real time.
+- **The plaza** at `[0, 0]` is your desk. The big Newt (your assistant) stands there with an inbox; its
+  envelopes are the items needing you.
+- **Plots** sit on a grid round the plaza, with streets between them. Each room stands on one plot
+  (`Lab3D.plan`, `world3d/layout.js`). Compose's layout editor uses the same plan, so both always agree.
+- In `workflow/stages.yaml` a room line can carry `place: [column, row]` and `facing: n|e|s|w` (Compose →
+  Rooms: drag it on the table; turn its door). Without them a room takes the next free plot going round
+  the plaza, rooms holding the lifecycle first, door toward your desk.
 
-## Anatomy of a room
+```yaml
+rooms:
+  - {id: data, label: Data, title: The Data Room, states: [data-prep]}
+  - {id: lab,  label: Lab,  title: The Lab, states: [active, analysis], gate: 2, per_project: true, place: [1, 0], facing: w}
+```
 
-A room is a diorama box: a back wall, a ceiling and side walls in perspective, and a floor running from
-the back wall to the front edge. Everything standing on the floor is placed by its **feet** in
-normalised room coordinates. It is scaled by depth, smaller toward the back wall, and sorted by depth,
-so nearer things overlap farther ones.
+## Rooms and project labs
 
-Which rooms exist, and where, is the workflow's: each `rooms:` line in `workflow/stages.yaml` names the
-room, its title, the states that stand in it, its `floor` (`1` upper, `0` ground, `-1` cellar), its
-`order` on that floor and its gate; each state's `station` says where its studies stand. The building
-lays itself out from these and draws the cut walls, slabs, roof and glasshouse wings. A room's file is
-only its art:
+Which rooms exist is the workflow's; what they look like is the room's look (below). A room with no look
+is drawn **plain**: a floor, low walls and a desk per procedure.
+
+`per_project: true` (the Lab has it) makes a room one room **per live project**, titled by its study,
+with the kicker "Lab". Without the flag, a room is treated as per-project when most of its procedures are
+project-level. Compose → a room → About has a "One per live project" toggle.
+
+- While `/spawn-project` runs for a study, its new lab stands as scaffolding ("being built") and rises out
+  of the table when ready.
+- Further project labs cluster as a **lab district** on the free plots nearest the first lab.
+- With no projects, the bare Lab stands with a "No projects yet" sign.
+- A project type can have a lab look of its own: `lab/rooms3d/lab.<type>.json`, the type taken from the
+  project's `control.yaml` `project_type` (default `ml`).
+
+## Newts: who is where
+
+Every **run** (a headless main agent: claude, codex or opencode; many at once, one per study or project,
+within the caps in Settings → Autonomy) is a newt at the station of the procedure it runs. Each run has a
+family colour of its own (a hue from its run id) and an orchestrator badge. Its **subagents** are smaller
+newts (0.62 scale) in the same family colour, with a badge coloured by role, at the room's `roleStation`
+for that role.
+
+Where a run stands, first match wins:
+
+1. `/design-room`: in the room it designs.
+2. `/spawn-project`: in the lab being built.
+3. A project-level procedure: in that project's lab.
+4. Other work on a study: in the study's room.
+5. Otherwise the room of the procedure's stage; else your desk.
+
+What the poses mean:
+
+- **work**: at its station, busy.
+- **wait**: a run waiting for you walks to your desk with a "?" bubble. Queued runs wait at the desk too.
+- **sleep**: a stalled run (no heartbeat for over 3 minutes) dozes.
+- **fail**: a failed run slumps.
+- **walk** / **carry**: moving along the streets, or carrying a card.
+
+Traced workers not launched from the dashboard appear too.
+
+## Cards, couriers and gates
+
+- **Studies are cards** on their room's shelf, in the study's own hue.
+- When a study moves on, a newt **carries its card** along the streets to the next room.
+- **Gates** are arches at a room's street door, with a lamp. A lit gate means a study is waiting there for
+  your signature.
+
+## Lenses
+
+Top-left on Home. Each re-tints the table by what you ask:
+
+| Lens | Shows |
+|---|---|
+| Work | what each newt is doing |
+| Cost | today's spend per room and per run; floors tinted by it |
+| Waiting on you | only the asks |
+| Risk | denials and failures, flagged |
+
+Room labels never overlap: the busiest rooms get theirs first.
+
+## Interactions
+
+- A newt → its run sheet. A card → the study. The desk → the inbox. The big Newt → Start something. A
+  gate arch → the study waiting on it. A room → zoom into it (a crumb, and back).
+- Drag to turn, wheel to zoom, hover for a tooltip.
+- Day and night themes follow the lamp.
+- On a phone the table fits above the bottom sheet.
+- Demo mode (server started with `--demo`, page `?demo`) shows a synthetic living lab and writes nothing.
+
+## The files
+
+All under `dashboard/static/world3d/`; three.js is vendored at `dashboard/static/vendor/three/` (r169, MIT).
+
+| File | Role |
+|---|---|
+| `kit.js` | `Lab3D.defineComponent`, `defineRoom`, `defineRoomData` (a room given as JSON data), the day/night themes |
+| `newt.js` | the 3D newt (`Lab3D.makeNewt`; options `color`, `hue`, `scale`) |
+| `components.js` | the furniture kit, about 25 pieces built from primitives |
+| `layout.js` | `Lab3D.plan`: plots on a grid round your desk |
+| `model.js` | `Lab3D.model`: pure logic, no drawing (`roomList`, `placeRooms` with the lab district, `placeOfRun`, `roomOfItem`) |
+| `rooms/*.js` | the built-in looks: incubator, study, lab, writing, archive, margins |
+| `world.js` | `Lab3D.createWorld`: the live world |
+| `scene.js` | `VivScene`: one stable API over the world, and a quiet stand-in without WebGL |
+| `sandbox-room.html` | a sandboxed room preview, used by Compose |
+| `newt.html` | a newt viewer |
+
+The server inserts one `<script>` per built-in room file at the `<!-- newts:rooms3d -->` marker in
+`index.html`; the lab's own looks come from `lab/rooms3d/` at run time.
+
+## Room looks
+
+Units are metres, y up. A room's coordinates are local: `x` across, `z` toward the open front (the street
+door), the back wall at `-z`. Colours are theme names (`wood`, `teal`, `paper`, …), so every piece reads
+right by day and by night; a lab's JSON may also use `#rrggbb`.
+
+**Built-in looks are code**, `world3d/rooms/<id>.js`:
 
 ```js
-VivWorld.defineRoom({
-  key: 'lab', size: [1600, 900],                         // size defaults to 1440×820
-  shell: { wall: 'tiles', floor: 'tiles', windows: [0.3, 0.5, 0.7], accent: 'wash.teal' },
-  stations: { experiments: { x: 0.40, y: 0.58 }, … },    // where creatures stand (feet)
-  roleStation: { 'experiment-runner': 'experiments', overseer: 'quality' },
-  props: [
-    { c: 'bench', at: [0.40, 0.505], props: { w: 500, items: ['flask', 'bell'], label: 'Experiments' } },
-    { c: 'vessel', at: [0.60, 0.515], props: { kind: 'reactor', label: 'FULL' } },
-    …
-  ],
-  paths: [[0.35, 0.87], [0.42, 0.78], …],               // the walk creatures stroll along
+Lab3D.defineRoom({
+  key: 'lab', size: [13.5, 8.5], floor: 'tiles', accent: 'teal',
+  props: [{ c: 'labBench', at: [-4.4, -3.1], props: { w: 2.8 } }, …],
+  stations: { experiment: [-4.4, -2.3, Math.PI], improve: [3.3, -1.95, Math.PI] },        // by procedure: [x, z, facing]
+  roleStation: { 'experiment-runner': [-1.2, -2.35, Math.PI], overseer: [-2.4, 2.1, Math.PI] },  // by subagent role
 });
 ```
 
-A room the workflow names with no art file is drawn **plain**: a station and a sign per state, the
-standard decor (`VivWorld.decor()`, which any room may use too) and its gate's door.
+A procedure with no station gets a desk of its own, laid out by the engine.
 
-- **Keep the floor readable.** Tall pieces (bookcases, boards, racks) go near the back wall (`y` about
-  0.45–0.55). The middle of the floor is for creatures and low tables. Big plants frame the front corners.
+**A lab's own look is data, never code**: `lab/rooms3d/<id>.json`, checked by `compose.room_check`:
 
-## Anatomy of a component
+- only the keys `key` (must equal the room id), `title`, `size` (`[width, depth]`, 3–30 m), `floor`,
+  `wall`, `accent` (a colour name or `#rrggbb`), `walls` (true/false), `props`, `stations`, `roleStation`,
+  `components`;
+- a prop is `{c: furniture name, at: [x, z], rot?, props?: {simple values}}`, at most 150;
+- `stations` and `roleStation` map a name to `[x, z]` or `[x, z, facing]`;
+- `components` is new furniture, at most 40 pieces, each 1–120 primitive parts
+  `{shape: box|cyl|cone|sphere, size, at: [x, y, z], color, rot?, glow?, alpha?}`; at most 1500 parts in a
+  room.
 
-```js
-VivWorld.defineComponent('vessel', {
-  size: p => [p.w || 120, p.h || 300],         // bounding box; the anchor is bottom-centre (the feet)
-  draw(P, p) {                                 // baked once per theme
-    P.piece(S.rrect(…), { fill: 'glass.fill', lift: 1.4, glow: 'glass.liquid', glowAlpha: 0.25 });
-    …
-  },
-  parts: p => [{ id: 'wheel', at, size, pivot, anim: { kind: 'spin', bind: 'busy' }, draw(P) { … } }],
-  fx: p => [{ kind: 'bubbles', rect: […], bind: 'load' }],   // live effects
-  hover: (p, st) => st.slotsUse ? 'FULL runs · bubbling' : 'FULL runs · idle',
-  action: 'slots',                             // what a click does: 'slots' · 'gate' · (default) a toast
-});
-```
+Nothing an agent writes ever runs in the page. `lab/rooms3d/` is protected from headless runs by the
+signature guard.
 
-- **`parts`** are separately baked pieces the engine animates:
-  - `sway` for plants and hanging things;
-  - `spin` for the printing-press wheel;
-  - `fold` for gate doors (bound to `gateOpen`);
-  - `bob`.
-- **`fx`** are the shared live effects:
-  - `bubbles` and `steam`;
-  - `leds` (bound to compute slots);
-  - `screen` (`code` scrolls while agents work; `chart`);
-  - `ring` (a scanner);
-  - `flicker` (lamps, lanterns, mushrooms; `nightOnly` for night-only glows);
-  - `pulse` (a gate seal while something waits);
-  - `clock`.
-- **Live state** a component can bind to, computed per room: `slotsUse`, `slotsCap`, `busy` (agents
-  working here), `n`, `nActive`, `nAnalysis`, `gateWaiting`, `gateOpen`, `load`.
+## Add a room, design its look
 
-The library covers furniture (bench, desk, console, table, board, bookcase, lectern, easel, cabinet,
-press, armchair, crates) and apparatus (vessel, rack, dais, trays, jars). It also has signage (plaque,
-sign, door) and atmosphere (lantern, stringLights, hangingPlant, pinned papers, plant, rug, clock).
-Reuse before adding.
+1. **Add the room.** `tools/new.py room <id> --like <room>` adds the line on the next free plot and copies
+   the lab's own JSON look for the like if there is one (`lab/rooms3d/<like>.json` → `<id>.json`).
+   Built-in looks are code, so otherwise the room is drawn plain until designed; `--plain` never copies.
+   Or add the line in Compose → Rooms.
+2. **Design its look by describing it.** Compose → the room → Look → "Design it" launches the
+   `/design-room` skill: a coding agent writes `lab/.bus/designs/<room>/room.json` and `notes.md`
+   (`tools/workflow.py room <id>` prints the room brief it works from). You preview it in a sandboxed
+   frame and click "Use this design"; it goes to the Compose draft, then Publish.
+3. **Run the tests** (`pytest tests/test_world.py`).
 
-## Add a workflow room
+## The contract
 
-1. **Add its line** under `rooms:` in `workflow/stages.yaml` — title, states, floor, order (and the states'
-   `room:` / `station:`). That alone puts a plain room in the building.
-2. **Give it a look:** `dashboard/static/world/rooms/<key>.js` (or the lab's own `lab/rooms/<key>.js`) with
-   `VivWorld.defineRoom({…})`: its stations (one per state's `station`), `roleStation`, `props` and
-   `paths`. The server loads every room file by itself.
-3. **Check it in the gallery.** Open `/static/world/gallery.html?view=world&theme=day&room=<key>`, then
-   `theme=night`. `?view=components` shows every component in both inks.
-4. **Run the tests** (`pytest tests/test_world.py`). They check that:
-   - states are covered once, and every state's station exists in its room;
-   - stations and paths are valid;
-   - props reference real components;
-   - the building doesn't overlap;
-   - no colours are hard-coded.
+`Lab3D.createWorld(canvas, {lamp, reduced})` returns the world. `scene.js` wraps it as `VivScene.create()`,
+buffers calls made while it boots, and keeps the same contract with nothing drawn when there is no WebGL.
 
-## Performance rules
+| Call | Does |
+|---|---|
+| `sync(snapshot)` | redraws from the lab's snapshot |
+| `setPose(p)` | the big Newt's pose |
+| `setLamp('day' \| 'night')` | the theme |
+| `setView('WORLD')`, `goRoom(id)`, `back()` | the whole table, or one room |
+| `focusProject(id)` | zooms to a study's lab or room |
+| `viewInfo()` | `{level, label}`, for the crumb |
+| `highlight(role)` | picks out one subagent role |
+| `layout()` | the plan of the table, for the minimap |
+| `setAmbient(on)` | idle motion on or off |
+| `setLens(l)` / `lens()` | `work`, `cost`, `waiting` or `risk` |
+| `followWorker(id)`, `stopFollow()`, `following()` | the camera follows one newt |
+| `onClick(item, inbox)`, `onWorker`, `onRun`, `onNewt`, `onView`, `onFollow` | callbacks into the dashboard |
 
-- **Baking:** everything static is baked once per theme into textures. Rooms are built one per frame, so
-  the page never stalls, and each pops up as it lands (about 150–250 ms for the whole building here).
-- **Per frame:** only transforms and a few small `Graphics`/sprites change: the LEDs, screens, rings,
-  bubbles and spores.
-- **Culling:** rooms outside the view aren't drawn.
-- **Reduced motion:** the ticker stops and frames render only when something changes. There is no
-  parallax, pop-up or drifting.
-- **No WebGL?** The dashboard works the same without the world; the stand-in says why.
+## Testing
+
+`tests/test_world.py` loads the real world scripts under node with a bare `window` (no DOM, no WebGL) and
+checks what the dashboard relies on: every lifecycle state lands in exactly one room, every built-in look
+keeps the station contract, a per-project room stands once per live project (and is built while
+`/spawn-project` runs), the lab district never puts two rooms on one plot, and every run stands where its
+work is. It skips when node isn't installed.
+
+Headless screenshots of the world need software WebGL (e.g. SwiftShader); without it you get the stand-in.
+Without WebGL the dashboard works the same, minus the world.

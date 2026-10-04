@@ -1,7 +1,7 @@
 # Customising the lab
 
 Everything that says how this lab works is yours to change: the stages a study moves through and where
-each happens, the procedures agents run at each step, the subagent roles, the rooms of the building, the
+each happens, the procedures agents run at each step, the subagent roles, the rooms on the table, the
 rules, the checks that enforce them, and the kinds of project. It is all defined in files (`workflow/`,
 `.claude/skills/`, `agent-roles/`, `checks/`, `templates/`, `lab/`), and the dashboard's **Compose** page
 shows every one of them and edits every one of them.
@@ -9,8 +9,8 @@ shows every one of them and edits every one of them.
 ## Compose
 
 **Compose** (top nav) opens on a map of the lab: the **pipeline** (the stages left to right, their states
-and procedures, the gates between them) and the **building** (the rooms, floor by floor, and the states
-that stand in each). Every card opens into an editor. The side list has the rest: stages, procedures,
+and procedures, the gates between them) and **the table** (the rooms on their plots round your desk, and
+the states that stand in each). Every card opens into an editor. The side list has the rest: stages, procedures,
 roles, rooms, rules, checks and project types, plus agents' suggestions and what you have published.
 
 Each editor gives you a form for what a form makes easy and the files for everything else:

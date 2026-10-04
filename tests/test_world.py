@@ -135,7 +135,7 @@ def test_every_run_stands_where_its_work_is():
 def test_world_scripts_load_before_the_app():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     order = ["vendor/three/three.module.min.js"] + [f"world3d/{f}" for f in ["kit.js", "newt.js", "components.js", "layout.js", "model.js"]] \
-        + ["newts:rooms3d", "world3d/world.js", "world/scene.js", "ui/core.js", "ui/app.js"]
+        + ["newts:rooms3d", "world3d/world.js", "world3d/scene.js", "ui/core.js", "ui/app.js"]
     pos = [html.index(o) for o in order]
     assert pos == sorted(pos), order
     assert "pixi" not in html
@@ -151,5 +151,5 @@ def test_the_server_puts_every_built_in_room_on_the_page():
 
 
 def test_the_scene_has_a_quiet_stand_in_without_webgl():
-    sc = (STATIC / "world" / "scene.js").read_text(encoding="utf-8")
+    sc = (W3 / "scene.js").read_text(encoding="utf-8")
     assert "Lab3D.createWorld" in sc and "quietWorld(" in sc and "Pixi" not in sc

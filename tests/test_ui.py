@@ -27,7 +27,7 @@ def _js():
 
 
 @pytest.mark.skipif(not NODE, reason="node is needed to parse the UI")
-@pytest.mark.parametrize("name", UI_ORDER + ["../world/scene"])
+@pytest.mark.parametrize("name", UI_ORDER + ["../world3d/" + n for n in ("scene", "world", "model", "layout", "kit", "newt", "components")])
 def test_every_ui_file_parses(name):
     r = subprocess.run([NODE, "--check", str(UI / f"{name}.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
@@ -36,7 +36,7 @@ def test_every_ui_file_parses(name):
 def test_script_order():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     order = ["vendor/preact/preact.umd.js", "vendor/preact/hooks.umd.js", "vendor/preact/htm.umd.js",
-             "vendor/three/three.module.min.js", "world3d/world.js", "world/scene.js"] + [f"ui/{n}.js" for n in UI_ORDER]
+             "vendor/three/three.module.min.js", "world3d/world.js", "world3d/scene.js"] + [f"ui/{n}.js" for n in UI_ORDER]
     pos = [html.index(o) for o in order]
     assert pos == sorted(pos), order
     assert set(_js()) == set(UI_ORDER), "every ui/*.js is loaded, in order"

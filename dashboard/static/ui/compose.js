@@ -42,7 +42,7 @@
     { id: 'roles', item: 'role', label: 'Roles', one: 'role', n: d => d.roles.length, blurb: 'The specialist subagents that procedures call on — critics, reviewers, runners.',
       dirty: d => touched(d, 'agent-roles/', 'lab/workflow/roles/') },
     { id: 'rooms', item: 'room', label: 'Rooms', one: 'room', n: d => d.rooms.length, blurb: 'The rooms on the table round your desk: which states of a study stand in each, where it stands, and how it looks.',
-      dirty: d => touched(d, 'lab/rooms/') },
+      dirty: d => touched(d, 'lab/rooms3d/') },
     { id: 'rules', item: 'rule', label: 'Rules', one: 'rule', n: d => ['hard', 'subagent', 'project'].reduce((a, g) => a + (d.rules[g] || []).length, 0), blurb: 'What every agent always does. They are written into every agent’s manual.',
       dirty: d => touched(d, 'workflow/rules.yaml') },
     { id: 'checks', item: 'check', label: 'Checks', one: 'check', n: d => d.checks.length, blurb: 'Small programs that enforce a rule mechanically, so it doesn’t rest on an agent’s word.',
@@ -168,14 +168,13 @@
           </div>${after[st.id] ? html`<div class="cmp-gate" title=${after[st.id].title}><${NL.Icon} name="lock" /><span>Gate ${after[st.id].n}</span></div>` : null}`)}
           <button type="button" class="cmp-pipe-add" onClick=${() => NL.open(StageAddDialog, {}, { kind: 'dialog' })}><${NL.Icon} name="plus" /><span>Add a stage</span></button></div></section>
       <section class="cmp-sec"><div class="cmp-sec-h"><h2>The table</h2><span class="muted small grow">The rooms around your desk. Drag one to move it; turn its door with the arrow.</span>
-        <a class="link small" href="/static/world3d/lab.html" target="_blank" rel="noopener">See it in 3D ↗</a><a class="link small" href=${href('rooms')}>All rooms →</a></div>
+        <a class="link small" href="#/">See it live on Home →</a><a class="link small" href=${href('rooms')}>All rooms →</a></div>
         <${LayoutGrid} d=${d} /></section>
       <section class="cmp-sec"><div class="cmp-tiles">${KINDS.filter(k => ['roles', 'rules', 'checks', 'types'].includes(k.id)).map(k => html`
         <a class="cmp-tile" href=${href(k.id)}><div class="row between"><b>${k.label}</b><span class="cmp-n">${k.n(d)}</span></div><p class="muted small">${k.blurb}</p></a>`)}</div></section>
     </div>`;
   };
 
-  const FLOOR = f => f > 0 ? (f === 1 ? 'Upstairs' : `Floor ${f}`) : f < 0 ? (f === -1 ? 'Cellar' : `Basement ${-f}`) : 'Ground floor';
   /* ── the table, as a plan: plots round your desk; drag a room to move it, turn its door ─────────────
      The same placement the 3D world uses (world3d/layout.js): a room's `place` and `facing` in the
      workflow, or the next free plot round the plaza. */
@@ -455,7 +454,7 @@
   };
 
   /* ── rooms ────────────────────────────────────────────────────────────────── */
-  const RoomsList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k}><a class="btn" href="/static/world3d/lab.html" target="_blank" rel="noopener">See it in 3D ↗</a></${ListHead}>
+  const RoomsList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k}><a class="btn" href="#/">See it live on Home</a></${ListHead}>
     <${LayoutGrid} d=${d} />
     <p class="muted small cmp-foot">Which rooms exist, and which states stand in each, is the workflow's; how a room looks is its own — open a room, then <b>Look</b>, and describe what you want: a coding agent designs it for you to preview and take.</p></div>`;
 
@@ -466,11 +465,11 @@
     return html`<div class="cmp-page">
       <${ItemHead} k=${KIND_OF.room} name=${name} title=${r.title || r.label} sub=${`${(r.states || []).map(x => stateLabel(d, x)).join(' · ') || 'studies rest here'} — ${r.look3d === 'yours' ? 'its own look' : r.look3d === 'built-in' ? 'built-in look' : 'drawn plain'}`}
         actions=${html`<${CopyBtn} kind="room" like=${name} />${!r.gate ? html`<${NL.Btn} small kind="ghost" onClick=${() => NL.open(RoomRemoveDialog, { r }, { kind: 'dialog' })}><${NL.Icon} name="trash" /> Remove</${NL.Btn}>` : null}`} />
-      <${NL.Tabs} tabs=${[{ id: 'about', label: 'About' }, { id: 'look', label: 'Look', count: (d.designs || []).filter(x => x.room === name).length || null }, { id: 'art', label: '2D art' }]} value=${tab} onChange=${setTab} />
-      <div class="tabpane">${tab === 'about' ? html`<${RoomAbout} key=${JSON.stringify(r)} d=${d} r=${r} />` : tab === 'look' ? html`<${RoomLook} d=${d} r=${r} />` : html`<${RoomArt} d=${d} r=${r} />`}</div></div>`;
+      <${NL.Tabs} tabs=${[{ id: 'about', label: 'About' }, { id: 'look', label: 'Look', count: (d.designs || []).filter(x => x.room === name).length || null }]} value=${tab} onChange=${setTab} />
+      <div class="tabpane">${tab === 'look' ? html`<${RoomLook} d=${d} r=${r} />` : html`<${RoomAbout} key=${JSON.stringify(r)} d=${d} r=${r} />`}</div></div>`;
   };
   const RoomAbout = ({ d, r }) => {
-    const init = { label: r.label || '', title: r.title || '', floor: r.floor ?? 0, order: r.order ?? 1 };
+    const init = { label: r.label || '', title: r.title || '', per_project: !!r.per_project };
     const [f, setF] = useState(init);
     const [pick, setPick] = useState('');
     const set = (k, v) => setF(o => ({ ...o, [k]: v }));
@@ -478,10 +477,11 @@
     const here = r.states || [];
     const elsewhere = (d.states || []).concat(d.side_states || []).filter(s => !here.includes(s.id));
     return html`<div class="cmp-form">
-      <div class="grid2"><${NL.Field} label="Its sign" hint="the name on the building"><${NL.Input} value=${f.title} onInput=${v => set('title', v)} /></${NL.Field}>
-        <${NL.Field} label="Short name" hint="the column on the Studies board"><${NL.Input} value=${f.label} onInput=${v => set('label', v)} /></${NL.Field}>
-        <${NL.Field} label="Floor"><${NL.Select} value=${String(f.floor)} onChange=${v => set('floor', +v)} options=${[2, 1, 0, -1].map(x => ({ value: String(x), label: FLOOR(x) }))} /></${NL.Field}>
-        <${NL.Field} label="Position on the floor" hint="1 = leftmost"><${NL.Input} type="number" min="1" value=${f.order} onInput=${v => set('order', +v)} /></${NL.Field}></div>
+      <div class="grid2"><${NL.Field} label="Its sign" hint="the name over its door"><${NL.Input} value=${f.title} onInput=${v => set('title', v)} /></${NL.Field}>
+        <${NL.Field} label="Short name" hint="the column on the Studies board"><${NL.Input} value=${f.label} onInput=${v => set('label', v)} /></${NL.Field}></div>
+      <${NL.Toggle} on=${f.per_project} onChange=${v => set('per_project', v)} label="One per live project"
+        sub="Each project gets a room of its own, titled by its study — built while /spawn-project runs, in the look for its project type. Off: one room for the whole lab." />
+      <p class="muted small">Where it stands on the table: drag it on the table under Rooms.</p>
       <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'room', id: r.id, fields: f }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div>
       <${NL.Section} title="What stands here">${here.length ? here.map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`) : html`<div class="muted small">No state stands here yet.</div>`}
         <div class="row"><${NL.Select} value=${pick} onChange=${setPick} options=${[{ value: '', label: 'Move a state here…' }, ...elsewhere.map(s => ({ value: s.id, label: `${s.label} (now in ${s.room})` }))]} />
@@ -537,16 +537,6 @@
       </div></div>`;
   };
 
-  const RoomArt = ({ d, r }) => {
-    const [from, setFrom] = useState(d.built_in_art.includes(r.id) ? r.id : d.built_in_art[0] || '');
-    if (r.art === 'yours') return html`<div><${FileEditor} path=${`lab/rooms/${r.id}.js`} rows=${28} intro="The room's art: a small script for the world on Home (its shapes, stations and props — see docs/world-design.md). It shows after you publish." />
-      <div class="row end"><button type="button" class="link small danger" onClick=${async () => { if (await NL.confirm({ title: 'Remove this art?', ok: 'Remove', body: d.built_in_art.includes(r.id) ? 'The room goes back to its built-in art.' : 'The room is drawn plain.' })) edit({ op: 'write', path: `lab/rooms/${r.id}.js`, text: null }); }}>Remove the lab's art</button></div></div>`;
-    return html`<div class="cmp-narrow">
-      <p class="lede">${r.art === 'built-in' ? 'This room uses the art it ships with.' : 'This room is drawn plain — walls, a sign and a door.'}</p>
-      <p class="muted">To shape it, give it art of its own, starting from any room's.</p>
-      <div class="row"><${NL.Select} value=${from} onChange=${setFrom} options=${d.built_in_art.map(a => ({ value: a, label: `Start from ${a === r.id ? 'its own art' : 'the art of ' + a}` }))} />
-        <${NL.Btn} kind="primary" disabled=${!from} onClick=${() => edit({ op: 'room-art', id: r.id, from })}>Make it the lab's own</${NL.Btn}></div></div>`;
-  };
   const RoomRemoveDialog = ({ r, onClose }) => {
     const d = C.d;
     const others = d.rooms.filter(x => x.id !== r.id);

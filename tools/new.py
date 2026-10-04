@@ -12,8 +12,10 @@ What each one does:
   skill  copies the skill's folder (SKILL.md contract, METHOD.md); the copy's frontmatter says `like: <skill>`, so
          it inherits the definition (level, mode, args, outputs, …) and overrides what you change; `--stage`
          lists it in that stage. Edit its contract and method — they are the copy's own.
-  room   adds its line to workflow/stages.yaml (next on the like's floor) and copies the like's art into
-         lab/rooms/<id>.js (`--plain`: no art — drawn plain); `--states` moves those states into it.
+  room   adds its line to workflow/stages.yaml (on the next free plot of the table) and, when the lab has its own
+         look for the like (lab/rooms3d/<like>.json), copies it as lab/rooms3d/<id>.json — else the room is drawn
+         plain until it is designed (Compose → the room → Look, or /design-room <id> "…"); `--plain`: never copy.
+         `--states` moves those states into it.
   role   copies agent-roles/<role>.yaml + .md with `like: <role>` and renders it for every CLI.
   check  copies checks/<check>.py under the new name (the guard finds it by itself).
   type   copies templates/project-types/<type>/ into lab/templates/project-types/<name>/.
@@ -25,6 +27,7 @@ PI's: a headless run can't write them, and the signature guard refuses this tool
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -113,11 +116,10 @@ def _add_to_stage(hub: Path, stage: str, proc: str) -> None:
 
 
 # ── room ─────────────────────────────────────────────────────────────────────────────────────────
-def _room_art(hub: Path, room: str) -> Path | None:
-    for d in (hub / "lab" / "rooms", hub / "dashboard" / "static" / "world" / "rooms", HUB / "dashboard" / "static" / "world" / "rooms"):
-        if (d / f"{room}.js").is_file():
-            return d / f"{room}.js"
-    return None
+def _room_look(hub: Path, room: str) -> Path | None:
+    """The lab's own look for a room (data), if it has one — a built-in look is code, and stays the built-in's."""
+    f = hub / "lab" / "rooms3d" / f"{room}.json"
+    return f if f.is_file() else None
 
 
 def new_room(hub: Path, rid: str, like: str, states: list[str] | None = None, title: str | None = None,
@@ -134,21 +136,15 @@ def new_room(hub: Path, rid: str, like: str, states: list[str] | None = None, ti
     for s in states:
         if s not in known:
             raise NewError(f"no state '{s}' (add it to workflow/stages.yaml first)")
-    floor = rooms[like].get("floor", 0)
-    order = max([r.get("order", 0) or 0 for r in rooms.values() if r.get("floor", 0) == floor] + [0]) + 1
     out = []
-    station = None
-    if not plain:
-        art = _room_art(hub, like)
-        if not art:
-            raise NewError(f"room '{like}' has no art to copy — use --plain")
-        text = _read(art).replace(f"key: '{like}'", f"key: '{rid}'", 1)
-        text = re.sub(r", floor: -?\d+, order: \d+,[^\n]*", ",", text, count=1)   # its placement is the workflow's
-        stations = re.search(r"stations: \{\s*([\w-]+):", text)
-        station = stations.group(1) if stations else None
-        dst = hub / "lab" / "rooms" / f"{rid}.js"
-        _write(dst, f"/* Room · {title or _title(rid)} — art copied from '{like}'; make it this room's own. */\n"
-                    + re.sub(r"\A/\*.*?\*/\n", "", text, flags=re.S))
+    look = None if plain else _room_look(hub, like)
+    if look:
+        data = json.loads(_read(look))
+        data["key"] = rid
+        if title:
+            data["title"] = title
+        dst = hub / "lab" / "rooms3d" / f"{rid}.json"
+        _write(dst, json.dumps(data, indent=1) + "\n")
         out.append(dst)
     p = hub / "workflow" / "stages.yaml"
     text = _read(p)
@@ -160,16 +156,15 @@ def new_room(hub: Path, rid: str, like: str, states: list[str] | None = None, ti
         line = re.compile(r"^(  - \{id: " + re.escape(s) + r",[^\n]*)$", re.M)
         hit = line.search(text)
         if hit:
-            new_line = re.sub(r"room: [\w-]+", f"room: {rid}", hit.group(1))
-            if station:
-                new_line = re.sub(r"station: [\w-]+", f"station: {station}", new_line)
-            text = text[:hit.start()] + new_line + text[hit.end():]
-    last = list(re.finditer(r"^  - \{id: [\w-]+, label: [^\n]*floor: [^\n]*$", text, re.M))
+            text = text[:hit.start()] + re.sub(r"room: [\w-]+", f"room: {rid}", hit.group(1)) + text[hit.end():]
+    head = re.search(r"^rooms:[^\n]*\n((?:  - \{[^\n]*\n|\s*#[^\n]*\n)*)", text, re.M)
+    last = list(re.finditer(r"^  - \{id: [\w-]+,[^\n]*$", head.group(1), re.M)) if head else []
     if not last:
         raise NewError("can't find the rooms: list in workflow/stages.yaml")
     entry = (f"  - {{id: {rid}, label: {_title(rid)}, title: {title or 'The ' + _title(rid)}, "
-             f"states: [{', '.join(states)}], floor: {floor}, order: {order}}}")
-    text = text[:last[-1].end()] + "\n" + entry + text[last[-1].end():]
+             f"states: [{', '.join(states)}]}}")
+    at = head.start(1) + last[-1].end()
+    text = text[:at] + "\n" + entry + text[at:]
     _write(p, text)
     out.append(p)
     return out

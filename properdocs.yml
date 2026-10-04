@@ -46,6 +46,6 @@ nav:
   - Tools: tools.md
   - Dashboard: dashboard.md
   - Machines & compute: compute.md
-  - World design language: world-design.md
+  - The world: world-design.md
   - Extending the lab: extending.md
   - Design rationale: DESIGN.md

@@ -79,12 +79,12 @@ stages:
 # room → Look: describe it and an agent designs it); a room with neither is drawn plain — adding a room is
 # adding a line here.
 rooms:
-  - {id: incubator, label: Ideas,   title: The Incubator,    states: [seed, triaged],                 floor: 0,  order: 1}
-  - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], floor: 0,  order: 2, gate: 1}
-  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis],              floor: 0,  order: 3, gate: 2, per_project: true}
-  - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review],       floor: 1,  order: 1, gate: 3}
-  - {id: archive,   label: Done,    title: The Archive,      states: [final],                         floor: 1,  order: 2}
-  - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed],                floor: -1, order: 1}
+  - {id: incubator, label: Ideas,   title: The Incubator,    states: [seed, triaged]}
+  - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], gate: 1}
+  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis], gate: 2, per_project: true}
+  - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review], gate: 3}
+  - {id: archive,   label: Done,    title: The Archive,      states: [final]}
+  - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed]}
 
 # the one next step for a study in a state, when no run is live and no gate waits.
 # `proposal` depends on Gate 1: unsigned → propose (finish/present it), signed → spawn-project.

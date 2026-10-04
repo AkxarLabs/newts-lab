@@ -1,7 +1,7 @@
 /* Lab3D.plan — where each room stands on the table: plots on a grid, your desk on the plaza at [0, 0].
  * A room with `place: [col, row]` (and `facing: n|e|s|w`) in workflow/stages.yaml stands there; the rest take
  * the next free plot going round the plaza (clockwise from the back-left), in workflow order, the rooms that
- * hold the lifecycle first, door toward your desk. Shared by the world (world3d/lab.html) and Compose's
+ * hold the lifecycle first, door toward your desk. Shared by the world (world3d/model.js) and Compose's
  * layout editor, so both always agree. */
 (function () {
   'use strict';

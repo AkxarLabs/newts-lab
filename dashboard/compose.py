@@ -2,7 +2,7 @@
 
 What it covers is every file that says how this lab works (ROOTS): the workflow and the rules (workflow/),
 the procedures (.claude/skills/), the subagent roles (agent-roles/), the checks (checks/), the project
-types and domain profiles (templates/…, lab/templates/), the rooms' looks (lab/rooms/, lab/rooms3d/) and the lab-wide
+types and domain profiles (templates/…, lab/templates/), the rooms' looks (lab/rooms3d/) and the lab-wide
 instructions (lab/workflow/). Settings (lab/config.yaml) stay on the Settings page; one study's own
 instructions stay on its page.
 
@@ -32,7 +32,7 @@ import ctx  # noqa: E402
 import sources  # noqa: E402
 
 ROOTS = ("workflow", ".claude/skills", "agent-roles", "checks", "templates/project-types",
-         "templates/domain-profiles", "lab/rooms", "lab/rooms3d", "lab/templates", "lab/workflow")
+         "templates/domain-profiles", "lab/rooms3d", "lab/templates", "lab/workflow")
 TEXT_EXT = {".md", ".yaml", ".yml", ".py", ".js", ".txt", ".json", ".toml", ".tex", ".bib", ".cfg", ".ini", ".sh", ".csv"}
 LOCKED_TABLES = ("pi_owned_config", "protected_paths", "rigor_floors", "gate3_audits", "config_procedures")
 MAX_FILE = 400_000
@@ -564,12 +564,11 @@ def _op_room(b: dict) -> str:
         for k in ("label", "title"):
             if str(f.get(k) or "").strip():
                 r[k] = str(f[k]).strip()
-        for k in ("floor", "order"):
-            if k in f:
-                try:
-                    r[k] = int(f[k])
-                except (TypeError, ValueError):
-                    raise ComposeError(f"{k} must be a whole number") from None
+        if "per_project" in f:                # one room per live project (the Lab), or one for the whole lab
+            if f["per_project"]:
+                r["per_project"] = True
+            else:
+                r.pop("per_project", None)
         return _set_entry(text, "rooms", rid, r)
     _edit(STAGE_MANIFEST, fn)
     return "room updated"
@@ -680,19 +679,6 @@ def _op_rule(b: dict) -> str:
         return t[:a] + entry + t[e:]
     _edit(RULES, fn)
     return f"rule {rid} updated"
-
-
-def _op_room_art(b: dict) -> str:
-    """Start the lab's own art for a room (lab/rooms/<id>.js) from built-in art: its own, or another room's."""
-    rid, frm = str(b.get("id") or ""), str(b.get("from") or b.get("id") or "")
-    src = ctx.ROOT / "dashboard" / "static" / "world" / "rooms" / f"{frm}.js"
-    if not all(re.match(r"^[a-z0-9][a-z0-9-]{0,40}$", x) for x in (rid, frm)) or not src.is_file():
-        raise ComposeError(f"room `{frm}` has no built-in art to start from")
-    text = (ctx.read(src) or "").replace("\r\n", "\n")
-    if frm != rid:
-        text = text.replace(f"key: '{frm}'", f"key: '{rid}'", 1)
-    _put(f"lab/rooms/{rid}.js", text)
-    return "the room's art is now the lab's own — edit it here"
 
 
 def _op_copy(b: dict) -> str:
@@ -806,7 +792,7 @@ def _op_delete(b: dict) -> str:
                 text = _set_entry(text, "rooms", move, {**to, "states": list(to.get("states") or []) + states})
             return _remove_entry(text, "rooms", name)
         _edit(STAGE_MANIFEST, fn)
-        _put(f"lab/rooms/{name}.js", None)
+        _put(f"lab/rooms3d/{name}.json", None)
     elif kind == "stage":
         def fn(text):
             st = _entry(text, "stages", name)[2]
@@ -839,7 +825,7 @@ def _op_discard(b: dict) -> str:
 
 OPS = {"write": _op_write, "instructions": _op_instructions, "procedure": _op_procedure, "stage": _op_stage,
        "state": _op_state, "room": _op_room, "role": _op_role, "rule": _op_rule, "copy": _op_copy,
-       "stage-add": _op_stage_add, "room-art": _op_room_art, "room-place": _op_room_place, "design-use": _op_design_use,
+       "stage-add": _op_stage_add, "room-place": _op_room_place, "design-use": _op_design_use,
        "delete": _op_delete, "discard": _op_discard}
 
 
@@ -1003,18 +989,11 @@ def view(q: dict | None = None) -> tuple[dict, int]:
         roles.append({"name": r, "label": wf.role_labels(root).get(r, r), "description": str(y.get("description") or ""),
                       "like": y.get("like"), "origin": _origin(f"agent-roles/{r}.yaml"),
                       "files": [f"agent-roles/{r}.yaml", f"agent-roles/{r}.md"]})
-    static_rooms = ctx.ROOT / "dashboard" / "static" / "world" / "rooms"
     rooms = []
     for r in m.get("rooms", []):
-        f = next((x for x in (root / "lab" / "rooms" / f"{r['id']}.js", static_rooms / f"{r['id']}.js") if x.is_file()), None)
-        art = "plain" if not f else "yours" if f.parent != static_rooms else "built-in"
-        if f and "floor" not in r:       # an older lab: where the art places it (world/building.js does the same)
-            key = re.search(r"key: '[^']*'[^\n]*?floor: (-?\d+), order: (\d+)", ctx.read(f) or "")
-            if key:
-                r = {**r, "floor": int(key.group(1)), "order": int(key.group(2))}
         look = "yours" if (root / "lab" / "rooms3d" / f"{r['id']}.json").is_file() else \
             "built-in" if (ctx.ROOT / "dashboard" / "static" / "world3d" / "rooms" / f"{r['id']}.js").is_file() else "plain"
-        rooms.append({**r, "art": art, "look3d": look})
+        rooms.append({**r, "look3d": look})
     rl = wf.rules(root)
     rules = {g: [{"id": x.get("id"), "text": str(x.get("text") or ""), "checks": x.get("checks") or []}
                  for x in rl.get(f"{g}_rules") or []] for g in ("hard", "subagent", "project")}
@@ -1039,7 +1018,7 @@ def view(q: dict | None = None) -> tuple[dict, int]:
         "states": m.get("states", []), "side_states": m.get("side_states", []), "gates": m.get("gates", []),
         "stages": m.get("stages", []), "rooms": rooms, "next_for_state": m.get("next_for_state", {}),
         "offer_for_state": m.get("offer_for_state", {}), "procedures": procs, "roles": roles,
-        "built_in_art": sorted(f.stem for f in static_rooms.glob("*.js")), "designs": designs(),
+        "designs": designs(),
         "rules": rules, "locked": locked, "built_in_checks": sorted(wf.BUILT_IN_CHECKS), "checks": checks,
         "types": types, "domains": domains, "custom": lab_custom,
         "proposals": [{k: r.get(k) for k in ("id", "kind", "name", "study", "why", "by", "ts")} for r in wf.proposals(ctx.HUB)],

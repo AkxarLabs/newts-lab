@@ -1012,9 +1012,9 @@ def main(argv=None) -> int:
         stale = render_docs(check_only=True)
         for x in stale:
             print(f"[workflow] {x.as_posix()} is stale — run `tools/workflow.py render-docs`")
-        for r in load().get("rooms", []):      # not a problem: the dashboard draws a room with no art plain
-            if not any((d / f"{r['id']}.js").is_file() for d in (HUB / "dashboard" / "static" / "world" / "rooms", HUB / "lab" / "rooms")):
-                print(f"[workflow] note: room {r['id']} has no art (dashboard/static/world/rooms/ or lab/rooms/) — it is drawn plain")
+        for r in load().get("rooms", []):      # not a problem: the dashboard draws a room with no look plain
+            if not ((HUB / "dashboard" / "static" / "world3d" / "rooms" / f"{r['id']}.js").is_file() or (HUB / "lab" / "rooms3d" / f"{r['id']}.json").is_file()):
+                print(f"[workflow] note: room {r['id']} has no look (dashboard/static/world3d/rooms/ or lab/rooms3d/) — it is drawn plain")
         if not probs and not stale:
             print("[workflow] ok")
         return 1 if probs or stale else 0

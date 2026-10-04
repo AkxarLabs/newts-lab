@@ -17,11 +17,11 @@ and publish ([Customising](customising.md)). A copied skill
 or role says `like: <the original>` and inherits its *definition* (a skill's level, mode, arguments,
 outputs, …; a role's tools, model and sandbox), overriding only what it lists. Its *contract and
 instructions* are copied, never linked: when the original's rules change, a copy doesn't silently change
-with them. The command writes only the lab's own files (`lab/rooms/`, `lab/templates/`, a new skill folder,
+with them. The command writes only the lab's own files (`lab/rooms3d/`, `lab/templates/`, a new skill folder,
 a new role, a new check, a line in `workflow/`), refreshes the generated docs and runs `workflow.py check`.
 
 Dropping a file in still works on its own — a skill folder, a check, a role pair, a type folder, a room's
-art — `tools/new.py` only saves the copying, the renaming and the one registration some kinds need.
+look — `tools/new.py` only saves the copying, the renaming and the one registration some kinds need.
 
 Every moving part is a small, named registry; the table is the map.
 
@@ -31,7 +31,7 @@ Every moving part is a small, named registry; the table is the map.
 | How a stage is done | Compose → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
 | A stage, a state, a room | `workflow/stages.yaml` (a room's `place` and `facing` on the table too) | `tools/workflow.py check` |
-| How a room looks in 3D | `lab/rooms3d/<room>.json` (data: Compose → a room → Look → *Describe it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/` | Compose (it checks every room file) |
+| How a room looks in 3D | `lab/rooms3d/<room>.json` (data: Compose → a room → Look → *Design it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/` | Compose (it checks every room file) |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
@@ -87,19 +87,26 @@ The lifecycle's states, its stages, the gates and the rooms are `workflow/stages
 legal transitions from the states and back edges. Keep the three gates: `check` refuses a manifest without
 exactly Gates 1, 2 and 3.
 
-**A room** is one line under `rooms:` — its title, the states that stand in it, its floor (1 upper, 0
-ground, -1 cellar) and its order on that floor:
+**A room** is one line under `rooms:` — its title and the states that stand in it. Optionally its
+`place: [column, row]` on the table and `facing: n|e|s|w` for its door (Compose → Rooms: drag it on the
+table, turn its door); without them it takes the next free plot round your desk:
 
 ```yaml
-  - {id: data, label: Data, title: The Data Room, states: [data-prep], floor: 0, order: 4}
+  - {id: data, label: Data, title: The Data Room, states: [data-prep]}
 ```
 
-The building widens to fit it, and a room with no art is drawn plain (a station per state, the standard
-decor, its gate's door). To give it a look, write its art — `dashboard/static/world/rooms/<id>.js`, or the
-lab's own `lab/rooms/<id>.js` — as `VivWorld.defineRoom({key, size, shell, stations, roleStation, props,
-paths})` with the components in `world/components.js` (the gallery, `/static/world/gallery.html`, shows
-them). Each state's `station` in `stages.yaml` says where its studies stand; [the world's design
-language](world-design.md) has the rest.
+`per_project: true` makes it one room per live project, titled by its study (the Lab has it; Compose → the
+room → About → *One per live project*). Without the flag, a room is per-project when most of its
+procedures are project-level.
+
+A room with no look is drawn plain (a floor, low walls, a desk per procedure). The built-in looks are code
+(`dashboard/static/world3d/rooms/<id>.js`); a lab's own look is data, `lab/rooms3d/<id>.json` — a size,
+colours, furniture from `world3d/components.js` placed by name, a station per procedure, and any new
+furniture as boxes, cylinders, cones and spheres — never code. A project type can have its own lab look,
+`lab/rooms3d/lab.<type>.json`. You design a look by describing it: Compose → the room → Look → *Design it*
+launches `/design-room`, which writes a design you preview and then *Use this design* (a draft; publish
+it). `tools/new.py room <id> --like <room>` copies the like's own JSON look if it has one; otherwise the new
+room is plain until designed. [The world's design](world-design.md) has the rest.
 
 ## A rule
 

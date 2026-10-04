@@ -235,5 +235,5 @@ protected_paths:
   - '^templates/'
   - '^lab/workflow/'
   - '^lab/templates/'
-  - '^lab/rooms/'
+  - '^lab/rooms3d/'
   - '^studies/[^/]+/workflow/'

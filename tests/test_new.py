@@ -41,20 +41,23 @@ def test_a_skill_like_another_inherits_its_definition_and_can_join_a_stage(lab, 
         new.new_skill(lab, "quick-scan", "lit-review")
 
 
-def test_a_room_like_another_takes_its_art_and_the_states_it_is_given(lab, new):
+def test_a_room_like_another_takes_its_look_and_the_states_it_is_given(lab, new):
+    import json
     wf = load("workflow")
+    (lab / "lab" / "rooms3d").mkdir(parents=True, exist_ok=True)
+    (lab / "lab" / "rooms3d" / "lab.json").write_text(json.dumps({"key": "lab", "size": [12, 8], "stations": {"analyze": [0, -2, 3.14]}}), encoding="utf-8")
     files = new.new_room(lab, "data", "lab", states=["analysis"], title="The Data Room")
-    art = (lab / "lab" / "rooms" / "data.js").read_text(encoding="utf-8")
-    key_line = next(ln for ln in art.splitlines() if "key:" in ln)
-    assert "key: 'data'" in key_line and "order:" not in key_line      # its placement is the workflow's
+    look = json.loads((lab / "lab" / "rooms3d" / "data.json").read_text(encoding="utf-8"))
+    assert look["key"] == "data" and look["title"] == "The Data Room" and look["stations"] == {"analyze": [0, -2, 3.14]}
     rooms = {r["id"]: r for r in wf.load(lab)["rooms"]}
     assert rooms["data"]["states"] == ["analysis"] and "analysis" not in rooms["lab"]["states"]
-    assert rooms["data"]["floor"] == rooms["lab"]["floor"] and rooms["data"]["order"] == 4
-    st = next(s for s in wf.load(lab)["states"] if s["id"] == "analysis")
-    assert st["room"] == "data" and st["station"] in art
+    assert "place" not in rooms["data"] and list(rooms)[-1] == "data"          # it takes the next free plot
+    assert next(s for s in wf.load(lab)["states"] if s["id"] == "analysis")["room"] == "data"
     assert wf.check(lab) == [] and files
-    new.new_room(lab, "quiet", "margins", plain=True)
-    assert not (lab / "lab" / "rooms" / "quiet.js").exists() and "quiet" in {r["id"] for r in wf.load(lab)["rooms"]}
+    new.new_room(lab, "quiet", "margins")                                       # a built-in look is code: drawn plain
+    assert not (lab / "lab" / "rooms3d" / "quiet.json").exists() and "quiet" in {r["id"] for r in wf.load(lab)["rooms"]}
+    new.new_room(lab, "bare", "lab", plain=True)
+    assert not (lab / "lab" / "rooms3d" / "bare.json").exists()
 
 
 def test_a_role_like_another_inherits_its_settings(lab, new, monkeypatch):

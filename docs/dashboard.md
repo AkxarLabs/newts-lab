@@ -4,11 +4,11 @@
 
 The dashboard is the lab's product surface. **Start it, pick or create a lab, and do everything from
 there:** set up the lab, connect an agent, start work, watch it, answer its questions, and sign the
-gates. The lab itself is drawn behind it as a living paper diorama.
+gates. The lab itself is drawn behind it as a living 3D tabletop.
 
 <figure markdown>
 ![Home — the lab as a living world, with the Today rail](assets/dashboard-home-dark.png){ .as-shot }
-<figcaption><strong>Home</strong>: the lab drawn as a cutaway building, a room per lifecycle stage. The <strong>Today</strong> rail on the right lists what needs you, what's running and what's next. <strong>Ask Newt</strong> sits underneath.</figcaption>
+<figcaption><strong>Home</strong>: the lab drawn as an open tabletop, its rooms round your desk. The <strong>Today</strong> rail on the right lists what needs you, what's running and what's next. <strong>Ask Newt</strong> sits underneath.</figcaption>
 </figure>
 
 ## Start it
@@ -85,8 +85,8 @@ Settings → About.
 
 ## Home
 
-The world fills the screen. Each lifecycle stage is a room of one cutaway building, each idea or
-project is a critter in its room, and each working agent or subagent is a sub-newt at its station
+The world fills the screen. The workflow's rooms stand on a table round your desk, each study is a
+card on its room's shelf, and each run is a newt at its station, its subagents smaller newts beside it
 (see [The world](#the-world)).
 
 On the right, the **Today** rail (collapsible) has:
@@ -106,11 +106,13 @@ button next to it leaves a *note* for the next agent instead, without starting a
 
 In the world itself:
 
-- Click a critter to peek at its study: its stage, its next step, its runs, and *enter its lab*.
+- Click a card to open its study. Click a gate arch for the study waiting on it.
 - Click a room to zoom in. A room map and **◂ back** appear top-left.
-- Click a sub-newt to open its inspector: what it is doing, who started it, its subagents, what it
+- Click a newt to open its run sheet: what it is doing, who started it, its subagents, what it
   handed back, and its full action timeline. **Follow** keeps the camera on it.
-- Click Newt, bottom-centre, to start something.
+- Click the desk for the inbox; click the big Newt to start something.
+- Drag to turn, wheel to zoom, hover for a tooltip. The **lenses** (top-left) re-tint the table:
+  Work, Cost, Waiting on you, Risk.
 - The **Key** (bottom-left) lists the roles with live counts. Click a role to highlight its agents.
 
 The same list as *Needs you* sits behind the 🔔 in the top bar. The tab title shows how many things
@@ -126,7 +128,7 @@ can reach the dashboard at (for example a Tailscale address) and each notificati
 
 <figure markdown>
 ![Home in the day theme](assets/dashboard-home-light.png){ .as-shot }
-<figcaption>The same Home by day — the parchment atelier. Theme follows your system, or pick one in Settings → Appearance.</figcaption>
+<figcaption>The same Home by day. Theme follows your system, or pick one in Settings → Appearance.</figcaption>
 </figure>
 
 ## Starting work
@@ -345,30 +347,30 @@ or action. <kbd>Esc</kbd> closes the top layer.
 
 ## The world
 
-The lab is one cutaway building drawn by code (`dashboard/static/world/`, rendered with PixiJS).
-There is a room per lifecycle stage, floors stacked, and the Margins in the cellar. The gates are
-the doors between rooms.
+The lab is an open tabletop drawn by code (`dashboard/static/world3d/`, rendered with three.js). Your
+desk is the plaza in the middle; the workflow's rooms stand on plots round it, with streets between.
+Rooms have no roofs: everything is visible from above.
 
 | Room | Covers |
 |---|---|
 | **the incubator** | `seed`, `triaged` |
-| **the study** | `lit-review`, `scoping`, `proposal` (**Gate 1** is the door out) |
-| **the lab** | `active`, `analysis` (**Gate 2** inside). Each project is one critter; enter it to see its workers |
-| **the writing room** | `writing`, `internal-review` (**Gate 3** is the door out) |
+| **the study** | `lit-review`, `scoping`, `proposal` (**Gate 1** at its door) |
+| **the lab** | `active`, `analysis` (**Gate 2**). One lab per live project, titled by its study |
+| **the writing room** | `writing`, `internal-review` (**Gate 3** at its door) |
 | **the archive** | `final` |
-| **the margins** | `parked` (dim) and `killed` (sunk) |
+| **the margins** | `parked` and `killed` |
 
-By day the world is the parchment atelier; by night it is the cave. Its objects are live readouts:
+- **Runs are newts** at the station of the procedure they run, each in a family colour of its own;
+  their subagents are smaller newts in the same colours. A run waiting for you walks to your desk with
+  a "?"; a stalled one dozes.
+- **Studies are cards** on their room's shelf. When a study moves on, a newt carries its card to the
+  next room. Gates are arches at a room's street door, with a lamp.
+- While `/spawn-project` runs, the new project's lab stands as scaffolding and rises when ready; more
+  project labs cluster as a lab district.
+- Day and night themes follow the lamp. Without WebGL the dashboard works the same, minus the world.
 
-- the compute rack's LEDs are the slots in use;
-- the FULL reactor bubbles with load;
-- screens scroll while agents work;
-- a waiting gate's door glows;
-- the clock is real.
-
-When a study changes stage, its critter hops to the new room. The painted world is the fallback
-without WebGL (⚙ Settings → Appearance → World). New rooms and furniture use the same design
-language, described in [The world's design language](world-design.md).
+Rooms, their places on the table and their looks are yours to change (Compose → Rooms; see
+[Extending](extending.md)). How the world works is in [The world's design](world-design.md).
 
 ## How it stays honest (the bus)
 
@@ -475,10 +477,12 @@ chain, a repeat, a campaign pass) and what it started.
     `#/library/<scope>/<slug>/<file>`, `#/compose/<kind>/<name>`, `#/settings/<section>`, `#/history`,
     `#/labs`, `#/setup`.
   - Old deep links (`?open=<slug>`, `?read=<scope>:<slug>:<rel>`) still work.
-- **The world.** `static/world/scene.js` holds the one `Scene` wrapper around the diorama (and a quiet stand-in when the browser has no WebGL).
-  The diorama is `engine.js` with its tokens, painter, components and rooms, and
-  `static/world/gallery.html` shows every component and room in both themes.
-- **Vendored libraries** (offline, with licences in `static/vendor/`): PixiJS, Preact, htm, marked,
+- **The world.** `static/world3d/`: `world.js` is the live world, `scene.js` the one `VivScene` wrapper
+  round it (and a quiet stand-in when the browser has no WebGL), `model.js` the pure logic of which
+  rooms stand where and who goes in which, `layout.js` the plots, `kit.js`, `components.js` and
+  `newt.js` the pieces, and `rooms/*.js` the built-in looks. The lab's own looks are data in
+  `lab/rooms3d/`. See [The world's design](world-design.md).
+- **Vendored libraries** (offline, with licences in `static/vendor/`): three.js, Preact, htm, marked,
   DOMPurify and KaTeX.
 - **Demo mode**, for debugging: start with `--demo` and open `/?demo`. It is a synthetic living lab,
   and nothing is written.
