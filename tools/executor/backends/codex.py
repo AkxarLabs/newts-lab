@@ -83,6 +83,9 @@ class Codex(Backend):
                 if t == "item.started":
                     return [{"event": "begin", "tool": tool, "summary": summary}]
                 out = [{"event": "action", "tool": tool, "kind": "tool", "summary": summary, "tool_use_id": it.get("id")}]
+                if itype.startswith("file_change") and isinstance(it.get("changes"), list):   # what the run wrote
+                    out[0]["files"] = [str(c["path"]) for c in it["changes"] if isinstance(c, dict) and c.get("path")
+                                       and c.get("kind") != "delete"]
                 if it.get("status") == "declined":
                     out.append({"event": "denied", "tool": tool, "tool_use_id": it.get("id")})
                 return out

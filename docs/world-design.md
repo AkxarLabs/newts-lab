@@ -48,8 +48,10 @@ project-level. Compose → a room → About has a "One per live project" toggle.
   of the table when ready.
 - Further project labs cluster as a **lab district** on the free plots nearest the first lab.
 - With no projects, the bare Lab stands with a "No projects yet" sign.
-- A project type can have a lab look of its own: `lab/rooms3d/lab.<type>.json`, the type taken from the
-  project's `control.yaml` `project_type` (default `ml`).
+- Each project's lab takes the look for its type, `lab.<type>`, the type taken from the project's
+  `control.yaml` `project_type` (default `ml`). Starter looks for every shipped type (`ml`, `empirical`,
+  `simulation`, `theory`, `target-driven`) come with the dashboard in `world3d/looks/lab.<type>.json`; the
+  lab's own `lab/rooms3d/lab.<type>.json` wins over them. With neither, the built-in Lab look is used.
 
 ## Newts: who is where
 
@@ -77,6 +79,15 @@ What the poses mean:
 
 Traced workers not launched from the dashboard appear too.
 
+**The cast.** A newt is the default, but an agent can be drawn as any of six characters
+(`world3d/characters.js`, `Lab3D.CHARACTERS`): the newt, a mini human scientist, a frog, an owl, a fox and a
+robot. Settings → Appearance → The cast picks one per tool (by default Claude a newt, Codex the scientist,
+opencode the robot) or one for everyone. Subagents are smaller copies of their main agent's character, in
+the same family colour. All of them take the same poses.
+
+When the table changes (a new lab rises, a room moves) the agents keep their places and walk on to where
+they now belong; nobody respawns.
+
 ## Cards, couriers and gates
 
 - **Studies are cards** on their room's shelf, in the study's own hue.
@@ -97,6 +108,13 @@ Top-left on Home. Each re-tints the table by what you ask:
 
 Room labels never overlap: the busiest rooms get theirs first.
 
+## Your other labs
+
+The other labs in Labs & machines (this computer's and other machines', all in this one dashboard) stand
+as small tables beyond the table's back edge, each with a bridge to yours. Each shows its name, its
+machine, "N need you", a light per agent at work, and "not connected" when its machine can't be reached.
+Click one to go to that lab.
+
 ## Interactions
 
 - A newt → its run sheet. A card → the study. The desk → the inbox. The big Newt → Start something. A
@@ -104,6 +122,7 @@ Room labels never overlap: the busiest rooms get theirs first.
 - Drag to turn, wheel to zoom, hover for a tooltip.
 - Day and night themes follow the lamp.
 - On a phone the table fits above the bottom sheet.
+- `?settle` on the page URL runs the world forward until everyone is in place, for screenshots.
 - Demo mode (server started with `--demo`, page `?demo`) shows a synthetic living lab and writes nothing.
 
 ## The files
@@ -114,17 +133,20 @@ All under `dashboard/static/world3d/`; three.js is vendored at `dashboard/static
 |---|---|
 | `kit.js` | `Lab3D.defineComponent`, `defineRoom`, `defineRoomData` (a room given as JSON data), the day/night themes |
 | `newt.js` | the 3D newt (`Lab3D.makeNewt`; options `color`, `hue`, `scale`) |
+| `characters.js` | the rest of the cast (`Lab3D.CHARACTERS`, `Lab3D.makeCharacter(K, id, {color, hue, scale})`), same interface as the newt |
 | `components.js` | the furniture kit, about 25 pieces built from primitives |
 | `layout.js` | `Lab3D.plan`: plots on a grid round your desk |
 | `model.js` | `Lab3D.model`: pure logic, no drawing (`roomList`, `placeRooms` with the lab district, `placeOfRun`, `roomOfItem`) |
 | `rooms/*.js` | the built-in looks: incubator, study, lab, writing, archive, margins |
+| `looks/lab.<type>.json` | starter Lab looks per project type, as data (a README there says what each shows) |
 | `world.js` | `Lab3D.createWorld`: the live world |
 | `scene.js` | `VivScene`: one stable API over the world, and a quiet stand-in without WebGL |
 | `sandbox-room.html` | a sandboxed room preview, used by Compose |
-| `newt.html` | a newt viewer |
+| `newt.html` | "The cast": every character side by side (`?pose=idle\|work\|walk\|wait\|carry\|sleep\|fail\|mix`, `?theme=night`, `?grid` for every pose) |
 
 The server inserts one `<script>` per built-in room file at the `<!-- newts:rooms3d -->` marker in
-`index.html`; the lab's own looks come from `lab/rooms3d/` at run time.
+`index.html`. Looks given as data come from `/api/rooms3d` at run time: the starter looks first, then the
+lab's own (`lab/rooms3d/`), so the lab's own win.
 
 ## Room looks
 
@@ -156,6 +178,7 @@ A procedure with no station gets a desk of its own, laid out by the engine.
   `{shape: box|cyl|cone|sphere, size, at: [x, y, z], color, rot?, glow?, alpha?}`; at most 1500 parts in a
   room.
 
+The starter looks in `world3d/looks/` are the same format and are the worked examples `/design-room` reads.
 Nothing an agent writes ever runs in the page. `lab/rooms3d/` is protected from headless runs by the
 signature guard.
 
@@ -168,7 +191,9 @@ signature guard.
 2. **Design its look by describing it.** Compose → the room → Look → "Design it" launches the
    `/design-room` skill: a coding agent writes `lab/.bus/designs/<room>/room.json` and `notes.md`
    (`tools/workflow.py room <id>` prints the room brief it works from). You preview it in a sandboxed
-   frame and click "Use this design"; it goes to the Compose draft, then Publish.
+   frame and click "Use this design"; it goes to the Compose draft, then Publish. For a per-project room,
+   the Look tab has a "Look for: every project / <type>" switch: a design for one type is saved as
+   `lab.<type>` (`/design-room lab.ml "…"`; `tools/workflow.py room lab.ml` briefs it).
 3. **Run the tests** (`pytest tests/test_world.py`).
 
 ## The contract
@@ -189,7 +214,9 @@ buffers calls made while it boots, and keeps the same contract with nothing draw
 | `setAmbient(on)` | idle motion on or off |
 | `setLens(l)` / `lens()` | `work`, `cost`, `waiting` or `risk` |
 | `followWorker(id)`, `stopFollow()`, `following()` | the camera follows one newt |
-| `onClick(item, inbox)`, `onWorker`, `onRun`, `onNewt`, `onView`, `onFollow` | callbacks into the dashboard |
+| `setCast(cast)` | who plays the agents (Settings → Appearance → The cast) |
+| `setNeighbours(labs)` | your other labs, past the back edge |
+| `onClick(item, inbox)`, `onWorker`, `onRun`, `onNewt`, `onView`, `onFollow`, `onLab` | callbacks into the dashboard |
 
 ## Testing
 

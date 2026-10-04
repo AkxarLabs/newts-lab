@@ -72,6 +72,8 @@ _HEARTBEAT_STALE_S = 120
 
 def collect(items, escalations, roster, runs) -> list[dict]:
     extra = lab_items(items, escalations, roster)
+    import artifacts  # noqa: PLC0415 — a question an agent left with something it made
+    extra += artifacts.attention_items()
     try:   # a campaign that stopped and needs the PI (stalled, paused on a sign-in problem) — one item for it
         from executor import campaigns as _camps  # noqa: PLC0415
         for c in _camps.all_states(executor.Lab(ctx.HUB)) if executor else []:

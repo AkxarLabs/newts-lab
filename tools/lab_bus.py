@@ -63,6 +63,8 @@ KINDS = {
     # the workflow's PI-owned instructions: an agent's suggested change (tools/workflow.py propose) and
     # the PI's decision; a campaign cycle asking the keeper to start a procedure (never finalize)
     "instruction_proposal", "instruction_resolved", "campaign_dispatch",
+    # something an agent made for the PI to look at (tools/artifact.py), and the PI's reply to it
+    "artifact", "artifact_reply",
 }
 
 

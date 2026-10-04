@@ -208,6 +208,7 @@
       ${r.reason && !active && !['completed', 'waiting_input', 'queued'].includes(r.status) ? html`<div class="note note-warn">${r.reason}</div>` : null}
       <${Lineage} r=${r} />
       <${Subagents} r=${r} />
+      <${NL.RunFiles} r=${r} />
       <div class="convo" ref=${scroller} onScroll=${onScroll}>
         ${skipped ? html`<div class="msg-div"><span>earlier output skipped (${Math.round(skipped / 1024)} KB)</span></div>` : null}
         ${!blocks.length ? html`<div class="muted pad">${r.status === 'queued' ? 'Waiting for a free slot…' : active ? 'Starting up…' : 'No transcript yet.'}</div>` : null}

@@ -153,3 +153,27 @@ def test_the_server_puts_every_built_in_room_on_the_page():
 def test_the_scene_has_a_quiet_stand_in_without_webgl():
     sc = (W3 / "scene.js").read_text(encoding="utf-8")
     assert "Lab3D.createWorld" in sc and "quietWorld(" in sc and "Pixi" not in sc
+
+
+def test_the_cast_offers_characters_and_falls_back_to_the_newt():
+    files = [str(W3 / f) for f in ["kit.js", "newt.js", "characters.js"]]
+    js = f"""global.window = global; const fs = require('fs');
+      for (const f of {json.dumps(files)}) eval(fs.readFileSync(f, 'utf8'));
+      console.log(JSON.stringify({{ cast: window.Lab3D.CHARACTERS, make: typeof window.Lab3D.makeCharacter }}));"""
+    r = subprocess.run([NODE, "-e", js], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    ids = [c["id"] for c in got["cast"]]
+    assert ids[0] == "newt" and {"human", "robot", "fox", "frog", "owl"} <= set(ids) and got["make"] == "function"
+    assert all(c["label"] for c in got["cast"])
+
+
+def test_every_project_type_has_a_starter_lab_look_that_passes_the_checker():
+    compose = load("dashboard/compose")
+    types = sorted(p.name for p in (REPO / "templates" / "project-types").iterdir() if p.is_dir())
+    looks = sorted((W3 / "looks").glob("*.json"))
+    assert [f.stem for f in looks] == [f"lab.{t}" for t in types]
+    for f in looks:
+        data, probs = compose.room_check(f.read_text(encoding="utf-8"), f.stem)
+        assert probs == [] and data["key"] == f.stem, (f.name, probs)
+        assert {"experiment", "improve", "research-loop", "analyze"} <= set(data["stations"]), f.name

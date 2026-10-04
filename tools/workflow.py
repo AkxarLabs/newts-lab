@@ -907,6 +907,7 @@ def room_brief(rid: str, hub=None) -> str | None:
     """What a room must hold — for /design-room: its states, the procedures that need a station, its gate.
     Looks in the lab, then in the PI's open Compose draft (a room added there but not published yet)."""
     h = _hub(hub)
+    rid, _, ptype = rid.partition(".")       # `lab.ml`: the look of a Lab for one project type
     for root in (h, h / "lab" / ".bus" / "compose" / "draft"):
         if root != h and not (root / MANIFEST).is_file():
             continue
@@ -922,13 +923,17 @@ def room_brief(rid: str, hub=None) -> str | None:
         procs = list(dict.fromkeys(p for st in m.get("stages", []) if set(st.get("states") or []) & set(states)
                                    for p in st.get("procedures") or []))
         gates = [g for g in m.get("gates", []) if g.get("at") in states or g.get("before") in states]
-        lines = [f"ROOM {rid} — {room.get('title') or room.get('label') or rid}" + ("  (in the PI's draft)" if root != h else ""),
+        look = f"{rid}.{ptype}" if ptype else rid
+        lines = [f"ROOM {look} — {room.get('title') or room.get('label') or rid}" + ("  (in the PI's draft)" if root != h else "")
+                 + (f" — the look of every {rid} whose project is of type {ptype!r}: make it say {ptype} at a glance "
+                    f"(the type's conventions: templates/project-types/{ptype}/TYPE.md); key it \"{look}\"" if ptype else ""),
                  "states: " + (", ".join(f"{s} ({label.get(s, s)})" for s in states) or "none — studies only rest here"),
                  "procedures (each needs a station): " + (", ".join(f"{p} — {(m['procedures'].get(p) or {}).get('title', p)}" for p in procs) or "none"),
                  "gates: " + ("; ".join(str(g.get("title") or f"Gate {g['n']}") for g in gates) or "none"),
                  "subagent roles that may work here: " + ", ".join(roles(root)),
                  "kit: dashboard/static/world3d/kit.js (format, colour names) · furniture: dashboard/static/world3d/components.js",
-                 "examples: dashboard/static/world3d/rooms/*.js · write to: lab/.bus/designs/" + rid + "/room.json (+ notes.md)"]
+                 "examples: dashboard/static/world3d/rooms/*.js (code) and dashboard/static/world3d/looks/*.json (data, "
+                 "exactly your format) · write to: lab/.bus/designs/" + look + "/room.json (+ notes.md)"]
         return "\n".join(lines)
     return None
 

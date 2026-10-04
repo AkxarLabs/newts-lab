@@ -2,44 +2,105 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>The newt — 3D</title>
-<!-- The newt up close, in every pose (world3d/newt.js). ?theme=day|night -->
+<title>The cast — 3D</title>
+<!-- Every character an agent can be (world3d/newt.js + world3d/characters.js), each with a smaller subagent in
+     the same family colour. ?theme=day|night · ?pose=idle|work|walk|wait|carry|sleep|fail|mix · ?grid (every pose) -->
 <style>
   @font-face { font-family: 'Newsreader'; src: url('../vendor/fonts/newsreader-opsz-normal.woff2') format('woff2'); font-weight: 200 800; }
   @font-face { font-family: 'IBM Plex Mono'; src: url('../vendor/fonts/ibm-plex-mono-500.woff2') format('woff2'); font-weight: 500 800; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: linear-gradient(#cfe0ee, #f3efe6); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: linear-gradient(#cfe0ee, #f3efe6); color: #2d2a26; }
   body.night { background: radial-gradient(ellipse at 50% 40%, #16262e, #0b1114 70%); color: #e9efed; }
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
   h1 { position: fixed; top: 16px; left: 20px; margin: 0; font: 450 28px 'Newsreader', Georgia, serif; z-index: 2; }
-  #names { position: fixed; left: 0; right: 0; bottom: 18%; display: flex; justify-content: space-around; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .09em; text-transform: uppercase; opacity: .6; z-index: 2; }
+  #bar { position: fixed; top: 58px; left: 20px; right: 20px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .06em; text-transform: uppercase; }
+  #bar button { font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: rgba(255,255,255,.45); border: 1px solid rgba(0,0,0,.15); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  body.night #bar button { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.18); }
+  #bar button.on { background: #2d8a7c; color: #fff; border-color: #2d8a7c; }
+  #bar .sep { width: 12px; }
+  .tag { position: fixed; transform: translate(-50%, 0); z-index: 2; text-align: center; font: 500 11px 'IBM Plex Mono', monospace; letter-spacing: .09em; text-transform: uppercase; opacity: .7; width: 180px; pointer-events: none; }
+  .tag.side { width: auto; transform: translate(-100%, -50%); }
+  .tag small { display: block; opacity: .7; letter-spacing: .04em; text-transform: none; }
 </style>
 <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.min.js" } }</script>
 </head>
 <body>
-<h1>The newt</h1><div id="names"></div>
+<h1>The cast</h1><div id="bar"></div>
 <canvas id="c"></canvas>
 <script src="kit.js"></script>
 <script src="newt.js"></script>
+<script src="characters.js"></script>
 <script type="module">
 import * as THREE from 'three';
-const theme = new URLSearchParams(location.search).get('theme') || 'day';
+const q = new URLSearchParams(location.search);
+const theme = q.get('theme') === 'night' ? 'night' : 'day', grid = q.has('grid');
 document.body.classList.toggle('night', theme === 'night');
 const K = Lab3D.kit(THREE, theme);
 const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true });
 r.setPixelRatio(Math.min(2, devicePixelRatio)); r.shadowMap.enabled = true; r.toneMapping = THREE.ACESFilmicToneMapping;
 const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
 scene.add(new THREE.HemisphereLight(0xffffff, theme === 'night' ? 0x203038 : 0xd8cbb4, theme === 'night' ? 0.5 : 1.2));
-const sun = new THREE.DirectionalLight(0xfff3df, theme === 'night' ? 0.8 : 2.4); sun.position.set(-3, 6, 5); sun.castShadow = true; scene.add(sun);
-const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 64), K.mat(theme === 'night' ? '#33464a' : '#efe7d6')); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const sun = new THREE.DirectionalLight(0xfff3df, theme === 'night' ? 0.8 : 2.4); sun.position.set(-3, 6, 5); sun.castShadow = true;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -8; sun.shadow.camera.right = sun.shadow.camera.top = 8; scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 64), K.mat(theme === 'night' ? '#33464a' : '#efe7d6')); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
 const POSES = ['idle', 'work', 'walk', 'wait', 'carry', 'sleep', 'fail'];
-const newts = POSES.map((p, i) => { const n = Lab3D.makeNewt(K, { color: ['#e0b44e', '#3fb8a6', '#6f9be6', '#9b84ea', '#e57ab5', '#e0a346', '#3fb8a6'][i] }); n.group.position.x = (i - (POSES.length - 1) / 2) * 1.05; scene.add(n.group); return n; });
-document.getElementById('names').innerHTML = POSES.map(p => `<span>${p}</span>`).join('');
+const BADGES = ['#e0b44e', '#3fb8a6', '#6f9be6', '#9b84ea', '#e57ab5', '#e0a346'];
+const CH = Lab3D.CHARACTERS, gap = 1.45;
+let pose = POSES.includes(q.get('pose')) ? q.get('pose') : 'mix';
+
+// the cast: one main agent per character, and (in the row view) a small subagent beside it in the same family hue;
+// in the grid view, a row per character (front to back) and a column per pose
+const actors = [], tags = [];
+const colX = i => (i - (CH.length - 1) / 2) * gap, gx = j => (j - (POSES.length - 1) / 2) * 1.15, gz = i => (i - (CH.length - 1) / 2) * 1.5;
+const tag = (html, x, z, cls) => { const el = document.createElement('div'); el.className = 'tag ' + (cls || ''); el.innerHTML = html; document.body.appendChild(el); tags.push({ el, x, z }); };
+CH.forEach((c, i) => {
+  const hue = i * 60;
+  if (grid) {
+    POSES.forEach((p, j) => {
+      const a = Lab3D.makeCharacter(K, c.id, { color: BADGES[j % BADGES.length], hue, scale: 0.8 });
+      a.group.position.set(gx(j), 0, gz(i)); scene.add(a.group); actors.push({ a, fixed: p });
+    });
+    tag(c.label, gx(0) - 0.95, gz(i) + 0.1, 'side');
+  } else {
+    const a = Lab3D.makeCharacter(K, c.id, { color: BADGES[i], hue }); a.group.position.set(colX(i) - 0.18, 0, 0); scene.add(a.group); actors.push({ a, idx: i });
+    const s = Lab3D.makeCharacter(K, c.id, { color: BADGES[(i + 2) % 6], hue, scale: 0.55 }); s.group.position.set(colX(i) + 0.42, 0, 0.35); scene.add(s.group); actors.push({ a: s, idx: i + 3 });
+    tag(`${c.label}<small>${c.blurb}</small>`, colX(i), 0.9);
+  }
+});
+if (q.has('debug')) console.log('meshes per character: ' + CH.map(c => { let n = 0; Lab3D.makeCharacter(K, c.id, {}).group.traverse(m => { n += m.isMesh ? 1 : 0; }); return c.id + '=' + n; }).join(' '));
+if (grid) POSES.forEach((p, j) => tag(p, gx(j), gz(CH.length - 1) + 0.55));
+// in the mix view each character shows a different pose, so a glance covers them all
+const poseOf = o => o.fixed || (pose === 'mix' ? POSES[o.idx % POSES.length] : pose);
+
+// the pose switcher and the lamp
+const bar = document.getElementById('bar');
+function drawBar() {
+  bar.innerHTML = (grid ? [] : ['mix', ...POSES]).map(p => `<button data-p="${p}" class="${p === pose ? 'on' : ''}">${p}</button>`).join('')
+    + `<span class="sep"></span><button data-t>${theme === 'night' ? 'day' : 'night'}</button><button data-g>${grid ? 'row view' : 'every pose'}</button>`;
+}
+bar.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.p) { pose = b.dataset.p; drawBar(); return; }
+  const u = new URLSearchParams(location.search);
+  if (b.hasAttribute('data-t')) u.set('theme', theme === 'night' ? 'day' : 'night');
+  if (b.hasAttribute('data-g')) { if (grid) u.delete('grid'); else u.set('grid', ''); }
+  location.search = u.toString();
+});
+drawBar();
+
 const resize = () => { r.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); };
 addEventListener('resize', resize); resize();
+const v = new THREE.Vector3();
 function frame(now) {
-  const t = now / 1000, az = Math.sin(t * 0.25) * 0.5;
-  cam.position.set(Math.sin(az) * 9, 2.4, Math.cos(az) * 9); cam.lookAt(0, 0.6, 0);
-  newts.forEach((n, i) => { n.update(t, { pose: POSES[i], moving: POSES[i] === 'walk' || POSES[i] === 'carry' }); n.group.rotation.y = POSES[i] === 'walk' ? Math.sin(t * 0.5) * 0.6 : 0; });
+  const t = now / 1000, az = Math.sin(t * 0.2) * 0.35, dist = (grid ? 12 : 10) * Math.max(1, 1.6 / cam.aspect);
+  cam.position.set(Math.sin(az) * dist, grid ? 8.5 : 2.4, Math.cos(az) * dist); cam.lookAt(0, grid ? -0.3 : 0.45, 0);
+  actors.forEach(o => {
+    const p = poseOf(o), moving = p === 'walk' || p === 'carry';
+    o.a.update(t, { pose: p, moving });
+    o.a.group.rotation.y = p === 'walk' ? Math.sin(t * 0.5 + o.a.group.position.x) * 0.5 : 0;
+  });
+  cam.updateMatrixWorld();
+  tags.forEach(g => { v.set(g.x, 0, g.z).project(cam); g.el.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; g.el.style.top = ((1 - v.y) / 2 * innerHeight + 6) + 'px'; });
   r.render(scene, cam); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

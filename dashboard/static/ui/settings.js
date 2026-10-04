@@ -147,7 +147,22 @@
       <${NL.Field} label="Density"><${NL.Seg} value=${p.density} onChange=${v => NL.setPref('density', v)} options=${[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></${NL.Field}>
       <${NL.Toggle} on=${p.motion} onChange=${v => { NL.setPref('motion', v); NL.Scene && NL.Scene.setAmbient(v); }} label="Ambient motion" sub="drifting motes, swaying plants (off also when your system asks for reduced motion)" />
       <${NL.Toggle} on=${p.rail} onChange=${v => NL.setPref('rail', v)} label="Show the Today rail on Home" />
-      <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Newt narrates" sub="short speech bubbles quoting what just happened" /></div>`;
+      <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Newt narrates" sub="short speech bubbles quoting what just happened" />
+      <${Cast} /></div>`;
+  };
+
+  /* who plays the agents in the world: one character for all, or one per tool so you can tell them apart */
+  const Cast = () => {
+    const p = NL.usePrefs(), c = p.cast || {};
+    const chars = (window.Lab3D && Lab3D.CHARACTERS) || [{ id: 'newt', label: 'Newt' }];
+    const opts = chars.map(x => ({ value: x.id, label: x.label }));
+    const set = patch => { const next = { ...c, ...patch }; NL.setPref('cast', next); NL.Scene && NL.Scene.setCast(next); };
+    return html`<${NL.Section} title="The cast">
+      <p class="muted small">Who plays the agents on Home. A main agent's subagents are smaller copies of it, in the same colours.</p>
+      <${NL.Seg} value=${c.mode || 'backend'} onChange=${v => set({ mode: v })} options=${[{ value: 'backend', label: 'One per tool' }, { value: 'one', label: 'One for everyone' }]} />
+      ${c.mode === 'one' ? html`<${NL.Field} label="Every agent is a"><${NL.Select} value=${c.one || 'newt'} onChange=${v => set({ one: v })} options=${opts} /></${NL.Field}>`
+        : html`<div class="grid3">${[['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'opencode']].map(([k, l]) => html`<${NL.Field} label=${l}><${NL.Select} value=${c[k] || 'newt'} onChange=${v => set({ [k]: v })} options=${opts} /></${NL.Field}>`)}</div>`}
+      <a class="link small" href="/static/world3d/newt.html" target="_blank" rel="noopener">Meet the cast ↗</a></${NL.Section}>`;
   };
 
   const Notifications = () => {
@@ -158,6 +173,7 @@
         label="Desktop notifications" sub="when an agent asks you something, a gate opens, or a run finishes or fails — even with this tab in the background" />
       ${perm === 'denied' ? html`<div class="note note-warn">Notifications are blocked for this page in your browser's site settings.</div>` : null}
       <p class="muted small">The tab title always shows how many things are waiting on you.</p>
+      <${NL.Section} title="Sound"><${NL.SoundControls} /></${NL.Section}>
       <${NL.Section} title="On your phone"><${PhoneNotify} /></${NL.Section}></div>`;
   };
 

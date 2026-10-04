@@ -5,6 +5,7 @@ settings switch, and the bus commands that start a procedure. (The scheduler thr
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import ctx  # noqa: E402
 import settings  # noqa: E402
@@ -325,3 +326,78 @@ def command_post(body: dict) -> tuple[dict, int]:
             out["launch"] = command_launch(rec.get("target") or "hub", action, body.get("args") or {},
                                            body.get("text") or "")
     return out, 200
+
+
+# ── what a run wrote: the files its Write/Edit/patch actions touched, for the run sheet to open ─────────
+_TEXT_KINDS = {".md": "md", ".markdown": "md", ".txt": "text", ".log": "text", ".json": "text", ".yaml": "text",
+               ".yml": "text", ".py": "text", ".tex": "text", ".csv": "text", ".toml": "text", ".sh": "text"}
+_IMG = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+
+
+def _written(run_id: str) -> tuple[list[Path], dict] | None:
+    hit = executor.find_run(_xlab(), run_id or "") if executor else None
+    if not hit:
+        return None
+    target, workdir, path, m = hit
+    stream = path.parent / (m.get("stream") or f"{run_id}.stream.jsonl")
+    base = Path(m.get("cwd") or workdir)
+    seen: dict[str, Path] = {}
+    try:
+        with stream.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                for ev in executor.backends.parse_events(m.get("backend") or "claude", obj):
+                    for p in ev.get("files") or []:
+                        fp = Path(p) if Path(p).is_absolute() else base / p
+                        seen.setdefault(str(fp.resolve()), fp.resolve())
+    except OSError:
+        pass
+    return list(seen.values()), m
+
+
+def run_files(q: dict) -> tuple[dict, int]:
+    if executor is None:
+        return ctx.no_executor()
+    got = _written(q.get("run_id", ""))
+    if got is None:
+        return {"error": "no such run"}, 404
+    files, m = got
+    out = []
+    for fp in files:
+        ex = fp.is_file()
+        out.append({"path": str(fp), "name": fp.name, "exists": ex, "size": fp.stat().st_size if ex else 0,
+                    "kind": _TEXT_KINDS.get(fp.suffix.lower()) or ("image" if fp.suffix.lower() in _IMG else
+                                                                  "pdf" if fp.suffix.lower() == ".pdf" else "other")})
+    return {"ok": True, "files": out}, 200
+
+
+def _allowed(q: dict) -> Path | None:
+    """Only a file this run itself wrote (by its own transcript) — never an arbitrary path."""
+    got = _written(q.get("run_id", "")) if executor else None
+    if not got:
+        return None
+    want = str(Path(q.get("path") or "").resolve()) if q.get("path") else ""
+    return next((fp for fp in got[0] if str(fp) == want and fp.is_file()), None)
+
+
+def run_file(q: dict) -> tuple[dict, int]:
+    """GET /api/run/file?run_id=&path= → the text of a file the run wrote (Markdown is rendered by the page)."""
+    fp = _allowed(q)
+    if not fp:
+        return {"error": "not a file this run wrote"}, 404
+    if fp.suffix.lower() not in _TEXT_KINDS:
+        return {"error": "not a text file"}, 400
+    return {"ok": True, "path": str(fp), "kind": _TEXT_KINDS[fp.suffix.lower()],
+            "text": fp.read_text(encoding="utf-8", errors="replace")[:400_000]}, 200
+
+
+def run_file_raw(q: dict):
+    """FILE route for an image or a PDF the run wrote."""
+    fp = _allowed(q)
+    if not fp:
+        return None
+    ct = _IMG.get(fp.suffix.lower()) or ("application/pdf" if fp.suffix.lower() == ".pdf" else None)
+    return (fp, ct) if ct else None

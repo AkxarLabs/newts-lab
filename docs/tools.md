@@ -167,10 +167,28 @@ stdin and exits **2** (the reason on stderr) when a tool call would create or ch
 - a registry row moved to `final` without a signed Gate 3;
 - PI-owned config;
 - `pi-actions.jsonl`;
+- an artifact's `reply.json` or `seen` (only the dashboard writes them);
 - the shell escape hatches.
 
 It compares before vs after, and honours delegation by a PI-signed campaign brief. Denials are
 logged to the run's `permissions.jsonl`. See [Autonomy → Headless runs](autonomy.md#headless-runs-the-executor).
+
+### `artifact.py` — show the PI something
+
+```bash
+uv run --with pyyaml python tools/artifact.py publish --title "Pilot results" --file analysis/pilot.md [--study <slug>] [--note "…"]
+uv run --with pyyaml python tools/artifact.py publish --title "Which eval set?" --question "Freeze A or B?" --choices "A;B"
+uv run --with pyyaml python tools/artifact.py replies [--id <artifact>] [--run <run_id>]
+uv run --with pyyaml python tools/artifact.py list [--study <slug>]
+```
+
+Publishes something an agent made for the PI to look at to the dashboard's **Artifacts** page: `.md`
+(rendered), `.html` (sandboxed), an image, a `.pdf`, a `.csv`/`.tsv` table or text; or, with no file, a
+question alone. A `--question` (with `--choices`, `;`-separated) waits in *Needs you*. The PI's reply
+goes to the publishing run as its next message, or, if that run has gone, to the study as a note;
+`replies` prints what the PI answered (JSON lines). Stored in `lab/.bus/artifacts/<id>/`; the run, its
+procedure and its study come from `$NEWTS_RUN_ID` / `$NEWTS_RUN_SKILL` / `$NEWTS_RUN_SUBJECT`.
+Publishing asks for a look; it is never a gate signature. See [The dashboard → Artifacts](dashboard.md#artifacts-what-agents-made-for-you).
 
 ### `new_lab.py` — create a new lab from this template
 

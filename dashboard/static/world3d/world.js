@@ -39,10 +39,10 @@ L.createWorld = async function createWorld(canvas, opts) {
 
   let theme = opts.lamp === 'day' ? 'day' : 'night', K = null, TH = null, reduced = !!opts.reduced, ambient = true;
   let snap = null, lens = 'work', pose = 'idle', highlightRole = null, followKey = null, view = { level: 'WORLD', room: null, label: '' };
-  let onItem = null, onInbox = null, onWorker = null, onRun = null, onNewt = null, onView = null, onFollow = null;
+  let onLab = null, onArtifact = null, onItem = null, onInbox = null, onWorker = null, onRun = null, onNewt = null, onView = null, onFollow = null;
   let staticSig = '', W = null;                 // the built table: rooms, streets, gates, hub
   const actors = new Map(), cards = new Map(), pickables = new Set();
-  let looksSig = '', settled = false;
+  let looksSig = null, settled = false;      // (null: the starter looks load even for a lab with none of its own)
   const knownRooms = new Set();
 
   // ── the lab's own room looks (data), fetched when they change ──────────────────────────────────
@@ -74,8 +74,17 @@ L.createWorld = async function createWorld(canvas, opts) {
     if (sig === staticSig && W) return false;
     staticSig = sig;
     if (W) { scene.remove(W.group); W.rooms && Object.values(W.rooms).forEach(o => o.g && pickables.delete(o.floor)); pickables.clear(); }
+    const sameTheme = !!K && K.themeName === theme;
     K = L.kit(THREE, theme); TH = K.th;
-    for (const a of actors.values()) { scene.remove(a.n.group); } actors.clear();
+    // the agents stay where they are while the table changes round them (a new lab rising, a room moved):
+    // each walks on from where it stands; only couriers (their cards are rebuilt) and a theme change start over
+    for (const [key, a] of actors) {
+      if (a.courier) { scene.remove(a.n.group); actors.delete(key); continue; }
+      if (!sameTheme) { const old = a.n.group, n = body(a.spec); n.character = characterOf(a.spec);
+        n.group.position.copy(old.position); n.group.rotation.copy(old.rotation); n.group.scale.copy(old.scale); n.group.userData.pick = old.userData.pick;
+        scene.remove(old); scene.add(n.group); a.n = n; }
+      a.room = 'street'; a.dest = null; a.path = []; pickables.add(a.n.group);
+    }
     for (const c of cards.values()) scene.remove(c); cards.clear();
     const group = new THREE.Group(); scene.add(group);
     // lights
@@ -159,8 +168,70 @@ L.createWorld = async function createWorld(canvas, opts) {
     }
     group.traverse(m => { if (m.isMesh && m.geometry && m.geometry.type === 'PlaneGeometry') m.castShadow = false; });
     W = { group, rooms, XS, ZS, colW, rowH, EXT, SPAN, hub, inbox, bigNewt, gates, sun, hubExits: Object.values(DIR).map(d => [d[0] * colW[0] / 2, d[1] * rowH[0] / 2]) };
+    buildNeighbours();
     fitCamera(true);
     return true;
+  }
+
+  // ── what agents made for you: a sheet pinned on a little board in the room the work happened in (amber when it
+  // asks you something); opened artifacts come down. Click one to read it.
+  let sheetGroup = null, sheetSig = '';
+  function pinSheets(s) {
+    if (!W) return;
+    const runs = new Map(((s && s.runs) || []).map(r => [r.run_id, r]));
+    const where = a => {
+      const r = a.run_id && runs.get(a.run_id);
+      if (r) { const rid = placeOfRun(s, r); if (W.rooms[rid]) return rid; }
+      const it = a.study && item(s, a.study), rid = it && (labOf(it) || roomOfItem(s, it));
+      return rid && W.rooms[rid] ? rid : null;
+    };
+    const up = ((s && s.artifacts) || []).filter(a => !a.answered && (!a.seen || a.question)).slice(0, 30).map(a => ({ a, room: where(a) })).filter(x => x.room);
+    const sig = JSON.stringify([staticSig, up.map(x => [x.a.id, x.room, !!x.a.question])]);
+    if (sig === sheetSig && sheetGroup) return;
+    sheetSig = sig;
+    if (sheetGroup) { scene.remove(sheetGroup); sheetGroup.traverse(o => pickables.delete(o)); }
+    sheetGroup = new THREE.Group(); scene.add(sheetGroup);
+    const byRoom = {};
+    up.forEach(x => (byRoom[x.room] = byRoom[x.room] || []).push(x.a));
+    for (const [rid, list] of Object.entries(byRoom)) {
+      const o = W.rooms[rid], [w, d] = o.spec.size, n = Math.min(list.length, 4);
+      const board = K.group(K.cyl(0.04, 0.04, 1.3, 'woodDark', -0.75, 0, 0), K.cyl(0.04, 0.04, 1.3, 'woodDark', 0.75, 0, 0), K.box(1.7, 0.95, 0.06, 'woodLight', 0, 0.75, 0));
+      const [bx, bz] = o.toWorld(w / 2 - 1.3, d / 2 - 0.45);
+      board.position.set(bx, 0, bz); board.rotation.y = o.ry; sheetGroup.add(board);
+      list.slice(0, n).forEach((a, i) => {
+        const sh = K.group(K.box(0.34, 0.44, 0.02, a.question ? 'amber' : 'paper', 0, 0, 0, a.question ? { glow: true, gi: K.night ? 0.8 : 0.25 } : null),
+          K.sphere(0.045, a.question ? 'red' : 'teal', 0, 0.4, 0.03));
+        sh.position.set(-0.55 + i * 0.37, 0.98 + (i % 2) * 0.06, 0.05); sh.rotation.z = (i % 2 ? -1 : 1) * 0.06;
+        sh.userData.pick = { kind: 'artifact', id: a.id }; board.add(sh); pickables.add(sh);
+      });
+      if (list.length > n) board.add(K.sphere(0.1, 'amber', 0.78, 1.32, 0.05, { glow: true }));
+    }
+  }
+
+  // ── your other labs (this computer's and other machines', all in this one dashboard): small tables beyond the
+  // back edge, a bridge to each — its name, what waits on you there, how many agents are at work. Click to go.
+  let neighbours = [], nbGroup = null, nbSig = '';
+  function buildNeighbours() {
+    if (!W) return;
+    const sig = JSON.stringify([theme, W.EXT, neighbours.map(n => [n.key, n.needs, n.running, n.state])]);
+    if (sig === nbSig && nbGroup) return;
+    nbSig = sig;
+    if (nbGroup) { scene.remove(nbGroup); nbGroup.traverse(o => pickables.delete(o)); }
+    nbGroup = new THREE.Group(); scene.add(nbGroup);
+    const list = neighbours.slice(0, 6), E = W.EXT, wide = E.x1 - E.x0, step = Math.min(22, (wide + 16) / Math.max(1, list.length));
+    list.forEach((nb, i) => {
+      const x = (E.x0 + E.x1) / 2 + (i - (list.length - 1) / 2) * step, z = E.z0 - 11;   // spread along the back edge
+      const g = new THREE.Group(); g.position.set(x, 0, z);
+      const off = nb.state !== 'here' && nb.state !== 'connected';
+      g.add(K.box(9, 0.3, 6, off ? TH.tableSide : TH.table, 0, -0.3, 0), K.box(8.6, 1.0, 5.6, TH.tableSide, 0, -1.3, 0));
+      [[-2.6, -1.2], [0, -1.4], [2.6, -1.1], [-1.4, 1.2], [1.6, 1.3]].forEach(([a, b], k) => g.add(K.box(2.0, 0.55 + (k % 2) * 0.2, 1.6, off ? 'plasterDark' : 'plaster', a, 0, b)));
+      for (let k = 0; k < Math.min(8, nb.running || 0); k++) g.add(K.sphere(0.22, 'teal', -3 + k * 0.85, 1.05, 2.3, { glow: true }));   // agents at work
+      if (nb.needs) { const f = K.group(K.cyl(0.05, 0.05, 2.2, 'woodDark', 0, 0, 0), K.box(0.9, 0.55, 0.05, 'amber', 0.47, 1.6, 0, { glow: true })); f.position.set(3.6, 0, -2.2); g.add(f); }
+      const bridge = K.box(1.4, 0.18, 11 - 3 - 1.6, TH.table, 0, -0.12, 3 + (11 - 3 - 1.6) / 2 - 0.4); g.add(bridge);
+      g.userData.pick = { kind: 'lab', key: nb.key };
+      g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      nbGroup.add(g); pickables.add(g); nb._at = [x, z];
+    });
   }
 
   function buildRoom(o, group) {
@@ -247,9 +318,18 @@ L.createWorld = async function createWorld(canvas, opts) {
     return want;
   }
 
-  // ── actors: newts walking to where they should be ────────────────────────────────────────────────
+  // ── actors: newts (or the cast you chose) walking to where they should be ────────────────────────
+  // the cast: one character for every agent, or one per tool (Claude, Codex, opencode) so you can tell them apart
+  let cast = Object.assign({ mode: 'backend', one: 'newt', claude: 'newt', codex: 'human', opencode: 'robot' }, opts.cast || {});
+  const characterOf = spec => {
+    const be = (spec.run && spec.run.backend) || (spec.worker && spec.worker.backend) || '';
+    return cast.mode === 'one' ? cast.one : (cast[be] || cast.one || 'newt');
+  };
+  const body = spec => (L.makeCharacter ? L.makeCharacter(K, characterOf(spec), { color: spec.badge, hue: spec.hue, scale: spec.scale * 1.25 })
+    : L.makeNewt(K, { color: spec.badge, hue: spec.hue, scale: spec.scale * 1.25 }));
   function makeActor(spec, from) {
-    const n = L.makeNewt(K, { color: spec.badge, hue: spec.hue, scale: spec.scale * 1.25 });
+    const n = body(spec);
+    n.character = characterOf(spec);
     n.group.userData.pick = { kind: 'actor', key: spec.key }; scene.add(n.group); pickables.add(n.group);
     const a = { key: spec.key, spec, n, room: from.room, pos: from.at.slice(), ry: from.ry || 0, path: [], fade: 0, leaving: false };
     return a;
@@ -276,6 +356,7 @@ L.createWorld = async function createWorld(canvas, opts) {
       a.leaving = true;
       if (a.spec.kind === 'sub') a.path = []; else sendTo(a, { room: 'hub', at: [0, 2.2], ry: 0 });
     }
+    pinSheets(s);
     // studies: their card on the shelf, at its gate, or carried to its new room
     for (const it of s.items || []) {
       const rid = roomOfItem(s, it); let c = cards.get(it.id);
@@ -306,11 +387,12 @@ L.createWorld = async function createWorld(canvas, opts) {
   // ── the camera: the whole table, or one room; it keeps clear of the rail and the ask bar ──────────
   const cam = { az: 0, el: 0.92, r: 80, tx: 0, tz: 0 }, camT = { ...cam };
   let insets = { right: 0, bottom: 0, top: 56, k: 0.5 };
+  const nbRoom = () => (neighbours.length ? 14 : 0);   // the back edge's other labs need a little more of the view
   function fitCamera(snapNow) {
     if (!W) return;
     const r = canvas.getBoundingClientRect(), aspect = Math.max(0.3, (r.width - insets.right) / Math.max(1, r.height - insets.top - insets.bottom * insets.k)), base = W.SPAN * 3.5 * Math.max(1, 1.4 / aspect, 1.25 * r.height / Math.max(1, r.width - insets.right));   // (narrow screens: fit the width)
     if (view.level === 'ROOM' && W.rooms[view.room]) { const o = W.rooms[view.room]; Object.assign(camT, { tx: o.x, tz: o.z, r: Math.max(o.spec.size[0], 10) * 2.0, az: Math.atan2(o.dir[0], o.dir[1]), el: 0.95 }); }
-    else Object.assign(camT, { tx: (W.EXT.x0 + W.EXT.x1) / 2, tz: (W.EXT.z0 + W.EXT.z1) / 2 + 1, r: base, el: 0.92, az: camT.az && view.level === 'WORLD' ? camT.az : 0 });
+    else Object.assign(camT, { tx: (W.EXT.x0 + W.EXT.x1) / 2, tz: (W.EXT.z0 - nbRoom() + W.EXT.z1) / 2 + 1, r: base * (1 + nbRoom() / Math.max(10, W.EXT.z1 - W.EXT.z0) * 0.75), el: 0.92, az: camT.az && view.level === 'WORLD' ? camT.az : 0 });
     if (snapNow) Object.assign(cam, camT);
   }
   function measureInsets() {
@@ -352,6 +434,8 @@ L.createWorld = async function createWorld(canvas, opts) {
     if (p.kind === 'study' && onItem) return onItem(p.id);
     if (p.kind === 'hub' && onInbox) return onInbox();
     if (p.kind === 'newt' && onNewt) return onNewt();
+    if (p.kind === 'lab' && onLab) return onLab(p.key);
+    if (p.kind === 'artifact' && onArtifact) return onArtifact(p.id);
     if (p.kind === 'gate' && onItem) { const it = ((snap && snap.items) || []).find(i => i.gate === p.gate && !i.gate_signed); if (it) return onItem(it.id); }
     if (p.kind === 'actor') {
       const a = actors.get(p.key); if (!a) return;
@@ -369,6 +453,8 @@ L.createWorld = async function createWorld(canvas, opts) {
   }
   function describe(p) {
     const s = snap || {};
+    if (p.kind === 'artifact') { const a = ((snap && snap.artifacts) || []).find(x => x.id === p.id); return a ? `<b>${esc(a.title)}</b><small>${a.question ? 'asks you: ' + esc(a.question) : 'made for you to look at'} — click to read</small>` : null; }
+    if (p.kind === 'lab') { const nb = neighbours.find(n => n.key === p.key); return nb ? `<b>${esc(nb.name)}</b><small>${esc(nb.machine || '')} — click to go to this lab</small>` : null; }
     if (p.kind === 'actor') {
       const a = actors.get(p.key); if (!a) return null;
       if (a.courier) { const it = item(s, a.courier); return `<b>Carrying “${esc(it ? it.title || it.id : a.courier)}”</b><small>to its next room</small>`; }
@@ -405,7 +491,8 @@ L.createWorld = async function createWorld(canvas, opts) {
     if (!W || !snap) return;
     const out = [], close = cam.r < 48, stats = roomStats(snap), maxCost = Math.max(0.01, ...Object.values(stats).map(x => x.cost));
     // labels never pile up: the busiest rooms are named first, and a label that would cover one is left out
-    const placed = [], busy = o => { const x = stats[o.id] || {}; return (x.asks || 0) * 100 + (x.n || 0) * 10 + (o.building ? 5 : 0); };
+    const lensBar = document.querySelector('.lenses'), lr = lensBar && lensBar.getBoundingClientRect();   // never under the lens bar
+    const placed = lr && lr.width ? [[lr.left - 6, lr.top - 6, lr.right + 6, lr.bottom + 6]] : [], busy = o => { const x = stats[o.id] || {}; return (x.asks || 0) * 100 + (x.n || 0) * 10 + (o.building ? 5 : 0); };
     for (const o of Object.values(W.rooms).sort((a, b) => busy(b) - busy(a))) {
       const [sx, sy, vis] = toScreen(o.x, 1.7, o.z - o.ez / 2 + 0.6); if (!vis) continue;
       const x = stats[o.id] || {};
@@ -419,6 +506,21 @@ L.createWorld = async function createWorld(canvas, opts) {
       if (lens === 'cost') { tint = 0xe0503a; k = Math.min(0.7, x.cost / maxCost * 0.6 + (x.cost ? 0.1 : 0)); }
       else if (lens === 'risk') { tint = 0xe0503a; k = Math.min(0.6, x.risk * 0.2); }
       o.floorMat.color.copy(o.floorBase); if (tint) o.floorMat.color.lerp(new THREE.Color(tint), k); if (lens === 'waiting') o.floorMat.color.multiplyScalar(0.55);
+    }
+    for (const nb of neighbours.slice(0, 6)) {
+      if (!nb._at) continue;
+      const [sx, sy, vis] = toScreen(nb._at[0], 2.2, nb._at[1]); if (!vis || sy < insets.top + 30) continue;
+      const state = [nb.needs ? `<em class="hot">${nb.needs} need${nb.needs === 1 ? 's' : ''} you</em>` : '', nb.running ? `${nb.running} at work` : '',
+        nb.state !== 'here' && nb.state !== 'connected' ? 'not connected' : ''].filter(Boolean).join(' · ');
+      const hw = Math.max(nb.name.length * 4.2, (nb.machine || '').length * 3.6, 40), hit = bx => placed.some(q => bx[0] < q[2] && q[0] < bx[2] && bx[1] < q[3] && q[1] < bx[3]);
+      let at = [sx, sy], box = [sx - hw, sy - 46, sx + hw, sy];
+      if (hit(box)) {            // above its table is taken: try beside it, toward the middle of the view
+        const side = sx < innerWidth / 2 ? 1 : -1, [tx, ty] = toScreen(nb._at[0] + side * 7.5, 0.6, nb._at[1]);
+        at = [tx, ty]; box = [tx - hw, ty - 46, tx + hw, ty];
+        if (hit(box)) continue;
+      }
+      placed.push(box);
+      out.push(`<div class="wl-room wl-nb" style="left:${at[0]}px;top:${at[1]}px"><b>${esc(nb.name)}</b><span>${esc(nb.machine || '')}</span>${state ? `<span>${state}</span>` : ''}</div>`);
     }
     for (const a of actors.values()) {
       if (a.leaving && a.spec.kind === 'sub') continue;
@@ -517,9 +619,9 @@ L.createWorld = async function createWorld(canvas, opts) {
     async sync(s) {
       snap = s;
       await loadLooks(String((s && s.rooms3d_sig) || '') + '|' + (s && s.workflow ? JSON.stringify((s.workflow.rooms || []).map(r => r.id)) : ''));
-      buildStatic(s);
+      const rebuilt = buildStatic(s);
       reconcile(s);
-      if (!settled && /[?&]settle/.test(location.search)) { settled = true; for (let i = 0; i < 900; i++) frame(last + 50, true); }   // screenshots: everyone in place
+      if ((!settled || rebuilt) && /[?&]settle\b/.test(location.search)) { settled = true; for (let i = 0; i < 900; i++) frame(last + 50, true); }   // screenshots: everyone in place (again after a rebuild: walks start over)
       kick();
     },
     setPose(p) { pose = p; },
@@ -540,6 +642,22 @@ L.createWorld = async function createWorld(canvas, opts) {
     },
     setAmbient(on) { ambient = !!on; kick(); },
     setLens(l) { lens = ['work', 'cost', 'waiting', 'risk'].includes(l) ? l : 'work'; kick(); }, lens() { return lens; },
+    /** your other labs: [{key, name, machine, needs, running, state}] — drawn as small tables past the back edge */
+    setNeighbours(list) { const had = neighbours.length; neighbours = (list || []).map(n => ({ ...n })); nbSig = ''; buildNeighbours(); if (!had !== !neighbours.length && view.level === 'WORLD') fitCamera(false); kick(); },
+    onLab(cb) { onLab = cb; }, onArtifact(cb) { onArtifact = cb; },
+    /** who plays the agents: {mode: 'one'|'backend', one, claude, codex, opencode} — swapped in place, mid-stride */
+    setCast(c) {
+      cast = Object.assign({}, cast, c || {});
+      for (const a of actors.values()) {
+        if (a.n.character === characterOf(a.spec)) continue;
+        const old = a.n.group, n = body(a.spec);
+        n.character = characterOf(a.spec);
+        n.group.position.copy(old.position); n.group.rotation.copy(old.rotation); n.group.scale.copy(old.scale);
+        n.group.userData.pick = old.userData.pick;
+        scene.remove(old); pickables.delete(old); scene.add(n.group); pickables.add(n.group); a.n = n;
+      }
+      kick();
+    },
     insetsChanged() { resize(); },
     onClick(item, inbox) { onItem = item; onInbox = inbox; }, onWorker(cb) { onWorker = cb; }, onRun(cb) { onRun = cb; }, onNewt(cb) { onNewt = cb; },
     onView(cb) { onView = cb; }, onFollow(cb) { onFollow = cb; },

@@ -161,7 +161,9 @@ def test_an_agents_room_design_is_data_checked_previewed_and_taken(m, hub):
     _op(m, op="design-use", room="lab")
     assert (m.compose._draft() / "lab" / "rooms3d" / "lab.json").is_file() and m.compose.problems() == []
     _op(m, op="publish")
-    assert [x["key"] for x in m.compose.rooms3d()[0]["rooms"]] == ["lab"]
+    got = m.compose.rooms3d()[0]["rooms"]
+    assert [x["key"] for x in got if not x["builtin"]] == ["lab"] and got[-1]["key"] == "lab"   # the lab's own come last: they win
+    assert {x["key"] for x in got if x["builtin"]} >= {"lab.ml", "lab.theory"}                  # the starter looks
     # anything but data is refused — a design never runs as code
     for bad in ({**ROOM, "script": "fetch('/api/run')"}, {**ROOM, "key": "study"}, {**ROOM, "size": [500, 7]},
                 {**ROOM, "components": {"x": {"parts": [{"shape": "box", "size": [1, 1, 1], "at": [0, 0, 0], "color": "url(javascript:x)"}]}}},

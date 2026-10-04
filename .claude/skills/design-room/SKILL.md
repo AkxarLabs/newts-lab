@@ -35,7 +35,10 @@ Input: `<room-id> <description>` — the first word is the room's id, the rest i
 2. **Read the kit and two examples:** `dashboard/static/world3d/kit.js` (the theme colour names, and
    `defineRoomData` — exactly how your JSON is built), `dashboard/static/world3d/components.js` (the
    furniture you can use by name, and its `props`), and the two `dashboard/static/world3d/rooms/*.js`
-   closest to what the PI described (the same fields, written as code).
+   closest to what the PI described (the same fields, written as code). The starter looks in
+   `dashboard/static/world3d/looks/*.json` are worked examples in exactly your format — a Lab per project
+   type — so read the closest one too. A room id like `lab.ml` means the Lab's look for projects of that
+   type: key the design `lab.ml` and make the type obvious at a glance.
 3. **Write the design** to `lab/.bus/designs/<room-id>/room.json` — nothing else, nowhere else. One object:
    ```json
    {"key": "<room-id>", "title": "The …", "size": [10, 7], "floor": "tiles", "accent": "blue",

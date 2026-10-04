@@ -98,6 +98,8 @@ On the right, the **Today** rail (collapsible) has:
 - **Running**: live and queued runs, with elapsed time against their budget and what each is doing
   now.
 - **Up next**: each study's natural next step as a one-click button.
+- **For you to look at**: [artifacts](#artifacts-what-agents-made-for-you) agents published that you
+  haven't opened yet.
 - **Just finished**: the latest runs and their reports.
 - **Since you were last here**: what changed while you were away.
 
@@ -205,6 +207,9 @@ At the bottom:
 - **Stop** ends it but leaves it resumable, and **Resume** continues it (claude `--resume`, codex
   `exec resume`, opencode `-s`).
 - A queued run can be cancelled.
+- **What it wrote**: every file the run's own transcript says it wrote or edited (its Write, Edit and
+  patch actions), openable in place, Markdown rendered, images and PDFs shown. Only files that run's
+  transcript names can be opened.
 - Links to the raw transcript and the supervisor log.
 
 The **Runs** page lists every run, filterable by *waiting for you*, *running*, *queued*, *finished*
@@ -217,6 +222,47 @@ they are all still there. The same engine has a CLI, `tools/executor_cli.py`.
 ![A run, as a conversation](assets/dashboard-run.png){ .as-shot }
 <figcaption>A run opens as a conversation: messages, folded tool calls, the report, and a reply box that continues the same session.</figcaption>
 </figure>
+
+## Artifacts: what agents made for you
+
+An agent shows you something by publishing it: a plan, a report, a figure, a table, a page. It runs
+
+```bash
+python tools/artifact.py publish --title "Pilot results" --file analysis/pilot.md [--note "…"]
+python tools/artifact.py publish --title "Which eval set?" --question "Freeze A or B?" --choices "A;B"
+```
+
+and it appears on the **Artifacts** page (`#/artifacts`; the nav shows how many you haven't seen) and in
+the Today rail under *For you to look at*. Each is rendered in place, by its file:
+
+- `.md`: rendered, with maths;
+- `.html`: in a sandboxed frame, and served with a CSP sandbox, so a page an agent wrote can never act as
+  the dashboard;
+- images (`.png`, `.jpg`, `.webp`, `.gif`, `.svg`), `.pdf`;
+- `.csv` / `.tsv` as a table; `.txt`, `.log`, `.json` as text;
+- or no file at all: a question alone, with its choices.
+
+An artifact with a question waits in *Needs you* until you answer: pick a choice, write a reply, or
+both. Your reply goes to the run that published it, as its next message (resuming it if it has
+stopped). If that run can't take a message any more, the reply becomes a note to the study (or the lab)
+that the next agent reads. Agents read replies with `tools/artifact.py replies`.
+
+Artifacts live in `lab/.bus/artifacts/<id>/`: `artifact.json` and a copy of the file. Only the
+dashboard writes `reply.json` and `seen`; the signature guard stops a run writing them. Publishing is
+how an agent asks for a look; it is never a gate signature.
+
+## Sound
+
+The speaker button in the top bar (and Settings → Notifications → Sound) turns on two things, each off
+by default, each with its own volume and a button to hear a sample:
+
+- **Chimes** when an agent asks you something, a gate waits for you, a run finishes or fails, or a new
+  artifact arrives. They are rate-limited and silent while the tab is hidden.
+- **Music**: a soft ambient score generated live (D major pads, sparse felt-piano notes, a generated
+  reverb). It breathes with the lab: more agents running, slightly more notes.
+
+Everything is synthesised in the browser with Web Audio; nothing is downloaded. The settings are kept
+in the browser (`localStorage`, `nl-sound`).
 
 ## Studies
 
@@ -329,8 +375,8 @@ Gate 3 safe to offer.
   | Autonomy & limits | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
   | Lab | name, where projects go, training runs at once, projects per campaign, oversight, venue, page limit, budget tier; anything else goes to an agent via `/configure` |
   | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
-  | Appearance | theme day / night / system, density, motion, narration |
-  | Notifications | desktop notifications; on your phone (ntfy topic, webhook, the dashboard's address), with *Send a test* |
+  | Appearance | theme day / night / system, density, motion, narration; *The cast*: who plays the agents in the world |
+  | Notifications | desktop notifications; sound (chimes, music); on your phone (ntfy topic, webhook, the dashboard's address), with *Send a test* |
   | System & compute | what the lab's machine offers (CPUs, memory, GPUs, disk, schedulers, SLURM partitions), where training runs (here / SLURM / another scheduler, with `compute.scheduler` prefilled from what was detected), SYSTEM.md |
   | About & server | the lab, a terminal in the lab folder, the setup wizard, **stop the server** |
 
@@ -367,6 +413,10 @@ Rooms have no roofs: everything is visible from above.
   next room. Gates are arches at a room's street door, with a lamp.
 - While `/spawn-project` runs, the new project's lab stands as scaffolding and rises when ready; more
   project labs cluster as a lab district.
+- Agents are newts by default; Settings → Appearance → *The cast* can make them a scientist, a frog,
+  an owl, a fox or a robot, one per tool or one for everyone.
+- Your other labs (Labs & machines) stand as small tables past the back edge, with what waits on you
+  there; click one to go to it.
 - Day and night themes follow the lamp. Without WebGL the dashboard works the same, minus the world.
 
 Rooms, their places on the table and their looks are yours to change (Compose → Rooms; see
@@ -480,8 +530,13 @@ chain, a repeat, a campaign pass) and what it started.
 - **The world.** `static/world3d/`: `world.js` is the live world, `scene.js` the one `VivScene` wrapper
   round it (and a quiet stand-in when the browser has no WebGL), `model.js` the pure logic of which
   rooms stand where and who goes in which, `layout.js` the plots, `kit.js`, `components.js` and
-  `newt.js` the pieces, and `rooms/*.js` the built-in looks. The lab's own looks are data in
-  `lab/rooms3d/`. See [The world's design](world-design.md).
+  `newt.js` / `characters.js` the pieces and the cast, `rooms/*.js` the built-in looks and
+  `looks/lab.<type>.json` the starter Lab looks per project type. The lab's own looks are data in
+  `lab/rooms3d/`.
+- **Artifacts and sound.** `artifacts.py` (the routes `GET /api/artifacts`, `/api/artifact`,
+  `/api/artifact/file`, `POST /api/artifact/reply`, `/api/artifact/seen`) over `tools/artifact.py`;
+  `static/ui/artifacts.js` is the page and a run's *What it wrote* (`GET /api/run/files`, `/api/run/file`,
+  `/api/run/rawfile`); `static/ui/sound.js` is `NL.Sound`. See [The world's design](world-design.md).
 - **Vendored libraries** (offline, with licences in `static/vendor/`): three.js, Preact, htm, marked,
   DOMPurify and KaTeX.
 - **Demo mode**, for debugging: start with `--demo` and open `/?demo`. It is a synthetic living lab,

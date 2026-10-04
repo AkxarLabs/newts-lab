@@ -504,22 +504,31 @@
       ${status ? html`<div class=${cls('small', status.error ? 'danger' : 'muted')}>${status.error ? 'It could not be built: ' + status.error : status.built}</div>` : null}`;
   };
   const RoomLook = ({ d, r }) => {
+    // a room that stands once per project can look different for each project type (lab.ml, lab.theory, …)
+    const [variant, setVariant] = useState('');
+    const lookId = variant ? `${r.id}.${variant}` : r.id;
+    const [starters, setStarters] = useState({});
+    useEffect(() => { NL.get('/api/rooms3d').then(x => setStarters(Object.fromEntries(((x && x.rooms) || []).filter(y => y.builtin).map(y => [y.key, y])))); }, []);
     const [mine, setMine] = useState(undefined);
     const [show, setShow] = useState(null);       // a design being previewed
     const [ask, setAsk] = useState('');
     const s = NL.useLab();
-    const procs = procsOf(d, r), designs = (d.designs || []).filter(x => x.room === r.id);
-    const path = `lab/rooms3d/${r.id}.json`;
-    useEffect(() => { getFile(path).then(f => { try { setMine(f && f.text ? JSON.parse(f.text) : null); } catch (e) { setMine(null); } }); }, [r.id, (d.draft || {}).changes && JSON.stringify(d.draft.changes)]);
+    const procs = procsOf(d, r), designs = (d.designs || []).filter(x => x.room === lookId);
+    const path = `lab/rooms3d/${lookId}.json`;
+    useEffect(() => { getFile(path).then(f => { try { setMine(f && f.text ? JSON.parse(f.text) : null); } catch (e) { setMine(null); } }); }, [lookId, (d.draft || {}).changes && JSON.stringify(d.draft.changes)]);
     const [designData, setDesignData] = useState(null);
     useEffect(() => { if (show) NL.get('/api/compose/design?room=' + encodeURIComponent(show)).then(x => setDesignData(x && x.ok ? x : null)); else setDesignData(null); }, [show, JSON.stringify(designs.map(x => x.ts))]);
-    const running = NL.runs(s, x => x.skill === 'design-room' && (x.command || x.label || '').includes(' ' + r.id + ' ') && !NL.RUN_DONE.has(x.status));
-    const design = async () => { if (!ask.trim()) return; const x = await NL.launch({ skill: 'design-room', args: `${r.id} ${ask.trim()}` }, { open: false }); if (x) setAsk(''); };
-    const showing = show && designData ? designData.data : mine;
+    const running = NL.runs(s, x => x.skill === 'design-room' && (x.command || x.label || '').includes(' ' + lookId + ' ') && !NL.RUN_DONE.has(x.status));
+    const design = async () => { if (!ask.trim()) return; const x = await NL.launch({ skill: 'design-room', args: `${lookId} ${ask.trim()}` }, { open: false }); if (x) setAsk(''); };
+    const starter = starters[lookId] || null;
+    const showing = show && designData ? designData.data : mine || starter;
+    const types = r.per_project ? (d.types || []).map(t => t.name || t).filter(Boolean) : [];
     if (mine === undefined) return html`<${NL.Spinner} />`;
     return html`<div class="cmp-look">
       <div class="cmp-look-view"><${RoomPreview} r=${r} data=${showing} procs=${procs} />
-        <div class="cmp-look-cap"><span class="kicker">${show ? 'design · not taken yet' : mine ? 'its own look' : r.look3d === 'built-in' ? 'built-in look' : 'drawn plain'}</span>
+        ${types.length ? html`<div class="cmp-look-variants"><span class="muted small">Look for</span><${NL.Seg} value=${variant} onChange=${v => { setVariant(v); setShow(null); }}
+          options=${[{ value: '', label: 'every project' }, ...types.map(t => ({ value: t, label: t }))]} /></div>` : null}
+        <div class="cmp-look-cap"><span class="kicker">${show ? 'design · not taken yet' : mine ? 'the lab’s own look' : starter ? 'starter look for ' + variant + ' projects' : variant ? 'no look of its own — uses the room’s' : r.look3d === 'built-in' ? 'built-in look' : 'drawn plain'}</span>
           ${show ? html`<button type="button" class="link small" onClick=${() => setShow(null)}>back to the current look</button>` : null}</div></div>
       <div class="cmp-look-side">
         <h3>Describe it</h3>

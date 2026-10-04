@@ -55,12 +55,18 @@ simulated no-ops (blocked client-side) and record nothing.
                  terminal window for a CLI's own sign-in, Gate 3 (typed signature + the one /finalize
                  run), revoke, the envelope editor, LOOP_BRIEF / campaign signing, revive, SYSTEM.md,
                  Lab settings, research keys (`lab/.env.local`), setup state, stop the server.
+- `artifacts.py` — what agents published for the PI (`tools/artifact.py`, `lab/.bus/artifacts/`):
+                 `GET /api/artifacts` · `/api/artifact` · `/api/artifact/file` (HTML/SVG served with a
+                 CSP sandbox), `POST /api/artifact/reply` (to the publishing run, else a note to the
+                 study) · `/api/artifact/seen`.
 - `static/`    — the single-page frontend: `index.html`, `ui/` (Preact + htm, no build: `core.js`,
                  `components.js`, `runs.js`, `composer.js`, `gates.js`, `library.js`, `studies.js`,
-                 `home.js`, `settings.js`, `setup.js`, `demo.js`, `app.js`, `ui.css`) over the world in
+                 `home.js`, `settings.js`, `setup.js`, `demo.js`, `artifacts.js`, `sound.js`,
+                 `app.js`, `ui.css`) over the world in
                  `world3d/` (three.js: `world.js` the live world, `scene.js` the VivScene wrapper +
                  a quiet stand-in without WebGL, `model.js` / `layout.js` the logic and the plots,
-                 `kit.js` / `components.js` / `newt.js` the pieces, `rooms/*.js` the built-in looks;
+                 `kit.js` / `components.js` / `newt.js` / `characters.js` the pieces and the cast,
+                 `rooms/*.js` the built-in looks, `looks/` the starter Lab looks per project type;
                  see docs/world-design.md). Fully offline.
 - `static/vendor/` — the **Library** reader's pinned, offline renderers (marked · DOMPurify ·
                  KaTeX + woff2 fonts), and three.js (r169) for the world. The one place third-party

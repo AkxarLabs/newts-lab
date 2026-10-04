@@ -230,13 +230,19 @@ def _room_files(root: Path) -> list[str]:
     return out
 
 
+STARTER_LOOKS = ctx.ROOT / "dashboard" / "static" / "world3d" / "looks"
+LOOK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}(?:\.[a-z0-9][a-z0-9-]{0,30})?$")   # a room, or a room for one project type
+
+
 def rooms3d(q: dict | None = None) -> tuple[dict, int]:
-    """The lab's own room looks (published), for the world to build."""
-    d, out = ctx.LAB / "rooms3d", []
-    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
-        data = room_check(ctx.read(f) or "", f.stem)[0]
-        if data:
-            out.append(data)
+    """Room looks given as data, for the world to build: the starter looks this code ships (a Lab per project type,
+    world3d/looks/), then the lab's own (lab/rooms3d/, published) — the lab's own win, being built last."""
+    out = []
+    for d, builtin in ((STARTER_LOOKS, True), (ctx.LAB / "rooms3d", False)):
+        for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+            data = room_check(ctx.read(f) or "", f.stem)[0]
+            if data:
+                out.append({**data, "builtin": builtin})
     return {"ok": True, "rooms": out}, 200
 
 
@@ -616,7 +622,7 @@ def designs() -> list[dict]:
 def design_get(q: dict) -> tuple[dict, int]:
     name = str(q.get("room") or "")
     f = _designs_dir() / name / "room.json"
-    if not re.match(r"^[a-z0-9][a-z0-9-]{0,40}$", name) or not f.is_file():
+    if not LOOK_ID.match(name) or not f.is_file():
         return {"error": "no such design"}, 404
     data, probs = room_check(ctx.read(f) or "", name)
     return {"ok": True, "room": name, "data": data, "problems": probs, "notes": (ctx.read(f.parent / "notes.md") or "").strip()}, 200

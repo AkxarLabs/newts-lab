@@ -179,7 +179,8 @@
   };
 
   /* ── preferences ───────────────────────────────────────────────────────── */
-  const PREF_DEFAULTS = { theme: 'auto', motion: true, rail: true, notify: false, density: 'comfortable', narrate: false };
+  const PREF_DEFAULTS = { theme: 'auto', motion: true, rail: true, notify: false, density: 'comfortable', narrate: false,
+    cast: { mode: 'backend', one: 'newt', claude: 'newt', codex: 'human', opencode: 'robot' } };   // who plays the agents in the world
   const prefs = Object.assign({}, PREF_DEFAULTS, ls.get('nl-prefs', {}));
   // carry over the old dashboard's choices once
   (() => { const old = ls.get('viv-prefs', null); if (old && !ls.get('nl-prefs', null)) { if (old.ambient === false) prefs.motion = false; }

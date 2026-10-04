@@ -66,6 +66,7 @@ import instructions  # noqa: E402
 import compose  # noqa: E402
 import fleet  # noqa: E402
 import library  # noqa: E402
+import artifacts  # noqa: E402
 import review  # noqa: E402
 import ticker  # noqa: E402
 import labtools  # noqa: E402
@@ -253,8 +254,13 @@ class Handler(BaseHTTPRequestHandler):
         return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
 
     def _serve_bytes(self, f: Path, ctype: str) -> None:
+        # a page or a drawing a run wrote is shown, never trusted: HTML and SVG get an opaque origin of their
+        # own (a CSP sandbox, even when opened directly), so their scripts can't reach the dashboard's API
+        hdrs = {"X-Content-Type-Options": "nosniff"}
+        if ctype.split(";")[0].strip() in ("text/html", "image/svg+xml", "application/xhtml+xml", "text/xml"):
+            hdrs["Content-Security-Policy"] = "sandbox allow-scripts"
         try:
-            self._send(200, f.read_bytes(), ctype)
+            self._send(200, f.read_bytes(), ctype, hdrs)
         except OSError:
             self._send(404, b"unreadable", "text/plain")
 
@@ -454,6 +460,8 @@ GET_ROUTES = {
     "/api/run": lambda q: runops.run_detail(q.get("run_id", "")),
     "/api/run/tail": lambda q: runops.run_tail(q.get("run_id", ""), _int(q.get("offset"))),
     "/api/run/log": lambda q: runops.run_log(q.get("run_id", "")),
+    "/api/run/files": runops.run_files,
+    "/api/run/file": runops.run_file,
     "/api/executor/health": lambda q: runops.executor_health(fresh=bool(q.get("fresh"))),
     "/api/library": lambda q: (library.lib_tree(), 200),
     "/api/machines": lambda q: machines.list_machines(),
@@ -467,6 +475,8 @@ GET_ROUTES = {
     "/api/compose/file": compose.file_get,
     "/api/compose/design": compose.design_get,
     "/api/rooms3d": compose.rooms3d,
+    "/api/artifacts": artifacts.list_artifacts,
+    "/api/artifact": artifacts.get,
     "/api/campaign/preflight": campaign.campaign_preflight,
     "/api/workflow/proposal": instructions.workflow_proposal_get,
     "/api/lab/config": lambda q: settings.lab_config_get(),
@@ -482,6 +492,8 @@ FILE_ROUTES = {
     "/api/paper": lambda q: _typed(library.paper_pdf(q.get("idea", "")), "application/pdf"),
     "/api/figure": lambda q: _typed(library.figure_file(q.get("idea", ""), q.get("name", ""))),
     "/api/libfile": lambda q: library.lib_file(q.get("scope", ""), q.get("slug"), q.get("rel", "")),
+    "/api/artifact/file": artifacts.file_route,
+    "/api/run/rawfile": runops.run_file_raw,
 }
 
 
@@ -549,6 +561,8 @@ POST_ROUTES = {
     "/api/term/resize": term.resize,
     "/api/term/close": term.close,
     "/api/directive": bus.directive_post,
+    "/api/artifact/reply": artifacts.reply,
+    "/api/artifact/seen": artifacts.seen,
     "/api/withdraw": bus.withdraw_post,
     "/api/command": runops.command_post,
     "/api/gate": gates.gate_post,

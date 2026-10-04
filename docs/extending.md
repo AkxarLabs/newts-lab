@@ -31,7 +31,7 @@ Every moving part is a small, named registry; the table is the map.
 | How a stage is done | Compose → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
 | A stage, a state, a room | `workflow/stages.yaml` (a room's `place` and `facing` on the table too) | `tools/workflow.py check` |
-| How a room looks in 3D | `lab/rooms3d/<room>.json` (data: Compose → a room → Look → *Design it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/` | Compose (it checks every room file) |
+| How a room looks in 3D | `lab/rooms3d/<room>.json`, or `lab.<type>.json` for one project type's lab (data: Compose → a room → Look → *Design it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/`, the starter Lab looks `world3d/looks/` | Compose (it checks every room file) |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
@@ -102,10 +102,12 @@ procedures are project-level.
 A room with no look is drawn plain (a floor, low walls, a desk per procedure). The built-in looks are code
 (`dashboard/static/world3d/rooms/<id>.js`); a lab's own look is data, `lab/rooms3d/<id>.json` — a size,
 colours, furniture from `world3d/components.js` placed by name, a station per procedure, and any new
-furniture as boxes, cylinders, cones and spheres — never code. A project type can have its own lab look,
-`lab/rooms3d/lab.<type>.json`. You design a look by describing it: Compose → the room → Look → *Design it*
-launches `/design-room`, which writes a design you preview and then *Use this design* (a draft; publish
-it). `tools/new.py room <id> --like <room>` copies the like's own JSON look if it has one; otherwise the new
+furniture as boxes, cylinders, cones and spheres — never code. Each project's lab takes the look for its
+type, `lab.<type>`: starter looks for every shipped type ship in `dashboard/static/world3d/looks/`, and the
+lab's own `lab/rooms3d/lab.<type>.json` wins over them. You design a look by describing it: Compose → the
+room → Look → *Design it* launches `/design-room`, which writes a design you preview and then *Use this
+design* (a draft; publish it). For a per-project room, *Look for: every project / <type>* picks which look
+you are designing (`/design-room lab.ml "…"`; `tools/workflow.py room lab.ml` prints its brief). `tools/new.py room <id> --like <room>` copies the like's own JSON look if it has one; otherwise the new
 room is plain until designed. [The world's design](world-design.md) has the rest.
 
 ## A rule

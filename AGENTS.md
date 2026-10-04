@@ -118,6 +118,16 @@ The procedures above spawn parallel subagents defined in `.claude/agents/*.md` (
 - **`explore` mode** (brief `Mode: explore`): when the plan is exhausted with budget left, the loop expands the frontier and reopens non-headline decisions instead of stopping (capped by `loop.explore_*`); reopening a headline decision / touching the frozen set / exceeding the envelope escalates (PI note, or campaign-delegation + overseer check). `execute` (default) stops at plan exhaustion. See the Lifecycle section's two-modes paragraph and docs/autonomy.md.
 - Every cycle appends a Loop Log row; loop exit does the full session write-back (rule 11) plus a PI morning report.
 
+## Showing the PI something (artifacts)
+
+When you want the PI to *look* at something — a plan before you start it, results, a figure, a table, an HTML
+page you built to explore them — publish it rather than burying it in a file or a final message:
+`uv run python tools/artifact.py publish --title "…" --file <path> [--note "one line"]`. Add
+`--question "…" --choices "A;B;C"` when you need a decision; the PI's answer comes back to your run as its next
+message (and `tools/artifact.py replies` prints it). It shows in the dashboard's Artifacts page and as a sheet
+pinned in your room. Publish sparingly — what the PI would genuinely want to see — and never as a substitute
+for a gate: an artifact's reply is not a signature, and it never authorizes a FULL run.
+
 ## Writing standards
 
 - Proposals must contain: hypothesis, baselines, metrics + eval protocol, staged experiment list, planned ablations, compute budget, **kill criteria**, success criteria.

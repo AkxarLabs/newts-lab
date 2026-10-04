@@ -91,8 +91,9 @@ class Opencode(Backend):
                         {"event": "tool_result", "tool_use_id": call, "is_error": err,
                          "text": (m.group(1) if m else out).strip()[:2000]}]
             summary = state.get("title") or summarize_input(tool, inp) or tool
+            wrote = [str(inp.get("filePath") or inp.get("file_path"))] if tool in ("write", "edit", "patch", "multiedit") and                 isinstance(inp, dict) and (inp.get("filePath") or inp.get("file_path")) else []
             return [{"event": "action", "tool": tool, "kind": "tool", "summary": str(summary or "")[:200],
-                     "session_id": sid, "tool_use_id": part.get("callID")}] + \
+                     "session_id": sid, "tool_use_id": part.get("callID"), **({"files": wrote} if wrote else {})}] + \
                 ([{"event": "tool_result", "tool_use_id": part.get("callID"), "is_error": True,
                    "text": str(state.get("error") or "")[:2000]}] if err else [])
         if t == "text" and part.get("text"):

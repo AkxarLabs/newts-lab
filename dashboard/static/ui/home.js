@@ -7,7 +7,7 @@
   const { html, useState, useEffect, cls } = NL;
 
   /* ── the inbox: one list, typed actions ─────────────────────────────────── */
-  const ICON = { question: '?', assumed: '≈', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳' };
+  const ICON = { question: '?', assumed: '≈', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳', artifact: '❏' };
   const PRIMARY = new Set(['answer', 'sign', 'allow', 'next', 'proposal']);
   NL.attAct = async (it, a) => {
     const run = it.run_id, d = it.detail || {};
@@ -15,6 +15,7 @@
       case 'answer': case 'tail': return NL.openRun(run);
       case 'proposal': return NL.open(NL.ProposalSheet, { id: d.proposal });
       case 'campaign': return NL.openCampaign(d.campaign);
+      case 'artifact': return NL.openArtifact(d.artifact);
       case 'reply': return run ? NL.openRun(run) : NL.go(it.idea && it.idea !== 'hub' ? `study/${it.idea}` : '');
       case 'stop': if (await NL.confirm({ title: 'Stop this run?', body: 'It stays resumable.', ok: 'Stop', danger: true })) return NL.act('/api/run/stop', { run_id: run, confirm: true }, 'Stopping'); return;
       case 'resume': return NL.act('/api/run/resume', { run_id: run }, 'Resuming');
@@ -29,7 +30,7 @@
   };
   const InboxRow = ({ it, compact }) => {
     const acts = (it.actions || []).filter(a => !(it.kind === 'gate' && a.id === 'bundle')).slice(0, compact ? 2 : 4);
-    const open = () => (it.detail || {}).campaign ? NL.openCampaign(it.detail.campaign) : it.kind === 'proposal' ? NL.open(NL.ProposalSheet, { id: (it.detail || {}).proposal }) : it.run_id ? NL.openRun(it.run_id) : it.kind === 'gate' ? NL.openGate(it.idea, (it.detail || {}).gate) : it.idea ? NL.go('study/' + it.idea) : null;
+    const open = () => it.kind === 'artifact' ? NL.openArtifact((it.detail || {}).artifact) : (it.detail || {}).campaign ? NL.openCampaign(it.detail.campaign) : it.kind === 'proposal' ? NL.open(NL.ProposalSheet, { id: (it.detail || {}).proposal }) : it.run_id ? NL.openRun(it.run_id) : it.kind === 'gate' ? NL.openGate(it.idea, (it.detail || {}).gate) : it.idea ? NL.go('study/' + it.idea) : null;
     return html`<div class=${cls('inrow', 'sev-' + it.sev, 'k-' + it.kind)}>
       <button type="button" class="inrow-main" onClick=${open}><span class="inrow-ico" aria-hidden="true">${ICON[it.kind] || '•'}</span>
         <span class="inrow-t"><b>${it.title}</b>${it.body ? html`<small>${NL.clip(it.body, compact ? 110 : 260)}</small>` : null}</span></button>
@@ -69,6 +70,16 @@
     return html`<div class="since"><span>Since you were last here: ${bits.map(([n, l]) => `${n} ${l}`).join(' · ')}</span><button class="x" onClick=${() => setHidden(true)} aria-label="dismiss">✕</button></div>`;
   };
 
+  /* what agents made for you to look at, not opened yet (a question with one is already in Needs you) */
+  const ForYou = () => {
+    const s = NL.useLab();
+    const fresh = NL.artifactsUnseen(s).filter(a => !a.question);
+    if (!fresh.length) return null;
+    return html`<${NL.Section} title="For you to look at" count=${fresh.length} className="rail-sec">${fresh.slice(0, 3).map(a => html`<button type="button" class="art-mini" onClick=${() => NL.openArtifact(a.id)}>
+      <span class="art-ico">❏</span><span class="grow clip"><b>${a.title}</b><small class="muted">${(NL.item(s, a.study) || {}).title || a.study || 'the lab'} · ${NL.ago(a.created)}</small></span></button>`)}
+      ${fresh.length > 3 ? html`<a class="link small" href="#/artifacts?f=new">all ${fresh.length} →</a>` : null}</${NL.Section}>`;
+  };
+
   const UpNext = () => {
     const s = NL.useLab();
     const busy = new Set(NL.runs(s, r => NL.RUN_ACTIVE.has(r.status) || r.status === 'queued' || r.status === 'waiting_input').map(r => r.subject).filter(Boolean));
@@ -104,6 +115,7 @@
           : html`<div class="muted small">Nothing is waiting on you.</div>`}${needs.length > 6 ? html`<button class="link small" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}>all ${needs.length} →</button>` : null}</${NL.Section}>
         <${NL.Section} title="Running" count=${running.length || null} className="rail-sec">${running.length ? running.slice(0, 5).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} compact />`)
           : html`<div class="muted small">No agents running.</div>`}</${NL.Section}>
+        <${ForYou} />
         <${UpNext} />
         ${finished.length ? html`<${NL.Section} title="Just finished" className="rail-sec">${finished.map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} compact />`)}</${NL.Section}>` : null}`}
     </aside>`;
@@ -151,6 +163,17 @@
       html`<button type="button" role="radio" aria-checked=${l === v} class=${cls('lens', l === v && 'on')} onClick=${() => setL(v)}>${t}</button>`)}</div>`;
   };
 
+  /* your other labs, drawn past the table's back edge (the same list as Labs & machines) */
+  const Neighbours = () => {
+    const live = NL.useFleet ? NL.useFleet() : null;
+    const fl = NL.DEMO ? NL.demoFleet : live;
+    const labs = ((fl && fl.labs) || []).filter(l => !l.current);
+    const list = labs.map(l => ({ key: l.key, name: l.name || l.path, machine: l.machine, needs: (l.summary || {}).needs || 0, running: (l.summary || {}).running || 0, state: l.state }));
+    useEffect(() => { if (!NL.Scene) return; NL.Scene.setNeighbours(list); NL.Scene.onLab(key => { const l = labs.find(x => x.key === key); if (!l) return;
+      if (NL.DEMO) return NL.toast(`Demo mode — this would open ${l.name}`); NL.goToLab(l); }); }, [JSON.stringify(list)]);
+    return null;
+  };
+
   NL.Home = () => {
     const s = NL.useLab();
     const conn = NL.useConn();
@@ -158,6 +181,7 @@
     useEffect(() => { const t = setTimeout(() => NL.Scene && NL.Scene.insetsChanged(), 60); return () => clearTimeout(t); }, [prefs.rail]);
     return html`<div class="home">
       <${Lenses} />
+      <${Neighbours} />
       <${Crumb} />
       <${Rail} />
       <${Key} />

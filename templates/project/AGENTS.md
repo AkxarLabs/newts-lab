@@ -127,6 +127,13 @@ with a directive — then continue other planned work meanwhile. Never route aro
 `.claude/settings.json`, `control.yaml`, the sandbox, the harness, or the budget (hard rule 12); a
 block you can't justify is a finding, not an obstacle to remove.
 
+## Showing the PI something (artifacts)
+
+To ask the PI to look at a plan, results, a figure or a page you made, publish it to the lab's dashboard:
+`python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>` (outside a dashboard run, the hub is
+`hub_path` in `control.yaml`). `--question "…" --choices "A;B"` asks for a decision; the answer comes back to your
+run. Never a substitute for a gate or a Gate-2 envelope.
+
 ## Subagents (you decide when)
 
 Parallelize when ≥2 *mechanism-distinct* variants are ready to test and the machine

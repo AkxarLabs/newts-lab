@@ -28,13 +28,13 @@ function quietWorld(canvas, why) {
   paint(); window.addEventListener('resize', paint);
   return { kind: 'none', boot: noop, sync: noop, setPose: noop, setLamp: noop, setView: noop, goRoom: noop, focusProject: noop, back: noop,
     viewInfo: () => ({ level: 'WORLD', label: '' }), highlight: noop, roomRect: () => null, band: () => null,
-    followWorker: noop, stopFollow: noop, following: () => null, layout: () => null, setAmbient: noop, setLens: noop, lens: () => 'work', insetsChanged: noop,
+    followWorker: noop, stopFollow: noop, following: () => null, layout: () => null, setAmbient: noop, setLens: noop, setCast: noop, setNeighbours: noop, onLab: noop, onArtifact: noop, lens: () => 'work', insetsChanged: noop,
     onClick: noop, onWorker: noop, onRun: noop, onNewt: noop, onView: noop, onFollow: noop };
 }
 
 function create(opts) {
   DEPS = Object.assign(DEPS, opts || {});
-  let impl = null, pendingState = null, pendingPose = 'idle', pendingLamp = null, pendingLens = null;
+  let impl = null, pendingState = null, pendingPose = 'idle', pendingLamp = null, pendingLens = null, pendingCast = null, pendingNb = null;
   const cbs = {}, queued = [];
   let booted = false;
   const later = (fn) => { if (impl) fn(impl); else queued.push(fn); };
@@ -53,9 +53,11 @@ function create(opts) {
     impl = made;
     window.__VIV = { kind: impl.kind, scene: impl };
     impl.onClick(cbs.item, cbs.inbox);
-    for (const k of ['onWorker', 'onRun', 'onNewt', 'onView', 'onFollow']) if (cbs[k]) impl[k](cbs[k]);
+    for (const k of ['onWorker', 'onRun', 'onNewt', 'onView', 'onFollow', 'onLab', 'onArtifact']) if (cbs[k] && impl[k]) impl[k](cbs[k]);
     if (pendingLamp) impl.setLamp(pendingLamp);
     if (pendingLens) impl.setLens(pendingLens);
+    if (pendingCast && impl.setCast) impl.setCast(pendingCast);
+    if (pendingNb && impl.setNeighbours) impl.setNeighbours(pendingNb);
     impl.setPose(pendingPose);
     if (pendingState) await impl.sync(pendingState);
     while (queued.length) { try { queued.shift()(impl); } catch (e) { /* a stale call is harmless */ } }
@@ -64,11 +66,14 @@ function create(opts) {
   return {
     boot,
     onClick(item, inbox) { cbs.item = item; cbs.inbox = inbox; if (impl) impl.onClick(item, inbox); },
-    onWorker: relay('onWorker'), onRun: relay('onRun'), onNewt: relay('onNewt'), onView: relay('onView'), onFollow: relay('onFollow'),
+    onWorker: relay('onWorker'), onRun: relay('onRun'), onLab: cb => { cbs.onLab = cb; if (impl && impl.onLab) impl.onLab(cb); },
+    onArtifact: cb => { cbs.onArtifact = cb; if (impl && impl.onArtifact) impl.onArtifact(cb); }, onNewt: relay('onNewt'), onView: relay('onView'), onFollow: relay('onFollow'),
     sync(s) { pendingState = s; if (impl) impl.sync(s); },
     setPose(p) { pendingPose = p; if (impl) impl.setPose(p); },
     setLamp(m) { pendingLamp = m; if (impl) impl.setLamp(m); },
     setLens(l) { pendingLens = l; if (impl) impl.setLens(l); },
+    setCast(c) { pendingCast = c; if (impl && impl.setCast) impl.setCast(c); },
+    setNeighbours(l) { pendingNb = l; if (impl && impl.setNeighbours) impl.setNeighbours(l); },
     lens() { return impl ? impl.lens() : (pendingLens || 'work'); },
     setView(m) { later(w => w.setView(m)); },
     goRoom(k) { later(w => w.goRoom(k)); },

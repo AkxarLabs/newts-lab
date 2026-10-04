@@ -9,10 +9,12 @@
   /* ── the world ─────────────────────────────────────────────────────────── */
   NL.viewListeners = new Set();
   NL.Scene = window.VivScene ? window.VivScene.create({ motion: NL.prefs.motion }) : null;
+  if (NL.Scene) NL.Scene.setCast(NL.prefs.cast);
   if (NL.Scene) {
     NL.Scene.onClick(id => NL.open(StudyPeek, { id }, { key: 'peek' }), () => NL.open(NL.InboxSheet, {}, { key: 'inbox' }));
     NL.Scene.onWorker(id => NL.openWorker(id));
     NL.Scene.onRun(id => NL.openRun(id));
+    NL.Scene.onArtifact(id => NL.openArtifact(id));
     NL.Scene.onNewt(() => NL.openStart());
     NL.Scene.onView(info => { NL.viewInfo = info; NL.viewListeners.forEach(f => f(info)); });
   }
@@ -35,7 +37,7 @@
 
   /* ── command palette (/ or Ctrl+K) ─────────────────────────────────────── */
   /* the pages you can go to: [route, label, in the top bar] — the top bar and the palette both read this */
-  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['compose', 'Compose', 1],
+  const NAV = [['', 'Home', 1], ['studies', 'Studies', 1], ['runs', 'Runs', 1], ['library', 'Library', 1], ['artifacts', 'Artifacts', 1], ['compose', 'Compose', 1],
     ['history', 'History'], ['labs', 'Labs & machines — switch, create, connect'], ['setup', 'Setup wizard']];
   function paletteActions(s) {
     const A = [];
@@ -89,19 +91,42 @@
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
         ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${elsewhere} thing(s) need you in your other labs`}>+${elsewhere}</span>` : null}</a>
-      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}</a>`)}</nav>
+      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && NL.artifactsUnseen(s).length ? html` <span class="navcount">${NL.artifactsUnseen(s).length}</span>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
+        <${SoundBtn} />
         <button class="iconbtn" title="search and jump (/ or Ctrl+K)" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
         <button class=${cls('iconbtn', needs.length && 'has')} title="what needs you" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
         <a class=${cls('iconbtn', page === 'settings' && 'on')} title="settings" href="#/settings"><${NL.Icon} name="sliders" /></a>
       </div></header>`;
   };
 
+  /* ── sound: gentle chimes when something needs you, and soft music — both off until you turn them on ── */
+  const useSound = () => { const [, f] = NL.useReducer(x => x + 1, 0); useEffect(() => NL.Sound ? NL.Sound.subscribe(() => f()) : undefined, []); return NL.Sound ? NL.Sound.prefs() : {}; };
+  NL.SoundControls = ({ compact }) => {
+    const p = useSound();
+    if (!NL.Sound) return null;
+    const set = x => NL.Sound.set(x);
+    return html`<div class=${cls('sound', compact && 'compact')}>
+      <${NL.Toggle} on=${!!p.chimes} onChange=${v => { set({ chimes: v }); if (v) NL.Sound.test('ask'); }} label="Chimes" sub="a soft bell when an agent asks you something or a gate opens; a lighter note when a run finishes, a low one when it fails" />
+      <label class="sound-vol"><span class="muted small">chime volume</span><input type="range" min="0" max="1" step="0.05" value=${p.volume} onInput=${e => set({ volume: +e.target.value })} /></label>
+      <div class="row-wrap">${(NL.Sound.KINDS || []).map(k => html`<button type="button" class="link small" onClick=${() => NL.Sound.test(k)}>▸ ${k}</button>`)}</div>
+      <${NL.Toggle} on=${!!p.music} onChange=${v => set({ music: v })} label="Music" sub="calm, generated as you listen — it breathes with the lab: sparser when it is quiet, a little brighter when agents are at work" />
+      <label class="sound-vol"><span class="muted small">music volume</span><input type="range" min="0" max="1" step="0.05" value=${p.musicVolume} onInput=${e => set({ musicVolume: +e.target.value })} /></label></div>`;
+  };
+  const SoundBtn = () => {
+    const p = useSound();
+    const [open, setOpen] = useState(false);
+    if (!NL.Sound) return null;
+    const on = p.chimes || p.music;
+    return html`<span class="sound-wrap"><button class=${cls('iconbtn', on && 'on')} title="sound — chimes and music" aria-expanded=${open} onClick=${() => setOpen(!open)}><${NL.Icon} name=${on ? 'sound' : 'mute'} /></button>
+      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /></div>` : null}</span>`;
+  };
+
   /* ── routing ───────────────────────────────────────────────────────────── */
   const PAGES = {
     home: () => null, studies: () => NL.StudiesPage, study: () => NL.StudyPage, runs: () => NL.RunsPage, run: () => NL.RunsPage,
-    library: () => NL.LibraryPage, compose: () => NL.ComposePage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
+    library: () => NL.LibraryPage, artifacts: () => NL.ArtifactsPage, compose: () => NL.ComposePage, settings: () => NL.SettingsPage, history: () => NL.HistoryPage, labs: () => NL.LabsPage, setup: () => NL.SetupPage,
   };
   const App = () => {
     const route = NL.useRoute();
@@ -128,6 +153,7 @@
   /* ── notifications: toasts, desktop notifications, the tab title ────────── */
   let seenAtt = null;
   NL.onSnapshot = (prev, next) => {
+    if (NL.Sound && next) NL.Sound.observe(next);    // gentle chimes (off unless you turn them on), and the music's mood
     if (NL.Scene) { NL.Scene.sync(next); NL.Scene.setPose(window.VivScene.newtPoseFor(next)); }
     const needs = ((next && next.attention) || []).filter(a => a.sev !== 'info');
     document.title = (needs.length ? `(${needs.length}) ` : '') + ((next && next.lab_info && next.lab_info.name) || "Newts' Lab");

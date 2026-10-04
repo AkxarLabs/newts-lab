@@ -430,6 +430,11 @@ def campaigns(rows: list[dict] | None = None) -> list[dict]:
 
 # ── the snapshot ──────────────────────────────────────────────────────────────
 
+def _artifacts_view() -> list[dict]:
+    import artifacts  # noqa: PLC0415 — artifacts imports this module
+    return artifacts.snapshot_view()
+
+
 def _rooms3d_sig() -> str:
     """Changes when the lab's own room looks (lab/rooms3d/*.json) do — the world fetches them again."""
     d = ctx.LAB / "rooms3d"
@@ -522,6 +527,7 @@ def snapshot() -> dict:
         "skills": (executor.registry(ctx.HUB) if executor else {}),
         "workflow": _workflow_view(),
         "rooms3d_sig": _rooms3d_sig(),
+        "artifacts": _artifacts_view(),
         **_autonomy_view(),
     }
 

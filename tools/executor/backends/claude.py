@@ -112,6 +112,8 @@ class Claude(Backend):
                     name, inp = b.get("name"), b.get("input") or {}
                     ev = {"event": "action", "tool": name, "kind": "tool", "tool_use_id": b.get("id"),
                           "summary": summarize_input(name, inp)[:200], "parent": parent}
+                    if name in ("Write", "Edit", "MultiEdit", "NotebookEdit") and isinstance(inp, dict) and                             (inp.get("file_path") or inp.get("notebook_path")):
+                        ev["files"] = [str(inp.get("file_path") or inp.get("notebook_path"))]   # what the run wrote
                     if name in ("Agent", "Task") and isinstance(inp, dict):
                         ev["spawn"] = {"subagent_type": inp.get("subagent_type") or "general-purpose",
                                        "description": str(inp.get("description") or "")[:200],
