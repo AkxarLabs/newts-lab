@@ -12,6 +12,7 @@ newts:
   hint: research direction, or --in-project <slug>
   title: Explore a new direction
   does: Researches the direction, generates and critiques ideas, and files the best 1–3 as studies.
+  show_pi: 'the ideas you filed — one short Markdown note (each idea''s title, one-line pitch and scores) once they are in the registry'
   stops: when the ideas are filed
   anchors:
   - reflect
@@ -33,6 +34,8 @@ newts:
 - studies/<slug>/IDEA.md per surviving idea (frontmatter: state, scores)
 - registry rows (state seed → triaged)
 - lab/ideation/<run>/ record
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the ideas you filed — one short Markdown note (each idea's title, one-line pitch and scores) once they are in the registry. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 
 Other procedures rely on these parts of this contract: reflect.
 <!-- /newts:contract -->

@@ -11,6 +11,7 @@ newts:
   hint: project slug
   title: Make figures
   does: Builds the paper figures from the run artifacts.
+  show_pi: 'the paper''s key figures as images — at most three, one artifact each'
   outputs:
   - aggregator scripts in the project repo
   - figures synced to studies/<slug>/paper/figures/
@@ -24,6 +25,8 @@ newts:
 **Whatever the method, it must produce:**
 - aggregator scripts in the project repo
 - figures synced to studies/<slug>/paper/figures/
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the paper's key figures as images — at most three, one artifact each. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 All visual/tabular evidence for `studies/<slug>/paper/`, generated mechanically from

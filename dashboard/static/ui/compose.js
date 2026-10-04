@@ -316,7 +316,7 @@
 
   const ICONS_START = ['▸', '✦', '◫', '⟳', '✎', '⌕', '☰', '◎', '△', '❖'];
   const ProcAbout = ({ d, name, p }) => {
-    const init = { title: p.title || '', does: p.does || '', description: p.description || '', stops: p.stops || '', kind: p.kind, level: p.level, mode: p.mode,
+    const init = { title: p.title || '', does: p.does || '', description: p.description || '', stops: p.stops || '', show_pi: p.show_pi || '', kind: p.kind, level: p.level, mode: p.mode,
       args: p.args || '', hint: p.hint || '', launchable: !!p.launchable, replaceable: !!p.replaceable, start: p.start || null };
     const [f, setF] = useState(init);
     const [stages, setStages] = useState(p.stages || []);
@@ -329,6 +329,7 @@
     return html`<div class="cmp-form">
       <div class="grid2"><${NL.Field} label="Title" hint=${from('title')}><${NL.Input} value=${f.title} onInput=${v => set('title', v)} /></${NL.Field}>
         <${NL.Field} label="When it stops" hint=${from('stops') || 'e.g. “with the verdict”'}><${NL.Input} value=${f.stops} onInput=${v => set('stops', v)} /></${NL.Field}></div>
+      <${NL.Field} label="What it shows you" hint=${from('show_pi') || 'what the agent publishes for you to look at (Artifacts) — e.g. “the headline findings and the key figure”; blank = nothing'}><${NL.Input} value=${f.show_pi} onInput=${v => set('show_pi', v)} /></${NL.Field}>
       <${NL.Field} label="What it does — one line" hint="shown on buttons and lists"><${NL.Input} value=${f.does} onInput=${v => set('does', v)} /></${NL.Field}>
       <${NL.Field} label="Description for agents" hint="agent CLIs read this to know when the skill applies"><${NL.Textarea} rows=${3} value=${f.description} onInput=${v => set('description', v)} /></${NL.Field}>
       <${NL.Field} label="Stages it serves"><div class="row">${d.stages.map(st => html`<button type="button" class=${cls('chip', 'click', stages.includes(st.id) && 'on')}

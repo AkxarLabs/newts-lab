@@ -11,6 +11,7 @@ newts:
   hint: study slug (stops at Gate 3)
   title: Internal review
   does: Review cycles until the paper is accepted internally.
+  show_pi: 'each round''s meta-review — the verdict and its action items'
   stops: at Gate 3, for your signature
   outputs:
   - paper/reviews/ round reports + meta-review with a verdict (accept|revise|reject)
@@ -25,6 +26,8 @@ newts:
 **Whatever the method, it must produce:**
 - paper/reviews/ round reports + meta-review with a verdict (accept|revise|reject)
 - author response + revisions
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): each round's meta-review — the verdict and its action items. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Input: idea in state `internal-review`. Output: `studies/<slug>/paper/reviews/review-N.md`

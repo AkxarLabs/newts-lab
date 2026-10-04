@@ -11,6 +11,7 @@ newts:
   hint: idea slug
   title: Review the literature
   does: Searches and reads related work and gives a novelty verdict.
+  show_pi: 'the novelty verdict with the 3–5 closest papers and how this idea differs — a short Markdown note, once lit-review.md is written'
   stops: with the verdict
   outputs:
   - 'studies/<slug>/lit-review.md: search log, per-paper notes, novelty verdict (novel|incremental|done-before|inconclusive),
@@ -24,6 +25,8 @@ newts:
 
 **Whatever the method, it must produce:**
 - studies/<slug>/lit-review.md: search log, per-paper notes, novelty verdict (novel|incremental|done-before|inconclusive), positioning
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the novelty verdict with the 3–5 closest papers and how this idea differs — a short Markdown note, once lit-review.md is written. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Input: an idea in state `triaged`. Output: `studies/<slug>/lit-review.md` (from `templates/idea/lit-review.md`) and a novelty verdict that gates progression.

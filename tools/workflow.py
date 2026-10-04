@@ -262,7 +262,7 @@ def ui_view(hub=None) -> dict:
     """What the dashboard needs: the manifest's vocabulary + the PI's customisations + pending proposals."""
     m = load(hub)
     keep = ("title", "does", "stops", "kind", "level", "mode", "args", "hint", "launchable", "replaceable",
-            "outputs", "anchors", "uses", "start")
+            "outputs", "anchors", "uses", "start", "show_pi")
     procs = {n: {k: p[k] for k in keep if k in p} for n, p in (m.get("procedures") or {}).items()}
     pend = proposals(hub)
     return {
@@ -612,9 +612,11 @@ def brief(proc: str, hub=None, study: str | None = None) -> tuple[str, str]:
                     method_src += " (the default method has changed since — the PI may want to review)"
                 break
 
-    if p.get("outputs") or p.get("anchors"):
+    if p.get("outputs") or p.get("anchors") or p.get("show_pi"):
         req = ["## What this procedure must still produce"]
         req += [f"- {o}" for o in p.get("outputs", [])]
+        if p.get("show_pi"):
+            req.append("- for the PI to look at — " + show_pi_line(p, p.get("level") == "project"))
         if p.get("anchors"):
             req.append("- other procedures rely on these parts of the contract, so any method must work "
                        "with them: " + ", ".join(p["anchors"]))
@@ -827,6 +829,14 @@ def advance_table(hub=None) -> str:
     return "\n".join(rows)
 
 
+def show_pi_line(p: dict, project: bool = False) -> str:
+    """What this procedure publishes for the PI to look at (tools/artifact.py — AGENTS.md "Showing the PI something")."""
+    tool = '"$NEWTS_HUB/tools/artifact.py"' if project else "tools/artifact.py"
+    return (f"**Show the PI** (`python {tool} publish --title \"…\" --file <path>`): {str(p['show_pi']).strip()}. "
+            "One artifact for what they would genuinely want to see — not a running commentary. A decision you need "
+            "takes `--question \"…\" --choices \"A;B\"` (the answer comes back to this run); it is never a gate signature.")
+
+
 def contract_block(proc: str, hub=None) -> str:
     """The generated head of a procedure's SKILL.md: load the brief, what the method is, what it must produce."""
     p = procedure(proc, hub) or {}
@@ -845,6 +855,8 @@ def contract_block(proc: str, hub=None) -> str:
     if p.get("outputs"):
         lines.append("\n**Whatever the method, it must produce:**")
         lines += [f"- {o}" for o in p["outputs"]]
+    if p.get("show_pi"):
+        lines.append("\n" + show_pi_line(p, project))
     if p.get("anchors"):
         lines.append(f"\nOther procedures rely on these parts of this contract: {', '.join(p['anchors'])}.")
     return "\n".join(lines)

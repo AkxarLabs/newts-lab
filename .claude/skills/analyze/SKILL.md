@@ -11,6 +11,7 @@ newts:
   hint: project slug
   title: Analyze results
   does: 'Analyzes the runs and routes the study: more experiments, writing, or stop.'
+  show_pi: 'the headline findings (each with its run ids) and the key figure, with your routing decision in the note'
   outputs:
   - an analysis entry (verified against run artifacts) in the study
   - findings distilled to lab/knowledge
@@ -26,6 +27,8 @@ newts:
 - an analysis entry (verified against run artifacts) in the study
 - findings distilled to lab/knowledge
 - a routing decision: more experiments | writing | kill
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the headline findings (each with its run ids) and the key figure, with your routing decision in the note. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Input: project in state `analysis` (or mid-`active` for an interim read). Output: an analysis written into the project + distilled knowledge in the hub + a go/no-go on writing.

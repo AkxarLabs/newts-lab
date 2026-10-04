@@ -11,6 +11,7 @@ newts:
   hint: study slug
   title: Write the paper
   does: Drafts the paper with every claim linked to evidence.
+  show_pi: 'the compiled PDF once a full draft exists'
   outputs:
   - studies/<slug>/paper/main.tex (compiled main.pdf)
   - 'paper/claims.yaml: every quantitative claim → run id + artifact'
@@ -26,6 +27,8 @@ newts:
 - studies/<slug>/paper/main.tex (compiled main.pdf)
 - paper/claims.yaml: every quantitative claim → run id + artifact
 - paper/references.bib from the lit-review notes only
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the compiled PDF once a full draft exists. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Input: idea in state `writing` with a completed analysis. Output: `studies/<slug>/paper/`

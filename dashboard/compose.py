@@ -477,7 +477,7 @@ def _set_skill_meta(name: str, fields: dict) -> None:
 
 
 PROC_FIELDS = {"title", "does", "stops", "description", "kind", "level", "mode", "args", "hint", "launchable",
-               "replaceable", "dispatchable", "start", "outputs", "brief_note"}
+               "replaceable", "dispatchable", "start", "outputs", "brief_note", "show_pi"}
 
 
 # ── the operations (POST /api/compose {op, …}) ───────────────────────────────────────────────────

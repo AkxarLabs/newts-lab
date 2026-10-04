@@ -11,6 +11,7 @@ newts:
   hint: idea slug
   title: Scope the design
   does: Writes the design decisions (and re-checks whether it is still worth doing).
+  show_pi: 'a design decision you could not settle on the evidence — as a question with the options you weighed (`--question … --choices …`); settled decisions stay in decisions.md'
   outputs:
   - studies/<slug>/decisions.md (ADR-style, one entry per key decision)
   - value re-verification result
@@ -24,6 +25,8 @@ newts:
 **Whatever the method, it must produce:**
 - studies/<slug>/decisions.md (ADR-style, one entry per key decision)
 - value re-verification result
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): a design decision you could not settle on the evidence — as a question with the options you weighed (`--question … --choices …`); settled decisions stay in decisions.md. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Input: idea in state `lit-review` with a novel/incremental verdict. Output:

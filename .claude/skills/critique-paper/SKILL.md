@@ -11,6 +11,7 @@ newts:
   hint: study slug
   title: Critique the paper
   does: A fresh-context reviewer ensemble critiques the draft.
+  show_pi: 'the critique summary — per-lens scores and the top action items'
   outputs:
   - 'studies/<slug>/critiques/ or paper/reviews/ report: per-lens scores, meta-review, action items'
   brief_note: "External mode (no study): omit `--study`. The brief is for YOU, the meta-reviewer — never paste it into a reviewer prompt (step 2)."
@@ -23,6 +24,8 @@ newts:
 
 **Whatever the method, it must produce:**
 - studies/<slug>/critiques/ or paper/reviews/ report: per-lens scores, meta-review, action items
+
+**Show the PI** (`python tools/artifact.py publish --title "…" --file <path>`): the critique summary — per-lens scores and the top action items. One artifact for what they would genuinely want to see — not a running commentary. A decision you need takes `--question "…" --choices "A;B"` (the answer comes back to this run); it is never a gate signature.
 <!-- /newts:contract -->
 
 Ensemble sizes, anchors, and cycle caps come from `lab/config.yaml` (`critique.*`).
