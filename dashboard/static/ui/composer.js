@@ -47,12 +47,18 @@
     { id: 'campaign', icon: '⟳', title: 'Plan a campaign', campaign: true, order: 6,
       onramp: 'Sign a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.',
       onrampTitle: 'Start a campaign and walk away' }];
+  // a one-line "what it does" under each tile — so near neighbours (one step vs pick a step) read apart
+  const INTENT_WORDS = {
+    study: { title: 'Work on a study', desc: 'pick what to do on it, or give it notes' },
+    advance: { title: 'Advance a study one step', desc: 'run its next step, then stop' },
+    configure: { desc: 'an agent walks you through any setting, incl. ones not in Settings' },
+    campaign: { desc: 'carry several ideas while you’re away, within signed bounds' } };
   NL.intents = () => Object.entries(NL.PROC).filter(([, p]) => p.start && p.launchable !== false).map(([name, p]) => {
     const st = p.start, args = p.args || '';
     return { id: name, icon: st.icon || '▸', title: st.title || p.title || name, skill: name, order: st.order ?? 50,
       arg: args.includes('text') ? 'text' : null, argLabel: st.label, placeholder: st.placeholder,
       target: args.startsWith('slug?') ? 'study?' : null, onramp: st.onramp, does: p.does };
-  }).concat(BUILT_IN).sort((a, b) => a.order - b.order);
+  }).concat(BUILT_IN).map(i => ({ ...i, ...(INTENT_WORDS[i.id] || {}) })).sort((a, b) => a.order - b.order);
 
   NL.StartSheet = ({ onClose, intent: initial, target: initTarget, skill: initSkill, args: initArgs }) => {
     const s = NL.useLab();
@@ -101,7 +107,7 @@
       </div>
       <div class="or"><span>or start a procedure</span></div>
       <div class="intents">${INTENTS.map(i => html`<button type="button" class=${cls('intent', intent === i.id && 'on')} onClick=${() => setIntent(i.id)}>
-        <span class="intent-ico" aria-hidden="true">${i.icon}</span><span class="intent-t">${i.title}</span></button>`)}</div>
+        <span class="intent-ico" aria-hidden="true">${i.icon}</span><span class="intent-t" style="display:flex;flex-direction:column;gap:2px;min-width:0">${i.title}${i.desc ? html`<small class="muted" style="font-weight:400;font-size:12px;line-height:1.3">${i.desc}</small>` : null}</span></button>`)}</div>
       ${it && it.campaign ? html`<${CampaignForm} onDone=${onClose} />` : null}
       ${it && !it.campaign ? html`<div class="intent-detail">
         ${(it.study || it.target) ? html`<${StudyPicker} value=${target} onChange=${setTarget} allowLab=${it.target === 'study?'} filter=${i => !NL.isTerminal(i.state)} />` : null}
@@ -178,7 +184,7 @@
     const s = NL.useLab();
     const [f, setF] = useState({ direction: '', name: '', ideas: 3, parallel: 1, compute_total: '', full_runs: 3, full_minutes: 60,
       max_open_questions: 2, mode: 'execute', explore_rounds: 1, explore_lines: 2, hours: 12, agent_hours: null,
-      cycle_minutes: 90, repeat_minutes: 20, gate1: true, gate3: false });
+      cycle_minutes: 90, repeat_minutes: 20, gate1: false, gate3: false, spend_cap: '' });
     const [ready, setReady] = useState(false);
     const [more, setMore] = useState(false);
     const set = (k, v) => setF(o => ({ ...o, [k]: v }));
@@ -186,20 +192,24 @@
     const autoAgentHours = Math.max(0, (+f.hours || 0) * Math.max(1, +f.parallel || 1));
     const agentHours = f.agent_hours == null ? autoAgentHours : f.agent_hours;
     const until = new Date(Date.now() + (+f.hours || 0) * 3600e3);
+    const spendCap = Math.max(0, +f.spend_cap || 0);   // blank / 0 = no cap
     const labName = (s.lab_info || {}).name || 'this lab';
     const machine = s.remote ? s.remote.name : 'this computer';
-    const G1_BOUNDS = 'Only when all hold: within the limits above, kill criteria + frozen eval present, novelty verdict “novel”, scoping passed. Gate 2 (each project’s FULL-run envelope) comes from the same limits. Anything outside them waits for you. Untick it and every proposal waits for you.';
+    const G1_BOUNDS = 'Only when all hold: within the limits above, kill criteria + frozen eval present, novelty verdict “novel”, scoping passed. Gate 2 (each project’s FULL-run envelope) comes from the same limits. Anything outside them waits for you. Leave it unticked (the default) and every proposal waits for you.';
     const sign = async (launch) => {
       if (!f.direction.trim()) return NL.toast('Describe the direction first', 'warn');
       const body = html`<div><p>Your signature lets the lab work on its own <b>within these bounds</b>: ${f.gate1
           ? html`agents approve proposals that fit them (Gate 1) and derive each project's FULL-run envelope (Gate 2) from them.`
           : html`<b>every proposal waits for your Gate 1</b>; once you approve one, its FULL-run envelope (Gate 2) comes from these bounds.`} Anything outside the bounds waits for you, and the rest of the campaign carries on.</p>
         <p>${f.gate3 ? html`<b>Papers may finalize without you.</b> Once a paper passes internal review, the lab itself re-runs the paper audits and, if they are clean, records Gate 3 and runs /finalize. Nothing is sent outside the lab. You can revoke this, or hold a study, from the campaign card.` : html`Papers stop at <b>internal review</b> for your Gate 3.`}</p>
+        <p>${spendCap ? html`It stops when its runs have spent <b>$${spendCap.toFixed(2)}</b> (estimated from token use), and writes its final report.`
+          : html`<b>No spending cap — it can spend until its hours or agent-hours run out.</b>`}</p>
         <p class="muted">It runs in ${labName} on ${machine} until ${NL.when(until)}${+agentHours ? ` or ${+agentHours} agent-hours, whichever comes first` : ''}, restarting after timeouts, usage limits and network errors. ${launch ? '' : 'Signing only records the brief; you start it later. '}Stop or pause it any time from the campaign card on Home or Studies.</p></div>`;
       const ok = await NL.confirm({ title: 'Sign this campaign?', ok: launch ? 'Sign and start' : 'Sign', body,
         typed: f.gate3 ? 'finalize' : undefined });
       if (!ok) return;
-      const fields = { ...f, agent_hours: +agentHours || 0 };
+      // gate1 is always sent explicitly (the backend treats a missing field as "on", for older callers)
+      const fields = { ...f, agent_hours: +agentHours || 0, gate1: !!f.gate1, spend_cap: spendCap };
       const r = await NL.act('/api/campaign', { confirm: true, fields, launch, gate3_typed: f.gate3 ? 'finalize' : undefined });
       if (r.ok) { onDone && onDone(); if (r.campaign) NL.go('studies?campaign=' + encodeURIComponent(r.campaign)); }
     };
@@ -217,8 +227,10 @@
           <${NL.Field} label="Agent-hours" hint=${f.agent_hours == null ? 'hours × at once · 0 = only the clock' : html`0 = only the clock · <button type="button" class="link small" onClick=${() => set('agent_hours', null)}>back to ${autoAgentHours}</button>`}><${NL.Input} type="number" min="0" value=${agentHours} onInput=${v => set('agent_hours', v)} /></${NL.Field}>
           <${NL.Field} label="FULL runs per project" hint="a FULL run is a full-scale experiment, after the pilot"><${NL.Input} type="number" min="0" value=${f.full_runs} onInput=${v => set('full_runs', v)} /></${NL.Field}>
           <${NL.Field} label="Minutes per FULL run"><${NL.Input} type="number" min="0" value=${f.full_minutes} onInput=${v => set('full_minutes', v)} /></${NL.Field}>
+          <${NL.Field} label="Spend cap ($) — the campaign stops when its runs have spent this much (estimated from token use)"
+            hint=${spendCap ? 'it stops there and writes its final report' : 'blank or 0 = no cap'}><${NL.Input} type="number" min="0" step="1" value=${f.spend_cap} onInput=${v => set('spend_cap', v)} placeholder="no cap" /></${NL.Field}>
         </div>
-        <div class="muted small">Spend so far shows on the campaign card; there is no $ cap.</div></div>
+        <div class="muted small">Spend so far shows on the campaign card${spendCap ? '' : ' — with no cap, it can spend until its hours or agent-hours run out'}.</div></div>
       <div class="camp-group camp-group-soft"><div class="camp-group-h">Notes for the agents (not enforced)</div>
         <${NL.Field} label="Total compute" hint="written into the brief for the agents to plan by"><${NL.Input} value=${f.compute_total} onInput=${v => set('compute_total', v)} placeholder="e.g. 8 GPU-hours" /></${NL.Field}></div>
       <label class="check-row"><input type="checkbox" checked=${f.gate1} onChange=${e => set('gate1', e.target.checked)} />

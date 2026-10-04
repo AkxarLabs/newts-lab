@@ -720,3 +720,25 @@ label.keep.keep-vis { padding: 3px 8px; border: 1px solid var(--edge); border-ra
 .agent-link { display: block; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--edge); text-decoration: none; color: var(--ink); }
 .agent-link:hover { border-color: var(--accent); } .agent-link small { display: block; color: var(--ink-soft); font-size: 12.5px; margin-top: 3px; }
 @media (max-width: 860px) { .agent-models, .agent-role, .agent-links { grid-template-columns: 1fr; } }
+.runrow-cost { margin-left: auto; padding-left: 8px; white-space: nowrap; }
+
+/* pause the lab; the labelled settings button */
+.paused-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; margin: 4px 0 8px;
+  background: color-mix(in srgb, var(--warm) 16%, var(--paper)); border: 1px solid color-mix(in srgb, var(--warm) 45%, var(--edge)); }
+.paused-bar .muted { flex: 1 1 140px; }
+.rail-head { gap: 8px; } .rail-pause { margin-left: auto; color: var(--ink-soft); }
+.iconbtn.labelled { width: auto; padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; }
+.iconbtn-label { font-size: 13px; font-weight: 500; }
+@media (max-width: 860px) { .iconbtn-label { display: none; } .iconbtn.labelled { padding: 0; } }
+
+/* usability polish: Compose "Under the hood" + change log summaries, readable shelf names, labs summary */
+.cmp-hood summary { cursor: pointer; color: var(--ink-soft); font-size: 13px; }
+.cmp-hood-list { display: grid; gap: 6px; margin-top: 8px; }
+.cmp-hood-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.cmp-hood-row code { color: var(--ink-soft); overflow-wrap: anywhere; }
+.cmp-desc { white-space: normal; line-height: 1.45; }
+.cmp-log-files { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.cmp-log-files li { overflow-wrap: anywhere; } .cmp-log-files .mono { margin-left: 4px; }
+.doc-name { display: block; overflow: hidden; text-overflow: ellipsis; }
+.doc-file { display: block; font-size: 11px; color: var(--ink-faint); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+.labs-summary p { margin: 2px 0; }

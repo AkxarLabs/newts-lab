@@ -12,6 +12,8 @@
     uv run --with pyyaml python tools/executor_cli.py answer <run_id> --pick "<question>=<label>" ... | --text "..."
     uv run --with pyyaml python tools/executor_cli.py reply  <run_id> --text "..."
     uv run --with pyyaml python tools/executor_cli.py resume|cancel|stop <run_id>
+    uv run --with pyyaml python tools/executor_cli.py pause [--reason "..."]   # stop every live run; start nothing
+    uv run --with pyyaml python tools/executor_cli.py resume                   # (no run id) un-pause the lab
     uv run --with pyyaml python tools/executor_cli.py stop --target <slug> | --campaign <name>   # every live run
     uv run --with pyyaml python tools/executor_cli.py reconcile | attention | health | skills
 
@@ -168,6 +170,33 @@ def cmd_stop(lab: Lab, a) -> int:
     return 0
 
 
+def cmd_pause(lab: Lab, a) -> int:
+    out = executor.pause.pause(lab, by="cli", reason=a.reason)
+    print("[executor] the lab " + ("was already paused" if out["already"] else "is paused")
+          + f" (since {out['since']}) — nothing new starts; queued runs wait for `resume`")
+    for rid in out["stopped"]:
+        print(f"[executor] stopped: {rid} (resumable)")
+    for name in out["campaigns"]:
+        print(f"[executor] campaign paused with the lab: {name}")
+    return 0
+
+
+def cmd_resume_lab(lab: Lab, a) -> int:
+    if not a.run_id:
+        out = executor.pause.resume(lab, by="cli")
+        print("[executor] the lab " + ("was not paused" if out["already"] else "is running again")
+              + " — queued runs start on the next tick")
+        for name in out["campaigns"]:
+            print(f"[executor] campaign resumed: {name}")
+        if out["stopped_earlier"]:
+            print(f"[executor] {len(out['stopped_earlier'])} run(s) the pause stopped stay stopped — "
+                  "resume each with `resume <run_id>`")
+        if not out["already"]:
+            executor.scheduler.ensure_ticker(lab)
+        return 0
+    return _simple("resume")(lab, a)
+
+
 def cmd_tick(lab: Lab, a) -> int:
     _p(executor.tick(lab, wait=5))
     return 0
@@ -274,10 +303,15 @@ def main(argv=None) -> int:
     rp.add_argument("run_id")
     rp.add_argument("--text", required=True)
     rp.set_defaults(fn=_simple("reply"))
-    for name in ("resume", "cancel"):
-        q = sub.add_parser(name)
-        q.add_argument("run_id")
-        q.set_defaults(fn=_simple(name))
+    q = sub.add_parser("resume", help="resume a run — or, with no run id, the whole lab after `pause`")
+    q.add_argument("run_id", nargs="?")
+    q.set_defaults(fn=cmd_resume_lab)
+    q = sub.add_parser("cancel")
+    q.add_argument("run_id")
+    q.set_defaults(fn=_simple("cancel"))
+    pz = sub.add_parser("pause", help="pause the whole lab: stop every live run, start nothing until `resume`")
+    pz.add_argument("--reason", default=None)
+    pz.set_defaults(fn=cmd_pause)
     st = sub.add_parser("stop", help="stop a run, or every live run of a target / campaign")
     st.add_argument("run_id", nargs="?")
     st.add_argument("--target", default=None)

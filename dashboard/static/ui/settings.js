@@ -46,8 +46,11 @@
 
   /* every settings form saves the same way: the changed keys, shown old → new, confirmed, then written */
   const changed = (keys, v, orig) => keys.filter(k => String(v[k] ?? '') !== String(orig[k] ?? ''));
-  const saveChanges = async (title, path, keys, v, orig) => {
-    if (!keys.length || !await NL.confirm({ title, ok: 'Save', body: html`<ul class="diff">${keys.map(k => html`<li><span class="mono">${k}</span>: ${String(orig[k] ?? '—')} → <b>${String(v[k])}</b></li>`)}</ul>` })) return {};
+  const LABELS = {};   // key → the label its field shows (filled in by each form's table below)
+  const shown = (k, x) => (x === '' || x == null ? 'default' : x === true ? 'on' : x === false ? 'off' : String(x));
+  const saveChanges = async (title, path, keys, v, orig, note) => {
+    if (!keys.length || !await NL.confirm({ title, ok: 'Save changes', body: html`<ul class="diff">${keys.map(k => html`<li>${LABELS[k] || k}: ${shown(k, orig[k])} → <b>${shown(k, v[k])}</b></li>`)}</ul>
+      <p class="muted small">${note || 'Takes effect for new runs; agents already running carry on as they are.'}</p>` })) return {};
     return NL.act(path, { confirm: true, changes: Object.fromEntries(keys.map(k => [k, v[k]])) }, 'Saved');
   };
 
@@ -64,26 +67,52 @@
     ['campaign_question_minutes', 'In a campaign, wait for an answer', 'minutes; then the agent takes its recommended option and tells you', 1, 30],
     ['linger_minutes', 'Keep Ask Newt (the chat box on Home) open after it answers', 'minutes, for your next message', 0, 10],
   ];
+  EXEC.forEach(([k, label]) => { LABELS[k] = label; });
+  Object.assign(LABELS, { backend: 'Default agent', model: 'Default model (all tools)', permission_mode: 'What Claude may do without asking',
+    auto_spawn_on_gate1: 'Create the project as soon as I sign Gate 1', live: 'Talk to agents while they run',
+    claude_model: 'Claude — model', claude_effort: 'Claude — effort', codex_model: 'Codex — model', codex_effort: 'Codex — effort',
+    opencode_model: 'opencode — model', opencode_variant: 'opencode — variant', tier_strong: 'Strong tier', tier_standard: 'Standard tier', tier_fast: 'Fast tier',
+    reviewer_model: 'Paper reviewers — model', runner_model: 'Experiment runners — model', overseer_model: 'Overseers — model', critic_model: 'Critics & advocates — model',
+    name: 'Lab name', projects_root: 'Where project repos go', max_concurrent_runs: 'Training runs at once (all projects)',
+    max_concurrent_projects: 'Projects a campaign carries at once', oversight: 'Oversight', venue: 'Target venue', page_limit: 'Page limit',
+    loop_mode: 'Research loops', explore_rounds: 'Plan-widening rounds per loop', in_project_approval: 'New approaches inside a campaign',
+    keep_awake: 'Keep the computer awake',
+    reviewer_effort: 'Paper reviewers — effort', runner_effort: 'Experiment runners — effort', overseer_effort: 'Overseers — effort', critic_effort: 'Critics & advocates — effort' });
+
+  /* which tool starts by default, and one model forced on every tool (Settings → Agents) */
+  const DefaultAgent = () => {
+    const s = NL.useLab();
+    const x = NL.exec(s), cfg = x.config || {};
+    const init = () => ({ backend: x.backend || 'claude', model: cfg.model || '' });
+    const [v, setV] = useState(init);
+    const orig = init();
+    const diff = changed(Object.keys(v), v, orig);
+    const set = (k, val) => setV(o => ({ ...o, [k]: val }));
+    return html`<div class="form"><div class="grid2">
+        <${NL.Field} label="Default agent" hint="the tool a new run uses unless you pick another"><${NL.Select} value=${v.backend} onChange=${x2 => set('backend', x2)} options=${['claude', 'codex', 'opencode']} /></${NL.Field}>
+        <${NL.Field} label="One model for every tool (optional)" hint="leave blank to use each tool's model below — when set, it overrides them all"><${NL.Input} value=${v.model} onInput=${x2 => set('model', x2)} mono placeholder="blank = each tool's own" /></${NL.Field}></div>
+      ${diff.length ? html`<div class="row end"><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}><${NL.Btn} kind="primary" onClick=${() => saveChanges('Save the default agent?', '/api/executor/config', diff, v, orig)}>Save changes…</${NL.Btn}></div>` : null}</div>`;
+  };
+
   const ExecForm = () => {
     const s = NL.useLab();
     const x = NL.exec(s), cfg = x.config || {};
-    const init = () => Object.fromEntries([...EXEC.map(([k]) => [k, cfg[k] ?? '']), ['backend', x.backend || 'claude'], ['model', cfg.model || ''], ['permission_mode', x.permission_mode || 'auto'], ['auto_spawn_on_gate1', !!x.auto_spawn_on_gate1], ['live', cfg.live !== false]]);
+    const init = () => Object.fromEntries([...EXEC.map(([k]) => [k, cfg[k] ?? '']), ['permission_mode', x.permission_mode || 'auto'], ['auto_spawn_on_gate1', !!x.auto_spawn_on_gate1], ['live', cfg.live !== false]]);
     const [v, setV] = useState(init);
     const orig = init();
     const diff = changed(Object.keys(v), v, orig);
     const save = () => saveChanges('Save these settings?', '/api/executor/config', diff, v, orig);
     const set = (k, val) => setV(o => ({ ...o, [k]: val }));
     return html`<div class="form">
+      <p class="muted small">Which agent and model: <a class="link" href="#/settings/agents">Settings → Agents</a>.</p>
       <div class="grid2">
-        <${NL.Field} label="Default agent"><${NL.Select} value=${v.backend} onChange=${x2 => set('backend', x2)} options=${['claude', 'codex', 'opencode']} /></${NL.Field}>
-        <${NL.Field} label="Default model" hint="blank or “inherit” = the agent's own default"><${NL.Input} value=${v.model} onInput=${x2 => set('model', x2)} mono /></${NL.Field}>
-        <${NL.Field} label="What claude may do without asking" hint="auto = its safety classifier decides; plan = read-only"><${NL.Select} value=${v.permission_mode} onChange=${x2 => set('permission_mode', x2)}
+        <${NL.Field} label="What Claude may do without asking" hint="auto = its safety classifier decides; plan = read-only"><${NL.Select} value=${v.permission_mode} onChange=${x2 => set('permission_mode', x2)}
           options=${[{ value: 'auto', label: 'auto (recommended)' }, { value: 'acceptEdits', label: 'accept file edits' }, { value: 'default', label: 'ask for everything' }, { value: 'plan', label: 'plan only (read-only)' }, { value: 'dontAsk', label: 'deny anything that would ask' }]} /></${NL.Field}>
         ${EXEC.map(([k, label, hint, min, def]) => html`<${NL.Field} label=${label} hint=${hint}><${NL.Input} type="number" min=${min} value=${v[k]} onInput=${x2 => set(k, x2)} placeholder=${def != null ? String(def) + ' (default)' : ''} /></${NL.Field}>`)}
       </div>
       <${NL.Toggle} on=${v.live} onChange=${x2 => set('live', x2)} label="Talk to agents while they run" sub="live sessions: questions, approvals and your messages reach the running agent; off = each answer restarts it" />
       <${NL.Toggle} on=${v.auto_spawn_on_gate1} onChange=${x2 => set('auto_spawn_on_gate1', x2)} label="Create the project as soon as I sign Gate 1" sub="queues creating the project repo right after your signature" />
-      <div class="row end">${diff.length ? html`<span class="muted small">${NL.plural(diff.length, 'change')}</span><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div></div>`;
+      <div class="row end">${diff.length ? html`<span class="muted small">${NL.plural(diff.length, 'change')}</span><${NL.Btn} onClick=${() => setV(init())}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save changes…</${NL.Btn}></div></div>`;
   };
 
   NL.LaunchSwitch = () => {
@@ -121,7 +150,7 @@
       <${NL.Field} label="New approaches inside a campaign" hint="a headline-changing idea found mid-project"><${NL.Seg} value=${v.in_project_approval || 'pi'} onChange=${x => set('in_project_approval', x)} options=${[{ value: 'pi', label: 'Ask me' }, { value: 'campaign_auto', label: 'Within the campaign bounds' }]} /></${NL.Field}>
       <${NL.Field} label="Keep the computer awake" hint="while agents work or a campaign runs (the screen may still turn off)"><${NL.Seg} value=${v.keep_awake || 'auto'} onChange=${x => set('keep_awake', x)} options=${[{ value: 'auto', label: 'While working' }, { value: 'off', label: 'Never' }]} /></${NL.Field}>
       <${NL.Field} label="Budget tier" hint="how much exploration each procedure does"><div class="row">${['low', 'medium', 'high'].map(t => html`<${NL.Btn} small onClick=${() => tier(t)}>${t}</${NL.Btn}>`)}</div></${NL.Field}>
-    </div><div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div>
+    </div><div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save changes…</${NL.Btn}></div>
     <div class="stack"><button class="link" onClick=${() => NL.open(NL.DocEditSheet, { which: 'system' })}>Describe this machine for the agents (SYSTEM.md) →</button>
       <button class="link" onClick=${() => NL.openStart({ intent: 'configure' })}>Change anything else with an agent (/configure) →</button></div></div>`;
   };
@@ -160,9 +189,9 @@
     const p = NL.usePrefs(), c = p.cast || {};
     const chars = (window.Lab3D && Lab3D.CHARACTERS) || [{ id: 'newt', label: 'Newt' }];
     const opts = chars.map(x => ({ value: x.id, label: x.label }));
-    const set = patch => { const next = { ...c, ...patch }; NL.setPref('cast', next); NL.Scene && NL.Scene.setCast(next); };
+    const set = patch => { const next = { ...c, ...patch }; NL.setPref('cast', next); NL.Scene && NL.Scene.setCast(next); NL.toast('Saved — for this browser', 'ok'); };
     return html`<${NL.Section} title="The cast">
-      <p class="muted small">Who plays the agents on Home. A main agent's subagents are smaller copies of it, in the same colours.</p>
+      <p class="muted small">Who plays the agents on Home. A main agent's subagents are smaller copies of it, in the same colours. Saved at once, for this browser.</p>
       <${NL.Seg} value=${c.mode || 'backend'} onChange=${v => set({ mode: v })} options=${[{ value: 'backend', label: 'One per tool' }, { value: 'one', label: 'One for everyone' }]} />
       ${c.mode === 'one' ? html`<${NL.Field} label="Every agent is a"><${NL.Select} value=${c.one || 'newt'} onChange=${v => set({ one: v })} options=${opts} /></${NL.Field}>`
         : html`<div class="grid3">${[['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'opencode']].map(([k, l]) => html`<${NL.Field} label=${l}><${NL.Select} value=${c[k] || 'newt'} onChange=${v => set({ [k]: v })} options=${opts} /></${NL.Field}>`)}</div>`}
@@ -266,7 +295,7 @@
           <div class="grid2"><${NL.Field} label="Job script header lines"><textarea class="input textarea mono" rows="3" value=${lines(custom.header)} onInput=${e => set('custom.header', toLines(e.target.value))}></textarea></${NL.Field}>
             <${NL.Field} label="Setup lines"><textarea class="input textarea mono" rows="3" value=${lines(custom.setup)} onInput=${e => set('custom.setup', toLines(e.target.value))}></textarea></${NL.Field}></div>` : null}
         <p class="muted small">${sc.kind === 'local' ? 'Runs execute on this machine, one per compute slot.' : 'run.py submits each run and waits for it — same artifacts, same logs, budgets enforced on the node; queue time never counts. Agents are told never to submit jobs themselves.'}</p>
-        <div class="row end"><${NL.Btn} kind="primary" onClick=${save}>Save…</${NL.Btn}></div></${NL.Section}>` : null}
+        <div class="row end"><${NL.Btn} kind="primary" onClick=${save}>Save changes…</${NL.Btn}></div></${NL.Section}>` : null}
     </div>`;
   };
 
@@ -275,6 +304,7 @@
   const EFFORT = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
   const effortOpts = xs => xs.map(e => ({ value: e, label: e || 'the model’s default' }));
   const AgentModels = () => {
+    const forced = ((NL.exec(NL.useLab()).config || {}).model || '').trim();
     const [c, setC] = useState(null);
     const [v, setV] = useState({});
     const load = () => NL.get('/api/lab/config').then(x => { setC(x.config || {}); setV({ ...(x.config || {}) }); });
@@ -293,8 +323,8 @@
     const model = (k, ph) => html`<${NL.Input} mono value=${v[k] || ''} onInput=${x => set(k, x)} placeholder=${ph} />`;
     return html`<div class="form">
       <${NL.Section} title="Main agents — the model each tool runs">
-        <p class="muted small">A main agent is one run: a study's next step, a campaign pass, or what you ask Newt. Blank = the tool's own default.
-          (A model under Autonomy → “Default model”, if set, overrides these for every tool.)</p>
+        <p class="muted small">A main agent is one run: a study's next step, a campaign pass, or what you ask Newt. Blank = the tool's own default.</p>
+        ${forced ? html`<div class="note note-warn">“One model for every tool” is set to <b class="mono">${forced}</b> above, so it overrides these. Clear it to use them.</div>` : null}
         <div class="agent-models">
           <b>Claude</b>${model('claude_model', 'e.g. sonnet, opus, claude-sonnet-5-5')}<${NL.Select} value=${v.claude_effort || ''} onChange=${x => set('claude_effort', x)} options=${effortOpts(EFFORT)} />
           <b>Codex</b>${model('codex_model', 'e.g. gpt-6-luna')}<${NL.Select} value=${v.codex_effort || ''} onChange=${x => set('codex_effort', x)} options=${effortOpts(['', 'minimal', 'low', 'medium', 'high', 'xhigh'])} />
@@ -309,12 +339,13 @@
           ${!(tiers.includes(v[r + '_model']) || v[r + '_model'] === 'inherit' || !v[r + '_model']) ? model(r + '_model', 'model name') : html`<span></span>`}
           <${NL.Select} value=${v[r + '_effort'] || ''} onChange=${x => set(r + '_effort', x)} options=${effortOpts(EFFORT)} /></div>`)}</div>
       </${NL.Section}>
-      <div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div>
+      <div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save changes…</${NL.Btn}></div>
     </div>`;
   };
   const AgentsPage = () => html`<div class="agents-page">
     <p class="lede">Everything about the agents in one place. They run on this machine, as you — and they can never sign a gate.</p>
-    <${NL.Section} title="Tools on this machine"><p class="muted small">The command-line agents the lab can start. At least one needs to be installed and signed in.</p><${NL.AgentsSignIn} /></${NL.Section}>
+    <${NL.Section} title="Tools on this machine"><p class="muted small">The command-line agents the lab can start. At least one needs to be installed and signed in.</p><${NL.AgentsSignIn} />
+      <${DefaultAgent} /></${NL.Section}>
     <${AgentModels} />
     <${Cast} />
     <${NL.Section} title="What they do">

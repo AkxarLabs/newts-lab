@@ -40,12 +40,17 @@ def campaign_create(body: dict) -> tuple[dict, int]:
         agent_hours = float(f.get("agent_hours") if f.get("agent_hours") not in (None, "") else 0)
         cycle_minutes = float(f.get("cycle_minutes") if f.get("cycle_minutes") not in (None, "") else 90)
         repeat_minutes = float(f.get("repeat_minutes") if f.get("repeat_minutes") not in (None, "") else 20)
+        # a hard $ cap on what the campaign's runs spend (estimated from token use); blank / 0 = no cap
+        spend_cap = float(f.get("spend_cap") if f.get("spend_cap") not in (None, "") else 0)
     except (TypeError, ValueError):
-        return {"error": "hours and minutes must be numbers"}, 400
+        return {"error": "hours, minutes and the spend cap must be numbers"}, 400
+    if spend_cap < 0 or spend_cap != spend_cap or spend_cap > 1e6:
+        return {"error": "the spend cap must be 0 (no cap) or a positive dollar amount"}, 400
     if not (0 < hours <= 24 * 30) or agent_hours < 0 or not (10 <= cycle_minutes <= 24 * 60) or not (5 <= repeat_minutes <= 24 * 60):
         return {"error": "wall-clock 0–720 h; each cycle 10–1440 min; a pass every 5–1440 min"}, 400
     # Gate 1 by delegation is the PI's choice on the form ("Proposals may pass Gate 1 without me when they fit
-    # these bounds"); absent = on (the form's default, and briefs signed before the switch existed)
+    # these bounds"); absent = on (callers older than the switch) — the dashboard form always sends it, and
+    # there it is opt-in (unticked by default)
     g1 = f.get("gate1", True)
     gate1_auto = not (g1 is False or str(g1).strip().lower() in ("false", "0", "no", "off"))
     gate3_auto = bool(f.get("gate3"))
@@ -93,7 +98,8 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     t = t.replace("caps: ___ expansion rounds, ___ new lines/round", f"caps: {rounds} expansion rounds, {lines_per} new lines/round")
     t = re.sub(r"\*\*Total wall-clock:\*\* ___ \([^)]*\)", f"**Total wall-clock:** {wall}", t)
     t = t.replace("**Total compute:** ___", f"**Total compute:** {budget_total}"
-                  + (f" · agent time ≤ {agent_hours:g} h" if agent_hours else ""))
+                  + (f" · agent time ≤ {agent_hours:g} h" if agent_hours else "")
+                  + (f" · spend ≤ ${spend_cap:,.2f} (hard cap: the lab stops the campaign there)" if spend_cap else ""))
     if gate3_auto:
         t = t.replace("- [ ] Papers may finalize without me", "- [x] Papers may finalize without me")
     t = t.replace("- [ ] Authorized as scoped above · **PI:** ______ · **Date/time:** ______",
@@ -107,7 +113,8 @@ def campaign_create(body: dict) -> tuple[dict, int]:
     rel = f"lab/campaigns/{name}"
     ctx.emit_hub("campaign_signed", detail=f"campaign {rel} signed (PI via dashboard)")
     ctx.pi_log({"action": "campaign.sign", "file": rel, "fields": f})
-    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate1_auto": gate1_auto, "gate3_auto": gate3_auto}
+    out = {"ok": True, "file": rel, "note": f"campaign signed: {rel}", "gate1_auto": gate1_auto, "gate3_auto": gate3_auto,
+           "spend_cap_usd": spend_cap or None}
     if body.get("launch"):
         try:
             from executor import campaigns  # noqa: PLC0415 — tools/ is on sys.path via sources
@@ -115,13 +122,14 @@ def campaign_create(body: dict) -> tuple[dict, int]:
             sources.executor.check_enabled(lab)
             st = campaigns.create(lab, rel, hours=hours, agent_minutes=agent_hours * 60, cycle_minutes=cycle_minutes,
                                   repeat_minutes=repeat_minutes, gate3_auto=gate3_auto,
-                                  backend=body.get("backend") or None)
+                                  backend=body.get("backend") or None, spend_usd=spend_cap)
         except Exception as e:  # noqa: BLE001 — the brief is signed either way; say why it didn't start
             out["note"] = f"campaign signed ({rel}) but not started: {e}"
             out["warnings"] = [str(e)]
             return out, 200
         ctx.pi_log({"action": "campaign.start", "file": rel, "hours": hours, "agent_hours": agent_hours,
                    "cycle_minutes": cycle_minutes, "repeat_minutes": repeat_minutes, "gate1_auto": gate1_auto,
+                   "spend_cap_usd": spend_cap or None,
                    "gate3_auto": gate3_auto})
         out.update(campaign=st["name"], note=f"campaign signed and started — the lab keeps it going until {deadline}")
     return out, 200
@@ -162,7 +170,7 @@ def campaign_preflight(q: dict) -> tuple[dict, int]:
     backend = prog.get("backend") or "claude"
     cli = (status.get("clis") or {}).get(backend) or {}
     checks = [{"id": "launch", "ok": bool(prog.get("enabled")), "label": "Agents may be started from the dashboard",
-               "detail": "Settings → Autonomy & limits → Launching agents", "fix": "settings/autonomy"},
+               "detail": "Settings → Autonomy & limits → Let the dashboard start agents for you", "fix": "settings/autonomy"},
               {"id": "cli", "ok": bool(cli.get("found") or cli.get("path") or cli.get("version")),
                "label": f"The {backend} CLI is installed", "detail": cli.get("version") or cli.get("error") or "",
                "fix": "settings/agents"}]

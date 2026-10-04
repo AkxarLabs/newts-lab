@@ -7,8 +7,8 @@
   const { html, useState, useEffect, cls } = NL;
 
   /* ── the inbox: one list, typed actions ─────────────────────────────────── */
-  const ICON = { question: '?', assumed: '≈', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳', artifact: '❏' };
-  const PRIMARY = new Set(['answer', 'sign', 'allow', 'next', 'proposal']);
+  const ICON = { question: '?', assumed: '≈', needs_pi: '✋', gate: '✉', permission: '🔐', denied: '⊘', crashed: '✕', report: '✓', escalation: '⚠', stalled: '◴', subagent: '◌', brake: '⏸', proposal: '✎', campaign: '⟳', artifact: '?' };
+  const PRIMARY = new Set(['answer', 'sign', 'allow', 'next', 'proposal', 'artifact']);
   NL.attAct = async (it, a) => {
     const run = it.run_id, d = it.detail || {};
     switch (a.id) {
@@ -66,11 +66,12 @@
     if (!base || hidden || !ev.length) return null;
     const count = k => ev.filter(e => k.includes(e.kind)).length;
     const failed = ev.filter(e => e.kind === 'run_finished' && ['failed', 'timeout', 'killed'].includes(e.status)).length;
-    const bits = [[count(['run_finished', 'agent_finished']) - failed, 'runs finished'], [failed, 'failed'], [count(['gate_waiting']), 'gates opened'],
-      [ev.filter(e => /self-approved|campaign/.test(e.detail || '') && /gate/i.test(e.detail || '')).length, 'approved by a campaign'],
-      [count(['escalation']), 'escalations'], [count(['kill']), 'kills'], [count(['state_change']), 'stage changes'], [count(['artifact']), 'things for you']].filter(([n]) => n > 0);
+    const bits = [[count(['run_finished', 'agent_finished']) - failed, 'run finished', 'runs finished'], [failed, 'failed', 'failed'], [count(['gate_waiting']), 'gate opened', 'gates opened'],
+      [ev.filter(e => /self-approved|campaign/.test(e.detail || '') && /gate/i.test(e.detail || '')).length, 'approved by a campaign', 'approved by a campaign'],
+      [count(['escalation']), 'escalation', 'escalations'], [count(['kill']), 'study stopped', 'studies stopped'], [count(['state_change']), 'study moved on', 'studies moved on'],
+      [count(['artifact']), 'thing for you', 'things for you']].filter(([n]) => n > 0);
     if (!bits.length) return null;
-    return html`<div class="since"><a class="grow" href=${'#/history?since=' + encodeURIComponent(base)}>Since you were last here: ${bits.map(([n, l]) => `${n} ${l}`).join(' · ')} — see what happened →</a><button class="x" onClick=${() => { setHidden(true); const last = (s.events || []).slice(-1)[0]; if (last) NL.ls.set('nl-seen-through', last.ts); }} aria-label="dismiss">✕</button></div>`;
+    return html`<div class="since"><a class="grow" href=${'#/history?since=' + encodeURIComponent(base)}>Since you were last here: ${bits.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(' · ')} — see what happened →</a><button class="x" onClick=${() => { setHidden(true); const last = (s.events || []).slice(-1)[0]; if (last) NL.ls.set('nl-seen-through', last.ts); }} aria-label="dismiss">✕</button></div>`;
   };
 
   /* what agents made for you to look at, not opened yet (a question with one is already in Needs you) */
@@ -109,14 +110,15 @@
     const cold = !(s.items || []).length && !(s.runs || []).length;
     if (!prefs.rail) return html`<button class="rail-open" onClick=${() => NL.setPref('rail', true)} title="show Today">${needs.length ? html`<b class="badge">${needs.length}</b>` : null} Today ◂</button>`;
     return html`<aside class="rail" aria-label="Today" data-world-inset="right">
-      <header class="rail-head"><h2>Today</h2><button class="x" title="hide" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
+      <header class="rail-head"><h2>Today</h2>${s.lab_paused ? null : html`<button type="button" class="link small rail-pause" title="stop every agent now (resumable); nothing new starts until you resume" onClick=${() => NL.pauseLab(true)}>⏸ Pause the lab</button>`}<button class="x" title="hide" onClick=${() => NL.setPref('rail', false)}>▸</button></header>
+      <${NL.PausedBar} />
       <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}>
       <${SinceVisit} />
       ${NL.liveCampaigns(s).length ? html`<${NL.Section} title="Campaigns" className="rail-sec">${NL.liveCampaigns(s).map(c => html`<${NL.CampaignCard} key=${c.name} c=${c} compact />`)}</${NL.Section}>` : null}
       ${cold ? html`<${OnRamps} />` : html`
         <${NL.Section} title="Needs you" count=${needs.length || null} className="rail-sec">${needs.length ? needs.slice(0, 6).map(it => html`<${InboxRow} key=${it.id} it=${it} compact />`)
           : html`<div class="muted small">Nothing is waiting on you.</div>`}${needs.length > 6 ? html`<button class="link small" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}>all ${needs.length} →</button>` : null}</${NL.Section}>
-        <${NL.Section} title="Running" count=${running.length || null} className="rail-sec">${running.length ? running.slice(0, 5).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} compact />`)
+        <${NL.Section} title=${(() => { const n = running.filter(r => NL.RUN_ACTIVE.has(r.status)).length, qd = running.length - n; return qd ? `Running ${n} · queued ${qd}` : 'Running'; })()} count=${running.length === running.filter(r => NL.RUN_ACTIVE.has(r.status)).length ? running.length || null : null} className="rail-sec">${running.length ? running.slice(0, 5).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} compact />`)
           : html`<div class="muted small">No agents running.</div>`}</${NL.Section}>
         <${ForYou} />
         <${UpNext} />
@@ -232,7 +234,7 @@
       ${tab === 'events' ? (!evs.length ? html`<${NL.Empty} icon="◷">${since ? 'Nothing has happened since your last visit.' : q ? 'Nothing matches that filter.' : 'Nothing has happened in this lab yet.'}</${NL.Empty}>`
         : html`<table class="table"><thead><tr><th>When</th><th>Where</th><th>What</th><th>By</th><th>Detail</th></tr></thead><tbody>
         ${evs.slice(0, 300).map(e => html`<tr class=${cls(e.run_id && 'click')} onClick=${e.run_id ? () => NL.openRun(e.run_id) : null}><td class="mono small">${NL.when ? NL.when(e.ts) : (e.ts || '').replace('T', ' ').slice(5, 16)}</td><td>${where(e)}</td>
-          <td><b>${(e.kind || '').replace(/_/g, ' ')}</b>${outcome(e)}</td><td class="small muted">${who(e)}</td><td class="small">${NL.clip(e.detail, 160) || html`<span class="muted">—</span>`}${e.run_id ? html` <span class="link small">open ↗</span>` : null}</td></tr>`)}</tbody></table>`)
+          <td><b>${(k => k.charAt(0).toUpperCase() + k.slice(1))((e.kind || '').replace(/_/g, ' '))}</b>${outcome(e)}</td><td class="small muted">${who(e)}</td><td class="small">${NL.clip(e.detail, 160) || html`<span class="muted">—</span>`}${e.run_id ? html` <span class="link small">open ↗</span>` : null}</td></tr>`)}</tbody></table>`)
       : html`<table class="table"><thead><tr><th>When</th><th>To</th><th>What</th><th>State</th></tr></thead><tbody>
         ${dirs.map(d => html`<tr><td class="mono small">${(d.ts || '').replace('T', ' ').slice(5, 16)}</td><td>${d.target === 'hub' || !d.target ? 'lab' : d.target}</td>
           <td>${d.kind === 'command' ? html`<b>${(d.action || '').replace(/_/g, ' ')}</b> ` : null}${NL.clip(d.text, 160)}</td>

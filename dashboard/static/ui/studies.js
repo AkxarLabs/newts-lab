@@ -21,6 +21,16 @@
     return { label: NL.procTitle(skill), icon: '▸', skill, run: () => NL.launch({ skill, target: it.id }) };
   };
 
+  /** a study's next step, said plainly: a procedure's title in place of its slug ("/experiment …" too) */
+  NL.nextLabel = next => {
+    const t = String(next || '').trim();
+    if (!t || t === '-') return '';
+    const m = t.match(/^\/?([\w-]+)(\s[\s\S]*)?$/);
+    return m && NL.PROC[m[1]] ? NL.procTitle(m[1]) + (m[2] || '') : t;
+  };
+  /** when a study last changed: the registry's date, else its latest event or run */
+  const lastTouched = (s, it) => [it.updated, ...(it.events || []).map(e => e.ts), ...NL.runsOf(s, it.id).map(r => r.updated || r.created)]
+    .filter(Boolean).map(String).sort().pop() || '';
   const StudyCard = ({ it }) => {
     const s = NL.useLab();
     const runs = NL.runsOf(s, it.id);
@@ -33,7 +43,7 @@
         ${asking ? html`<${NL.Pill} tone="ask">asking you</${NL.Pill}>` : live ? html`<${NL.Pill} tone="live"><i class="dot-live"></i>${live} running</${NL.Pill}>` : null}
         ${it.n_workers ? html`<span class="muted small mono" title="agents working on it">${NL.plural(it.n_workers, 'agent')}</span>` : null}
         ${it.envelope && it.envelope.signed ? html`<span class="muted small" title="FULL runs used of the signed envelope">FULL ${it.envelope.full_done + it.envelope.full_resv}/${it.envelope.full_cap || '∞'}</span>` : null}</div>
-      ${it.next && it.next !== '-' ? html`<div class="scard-next muted small clip">${it.next}</div>` : null}</a>`;
+      ${NL.nextLabel(it.next) ? html`<div class="scard-next muted small clip">${NL.nextLabel(it.next)}</div>` : null}</a>`;
   };
 
   NL.StudiesPage = ({ query }) => {
@@ -61,20 +71,40 @@
       : html`<table class="table"><thead><tr><th>Study</th><th>Stage</th><th>Next</th><th>Runs</th><th>Updated</th></tr></thead>
         <tbody>${items.map(it => html`<tr onClick=${() => NL.go('study/' + it.id)} class="click"><td><b>${it.title || it.id}</b><div class="muted small mono">${it.id}</div></td>
           <td><${NL.StatePill} state=${it.state} />${it.gate && !it.gate_signed ? html` <${NL.Pill} tone="gate">Gate ${it.gate}</${NL.Pill}>` : null}</td>
-          <td class="small">${it.next && it.next !== '-' ? it.next : ''}</td><td>${NL.runsOf(s, it.id).length || ''}</td><td class="muted small">${it.updated || ''}</td></tr>`)}</tbody></table>`}
+          <td class="small">${NL.nextLabel(it.next) || '—'}</td><td>${NL.runsOf(s, it.id).length || ''}</td>
+          ${(() => { const u = lastTouched(s, it); return html`<td class="muted small" title=${u ? NL.when(u) : ''}>${(u && (NL.ago(u) || NL.when(u))) || '—'}</td>`; })()}</tr>`)}</tbody></table>`}
     </div>`;
   };
 
   /* ── the lifecycle stepper (gates as doors) ─────────────────────────────── */
+  /* a gate's door sits where Compose draws it, from the workflow's gates: just before the state it unlocks
+     (gate.before), or — a gate that unlocks no state — just after the state it is signed at (gate.at) */
+  const doorsAfter = () => {
+    const L = NL.LIFECYCLE, after = {};
+    (NL.GATES || []).forEach(g => {
+      const at = L.indexOf(g.at), before = g.before ? L.indexOf(g.before) : -1;
+      const slot = before > 0 ? before - 1 : at;           // the door follows the state at index `slot`
+      if (slot < 0) return;
+      (after[slot] = after[slot] || []).push({ g, at, opens: before });
+    });
+    return after;
+  };
   const Stepper = ({ it }) => {
     const idx = NL.LIFECYCLE.indexOf(it.state);
     const off = NL.isShelved(it.state);
+    const after = doorsAfter();
+    const door = ({ g, at, opens }) => {
+      const signedHere = idx === at && it.gate === g.n && it.gate_signed;
+      const open = !off && ((opens >= 0 ? idx >= opens : idx > at) || signedHere);
+      const waiting = !off && idx === at && it.gate === g.n && !it.gate_signed;
+      const reached = !off && at >= 0 && idx >= at;
+      return html`<li class=${cls('door', open && 'open', waiting && 'waiting')} title=${g.title || `Gate ${g.n}`}>
+        <button type="button" onClick=${() => reached ? NL.openGate(it.id, g.n) : null}>✉<small>G${g.n}</small></button></li>`;
+    };
     return html`<ol class=${cls('stepper', off && 'off')}>${NL.LIFECYCLE.map((st, i) => {
-      const gate = NL.GATE_AT[st];
       const done = !off && i < idx, cur = !off && i === idx;
-      return html`${gate ? html`<li class=${cls('door', (i < idx || (i === idx && it.gate_signed)) && 'open', cur && it.gate && !it.gate_signed && 'waiting')}
-          title=${`Gate ${gate}`}><button type="button" onClick=${() => cur || i < idx ? NL.openGate(it.id, gate) : null}>✉<small>G${gate}</small></button></li>` : null}
-        <li class=${cls('step', done && 'done', cur && 'cur')}><span class="step-dot"></span><span class="step-l">${NL.STATE_LABEL[st]}</span></li>`;
+      return html`<li class=${cls('step', done && 'done', cur && 'cur')}><span class="step-dot"></span><span class="step-l">${NL.STATE_LABEL[st]}</span></li>
+        ${(after[i] || []).map(door)}`;
     })}${off ? html`<li class="step cur off-state"><span class="step-dot"></span><span class="step-l">${NL.STATE_LABEL[it.state]}</span></li>` : null}</ol>`;
   };
 
@@ -94,7 +124,7 @@
       { id: 'instructions', label: 'Instructions', count: Object.keys(((((s.workflow || {}).study_custom || {})[it.id]) || {}).procedures || {}).length || null },
       { id: 'controls', label: 'Controls' }];
     return html`<div class="page page-wide">
-      <header class="page-head study-head"><div class="grow"><div class="crumbs"><a class="link" href="#/studies">Studies</a> › <span class="mono">${it.id}</span></div>
+      <header class="page-head study-head"><div class="grow"><div class="crumbs"><a class="link" href="#/studies">Studies</a> › <span>${it.title || it.id}</span></div>
         <h1>${it.title || it.id}</h1><${Stepper} it=${it} /></div>
         <div class="study-actions">${next ? html`<${NL.Btn} kind="primary" icon=${next.icon} onClick=${next.run}>${next.label}</${NL.Btn}>` : null}
           <${NL.Btn} onClick=${() => NL.openStart({ intent: 'study', target: it.id })}>Work on it…</${NL.Btn}>
@@ -121,8 +151,8 @@
       <aside class="col-side">
         <${NL.Section} title="Now">
           <div class="facts"><div><span>Stage</span><b>${NL.STATE_LABEL[it.state]}</b></div>
-            ${it.next && it.next !== '-' ? html`<div><span>Next</span><b>${it.next}</b></div>` : null}
-            <div><span>Updated</span><b>${it.updated || '—'}</b></div>
+            ${NL.nextLabel(it.next) ? html`<div><span>Next</span><b>${NL.nextLabel(it.next)}</b></div>` : null}
+            ${(() => { const u = lastTouched(s, it); return html`<div><span>Updated</span><b title=${u ? NL.when(u) : ''}>${(u && (NL.ago(u) || NL.when(u))) || '—'}</b></div>`; })()}
             ${it.best ? html`<div><span>Best so far</span><b class="mono">${typeof it.best === 'object' ? Object.entries(it.best).filter(([k]) => k !== 'run_id').map(([k, v]) => `${k} ${typeof v === 'number' ? (+v).toPrecision(4) : v}`).join(' · ') : it.best}</b></div>` : null}
             ${it.envelope ? html`<div><span>FULL runs</span><b>${it.envelope.status}${it.envelope.full_cap ? ` · ${it.envelope.full_done + it.envelope.full_resv}/${it.envelope.full_cap}` : ''}</b></div>` : null}
             ${it.loop_active ? html`<div><span>Loop</span><b class="live">running</b></div>` : null}</div></${NL.Section}>
@@ -143,7 +173,7 @@
     return html`<div class="page-split inner">
       <aside class="split-left">${shown.length ? html`<div class="shelf-sec"><div class="shelf-sec-h">❏ For you (${shown.length})</div>${shown.map(a => html`<button type="button" class="shelf-doc" onClick=${() => NL.openArtifact(a.id)}>${a.title}${a.question && !a.answered ? ' · asks you' : ''}</button>`)}</div>` : null}
         ${!tree ? html`<${NL.Spinner} />` : !docs.length ? html`<div class="muted small">No documents in the study or its project yet.</div>` :
-        g.sections.map(sec => html`<div class="shelf-sec"><div class="shelf-sec-h">${sec.icon || ''} ${sec.title}</div>${sec.docs.map(d => html`<button type="button" class=${cls('shelf-doc', cur && cur.rel === d.rel && cur.scope === d.scope && 'on')} onClick=${() => setSel(d)}>${d.title}</button>`)}</div>`)}</aside>
+        g.sections.map(sec => html`<div class="shelf-sec"><div class="shelf-sec-h">${sec.icon || ''} ${sec.title}</div>${sec.docs.map(d => html`<button type="button" class=${cls('shelf-doc', cur && cur.rel === d.rel && cur.scope === d.scope && 'on')} onClick=${() => setSel(d)}><${NL.DocName} d=${d} /></button>`)}</div>`)}</aside>
       <main class="split-right">${cur ? html`<${NL.DocReader} scope=${cur.scope} slug=${cur.slug} rel=${cur.rel} />` : null}</main></div>`;
   };
 
@@ -161,7 +191,7 @@
       ${out ? html`<${NL.Section} title=${out.name} action=${html`<button class="link small" onClick=${() => setOut(null)}>close</button>`}>${out.busy ? html`<${NL.Spinner} />` : html`<pre class="plain">${out.output || out.error || '(no output)'}</pre>`}</${NL.Section}>` : null}
     </div><aside class="col-side"><${NL.Section} title="Look closer"><div class="stack">
       <${NL.Btn} onClick=${() => tool('status')}>Project status</${NL.Btn}><${NL.Btn} onClick=${() => tool('compare')}>Compare runs</${NL.Btn}>
-      <${NL.Btn} onClick=${() => tool('show_config')}>Effective config</${NL.Btn}><${NL.Btn} onClick=${() => tool('inbox')}>Agent inbox</${NL.Btn}></div></${NL.Section}>
+      <${NL.Btn} onClick=${() => tool('show_config')}>Settings in force for this study</${NL.Btn}><${NL.Btn} onClick=${() => tool('inbox')}>Notes to its agents</${NL.Btn}></div></${NL.Section}>
       <${NL.Section} title="Start"><div class="stack">${(NL.PROCS_FOR_STATE[it.state] || []).filter(p => (NL.getState().skills || {})[p]).map(p => {
         const brief = (NL.PROC[p] || {}).kind === 'driver' && (NL.PROC[p] || {}).level === 'project';   // a loop needs its signed brief first
         return html`<${NL.Btn} onClick=${() => brief ? NL.open(NL.LoopBriefSheet, { slug: it.id }, { key: 'loop' }) : NL.launch({ skill: p, target: it.id })}>${NL.procTitle(p)}${brief ? '…' : ''}</${NL.Btn}>`; })}
@@ -207,26 +237,45 @@
   NL.openClaims = slug => NL.open(NL.ClaimsSheet, { slug }, { key: 'claims' });
 
   /* ── controls: steering, signatures, park/kill/revive ───────────────────── */
+  /* where a study set aside by `action` (park / kill) ends up: the workflow's side state for it, and its room */
+  const shelfRoom = action => {
+    const side = (NL.WF.side_states || []);
+    const st = side.find(x => String(x.id).startsWith(action)) || (action === 'kill' ? side.find(x => x.tone === 'bad') : side.find(x => x.tone === 'muted')) || side[0];
+    const room = st && (NL.ROOMS.find(r => r.key === st.room || (r.states || []).includes(st.id)) || {});
+    return (room && (room.title || room.label)) || 'the room for studies set aside';
+  };
+  const MODES = [{ value: 'execute', label: 'Follow the plan' }, { value: 'explore', label: 'Explore' }];   // as in Settings
   const Controls = ({ it }) => {
-    const cmd = async (action, label, args, danger) => {
-      if (danger && !await NL.confirm({ title: `${label}?`, body: 'The agent does this in-protocol at its next checkpoint (recorded in the study).', ok: label, danger: true })) return;
+    const [labMode, setLabMode] = useState(null);
+    const [picked, setPicked] = useState(null);
+    useEffect(() => { if (it.has_project) NL.get('/api/lab/config').then(x => setLabMode(((x && x.config) || {}).loop_mode || 'execute')); }, [it.id]);
+    // the study's mode: the latest switch you sent it (not withdrawn or refused), else the lab's setting
+    const sent = (it.directives || []).filter(x => x.action === 'set_mode' && x.args && x.args.mode && !['withdrawn', 'blocked'].includes(x.state)).slice(-1)[0];
+    const mode = picked || (sent && sent.args.mode) || it.loop_mode || labMode || 'execute';
+    const cmd = async (action, label, args, confirm) => {
+      if (confirm && !await NL.confirm({ ...confirm, ok: confirm.ok || label, danger: true })) return false;
       const launch = ['start_loop', 'stop_loop', 'run_smoke', 'request_run', 'analyze'].includes(action) && NL.execOn(NL.getState());
-      const r = await NL.act('/api/command', { target: it.id, action, args: args || {}, launch }, launch ? `${label} — started` : `${label} — the next agent picks it up at its next checkpoint`);
+      const r = await NL.act('/api/command', { target: it.id, action, args: args || {}, launch }, launch ? `${label} — started` : `${label} — its agent picks this up at its next safe point`);
       if (r.launch && r.launch.run_id) NL.openRun(r.launch.run_id);
+      return r.ok;
     };
+    const setMode = async v => { if (v !== mode && await cmd('set_mode', v === 'explore' ? 'Explore' : 'Follow the plan', { mode: v })) setPicked(v); };
     const off = NL.isShelved(it.state);
     return html`<div class="cols"><div class="col-main">
-      ${it.has_project ? html`<${NL.Section} title="Loop and experiments"><div class="btn-grid">
+      ${it.has_project ? html`<${NL.Section} title="Loop and experiments">
+        <${NL.Field} label="Its research loop" hint="Follow the plan, or explore: widen the plan and reopen supporting decisions within the signed envelope. A switch reaches the loop at its next safe point.">
+          <${NL.Seg} value=${mode} onChange=${setMode} options=${MODES} /></${NL.Field}>
+        <div class="btn-grid">
         <${NL.Btn} onClick=${() => NL.open(NL.LoopBriefSheet, { slug: it.id }, { key: 'loop' })}>Research loop — brief & start</${NL.Btn}>
-        ${it.loop_active ? html`<${NL.Btn} kind="danger" onClick=${() => cmd('stop_loop', 'Stop the loop', {}, true)}>Stop the loop</${NL.Btn}>` : null}
-        <${NL.Btn} onClick=${() => cmd('set_mode', 'Switch to explore', { mode: 'explore' })}>Switch the loop to explore</${NL.Btn}>
-        <${NL.Btn} onClick=${() => cmd('set_mode', 'Switch to execute', { mode: 'execute' })}>Switch the loop to execute</${NL.Btn}>
+        ${it.loop_active ? html`<${NL.Btn} kind="danger" onClick=${() => cmd('stop_loop', 'Stop the loop', {}, { title: 'Stop the loop?', body: 'Its agent stops the loop at its next safe point. You can start it again from here.' })}>Stop the loop</${NL.Btn}>` : null}
         <${NL.Btn} onClick=${() => cmd('run_smoke', 'Run a smoke test')}>Run a smoke test</${NL.Btn}>
         <${NL.Btn} onClick=${() => cmd('request_run', 'Request a run')}>Request a run</${NL.Btn}></div></${NL.Section}>` : null}
       ${it.has_project ? html`<${NL.EnvelopeEditor} it=${it} />` : null}
       <${NL.Section} title="Priority and fate"><div class="btn-grid">
         <${NL.Btn} onClick=${() => cmd('prioritize', 'Prioritize')}>Prioritize it</${NL.Btn}>
-        ${off ? html`<${NL.Btn} kind="primary" onClick=${() => NL.revive(it)}>Revive it</${NL.Btn}>` : html`<${NL.Btn} onClick=${() => cmd('park', 'Park it', {}, true)}>Park it</${NL.Btn}><${NL.Btn} kind="danger" onClick=${() => cmd('kill', 'Kill it', {}, true)}>Kill it</${NL.Btn}>`}</div></${NL.Section}>
+        ${off ? html`<${NL.Btn} kind="primary" onClick=${() => NL.revive(it)}>Revive it</${NL.Btn}>` : html`
+          <${NL.Btn} onClick=${() => cmd('park', 'Park it', {}, { title: 'Set this study aside for now?', ok: 'Park it', body: `The agent pauses it at its next safe point and moves it to ${shelfRoom('park')}. You can revive it from there.` })}>Park it</${NL.Btn}>
+          <${NL.Btn} kind="danger" onClick=${() => cmd('kill', 'Stop it for good', {}, { title: 'Stop this study for good?', ok: 'Stop it for good', body: `The agent winds it down at its next safe point and moves it to ${shelfRoom('kill')}. You can revive it from there.` })}>Kill it</${NL.Btn}>`}</div></${NL.Section}>
     </div><aside class="col-side">
       <${NL.Section} title="Signatures"><div class="stack">
         <${NL.Btn} onClick=${() => NL.openGate(it.id, 1)}>Gate 1 — proposal</${NL.Btn}>

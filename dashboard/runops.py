@@ -151,6 +151,43 @@ def set_programmatic(body: dict) -> tuple[dict, int]:
                      if enabled else "programmatic launching OFF — nothing new starts; running runs finish")}, 200
 
 
+def lab_pause(body: dict) -> tuple[dict, int]:
+    """POST /api/lab/pause {paused: true|false, confirm: true} → {ok, paused, stopped: [run ids], note}.
+    Pausing stops every live run (resumable) and starts nothing — no queued run, no campaign pass, no chain or
+    repeat — until the PI resumes; campaigns the pause paused carry on then. Idempotent; logged."""
+    if executor is None:
+        return ctx.no_executor()
+    if not isinstance(body.get("paused"), bool):
+        return {"error": "say paused: true (pause the lab) or paused: false (resume it)"}, 400
+    if not body.get("confirm"):
+        return {"error": "pausing or resuming the lab needs explicit confirm"}, 400
+    lab = _xlab()
+    try:
+        if body["paused"]:
+            out = executor.pause.pause(lab, by="PI (dashboard)", reason=str(body.get("reason") or "") or None)
+        else:
+            out = executor.pause.resume(lab, by="PI (dashboard)")
+    except (executor.SpecError, OSError, TimeoutError) as e:
+        return {"error": str(e)}, 400
+    stopped = out.get("stopped") or []
+    ctx.pi_log({"action": "lab.pause" if body["paused"] else "lab.resume", "already": out.get("already"),
+                "stopped": stopped, "campaigns": out.get("campaigns")})
+    ctx.KICK.set()
+    camps = out.get("campaigns") or []
+    if body["paused"]:
+        note = ("the lab was already paused" if out.get("already") else "the lab is paused") + " — nothing new starts"
+        note += f"; stopped {len(stopped)} running agent(s) (each can be resumed)" if stopped else "; no agent was running"
+        note += f"; {len(camps)} campaign(s) paused" if camps else ""
+        note += "; queued runs wait until you resume"
+    else:
+        note = "the lab was not paused" if out.get("already") else "the lab is running again — queued runs start now"
+        note += f"; {len(camps)} campaign(s) carry on" if camps else ""
+        left = out.get("stopped_earlier") or []
+        note += f"; the {len(left)} run(s) the pause stopped stay stopped — resume them from their cards" if left else ""
+    return {"ok": True, "paused": bool(body["paused"]), "stopped": stopped, "note": note,
+            "campaigns": camps, "already": bool(out.get("already"))}, 200
+
+
 def run_detail(run_id: str) -> tuple[dict, int]:
     if executor is None:
         return ctx.no_executor()

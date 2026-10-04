@@ -203,7 +203,7 @@
         <${NL.Btn} kind="primary" onClick=${sendReply} disabled=${!reply.trim()}>Send</${NL.Btn}></div>` : null}
       <div class="row">
         ${liveNow && active ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/interrupt', { run_id: r.run_id })} title="Stop the current step; the session stays open for your next message">⏸ Interrupt</${NL.Btn}>` : null}
-        ${active || (liveNow && r.status === 'waiting_input') ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }}>■ Stop</${NL.Btn}>` : null}
+        ${active || (liveNow && r.status === 'waiting_input') ? html`<${NL.Btn} kind="danger" onClick=${async () => { if (await NL.confirm({ title: 'Stop this run?', body: 'The session ends now. It stays resumable — you can continue it later.', ok: 'Stop', danger: true })) NL.act('/api/run/stop', { run_id: r.run_id, confirm: true }, 'Stopping'); }} title="End the session now — it stays resumable, so you can continue it later">■ Stop</${NL.Btn}>` : null}
         ${r.status === 'queued' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/cancel', { run_id: r.run_id }, 'Cancelled')}>Cancel</${NL.Btn}>` : null}
         ${NL.RUN_DONE.has(r.status) && r.session_id && r.status !== 'completed' ? html`<${NL.Btn} onClick=${() => NL.act('/api/run/resume', { run_id: r.run_id }, 'Resuming')}>↻ Resume</${NL.Btn}>` : null}
         <span class="grow"></span>
@@ -225,7 +225,7 @@
       <${NL.RunFiles} r=${r} />
       <div class="convo" ref=${scroller} onScroll=${onScroll}>
         ${skipped ? html`<div class="msg-div"><span>earlier output skipped (${Math.round(skipped / 1024)} KB)</span></div>` : null}
-        ${!blocks.length ? html`<div class="muted pad">${r.status === 'queued' ? 'Waiting for a free slot…' : active ? (r.last_action ? 'Working — its latest step is below.' : 'Starting up…') : 'No transcript yet.'}</div>` : null}
+        ${!blocks.length ? html`<div class="muted pad">${r.status === 'queued' ? 'Waiting for a free slot…' : NL.DEMO ? 'The demo has no transcripts — its latest step is below.' : active ? (r.last_action ? 'Working — its latest step is below.' : 'Starting up…') : 'No transcript yet.'}</div>` : null}
         ${blocks.map((b, i) => html`<${Block} key=${i} b=${b} last=${i === blocks.length - 1 && active} />`)}
         ${active && r.last_action ? html`<div class="now"><i class="dot-live"></i> <b>${r.last_action.tool || ''}</b> ${NL.clip(r.last_action.summary, 140)}</div>` : null}
         <${PermissionRows} r=${r} />
@@ -286,7 +286,7 @@
     const it = r.subject && NL.item(s, r.subject);
     const budget = r.max_minutes ? r.max_minutes * 60 : null;
     return html`<button type="button" class=${cls('runrow', compact && 'compact', 'tone-' + (NL.RUN_TONE[r.status] || 'muted'))} onClick=${() => NL.openRun(r.run_id)}>
-      <span class="runrow-top"><${NL.RunPill} r=${r} /><b class="clip">${NL.runTitle(r)}</b></span>
+      <span class="runrow-top"><${NL.RunPill} r=${r} /><b class="clip grow">${NL.runTitle(r)}</b>${r.usage && r.usage.cost_usd != null ? html`<span class="mono small muted runrow-cost" title="estimated from its token use">≈ $${(+r.usage.cost_usd).toFixed(2)}</span>` : null}</span>
       <span class="runrow-sub muted">${it ? NL.clip(it.title || it.id, 34) : 'the lab'}
         ${r.status === 'waiting_input' ? (r.pending_question ? ' · asking you' : ' · your turn') : NL.RUN_ACTIVE.has(r.status) && r.last_action ? ' · ' + NL.clip(r.last_action.summary || r.last_action.tool, 60) : r.finished ? ' · ' + NL.ago(r.finished) : ''}</span>
       ${NL.RUN_ACTIVE.has(r.status) && budget && r.elapsed_s != null ? html`<${NL.Bar} value=${r.elapsed_s} max=${budget} />` : null}</button>`;
@@ -305,7 +305,10 @@
     const s = NL.useLab();
     const [f, setF] = useState('all');
     const [q, setQ] = useState('');
-    const all = (s.runs || []).slice().sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+    const [sort, setSort] = useState('new');
+    const cost = r => +((r.usage || {}).cost_usd || 0);
+    const all = (s.runs || []).slice().sort(sort === 'cost' ? (a, b) => cost(b) - cost(a) : (a, b) => (b.created || '').localeCompare(a.created || ''));
+    const nRun = all.filter(r => NL.RUN_ACTIVE.has(r.status)).length;
     const flt = FILTERS.find(x => x.id === f);
     const list = all.filter(flt.f).filter(r => !q || (NL.runTitle(r) + ' ' + (r.subject || '')).toLowerCase().includes(q.toLowerCase()));
     const x = NL.exec(s);
@@ -315,7 +318,7 @@
       <header class="page-head"><div><h1>Runs</h1><p class="lede">Every agent session started from here — each one is a conversation you can open, answer and continue.</p></div>
         <${NL.Btn} kind="primary" icon="＋" onClick=${() => NL.openStart()}>Start something</${NL.Btn}></header>
       <div class="statline">
-        <span><b>${all.filter(r => NL.RUN_ACTIVE.has(r.status)).length}</b> running${caps.total ? ` of ${caps.total} at once` : ''}</span><span><b>${all.filter(r => r.status === 'queued').length}</b> queued</span><span><b>${all.filter(r => r.status === 'waiting_input').length}</b> waiting for you</span>
+        <span><b>${nRun}</b> running${caps.total ? html` · limit ${caps.total}${nRun > caps.total ? html` <span class="muted small" title="a campaign's own limit, or runs started before the limit changed">(over it: a campaign's limit, or started before it changed)</span>` : ''}` : ''}</span><span><b>${all.filter(r => r.status === 'queued').length}</b> queued</span><span><b>${all.filter(r => r.status === 'waiting_input').length}</b> waiting for you</span>
         ${x.brake ? html`<span class="warn">⚠ daily limit reached — ${x.brake}</span>` : null}
         ${!NL.execOn(s) && !NL.DEMO ? html`<span class="warn">Starting agents from the dashboard is off — <a class="link" href="#/settings/autonomy">turn it on</a></span>` : null}
       </div>
@@ -326,6 +329,7 @@
         <div class="agents-strip">${(s.workers || []).filter(w => w.interactive && w.status !== 'done').slice(0, 12).map(w => html`<button type="button" class="agent-chip" onClick=${() => NL.openWorker(w.worker_id)}>
           <${NL.RoleDot} role=${w.role} /><span class="clip">${NL.clip(w.idea || w.project || 'the lab', 26)}</span><span class="muted small">${w.status}${(w.children || []).length ? ' · ' + NL.plural(w.children.length, 'subagent') : ''}</span></button>`)}</div></${NL.Section}>` : null}
       <div class="toolbar"><${NL.Tabs} tabs=${FILTERS.map(x2 => ({ id: x2.id, label: x2.label, count: x2.id === 'all' ? null : all.filter(x2.f).length || null }))} value=${f} onChange=${setF} />
+        <${NL.Select} value=${sort} onChange=${setSort} options=${[{ value: 'new', label: 'Newest first' }, { value: 'cost', label: 'Most expensive first' }]} />
         <input class="input search" placeholder="Filter…" value=${q} onInput=${e => setQ(e.target.value)} /></div>
       ${list.length ? html`<div class="runlist">${list.slice(0, 200).map(r => html`<${NL.RunRow} key=${r.run_id} r=${r} />`)}</div>`
         : html`<${NL.Empty} icon="▸" title=${all.length ? 'Nothing here' : 'No runs yet'}>${all.length ? 'Try another filter.' : html`Start one with <b>Start something</b>, or ask Newt from Home.`}</${NL.Empty}>`}

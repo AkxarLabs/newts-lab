@@ -42,7 +42,10 @@
   function paletteActions(s) {
     const A = [];
     const add = (label, hint, run, kw) => A.push({ label, hint, run, kw: (label + ' ' + (hint || '') + ' ' + (kw || '')).toLowerCase() });
+    if (s.lab_paused) add('Resume the lab', 'agents may start again; paused runs can be resumed', () => NL.pauseLab(false), 'unpause start');
+    else add('Pause the lab…', 'stop every agent now (resumable); nothing new starts until you resume', () => NL.pauseLab(true), 'stop everything halt all kill');
     add('Start something', 'a procedure or an instruction', () => NL.openStart(), 'new launch run');
+    add('History', 'what happened in the lab, and what you sent', () => NL.go('history'), 'log events overnight');
     add('Ask Newt…', 'a free-form instruction', () => NL.openStart(), 'prompt chat');
     add('Plan a campaign', 'several ideas end-to-end, unattended', () => NL.openStart({ intent: 'campaign' }), 'autopilot');
     (NL.liveCampaigns ? NL.liveCampaigns(s) : []).forEach(c => {
@@ -96,15 +99,28 @@
     const elsewhere = (fl && fl.needs_elsewhere) || 0;
     return html`<header class="topbar">
       <a class="brand" href="#/labs" title="labs & machines — switch, create, or connect"><span class="brand-mark" aria-hidden="true">N</span><span class="brand-name">${li.name || "Newts' Lab"}</span>
-        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${NL.plural(elsewhere, 'thing')} in your other labs ${elsewhere === 1 ? 'needs' : 'need'} you — open Labs & machines`}>+${elsewhere} ${elsewhere === 1 ? 'needs' : 'need'} you</span>` : null}</a>
-      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && NL.artifactsAsking(s).length ? html` <span class="navcount warm" title="questions waiting on you">${NL.artifactsAsking(s).length}</span>` : id === 'artifacts' && NL.artifactsUnseen(s).length ? html` <i class="navdot" title="something new to look at"></i>` : null}</a>`)}</nav>
+        ${s.remote ? html`<span class=${cls('brand-machine', s.remote.state !== 'connected' && 'off')} title=${s.remote.host}>on ${s.remote.name}</span>` : null}<span class="brand-caret"><${NL.Icon} name="caret" /></span>${elsewhere ? html`<span class="brand-else" title=${`${NL.plural(elsewhere, 'thing')} in your other labs ${elsewhere === 1 ? 'needs' : 'need'} you — open Labs & machines`}>+${elsewhere} in other labs</span>` : null}</a>
+      <nav class="mainnav">${nav.map(([id, to, label]) => html`<a class=${cls('navlink', (page === id || (id === 'studies' && page === 'study')) && 'on')} href=${'#/' + to}>${label}${id === 'runs' && running ? html` <span class="navcount live">${running}</span>` : null}${id === 'artifacts' && (NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length) ? html` <span class=${cls('navcount', NL.artifactsAsking(s).length && 'warm')} title="questions for you, and new things to look at">${NL.artifactsAsking(s).length + NL.artifactsUnseen(s).filter(a => !a.question).length}</span>` : null}</a>`)}</nav>
       <div class="topright">
         <span class=${cls('conn', 'conn-' + conn)} title=${conn === 'live' ? 'live' : conn}><i></i>${NL.hhmm(s.now)}</span>
         <${SoundBtn} />
         <button class="iconbtn" title="search and jump (/ or Ctrl+K)" onClick=${NL.openPalette}><${NL.Icon} name="search" /></button>
         <button class=${cls('iconbtn', needs.length && 'has')} title="what needs you" onClick=${() => NL.open(NL.InboxSheet, {}, { key: 'inbox' })}><${NL.Icon} name="bell" />${needs.length ? html`<span class="bell-n">${needs.length}</span>` : null}</button>
-        <a class=${cls('iconbtn', page === 'settings' && 'on')} title="settings" href="#/settings"><${NL.Icon} name="sliders" /></a>
+        <a class=${cls('iconbtn', 'labelled', page === 'settings' && 'on')} title="Settings — agents, limits, notifications" href="#/settings"><${NL.Icon} name="sliders" /><span class="iconbtn-label">Settings</span></a>
       </div></header>`;
+  };
+
+  /* ── pause the lab: every agent stops now (resumable), nothing new starts until you resume ───────────── */
+  NL.pauseLab = async on => {
+    if (on && !await NL.confirm({ title: 'Pause the lab?', ok: 'Pause everything', danger: true,
+      body: 'Every running agent stops now — each stays resumable. Queued runs and campaign passes wait, and nothing new starts until you resume.' })) return;
+    return NL.act('/api/lab/pause', { paused: !!on, confirm: true }, on ? 'The lab is paused' : 'The lab is running again');
+  };
+  NL.PausedBar = () => {
+    const s = NL.useLab();
+    if (!s.lab_paused) return null;
+    return html`<div class="paused-bar" role="status"><b>The lab is paused</b><span class="muted small">since ${NL.when ? NL.when(s.lab_paused.since) : s.lab_paused.since} — agents are stopped; anything you start waits until you resume</span>
+      <${NL.Btn} small kind="primary" onClick=${() => NL.pauseLab(false)}>Resume</${NL.Btn}></div>`;
   };
 
   /* ── sound: gentle chimes when something needs you, and soft music — both off until you turn them on ── */
@@ -126,7 +142,7 @@
     if (!NL.Sound) return null;
     const on = p.chimes || p.music;
     return html`<span class="sound-wrap"><button class=${cls('iconbtn', on && 'on')} title="sound — chimes and music" aria-expanded=${open} onClick=${() => setOpen(!open)}><${NL.Icon} name=${on ? 'sound' : 'mute'} /></button>
-      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /></div>` : null}</span>`;
+      ${open ? html`<div class="sound-pop" onMouseLeave=${() => setOpen(false)}><${NL.SoundControls} compact /><a class="link small" href="#/settings/notifications" onClick=${() => setOpen(false)}>More in Settings → Notifications</a></div>` : null}</span>`;
   };
 
   /* ── routing ───────────────────────────────────────────────────────────── */

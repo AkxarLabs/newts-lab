@@ -190,3 +190,16 @@ def test_a_project_type_can_start_blank(m, hub):
     assert "field-notes" in {t["name"] for t in m.compose.view()[0]["types"]}
     out, code = m.compose.op({"op": "copy", "kind": "type", "like": "", "name": "field-notes"})
     assert code != 200 and "already" in out["error"]
+
+
+def test_checks_and_types_read_as_plain_text(m, hub):
+    """The PI sees a plain description of each check (its commands kept apart) and of each project type."""
+    v = m.compose.view()[0]
+    for c in v["checks"]:
+        assert c["doc"] and "`" not in c["doc"] and "uv run" not in c["doc"] and not c["doc"].startswith("guard.py")
+        assert all("uv run" in u for u in c["usage"])
+    assert any(c["usage"] for c in v["checks"])
+    for t in v["types"]:
+        assert "`" not in t["title"] and "#" not in t["title"] and t["description"] and "`" not in t["description"]
+    card, usage = m.compose._type_card("# Kind: `x` (y)\n\n<!-- note -->\n\nSome **bold** words\nand `code`.\n\n- a bullet\n")
+    assert card == "Kind: x (y)" and usage == "Some bold words and code."

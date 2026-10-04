@@ -25,7 +25,7 @@ from .manifest import (ACTIVE, TERMINAL, all_runs, emit, now, parse_ts, read_man
                        scheduler_lock, transition, write_manifest)
 from .procs import DETACHED, is_locked, kill_tree, pid_alive, python_exe
 from .spec import RunSpec, SpecError, registry
-from . import backends, campaigns, notify
+from . import backends, campaigns, notify, pause
 
 CLI = Path(__file__).resolve().parents[1] / "executor_cli.py"
 STARTING_GRACE_S = 60
@@ -333,7 +333,10 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
     try:
         report["reconciled"] = reconcile(lab)
         runs = all_runs(lab)
-        for _t, workdir, path, m in runs:
+        # the lab is paused (pause.py): start nothing — no queued run, no campaign pass or dispatch, and no
+        # chain / repeat follow-up (finished runs are post-processed once the lab is resumed)
+        report["paused"] = pause.state(lab)
+        for _t, workdir, path, m in ([] if report["paused"] else runs):
             if m.get("status") in TERMINAL and not m.get("post_processed") and m.get("schema") == 2:
                 try:
                     post_process(lab, workdir, path, m)
@@ -348,6 +351,8 @@ def tick(lab: Lab, *, spawn=None, wait: float = 0.0) -> dict:
         report["enabled"] = bool(prog.get("enabled"))
         depth = pos_int(os.environ.get("AUTOSCIENTIST_AGENT_DEPTH", "0") or 0, 0, 0)
         if not prog.get("enabled") or depth >= pos_int(prog.get("max_depth", 1), 1, 0):
+            return report
+        if report["paused"]:
             return report
         try:
             report["campaigns"] = campaigns.keep(lab)
@@ -438,7 +443,10 @@ def lease(lab: Lab) -> dict:
 
 
 def has_work(lab: Lab) -> bool:
-    """Queued/live runs, or a campaign still being kept."""
+    """Queued/live runs, or a campaign still being kept. While the lab is paused only a run still winding
+    down counts (queued runs wait for the resume; nobody needs to keep ticking for them)."""
+    if pause.is_paused(lab):
+        return any(m.get("status") in ACTIVE for *_x, m in all_runs(lab))
     if any(m.get("status") in ACTIVE | {"queued"} for *_x, m in all_runs(lab)):
         return True
     return any(c.get("status") in ("active", "finishing", "stopping") for c in campaigns.all_states(lab))

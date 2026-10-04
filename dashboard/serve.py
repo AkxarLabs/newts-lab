@@ -522,6 +522,7 @@ POST_ROUTES = {
     "/api/attention/ack": runops.ack_attention,
     "/api/escalation/resolve": bus.resolve_escalation,
     "/api/executor/enable": runops.set_programmatic,
+    "/api/lab/pause": runops.lab_pause,
     "/api/executor/config": settings.set_executor_config,
     "/api/labs/open": labs.labs_open,
     "/api/labs/create": labs.labs_create,

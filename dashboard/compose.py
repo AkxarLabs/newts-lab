@@ -971,9 +971,44 @@ def _origin(rel: str) -> str:
     return "built-in" if (ctx.ROOT / rel).exists() else "yours"
 
 
-def _first_doc(text: str) -> str:
+def _plain(md: str) -> str:
+    """Markdown → one line of plain text: no backticks, emphasis, links or HTML comments."""
+    t = re.sub(r"<!--.*?-->", " ", md or "", flags=re.S)
+    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", t.replace("`", ""))
+    t = re.sub(r"(?<!\w)_{1,2}([^_]+)_{1,2}(?!\w)", r"\1", t)
+    return " ".join(t.split())
+
+
+_CMD = re.compile(r"`?((?:uv run|python3?)\s[^`\n]*)`?")
+
+
+def _check_doc(text: str) -> tuple[str, list[str]]:
+    """A check's docstring → (a one-line plain description, the commands that run it)."""
     m = re.search(r'"""(.*?)"""', text or "", re.S)
-    return " ".join((m.group(1) if m else "").split())[:220]
+    doc = m.group(1) if m else ""
+    usage = [" ".join(c.split()).rstrip(".") for c in _CMD.findall(doc)]
+    first = next((p for p in re.split(r"\n\s*\n", doc.strip()) if p.strip() and not _CMD.search(p.strip().split("\n")[0])), "")
+    first = re.sub(r"^\s*guard\.py\s+[\w-]+\s+[—-]+\s*", "", first)   # "guard.py name — what it checks"
+    return _plain(first)[:220], usage[:3]
+
+
+def _type_card(txt: str) -> tuple[str, str]:
+    """TYPE.md → (its first heading, its first paragraph), both as plain text."""
+    lines = re.sub(r"<!--.*?-->", "", (txt or "").replace("\r\n", "\n"), flags=re.S).split("\n")
+    head = next((ln.lstrip("#").strip() for ln in lines if ln.startswith("#")), "")
+    body, para = [], False
+    for ln in lines:
+        if ln.startswith("#"):
+            continue
+        if ln.strip():
+            if ln.lstrip().startswith(("-", "*", "|", ">")) and not body:
+                break
+            body.append(ln.strip())
+            para = True
+        elif para:
+            break
+    return _plain(head), _plain(" ".join(body))[:400]
 
 
 def view(q: dict | None = None) -> tuple[dict, int]:
@@ -1020,13 +1055,15 @@ def view(q: dict | None = None) -> tuple[dict, int]:
     for fname, f in sorted(files.items()):
         txt = ctx.read(f) or ""
         nm = re.search(r'^NAME = "([^"]+)"', txt, re.M)
+        doc, usage = _check_doc(txt)
         checks.append({"name": nm.group(1) if nm else f.stem.replace("_", "-"), "file": f"checks/{fname}",
-                       "guard": bool(nm), "doc": _first_doc(txt), "origin": _origin(f"checks/{fname}")})
+                       "guard": bool(nm), "doc": doc, "usage": usage, "origin": _origin(f"checks/{fname}")})
     types = []
     for name, txt in labfiles.project_types(root).items():
         own = (root / "lab" / "templates" / "project-types" / name).is_dir()
         base = f"{'lab/templates' if own else 'templates'}/project-types/{name}"
-        types.append({"name": name, "title": (txt.splitlines() or [""])[0].lstrip("# ").strip(), "origin": "yours" if own else "built-in",
+        head, desc = _type_card(txt)
+        types.append({"name": name, "title": head or name, "description": desc, "origin": "yours" if own else "built-in",
                       "files": sorted(f.relative_to(root).as_posix() for f in (root / base).rglob("*") if f.is_file())})
     domains = [{"name": n, "file": p.relative_to(root).as_posix() if p.is_relative_to(root) else None}
                for n, p in labfiles.domain_profiles(root).items()]

@@ -57,14 +57,14 @@
     const changed = +v.full_runs !== +(e.full_cap || 0) || +v.per_run_max_minutes !== +(e.per_cap || 0) || +v.total_max_minutes !== +(e.total_cap || 0) || (v.expires || '') !== (e.expires && e.expires !== 'None' ? e.expires : '');
     const used = (e.full_done || 0) + (e.full_resv || 0), usedMin = (e.min_done || 0) + (e.min_resv || 0);
     const save = async (sign) => {
-      const ok = await NL.confirm({ title: sign ? 'Sign this envelope?' : 'Save the envelope (unsigned)?', ok: sign ? 'Sign' : 'Save',
+      const ok = await NL.confirm({ title: sign ? 'Sign Gate 2 — approve these full-scale runs?' : 'Save the limits (unsigned)?', ok: sign ? 'Sign Gate 2' : 'Save',
         body: sign ? html`<p>Authorizes up to <b>${v.full_runs}</b> FULL runs of at most <b>${v.per_run_max_minutes}</b> min each, <b>${v.total_max_minutes}</b> min in total${v.expires ? `, until ${v.expires}` : ''}. Written to the project's <span class="mono">control.yaml</span>, logged.</p>`
           : html`<p>${e.signed && changed ? 'Changing the values withdraws the current signature until you sign again.' : 'Saved without a signature — FULL runs still need your approval.'}</p>` });
       if (ok) NL.act('/api/envelope', { idea: it.id, confirm: true, sign, values: v }, sign ? 'Envelope signed' : 'Envelope saved');
     };
     return html`<div class="signbox">
-      <div class="signbox-h">Gate 2 · the FULL-run envelope ${e.signed ? html`<${NL.Pill} tone=${e.status === 'active' ? 'ok' : 'warn'}>${e.status}</${NL.Pill}>` : html`<${NL.Pill} tone="muted">unsigned</${NL.Pill}>`}</div>
-      <p>Smoke and pilot runs are autonomous. FULL-scale runs need your signature — per run, or in advance for a batch inside this envelope.</p>
+      <div class="signbox-h">Gate 2 · approve full-scale runs ${e.signed ? html`<${NL.Pill} tone=${e.status === 'active' ? 'ok' : 'warn'}>${e.status}</${NL.Pill}>` : html`<${NL.Pill} tone="muted">unsigned</${NL.Pill}>`}</div>
+      <p>Small trial runs go ahead on their own. Full-scale runs need your signature — one at a time, or in advance for a batch within the limits below (the “envelope”).</p>
       <div class="grid2">
         <${NL.Field} label="FULL runs" hint=${e.full_cap ? `${used} used or reserved` : null}><${NL.Input} type="number" min="0" value=${v.full_runs} onInput=${x => set('full_runs', x)} /></${NL.Field}>
         <${NL.Field} label="Minutes per run"><${NL.Input} type="number" min="0" value=${v.per_run_max_minutes} onInput=${x => set('per_run_max_minutes', x)} /></${NL.Field}>
@@ -73,7 +73,7 @@
       </div>
       ${e.full_cap ? html`<div class="capacity"><span>FULL runs <${NL.Bar} value=${used} max=${e.full_cap} tone=${used >= e.full_cap ? 'warn' : ''} /> ${used}/${e.full_cap}</span>
         ${e.total_cap ? html`<span>minutes <${NL.Bar} value=${usedMin} max=${e.total_cap} tone=${usedMin >= e.total_cap ? 'warn' : ''} /> ${usedMin}/${e.total_cap}</span>` : null}</div>` : null}
-      <div class="row">${!e.signed || changed ? html`<${NL.Btn} kind="primary" disabled=${!(+v.full_runs || +v.per_run_max_minutes || +v.total_max_minutes)} onClick=${() => save(true)}>Sign the envelope</${NL.Btn}>` : null}
+      <div class="row">${!e.signed || changed ? html`<${NL.Btn} kind="primary" disabled=${!(+v.full_runs || +v.per_run_max_minutes || +v.total_max_minutes)} onClick=${() => save(true)}>Sign Gate 2</${NL.Btn}>` : null}
         ${changed ? html`<${NL.Btn} onClick=${() => save(false)}>Save without signing</${NL.Btn}>` : null}
         ${e.signed && !changed ? html`<${Revoke} slug=${it.id} what="gate2" />` : null}</div>
     </div>`;
@@ -114,7 +114,10 @@
     if (!it) return html`<${NL.Sheet} title="Gate" onClose=${onClose}><${NL.Empty}>No such study.</${NL.Empty}></${NL.Sheet}>`;
     const G = gate === 3 ? Gate3 : gate === 2 ? NL.EnvelopeEditor : Gate1;
     const [readable, setReadable] = useState(null);   // Gate 1 is never signed unseen
-    return html`<${NL.Sheet} wide title=${`Gate ${gate} · ${it.title || it.id}`} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
+    const back = () => { onClose(); NL.openNote(it.id, `Before I sign Gate ${gate}, please change: `); };
+    const footer = it.gate === gate && !it.gate_signed ? html`<div class="row"><span class="muted small grow">Not ready to sign? Nothing goes ahead until you do.</span>
+      <${NL.Btn} onClick=${back} title="your notes go to the next agent working on this study; nothing is signed">Send back with notes…</${NL.Btn}><${NL.Btn} onClick=${onClose}>Not now</${NL.Btn}></div>` : null;
+    return html`<${NL.Sheet} wide title=${`Gate ${gate} · ${it.title || it.id}`} footer=${footer} sub=${html`<span class="row-wrap"><${NL.StatePill} state=${it.state} /><a class="link" href=${'#/study/' + it.id}>open the study</a></span>`} onClose=${onClose}>
       <div class="gate-grid"><div class="gate-sign"><${G} it=${it} readable=${readable} /></div>
         <div class="gate-read"><h4>What you're signing</h4><${Bundle} slug=${slug} gate=${gate} onLoaded=${setReadable} />
           ${gate === 3 && it.has_paper ? html`<div class="row"><${NL.Btn} small onClick=${() => NL.openPaper(it.id)}>Open the paper</${NL.Btn}><${NL.Btn} small onClick=${() => NL.openClaims(it.id)}>Claims ↔ evidence</${NL.Btn}></div>` : null}</div></div>

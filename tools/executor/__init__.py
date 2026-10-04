@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 
-from . import attention, backends, live
+from . import attention, backends, live, pause
 from .lab import HUB_TARGET, Lab
 from .manifest import ACTIVE, PAUSED, RESUMABLE, STATUSES, TERMINAL, all_runs, find_run, ledger
 from .runs import (answer, cancel, check_enabled, enqueue, interrupt, list_runs, permission_decision,
@@ -49,6 +49,7 @@ def health(lab: Lab) -> dict:
         "caps": caps(lab),
         "daily": daily_usage(runs),
         "brake": brake(lab, runs),
+        "lab_paused": pause.state(lab),
         "active": sum(1 for m in runs if m.get("status") in ACTIVE),
         "queued": sum(1 for m in runs if m.get("status") == "queued"),
         "waiting": sum(1 for m in runs if m.get("status") in PAUSED),
@@ -72,6 +73,6 @@ __all__ = [
     "Lab", "HUB_TARGET", "RunSpec", "SpecError", "SKILL_REGISTRY", "NEVER", "registry",
     "enqueue", "answer", "reply", "resume", "cancel", "stop", "list_runs", "queue_position",
     "check_enabled", "permission_decision", "interrupt", "CONFIG_KEYS", "tick", "tick_loop", "reconcile", "run_supervisor",
-    "caps", "brake", "daily_usage", "last_tick", "health", "attention", "backends",
+    "caps", "brake", "daily_usage", "last_tick", "health", "attention", "backends", "pause",
     "find_run", "all_runs", "ledger", "ACTIVE", "PAUSED", "RESUMABLE", "TERMINAL", "STATUSES",
 ]

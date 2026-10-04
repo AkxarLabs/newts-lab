@@ -127,8 +127,8 @@
         <${LabStatus} l=${fleetLab(fl, 'remote', lab.path, m.id)} />
         <div class="small muted keep-why">${lab.keep_connected ? 'Kept connected in the background: what it needs shows here, on Home and in the top bar, refreshed every 15 s.'
           : 'Not kept connected: you see what it needs only while you have it open. Tick “keep connected” to watch it from here.'}</div></div>
-      <div class="row">${lab.state === 'waiting' ? html`<${NL.Spinner} /><span class="small muted">sign in in the terminal window…</span>` : html`<${NL.Btn} small kind="primary" busy=${busy} onClick=${() => open(false)}>Open</${NL.Btn}>`}
-        ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { const r = await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); if (r.was_current) { NL.go('labs'); location.reload(); } else reload(); }}>disconnect</button>` : null}
+      <div class="row">${lab.state === 'waiting' ? html`<${NL.Spinner} /><span class="small muted">sign in in the terminal window…</span>` : html`<${NL.Btn} small kind="primary" busy=${busy} onClick=${() => open(false)}>Switch to this lab</${NL.Btn}>`}
+        ${['connected', 'reconnecting', 'waiting', 'error'].includes(lab.state) ? html`<button class="link small" onClick=${async () => { const r = await NL.api('/api/machines/disconnect', { id: m.id, path: lab.path }); if (r.was_current) { NL.go('labs'); location.reload(); } else reload(); }}>Disconnect</button>` : null}
         <label class="small keep keep-vis" title="stay connected in the background so Home and the top bar show what it needs"><input type="checkbox" checked=${!!lab.keep_connected}
           onChange=${async e => { await NL.act('/api/fleet/keep', { id: m.id, path: lab.path, keep: e.target.checked }); reload(); NL.refreshFleet(); }} /> keep connected</label></div></div>`;
   }
@@ -150,9 +150,9 @@
     return html`<section class="machine">
       <header class="machine-head"><div class="grow"><h3>${m.name}</h3><span class="mono small muted">${m.host}</span> <${NL.Pill} tone=${r.tone}>${r.text}</${NL.Pill}>
         ${m.reach && !m.reach.ok ? html`<div class="small muted">${m.reach.error}</div>` : null}</div>
-        <div class="row"><button class="link small" onClick=${probe}>check again</button>
+        <div class="row"><button class="link small" onClick=${probe}>Check again</button>
           ${m.facts && !(m.facts.tools || {}).uv ? html`<${NL.Btn} small onClick=${() => NL.act('/api/machines/install-uv', { id: m.id }, 'Installing uv in a terminal window')}>Install uv…</${NL.Btn}>` : null}
-          <button class="link small danger" onClick=${async () => { if (await NL.confirm({ title: `Forget ${m.name}?`, body: 'Removes it from this list. Nothing on that machine changes.', ok: 'Forget', danger: true })) { await NL.api('/api/machines/remove', { id: m.id }); reload(); } }}>forget</button></div></header>
+          <button class="link small danger" onClick=${async () => { if (await NL.confirm({ title: `Forget ${m.name}?`, body: 'Removes it from this list. Nothing on that machine changes.', ok: 'Forget', danger: true })) { await NL.api('/api/machines/remove', { id: m.id }); reload(); } }}>Forget</button></div></header>
       <${Facts} f=${m.facts} />
       ${(m.labs || []).length ? (m.labs || []).map(l => html`<${RemoteLab} key=${l.path} m=${m} lab=${l} reload=${reload} fl=${fl} />`) : html`<div class="muted small pad">No labs on this machine yet.</div>`}
       <div class="row">${mode === 'add' ? html`<${NL.Input} value=${path} onInput=${setPath} placeholder="the lab's folder on that machine, e.g. ~/my-lab" mono onEnter=${addLab} /><${NL.Btn} small onClick=${addLab}>Add</${NL.Btn}><button class="link small" onClick=${() => setMode(null)}>cancel</button>`
@@ -207,8 +207,8 @@
         <div class="grow"><b>${l.name}</b>${l.current && !s.remote ? html` <${NL.Pill} tone="ok">open</${NL.Pill}>` : null}<div class="mono small muted">${l.path}</div>
           ${l.exists ? html`<div class="small muted">${l.ideas ? NL.plural(l.ideas, 'study', 'studies') : 'no studies yet'}${l.opened ? ' · opened ' + NL.when(l.opened) : ''}</div>` : html`<div class="small warn">folder not found</div>`}
           <${LabStatus} l=${fleetLab(fl, 'local', l.path)} /></div>
-        <div class="row">${l.current && !s.remote ? html`<${NL.Btn} small onClick=${() => NL.go('')}>Go to it</${NL.Btn}>` : l.exists ? html`<${NL.Btn} small kind="primary" onClick=${() => open(l.path)}>Open</${NL.Btn}>` : null}
-          ${!l.current ? html`<button class="link small" onClick=${async () => { await NL.api('/api/labs/forget', { path: l.path }); reload(); }}>forget</button>` : null}</div></div>`)}
+        <div class="row">${l.current && !s.remote ? html`<span class="muted small">You are in this lab</span>` : l.exists ? html`<${NL.Btn} small kind="primary" onClick=${() => open(l.path)}>Switch to this lab</${NL.Btn}>` : null}
+          ${!l.current ? html`<button class="link small" onClick=${async () => { await NL.api('/api/labs/forget', { path: l.path }); reload(); }}>Forget</button>` : null}</div></div>`)}
       <details class="more"><summary>Create or open another lab on this computer</summary><div class="form">
         <div class="grid2"><${NL.Field} label="New lab name"><${NL.Input} value=${nm} onInput=${setNm} placeholder="e.g. Sparse models lab" /></${NL.Field}>
           <${NL.Field} label="Inside this folder"><${NL.Input} value=${where} onInput=${setWhere} mono /></${NL.Field}></div>
@@ -229,7 +229,14 @@
     return html`<div class="page page-narrow">
       <header class="page-head"><div><h1>Labs & machines</h1><p class="lede">A lab is one folder: its ideas, studies, papers and knowledge. It can live on this computer or on any machine you reach over SSH — the lab and its agents run where it lives; this page is your window onto each.</p></div></header>
       ${cur ? html`<div class="note">Showing <b>${cur.lab_name || cur.lab}</b> on <b>${cur.name}</b> (${cur.host}). <button class="link" onClick=${async () => { await NL.api('/api/machines/local', {}); NL.go(''); location.reload(); }}>Back to this computer</button></div>` : null}
-      ${fl && (fl.labs || []).length > 1 ? html`<p class="muted">${fl.needs_total ? html`<b class="warn">${NL.plural(fl.needs_total, 'thing')}</b> need you` : 'Nothing needs you'} across ${NL.plural(fl.labs.length, 'lab')} · ${NL.plural(fl.running_total || 0, 'run')} working. Remote labs with “keep connected” ticked refresh every 15 s.</p>` : null}
+      ${fl && (fl.labs || []).length > 1 ? (() => {
+        const sum = (xs, k) => xs.reduce((a, l) => a + (+((l.summary || {})[k]) || 0), 0);
+        const here = fl.labs.filter(l => l.current && Object.keys(l.summary || {}).length), others = fl.labs.filter(l => !l.current);
+        const line = xs => { const n = sum(xs, 'needs'), r = sum(xs, 'running');
+          return html`${n ? html`<b class="warn">${n} ${n === 1 ? 'thing needs' : 'things need'} you</b>` : 'nothing needs you'} · ${NL.plural(r, 'run')} working`; };
+        return html`<div class="muted labs-summary">${here.length ? html`<p>This lab: ${line(here)}</p>` : null}
+          <p>Other labs: ${line(others)}. Remote labs with “keep connected” ticked refresh every 15 s.</p></div>`;
+      })() : null}
       ${NL.DEMO ? html`<div class="note small">Demo — these labs and machines are made up; nothing connects.</div>` : null}
       <${LocalLabs} d=${local} reload=${load} fl=${fl} />
       ${mach ? (mach.machines || []).map(m => html`<${MachineCard} key=${m.id} m=${m} reload=${load} fl=${fl} />`) : html`<${NL.Spinner} />`}

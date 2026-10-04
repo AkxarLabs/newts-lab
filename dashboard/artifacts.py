@@ -54,7 +54,7 @@ def attention_items() -> list[dict]:
                             "target": m.get("study") or "hub", "idea": m.get("study"), "run_id": m.get("run_id"),
                             "skill": m.get("skill"), "title": m["title"],
                             "body": f"asks you: {m.get('question') or m['title']} — the agent keeps working meanwhile",
-                            "detail": {"artifact": m["id"]}, "actions": [{"id": "artifact", "label": "open"}]})
+                            "detail": {"artifact": m["id"]}, "actions": [{"id": "artifact", "label": "answer"}]})
     except Exception:  # noqa: BLE001
         pass
     return out

@@ -33,6 +33,33 @@
   const stateLabel = (d, id) => ((d.states || []).concat(d.side_states || []).find(s => s.id === id) || {}).label || id;
   const changes = d => (d && d.draft && d.draft.changes) || [];
   const touched = (d, ...prefixes) => changes(d).some(c => prefixes.some(p => c.path === p || c.path.startsWith(p)));
+  const SAVED = 'Saved to your draft — publish it (top of Compose) for agents to use it.';
+  /** a changed file, said plainly: "Room look: The Writing Room", "Procedure: Review the literature — your
+   *  instructions"… — from the lab's own names; null when the path says nothing more than itself */
+  const describePath = (d, path) => {
+    const p = String(path || ''), parts = p.split('/'), file = parts[parts.length - 1];
+    const proc = n => ((d.procedures || {})[n] || {}).title || n;
+    const stage = n => ((d.stages || []).find(s => s.id === n) || {}).title || n;
+    const role = n => ((d.roles || []).find(r => r.name === n) || {}).label || n;
+    const room = n => { const r = (d.rooms || []).find(x => x.id === n) || {}; return r.title || r.label || n; };
+    let m;
+    if ((m = p.match(/^lab\/rooms3d\/([^/.]+)(?:\.([^/]+))?\.json$/))) return `Room look: ${room(m[1])}${m[2] ? ` (${m[2]} projects)` : ''}`;
+    if ((m = p.match(/^\.claude\/skills\/([^/]+)\/(.+)$/))) return `Procedure: ${proc(m[1])} — ${m[2] === 'SKILL.md' ? 'its contract' : m[2] === 'METHOD.md' ? 'its method' : m[2]}`;
+    if ((m = p.match(/^lab\/workflow\/stage\.([^/]+)\.add\.md$/))) return `Stage: ${stage(m[1])} — your instructions`;
+    if ((m = p.match(/^lab\/workflow\/roles\/([^/]+)\.add\.md$/))) return `Role: ${role(m[1])} — your instructions`;
+    if ((m = p.match(/^lab\/workflow\/([^/]+)\.(add|method)\.md$/))) return `Procedure: ${proc(m[1])} — ${m[2] === 'add' ? 'your instructions' : 'your method'}`;
+    if ((m = p.match(/^agent-roles\/([^/]+)\.(yaml|md)$/))) return `Role: ${role(m[1])} — ${m[2] === 'yaml' ? 'its tools and model' : 'what it is told'}`;
+    if (p === 'workflow/stages.yaml') return 'The workflow: stages, states, rooms and gates';
+    if (p === 'workflow/rules.yaml') return 'Rules';
+    if ((m = p.match(/^checks\/([^/]+)\.py$/))) { const c = (d.checks || []).find(x => x.file === p); return `Check: ${c ? c.name : m[1].replace(/_/g, '-')}`; }
+    if ((m = p.match(/^(?:lab\/)?templates\/project-types\/([^/]+)\//))) return `Project type: ${m[1]}${file !== 'TYPE.md' ? ' — ' + file : ''}`;
+    return null;
+  };
+  /** a changed file: its plain summary, with the path as small secondary text */
+  const PathLabel = ({ d, path }) => {
+    const say = describePath(d, path);
+    return say ? html`<b>${say}</b> <span class="mono muted small">${path}</span>` : html`<b>${path.split('/').pop()}</b> <span class="mono muted small">${path.split('/').slice(0, -1).join('/')}</span>`;
+  };
 
   /* ── unsaved text: every Compose form says whether it holds edits not yet saved to the draft; leaving the
      page (another route, a tab of the same item, closing the browser tab) asks first ───────────────────── */
@@ -129,8 +156,7 @@
         ${k.dirty(d) ? html`<i class="cmp-dot" title="changed in your draft"></i>` : null}<span class="cmp-n">${k.n(d)}</span></a>`)}
       <div class="cmp-nav-sec">Changes</div>
       <a class=${cls('cmp-link', where === 'suggestions' && 'on')} href=${href('suggestions')}><span class="grow">Agents’ suggestions</span>${props ? html`<span class="cmp-n hot">${props}</span>` : null}</a>
-      <a class=${cls('cmp-link', where === 'history' && 'on')} href=${href('history')}><span class="grow">Published</span></a>
-      <div class="cmp-nav-foot"><button type="button" class="link small" onClick=${Tour.start}>Take the one-minute tour</button></div>
+      <a class=${cls('cmp-link', where === 'history' && 'on')} href=${href('history')}><span class="grow">Change log</span></a>
     </nav>`;
   };
 
@@ -148,16 +174,16 @@
       <span class="grow"><b>Draft</b> · ${n ? NL.plural(n, 'file') + ' changed' : 'nothing changed yet'}${n ? html` · ${p ? html`<button type="button" class="link danger" onClick=${openReview}>${NL.plural(p, 'problem')} to fix</button>` : html`<span class="ok-t">ready to publish</span>`}` : null}</span>
       <${NL.Btn} small kind="ghost" onClick=${discard}>Discard</${NL.Btn}>
       <${NL.Btn} small kind="primary" disabled=${!n} onClick=${openReview}>Review & publish</${NL.Btn}>
-      <span class="cmp-bar-undo muted small">You can undo the latest publish from <a class="link" href=${href('history')}>Published</a>.</span></div>`;
+      <span class="cmp-bar-undo muted small">You can undo the latest publish from the <a class="link" href=${href('history')}>Change log</a>.</span></div>`;
   };
 
-  const ChangeRow = ({ c, open: open0 }) => {
+  const ChangeRow = ({ d, c, open: open0 }) => {
     const [open, setOpen] = useState(!!open0);
     const [f, setF] = useState(null);
     useEffect(() => { if (open && !f) getFile(c.path).then(setF); }, [open]);
     return html`<div class="cmp-change">
       <button type="button" class="cmp-change-h" onClick=${() => setOpen(!open)}><span class=${'chg chg-' + c.status}>${c.status}</span>
-        <span class="grow clip"><b>${c.path.split('/').pop()}</b> <span class="mono muted small">${c.path.split('/').slice(0, -1).join('/')}</span></span><${NL.Icon} name=${open ? 'caret' : 'chevron'} /></button>
+        <span class="grow clip"><${PathLabel} d=${d} path=${c.path} /></span><${NL.Icon} name=${open ? 'caret' : 'chevron'} /></button>
       ${open ? (f ? html`<${NL.Diff} a=${f.published || ''} b=${f.text || ''} context=${3} />` : html`<${NL.Spinner} />`) : null}</div>`;
   };
   const ReviewSheet = ({ onClose }) => {
@@ -169,12 +195,12 @@
       const r = await edit({ op: 'publish', note }, false);
       if (r.ok) { NL.toast(r.note, 'ok'); onClose(); NL.refresh(); Tour.event('closed'); }
     };
-    return html`<${NL.Sheet} wide kicker="Compose" title="Review your draft" sub="Exactly what publishing changes. Runs already going finish with what they started with. You can undo the latest publish from Published." onClose=${onClose}
+    return html`<${NL.Sheet} wide kicker="Compose" title="Review your draft" sub="Exactly what publishing changes. Runs already going finish with what they started with. You can undo the latest publish from the Change log." onClose=${onClose}
       footer=${html`<${NL.Btn} kind="ghost" onClick=${async () => { await discard(); if (!(C.d.draft || {}).active) onClose(); }}>Discard the draft</${NL.Btn}>
         <${NL.Btn} kind="primary" disabled=${!!probs.length || !ch.length} onClick=${publish}>Publish ${ch.length ? NL.plural(ch.length, 'change') : ''}</${NL.Btn}>`}>
       ${probs.length ? html`<div class="cmp-problems"><b>Fix ${probs.length === 1 ? 'this' : 'these'} first</b><ul>${probs.map(p => html`<li>${p}</li>`)}</ul></div>`
         : ch.length ? html`<div class="cmp-ok"><${NL.Icon} name="check" /> The lab reads consistently with these changes.</div>` : null}
-      <${NL.Section} title="Changes" count=${ch.length}>${ch.length ? ch.map((c, i) => html`<${ChangeRow} key=${c.path} c=${c} open=${ch.length <= 3 && i < 3} />`) : html`<div class="muted">Nothing changed yet.</div>`}</${NL.Section}>
+      <${NL.Section} title="Changes" count=${ch.length}>${ch.length ? ch.map((c, i) => html`<${ChangeRow} key=${c.path} d=${d} c=${c} open=${ch.length <= 3 && i < 3} />`) : html`<div class="muted">Nothing changed yet.</div>`}</${NL.Section}>
       ${ch.length ? html`<${NL.Field} label="A note for the lab’s history (optional)"><${NL.Input} value=${note} onInput=${setNote} placeholder="e.g. a quicker literature pass for workshop papers" onEnter=${() => !probs.length && publish()} /></${NL.Field}>` : null}
     </${NL.Sheet}>`;
   };
@@ -244,8 +270,8 @@
   };
 
   /* ── shared pieces: a page head, an item head, files ─────────────────────── */
-  const TourLink = () => html`<button type="button" class="link small cmp-tour-link" onClick=${() => NL.composeTour()}>New here? Take the 1-minute tour</button>`;
-  const ListHead = ({ k, children }) => html`<header class="cmp-head"><div class="grow"><div class="row"><a class="kicker" href="#/compose">Compose</a><${TourLink} /></div><h1>${k.label}</h1><p class="lede">${k.blurb}</p></div>
+  const TourLink = () => html`<button type="button" class="link small cmp-tour-link" onClick=${() => NL.composeTour()}>New here? Take the one-minute tour</button>`;
+  const ListHead = ({ k, children }) => html`<header class="cmp-head"><div class="grow"><a class="kicker" href="#/compose">Compose</a><h1>${k.label}</h1><p class="lede">${k.blurb}</p></div>
     <div class="row">${children}${k.item !== 'stage' && k.item !== 'rule' ? html`<${NL.Btn} kind="primary" onClick=${() => openNew(k.item)}><${NL.Icon} name="plus" /> New ${k.one}</${NL.Btn}>` : null}</div></header>`;
   const ItemHead = ({ k, name, title, sub, chips, actions }) => html`<header class="cmp-head"><div class="grow">
       <div class="kicker"><a href=${href(k.id)}>${k.label}</a> / ${name}</div><h1>${title}</h1>${sub ? html`<p class="lede">${sub}</p>` : null}
@@ -268,7 +294,7 @@
     if (!f) return html`<${NL.Spinner} />`;
     if (f.error) return html`<div class="note note-warn">${f.error}</div>`;
     const state = f.text == null ? 'removed' : f.published == null ? 'new' : f.text !== f.published ? 'edited' : null;
-    const save = async () => { const r = await edit({ op: 'write', path, text: t }, 'Saved to the draft'); if (r.ok) { await load(); onSaved && onSaved(); } };
+    const save = async () => { const r = await edit({ op: 'write', path, text: t }, SAVED); if (r.ok) { await load(); onSaved && onSaved(); } };
     const revert = async () => { const r = await edit({ op: 'write', path, text: f.published }, 'Back to the published version'); if (r.ok) load(); };
     return html`<div class="cmp-file">
       ${intro ? html`<p class="muted small">${intro}</p>` : null}
@@ -296,7 +322,7 @@
     useEffect(() => { load(); }, [path]);
     useDirty(cur != null && t.trim() !== cur);
     if (cur == null) return html`<${NL.Spinner} />`;
-    const save = async text => { const r = await edit({ op: 'instructions', kind, name, text }, text.trim() ? 'Saved to the draft' : 'Removed in the draft'); if (r.ok) { await load(); onSaved && onSaved(text); } };
+    const save = async text => { const r = await edit({ op: 'instructions', kind, name, text }, text.trim() ? SAVED : 'Removed in the draft'); if (r.ok) { await load(); onSaved && onSaved(text); } };
     return html`<div class="wf-editor">
       <${NL.Textarea} value=${t} rows=${rows || 9} onInput=${setT} placeholder=${placeholder} mono onSubmit=${() => save(t)} />
       ${hint ? html`<div class="field-hint">${hint}</div>` : null}
@@ -366,7 +392,7 @@
     const dirty = Object.keys(fields).length || stDirty;
     useDirty(dirty);
     const from = k => p.like && !(p.own || []).includes(k) ? html`<span class="muted">from /${p.like}</span>` : null;
-    const save = () => edit({ op: 'procedure', name, fields, ...(stDirty ? { stages } : {}) }, 'Saved to the draft');
+    const save = () => edit({ op: 'procedure', name, fields, ...(stDirty ? { stages } : {}) }, SAVED);
     return html`<div class="cmp-form">
       <div class="grid2"><${NL.Field} label="Title" hint=${from('title')}><${NL.Input} value=${f.title} onInput=${v => set('title', v)} /></${NL.Field}>
         <${NL.Field} label="When it stops" hint=${from('stops') || 'e.g. “with the verdict”'}><${NL.Input} value=${f.stops} onInput=${v => set('stops', v)} /></${NL.Field}></div>
@@ -428,7 +454,7 @@
     useDirty(dirty);
     const save = async () => {
       if (!t.trim()) return NL.toast('Write the method first — or go back to keep the default.', 'warn');
-      const r = await edit({ op: 'instructions', kind: 'method', name, text: t }, 'Saved the method to the draft'); if (r.ok) onSaved && onSaved(t);
+      const r = await edit({ op: 'instructions', kind: 'method', name, text: t }, SAVED); if (r.ok) onSaved && onSaved(t);
     };
     const cancel = async () => { if (dirty && !await NL.confirm({ title: 'Drop what you wrote?', ok: 'Drop it', danger: true, body: 'The method you were writing is not saved anywhere.' })) return; onCancel(); };
     return html`<div class="wf-editor">
@@ -482,7 +508,7 @@
           <button type="button" class="iconbtn sm" title="take it out of this stage" onClick=${() => setProcs(xs => xs.filter(x => x !== p))}><${NL.Icon} name="x" /></button></div>`)}
         <div class="row"><${NL.Select} value=${add} onChange=${setAdd} options=${[{ value: '', label: 'Add a procedure…' }, ...others.map(p => ({ value: p, label: `${(d.procedures[p] || {}).title} (/${p})` }))]} />
           <${NL.Btn} small disabled=${!add} onClick=${() => { setProcs(xs => [...xs, add]); setAdd(''); }}>Add</${NL.Btn}></div></div></${NL.Field}>
-      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'stage', id: st.id, fields: { title, procedures: procs } }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div>
+      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'stage', id: st.id, fields: { title, procedures: procs } }, SAVED)}>Save to draft</${NL.Btn}></div>
       <${NL.Section} title="Its states"><${StatesHead} />${(st.states || []).map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`)}</${NL.Section}>
       ${gates.map(g => html`<div class="cmp-lock"><${NL.Icon} name="lock" /><div><b>${g.title}</b><div class="muted small">${g.means} — signed at ${stateLabel(d, g.at)}. The three gates are fixed: no customisation moves one.</div></div></div>`)}
     </div>`;
@@ -498,14 +524,21 @@
         <span class="muted small cmp-state-id">· id <span class="mono">${id}</span></span></span>
       <${NL.Select} value=${s.room} onChange=${room => edit({ op: 'state', id, fields: { room } }, `${label} now stands in ${roomName(room)}`)} options=${d.rooms.map(r => ({ value: r.id, label: r.title || r.label }))} />
       ${n ? html`<span class="cmp-n" title="studies in this state now">${n}</span>` : null}
-      ${label !== (s.label || id) ? html`<${NL.Btn} small kind="primary" onClick=${() => edit({ op: 'state', id, fields: { label } }, 'Saved to the draft')}>Save</${NL.Btn}>` : null}</div>`;
+      ${label !== (s.label || id) ? html`<${NL.Btn} small kind="primary" onClick=${() => edit({ op: 'state', id, fields: { label } }, SAVED)}>Save</${NL.Btn}>` : null}</div>`;
   };
   const StageAddDialog = ({ onClose }) => {
     const d = C.d;
     const [title, setTitle] = useState('');
     const [id, setId] = useState('');
-    const [after, setAfter] = useState((d.stages.slice(-2)[0] || {}).id || '');
-    const [room, setRoom] = useState((d.rooms[0] || {}).id || '');
+    // the room follows the stage it comes after (where that stage's last state stands), until you pick one
+    const roomOf = sid0 => { const st = d.stages.find(s => s.id === sid0) || {}, ids = st.states || [];
+      const s = (d.states || []).concat(d.side_states || []).find(x => x.id === ids[ids.length - 1]) || {};
+      return s.room || (d.rooms[0] || {}).id || ''; };
+    const [after, setAfter0] = useState((d.stages.slice(-2)[0] || {}).id || '');
+    const [room, setRoom0] = useState(() => roomOf(after));
+    const [picked, setPicked] = useState(false);
+    const setAfter = v => { setAfter0(v); if (!picked) setRoom0(roomOf(v)); };
+    const setRoom = v => { setPicked(true); setRoom0(v); };
     const sid = id || slugify(title);
     const go2 = async () => { const r = await edit({ op: 'stage-add', id: sid, title, after, room, state: sid, state_label: title }, `Added the stage ${title} to your draft`); if (r.ok) { onClose(); go('stage', sid); } };
     return html`<div class="dialog dialog-wide"><h3>A new stage</h3>
@@ -547,7 +580,7 @@
       <${NL.Toggle} on=${f.per_project} onChange=${v => set('per_project', v)} label="One per live project"
         sub="Each project gets a room of its own, titled by its study — built while /spawn-project runs, in the look for its project type. Off: one room for the whole lab." />
       <p class="muted small">Where it stands on the table: drag it on the table under Rooms.</p>
-      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'room', id: r.id, fields: f }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div>
+      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'room', id: r.id, fields: f }, SAVED)}>Save to draft</${NL.Btn}></div>
       <${NL.Section} title="What stands here">${here.length ? html`<${StatesHead} />${here.map(s => html`<${StateRow} key=${s} d=${d} id=${s} />`)}` : html`<div class="muted small">No state stands here yet.</div>`}
         <div class="row"><${NL.Select} value=${pick} onChange=${setPick} options=${[{ value: '', label: 'Move a state here…' }, ...elsewhere.map(s => ({ value: s.id, label: `${s.label || s.id} (now in ${((d.rooms || []).find(x => x.id === s.room) || {}).title || s.room})` }))]} />
           <${NL.Btn} small disabled=${!pick} onClick=${async () => { await edit({ op: 'state', id: pick, fields: { room: r.id } }); setPick(''); }}>Move</${NL.Btn}></div></${NL.Section}>
@@ -654,7 +687,7 @@
     useDirty(dirty);
     return html`<div class="cmp-form"><${NL.Field} label="Its name in the dashboard"><${NL.Input} value=${label} onInput=${setLabel} /></${NL.Field}>
       <${NL.Field} label="What it is for" hint="agents read this to decide when to call it"><${NL.Textarea} rows=${3} value=${desc} onInput=${setDesc} /></${NL.Field}>
-      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'role', name: r.name, fields: { label, description: desc } }, 'Saved to the draft')}>Save to draft</${NL.Btn}></div></div>`;
+      <div class="row end"><${NL.Btn} kind="primary" disabled=${!dirty} onClick=${() => edit({ op: 'role', name: r.name, fields: { label, description: desc } }, SAVED)}>Save to draft</${NL.Btn}></div></div>`;
   };
 
   /* ── rules ────────────────────────────────────────────────────────────────── */
@@ -686,7 +719,7 @@
       <${NL.Textarea} rows=${4} value=${t} onInput=${setT} autofocus />
       <div class="row"><span class="muted small">Enforced by these checks:</span>${checks.map(c => html`<button type="button" class=${cls('chip', 'click', cs.includes(c) && 'on')} onClick=${() => setCs(x => x.includes(c) ? x.filter(y => y !== c) : [...x, c])}>${c}</button>`)}</div>
       <div class="row end"><${NL.Btn} small kind="ghost" onClick=${() => { setEd(false); setT(r.text); setCs(r.checks || []); }}>Cancel</${NL.Btn}>
-        <${NL.Btn} small kind="primary" onClick=${async () => { const x = await edit({ op: 'rule', id: r.id, text: t, checks: cs }, 'Saved to the draft'); if (x.ok) setEd(false); }}>Save to draft</${NL.Btn}></div></div></div>`;
+        <${NL.Btn} small kind="primary" onClick=${async () => { const x = await edit({ op: 'rule', id: r.id, text: t, checks: cs }, SAVED); if (x.ok) setEd(false); }}>Save to draft</${NL.Btn}></div></div></div>`;
   };
   const RuleAdd = ({ group, checks }) => {
     const [open, setOpen] = useState(false);
@@ -706,12 +739,20 @@
 
   /* ── checks, project types, domain profiles ───────────────────────────────── */
   const checkId = c => c.file.split('/').pop().replace(/\.py$/, '');
-  const ChecksList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
-    <section class="cmp-sec"><div class="cmp-sec-h"><h2>Guard checks</h2><span class="muted small grow">Run as <span class="mono">tools/guard.py &lt;name&gt;</span> by procedures, and named by rules.</span></div>
-      <div class="cmp-rows">${d.checks.filter(c => c.guard).map(c => html`<a class="cmp-row" href=${href('check', checkId(c))}><div class="cmp-row-main"><b class="mono">${c.name}</b><div class="muted small clip">${c.doc}</div></div>${c.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`)}</div></section>
-    <section class="cmp-sec"><div class="cmp-sec-h"><h2>Paper audits</h2><span class="muted small grow">Re-run on every paper before Gate 3.</span></div>
-      <div class="cmp-rows">${d.checks.filter(c => !c.guard).map(c => html`<a class="cmp-row" href=${href('check', checkId(c))}><div class="cmp-row-main"><b class="mono">${checkId(c)}</b><div class="muted small clip">${c.doc}</div></div></a>`)}</div></section>
-    <p class="muted small cmp-foot">Built into the guard: ${d.built_in_checks.map(c => html`<span class="chip mono">${c}</span> `)}</p></div>`;
+  const CheckRow = ({ c, label }) => html`<a class="cmp-row" href=${href('check', checkId(c))}><div class="cmp-row-main"><b>${label}</b>
+    <div class="muted small clip">${c.doc || 'No description yet — open it to add one.'}</div></div>${c.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`;
+  const ChecksList = ({ d, k }) => {
+    const guard = d.checks.filter(c => c.guard), audits = d.checks.filter(c => !c.guard);
+    return html`<div class="cmp-page"><${ListHead} k=${k} />
+      <section class="cmp-sec"><div class="cmp-sec-h"><h2>Guard checks</h2><span class="muted small grow">Procedures run these as they work, and rules name them.</span></div>
+        <div class="cmp-rows">${guard.map(c => html`<${CheckRow} key=${c.file} c=${c} label=${c.name} />`)}</div></section>
+      ${audits.length ? html`<section class="cmp-sec"><div class="cmp-sec-h"><h2>Paper audits</h2><span class="muted small grow">Run again on every paper before its last gate.</span></div>
+        <div class="cmp-rows">${audits.map(c => html`<${CheckRow} key=${c.file} c=${c} label=${checkId(c).replace(/_/g, ' ')} />`)}</div></section>` : null}
+      <details class="cmp-sec more cmp-hood"><summary>Under the hood</summary>
+        <p class="muted small">Guard checks run as <span class="mono">${'tools/guard.py <name>'}</span>; built into the guard as well: ${d.built_in_checks.map(c => html`<span class="chip mono">${c}</span> `)}</p>
+        <div class="cmp-hood-list">${d.checks.map(c => html`<div class="cmp-hood-row"><a class="link mono small" href=${href('check', checkId(c))}>${c.file}</a>
+          ${(c.usage || []).map(u => html`<code class="mono small">${u}</code>`)}</div>`)}</div></details></div>`;
+  };
   const CheckEditor = ({ d, name }) => {
     const c = d.checks.find(x => checkId(x) === name);
     if (!c) return html`<${Missing} k=${KIND_OF.check} name=${name} />`;
@@ -720,14 +761,15 @@
       <${FileEditor} path=${c.file} rows=${30} intro="Python, run by the guard. NAME is how rules and procedures call it; run(args, guard) returns the problems it finds." /></div>`;
   };
   const TypesList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
-    ${d.types.length ? html`<div class="cmp-rows">${d.types.map(t => html`<a class="cmp-row" href=${href('type', t.name)}><div class="cmp-row-main"><b>${t.name}</b><div class="muted small clip">${t.title}</div></div>${t.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`)}</div>`
+    ${d.types.length ? html`<div class="cmp-rows">${d.types.map(t => html`<a class="cmp-row" href=${href('type', t.name)}><div class="cmp-row-main"><div class="row"><b>${t.title || t.name}</b>${t.title && t.title !== t.name ? html`<span class="mono muted small">${t.name}</span>` : null}</div>
+      <div class="muted small cmp-desc">${t.description || 'No description yet — open its TYPE.md to add one.'}</div></div>${t.origin === 'yours' ? html`<${Origin} o="yours" />` : null}</a>`)}</div>`
       : html`<${NL.Empty} title="No project types yet">Add one (e.g. ml, theory) to give its projects their own conventions and room look.</${NL.Empty}>`}
     ${d.domains.length ? html`<section class="cmp-sec"><div class="cmp-sec-h"><h2>Domain profiles</h2><span class="muted small grow">Field conventions a study can adopt.</span></div>
       <div class="cmp-rows">${d.domains.filter(x => x.file).map(x => html`<a class="cmp-row" href=${href('domain', x.name)}><div class="cmp-row-main"><b>${x.name}</b><div class="mono muted small">${x.file}</div></div></a>`)}</div></section>` : null}</div>`;
   const TypeEditor = ({ d, name }) => {
     const t = d.types.find(x => x.name === name);
     if (!t) return html`<${Missing} k=${KIND_OF.type} name=${name} />`;
-    return html`<div class="cmp-page"><${ItemHead} k=${KIND_OF.type} name=${name} title=${name} sub=${t.title} chips=${html`<${Origin} o=${t.origin} />`}
+    return html`<div class="cmp-page"><${ItemHead} k=${KIND_OF.type} name=${name} title=${t.title || name} sub=${t.description} chips=${html`<${Origin} o=${t.origin} />`}
       actions=${html`<${CopyBtn} kind="type" like=${name} />${t.origin === 'yours' ? html`<${DeleteBtn} kind="type" name=${name} label=${'the project type ' + name} />` : null}`} />
       <${FilesTab} files=${t.files} intro="TYPE.md is what every agent in a project of this type reads first." /></div>`;
   };
@@ -748,11 +790,12 @@
       : html`<${NL.Empty} title="Nothing to review">When an agent suggests a change, it waits here.</${NL.Empty}>`}</div>`;
   const History = ({ d }) => {
     const latest = (d.history || []).find(h => !h.undone);
-    return html`<div class="cmp-page"><header class="cmp-head"><div class="grow"><a class="kicker" href="#/compose">Compose</a><h1>Published</h1>
-      <p class="lede">Every change you published, newest first. The latest can be undone.</p></div></header>
+    return html`<div class="cmp-page"><header class="cmp-head"><div class="grow"><a class="kicker" href="#/compose">Compose</a><h1>Change log</h1>
+      <p class="lede">What you published to the lab, newest first. You can undo the latest. (What studies did is under History.)</p></div></header>
       ${(d.history || []).length ? html`<div class="cmp-rows">${d.history.map(h => html`<div class=${cls('cmp-row', h.undone && 'undone')}>
         <div class="cmp-row-main"><div class="row"><b>${h.note || NL.plural(h.n, 'change')}</b>${h.undone ? html`<span class="pill">undone</span>` : null}</div>
-          <div class="mono muted small clip">${(h.files || []).join(' · ')}</div></div>
+          <ul class="cmp-log-files">${(h.files || []).map(f => { const say = describePath(d, f); return html`<li>${say ? html`<span>${say}</span> <span class="mono muted small">${f}</span>` : html`<span class="mono small">${f}</span>`}</li>`; })}
+            ${h.n > (h.files || []).length ? html`<li class="muted small">and ${NL.plural(h.n - h.files.length, 'more file')}</li>` : null}</ul></div>
         <div class="cmp-row-side"><span class="mono muted small">${(h.ts || '').replace('T', ' ').slice(0, 16)}</span>
           ${latest && h.id === latest.id ? html`<${NL.Btn} small onClick=${async () => { if (await NL.confirm({ title: 'Undo this publish?', ok: 'Undo it', body: 'The files go back to how they were before it. Runs started since keep what they started with.' })) { const r = await edit({ op: 'undo', id: h.id }); if (r.ok) NL.refresh(); } }}><${NL.Icon} name="undo" /> Undo</${NL.Btn}>` : null}</div></div>`)}</div>`
         : html`<${NL.Empty} title="Nothing published yet">What you publish from a draft is listed here.</${NL.Empty}>`}</div>`;
@@ -763,7 +806,7 @@
     : kind === 'room' ? d.rooms.map(r => ({ id: r.id, title: r.title || r.label, sub: (r.states || []).map(s => stateLabel(d, s)).join(' · ') }))
     : kind === 'role' ? d.roles.map(r => ({ id: r.name, title: r.label, sub: r.description }))
     : kind === 'check' ? d.checks.filter(c => c.guard).map(c => ({ id: c.name, title: c.name, sub: c.doc }))
-    : kind === 'type' ? d.types.map(t => ({ id: t.name, title: t.name, sub: t.title })) : [];
+    : kind === 'type' ? d.types.map(t => ({ id: t.name, title: t.title || t.name, sub: t.description, tag: t.name })) : [];
   const openNew = async (kind, props) => { if (!C.d || !C.d.procedures) await reload(); NL.open(NewDialog, { kind, ...(props || {}) }, { kind: 'dialog', key: 'cmp-new' }); };
   const NewDialog = ({ kind, like: like0, title: title0, onClose }) => {
     const d = C.d;

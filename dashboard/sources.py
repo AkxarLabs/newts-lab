@@ -528,8 +528,20 @@ def snapshot() -> dict:
         "workflow": _workflow_view(),
         "rooms3d_sig": _rooms3d_sig(),
         "artifacts": _artifacts_view(),
+        "lab_paused": _lab_paused(),
         **_autonomy_view(),
     }
+
+
+def _lab_paused() -> dict | None:
+    """null, or {since, by} while the whole lab is paused (POST /api/lab/pause; tools/executor/pause.py)."""
+    if executor is None:
+        return None
+    try:
+        st = executor.pause.state(executor.Lab(ctx.HUB))
+    except Exception:  # noqa: BLE001 — never blank the dashboard
+        return None
+    return {"since": st.get("since"), "by": st.get("by")} if st else None
 
 
 def _autonomy_view() -> dict:

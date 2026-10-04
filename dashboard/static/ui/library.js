@@ -18,6 +18,22 @@
     useEffect(() => { let on = true; NL.loadLibTree().then(x => on && setT(x)); return () => { on = false; }; }, []);
     return t;
   };
+  /** a readable name from any file name: "EXPERIMENT_LOG.md" → "Experiment log", "lit-review.md" → "Lit review",
+   *  "2026-10-01-weekly.md" → "Weekly · 2026-10-01" (generic: no list of known files) */
+  NL.docLabel = name => {
+    const base = String(name || '').split('/').pop().replace(/\.[A-Za-z0-9]+$/, '');
+    const m = base.match(/^(\d{4}-\d{2}-\d{2}(?:[T_-]\d{2}[-:]?\d{2}(?:[-:]?\d{2})?)?)(?:[-_ ]+(.*))?$/);
+    const date = m ? m[1] : '', rest = m ? (m[2] || '') : base;
+    let words = rest.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (words && words === words.toUpperCase()) words = words.toLowerCase();
+    words = words ? words[0].toUpperCase() + words.slice(1) : '';
+    return words && date ? `${words} · ${date}` : words || date || base;
+  };
+  /** a shelf entry: its readable name, with the file name as small secondary text */
+  NL.DocName = ({ d }) => {
+    const file = String(d.title || d.rel || '').split('/').pop(), label = NL.docLabel(file);
+    return html`<span class="doc-name">${label}${label !== file ? html`<small class="doc-file mono">${file}</small>` : null}</span>`;
+  };
   const docHref = d => `#/library/${encodeURIComponent(d.scope)}/${encodeURIComponent(d.slug || '_')}/${d.rel.split('/').map(encodeURIComponent).join('/')}`;
   NL.openDoc = (scope, slug, rel) => { location.hash = docHref({ scope, slug, rel }); };
 
@@ -36,12 +52,12 @@
   const Shelf = ({ groups, sel, filter }) => {
     const q = (filter || '').toLowerCase();
     return html`<nav class="shelf">${groups.map(g => {
-      const secs = g.sections.map(sec => ({ ...sec, docs: sec.docs.filter(d => !q || (d.title + ' ' + d.rel + ' ' + g.title).toLowerCase().includes(q)) })).filter(sec => sec.docs.length);
+      const secs = g.sections.map(sec => ({ ...sec, docs: sec.docs.filter(d => !q || (NL.docLabel(d.title) + ' ' + d.title + ' ' + d.rel + ' ' + g.title).toLowerCase().includes(q)) })).filter(sec => sec.docs.length);
       if (!secs.length) return null;
       const open = !q && sel ? (sel.slug || null) === (g.slug || null) || (g.kind === 'lab' && sel.scope === 'lab') : true;
       return html`<details class="shelf-group" open=${open || !!q}><summary><span class="clip">${g.title}</span>${g.state ? html`<${NL.StatePill} state=${g.state} />` : null}</summary>
         ${secs.map(sec => html`<div class="shelf-sec"><div class="shelf-sec-h">${sec.icon || ''} ${sec.title}</div>
-          ${sec.docs.map(d => html`<a class=${cls('shelf-doc', sel && sel.scope === d.scope && (sel.slug || null) === (d.slug || null) && sel.rel === d.rel && 'on')} href=${docHref(d)}>${d.title}</a>`)}</div>`)}</details>`;
+          ${sec.docs.map(d => html`<a class=${cls('shelf-doc', sel && sel.scope === d.scope && (sel.slug || null) === (d.slug || null) && sel.rel === d.rel && 'on')} href=${docHref(d)}><${NL.DocName} d=${d} /></a>`)}</div>`)}</details>`;
     })}</nav>`;
   };
 
@@ -55,9 +71,8 @@
         <p class="muted small">Everything the lab writes, study by study. What agents picked out for you is also under <a class="link" href="#/artifacts">For you</a>.</p>
         <input class="input search" placeholder="Find a document…" value=${filter} onInput=${e => setFilter(e.target.value)} /></div>
         ${tree ? html`<${Shelf} groups=${groups} sel=${sel} filter=${filter} />` : html`<${NL.Spinner} />`}
-        ${tree && filter && !groups.some(g => (g.sections || []).some(sec => sec.docs.some(d => `${g.title} ${d.title} ${d.rel}`.toLowerCase().includes(filter.toLowerCase())))) ? html`<div class="muted small pad">No documents match “${filter}”.</div>` : null}
-        <div class="shelf-foot"><button class="link small" onClick=${() => NL.open(NL.DocEditSheet, { which: 'system' })}>Describe this machine (SYSTEM.md)</button>
-          <button class="link small" onClick=${() => NL.open(NL.DocEditSheet, { which: 'open-questions' })}>Add open questions</button></div></aside>
+        ${tree && filter && !groups.some(g => (g.sections || []).some(sec => sec.docs.some(d => `${g.title} ${NL.docLabel(d.title)} ${d.title} ${d.rel}`.toLowerCase().includes(filter.toLowerCase())))) ? html`<div class="muted small pad">No documents match “${filter}”.</div>` : null}
+        <div class="shelf-foot"><button class="link small" onClick=${() => NL.open(NL.DocEditSheet, { which: 'open-questions' })}>Add an open question for the lab</button></div></aside>
       <main class="split-right">${sel ? html`<${NL.DocReader} ...${sel} />` : html`<${NL.Empty} icon="📖" title="Pick a document">Ideation worksheets, proposals, critiques, experiment ledgers, papers — everything the lab writes, rendered here.</${NL.Empty}>`}</main>
     </div>`;
   };

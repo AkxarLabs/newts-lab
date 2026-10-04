@@ -132,7 +132,7 @@ function demoState(T, items) {
     run('r-ask', 'ask', null, 'running'),
     run('r-spawn', 'spawn-project', 'prop-2', items.find(i => i.id === 'prop-2' && !i.has_project) ? 'running' : 'completed'),
     run('r-ideate', 'ideate', null, T % 10 < 6 ? 'queued' : 'running'),
-  ].filter(r => r.status !== 'completed');
+  ];
   const done = [run('r-night1', 'lit-review', 'lit-1', 'completed', { finished: ago(300) }), run('r-night2', 'experiment', 'moe', 'completed', { finished: ago(180) })];
   const GATE_WHAT = { 1: 'approve the proposal', 2: 'approve full-scale runs', 3: 'finalize the paper' };
   const attention = items.filter(i => i.gate && !i.gate_signed).map(i => ({ id: 'gate:' + i.id, sev: 'block', kind: 'gate', title: `Gate ${i.gate} — ${i.title}: ${GATE_WHAT[i.gate]}`,
@@ -141,14 +141,14 @@ function demoState(T, items) {
     run_id: 'r-paper', actions: [{ id: 'answer', label: 'answer' }] });
   attention.push({ id: 'fail:r-sweep', sev: 'warn', kind: 'crashed', title: 'An RL fine-tuning experiment timed out', body: 'exp-019, seed 2 — after its 45-minute limit', run_id: 'r-sweep', actions: [{ id: 'tail', label: 'open' }] });
   const artifacts = artifactsAt(T);
-  for (const x of artifacts.filter(x => x.question && !x.answered)) attention.push({ id: 'artifact:' + x.id, sev: 'warn', kind: 'artifact', title: x.title, body: `asks you: ${x.question} — the agent keeps working meanwhile`, idea: x.study, run_id: x.run_id, detail: { artifact: x.id }, actions: [{ id: 'artifact', label: 'open' }] });
+  for (const x of artifacts.filter(x => x.question && !x.answered)) attention.push({ id: 'artifact:' + x.id, sev: 'warn', kind: 'artifact', title: x.title, body: `asks you: ${x.question} — the agent keeps working meanwhile`, idea: x.study, run_id: x.run_id, detail: { artifact: x.id }, actions: [{ id: 'artifact', label: 'answer' }] });
   const events = [['state_change', 'Distillation curricula moved to literature review', 420, 'lit-1'], ['run_finished', 'lit-review finished', 300, 'lit-1', 'completed'],
     ['gate_waiting', 'Gate 1 is waiting — Curriculum distillation', 260, 'prop-1'], ['run_finished', 'experiment finished — exp-014', 180, 'moe', 'completed'],
     ['run_finished', 'exp-019 timed out', 95, 'rl', 'failed'], ['agent_waiting', 'the writing agent asked you something', 9, 'paper-1']]
     .map(([kind, detail, min, idea, status]) => ({ ts: ago(min), source: 'hub', kind, detail, idea, ...(status ? { status } : {}) }));
   return { artifacts, workflow: window.__WORKFLOW_DEFAULT__, now: iso(Date.now()), items: items.map(it => ({ inflight: [], events: [], directives: [], ...it })), runs: runs.concat(done), attention, workers: [],
     slots: { cap: 3, in_use: 2 }, directives: [], gates_waiting: attention.filter(a => a.kind === 'gate').length, cold: false, events,
-    executor: { available: true, enabled: true, caps: { total: 6 } },
+    executor: { available: true, enabled: true, caps: { total: 10 } },
     campaign_states: NL.demoCampaignStates ? NL.demoCampaignStates(T) : [],
     campaigns: [{ name: 'scaling-laws', title: 'Scaling-laws sweep', status: 'active', signed: 'PI · 2026-06-12',
       budget: { full_runs: 12, total_max_minutes: 480, pi_signed: true, expires: '2026-06-30' }, projects: ['moe', 'rl', 'ana-1'] }] };
