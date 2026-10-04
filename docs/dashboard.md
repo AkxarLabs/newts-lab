@@ -548,3 +548,6 @@ chain, a repeat, a campaign pass) and what it started.
   DOMPurify and KaTeX.
 - **Demo mode**, for debugging: start with `--demo` and open `/?demo`. It is a synthetic living lab,
   and nothing is written.
+- **The trailer**: open `/trailer.html` for a 70-second tour cut to music. It plays the demo lab in a frame
+  and drives it on the beat (`static/trailer/trailer.js` holds the scenes, `music.js` synthesizes the
+  soundtrack). *Record to a video file* captures the tab with its sound and saves a `.webm` when it ends.
