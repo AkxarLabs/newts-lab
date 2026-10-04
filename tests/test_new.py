@@ -45,12 +45,12 @@ def test_a_room_like_another_takes_its_look_and_the_states_it_is_given(lab, new)
     import json
     wf = load("workflow")
     (lab / "lab" / "rooms3d").mkdir(parents=True, exist_ok=True)
-    (lab / "lab" / "rooms3d" / "lab.json").write_text(json.dumps({"key": "lab", "size": [12, 8], "stations": {"analyze": [0, -2, 3.14]}}), encoding="utf-8")
-    files = new.new_room(lab, "data", "lab", states=["analysis"], title="The Data Room")
+    (lab / "lab" / "rooms3d" / "bench.json").write_text(json.dumps({"key": "bench", "size": [12, 8], "stations": {"analyze": [0, -2, 3.14]}}), encoding="utf-8")
+    files = new.new_room(lab, "data", "bench", states=["analysis"], title="The Data Room")
     look = json.loads((lab / "lab" / "rooms3d" / "data.json").read_text(encoding="utf-8"))
     assert look["key"] == "data" and look["title"] == "The Data Room" and look["stations"] == {"analyze": [0, -2, 3.14]}
     rooms = {r["id"]: r for r in wf.load(lab)["rooms"]}
-    assert rooms["data"]["states"] == ["analysis"] and "analysis" not in rooms["lab"]["states"]
+    assert rooms["data"]["states"] == ["analysis"] and "analysis" not in rooms["bench"]["states"]
     assert "place" not in rooms["data"] and list(rooms)[-1] == "data"          # it takes the next free plot
     assert next(s for s in wf.load(lab)["states"] if s["id"] == "analysis")["room"] == "data"
     assert wf.check(lab) == [] and files

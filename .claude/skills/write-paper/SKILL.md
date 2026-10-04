@@ -70,7 +70,8 @@ Draft in the order and style the method describes. Whatever the method, these ru
 
 - **Method** is precise enough to reimplement, and matches the project's actual code.
 - **Experimental Setup** matches the frozen proposal; deviations are disclosed.
-- **Results / Ablations** assert nothing the artifacts don't show.
+- **Results / Ablations** assert nothing the artifacts don't show. Every `claims.yaml` entry carries `status: confirmatory | exploratory` (the frozen Analysis plan decides which); an exploratory claim's sentence says so (`checks/audit_prereg.py`).
+- **Appendix "All experiments run"**, generated from `runs/registry.jsonl` and PLAN.md: every row (kept, failed, dropped, post-hoc), its outcome, and the number of configurations evaluated on validation to reach the headline result. Negative results are reported here even when the body does not discuss them. The **data statement** is written from `control.yaml` `data:`.
 - **Citations as placeholders while drafting**: where a source is needed, write
   `[cite: short description]` inline; afterwards resolve each mechanically —
   lit-review note → `s2.py bibtex <id> --append references.bib` → `\cite{<returned cite-key>}`.

@@ -27,6 +27,10 @@ it good.
 
   Every row gets its promotion/success criterion written now. Criteria invented after seeing results
   are not criteria.
+- **Analysis plan**: decide the primary comparison and the decision rule before any number exists, so
+  the result cannot choose its own test. Pick the uncertainty method the field would accept (a CI over
+  seeds, a bootstrap, a paired difference) and let the pilot's variance set the number of replicates. Name
+  the sanity controls (shuffled labels, a leakage check, a trivial baseline) and what each should show.
 - **Ablations**: every method component gets a removal test. If the method has one component, plan the
   sanity ablations (for example, against a random or shuffled control).
 - **Budgets and kill criteria**: concrete enough that a future session can apply them mechanically.

@@ -16,8 +16,12 @@
 # audit_claims.py resolves artifacts from the hub archive first and `--verify-hashes` checks
 # them, so the finalized paper is auditable from the hub alone (the project repo may be gone).
 
+# status: confirmatory (the proposal's frozen Analysis plan named this comparison and the final evaluation
+# supports it) or exploratory (anything the plan did not name — the claim's sentence must say so).
+# checks/audit_prereg.py reads it.
 # - id: C001
 #   claim: "Our method improves val_bpb by 2.3% over the tuned baseline"
+#   status: confirmatory
 #   numbers: ["2.3"]
 #   metric: val_bpb
 #   location: "Sec 4.1, Table 2"

@@ -8,6 +8,10 @@ Checks (exit 1 on any failure, 0 when ready):
   2. No unfilled {{placeholders}} left in PLAN.md / control.yaml (template not filled).
   3. control.yaml parses and has budgets + gate2_envelope blocks.
   4. runs/registry.jsonl (if present) is readable line-JSON.
+  5. The scientific contract: PLAN.md has an "Analysis plan" and a "Test-split access log" section,
+     every PILOT/FULL row in its experiment table has a pre-written criterion, and no PILOT/FULL run is
+     recorded before a completed SMOKE. Warns (does not fail) when the analysis plan, the data
+     provenance block (ml/empirical) or the total compute budget are still unfilled.
 
 Then reports orientation regardless: last run, envelope status, SYSTEM.md presence,
 and a suggested next procedure. The project-side analogue of the hub's check_lab.py.
@@ -27,6 +31,38 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _section(text: str, title: str) -> str | None:
+    """The body under the first '## <title>' heading, up to the next heading of the same or higher level."""
+    m = re.search(r"^(#{2,4})\s+" + re.escape(title) + r".*$", text, re.M)
+    if not m:
+        return None
+    rest = text[m.end():]
+    nxt = re.search(r"^#{1,%d}\s" % len(m.group(1)), rest, re.M)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _filled(body: str, label: str) -> bool:
+    """Is the '- **<label>:** value' line filled with something other than a comment?"""
+    for line in body.splitlines():
+        if label in line and "**" in line:
+            val = re.sub(r"<!--.*?(-->|$)", "", line.split("**", 2)[-1]).lstrip(":").strip()
+            return bool(val)
+    return False
+
+
+def _table_rows(body: str) -> list[list[str]]:
+    """Markdown table rows as cell lists, header and separator dropped."""
+    rows = []
+    for line in body.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if set("".join(cells)) <= set("-: "):
+            continue
+        rows.append(cells)
+    return rows[1:]
 
 
 def main() -> int:
@@ -75,6 +111,7 @@ def main() -> int:
     last_run: dict | None = None
     registry = ROOT / "runs" / "registry.jsonl"
     n_runs = 0
+    records: list[dict] = []
     if registry.exists():
         for i, line in enumerate(registry.read_text(encoding="utf-8-sig").splitlines(), 1):
             if not line.strip():
@@ -82,8 +119,44 @@ def main() -> int:
             try:
                 last_run = json.loads(line)
                 n_runs += 1
+                records.append(last_run)
             except json.JSONDecodeError:
                 problems.append(f"runs/registry.jsonl line {i} is not valid JSON")
+
+    # The scientific contract (project rules: staged scale, analysis-plan, test-once, data provenance).
+    plan_path = ROOT / "PLAN.md"
+    if plan_path.exists():
+        plan_text = plan_path.read_text(encoding="utf-8-sig")
+        problems.extend(f"PLAN.md has no \"{title}\" section — copy it from templates/project/PLAN.md"
+                        for title in ("Analysis plan", "Test-split access log")
+                        if not re.search(r"^##+\s+" + re.escape(title), plan_text, re.M))
+        plan_body = _section(plan_text, "Analysis plan")
+        if plan_body is not None and not any(_filled(plan_body, k) for k in ("Primary comparison", "Decision rule")):
+            notes.append("PLAN.md's Analysis plan is not filled yet — copy the proposal's frozen plan before PILOT runs")
+        for cells in _table_rows(_section(plan_text, "Experiments") or ""):
+            if len(cells) >= 5 and cells[0].startswith("exp-") and "SMOKE" not in cells[2].upper() and not cells[4]:
+                problems.append(f"PLAN.md row {cells[0]} ({cells[2]}) has no promotion/success criterion — write it before it runs")
+    smoke_done = False
+    for rec in records:
+        stage = str(rec.get("stage") or "").upper()
+        if stage == "SMOKE" and rec.get("status") == "completed":
+            smoke_done = True
+        elif stage in ("PILOT", "FULL") and not smoke_done:
+            problems.append(f"{rec.get('run_id')} is a {stage} run recorded before any completed SMOKE (staged scale)")
+            break
+    if isinstance(control, dict):
+        data = control.get("data") or {}
+        ptype = str(control.get("project_type") or "ml").lower()
+        if ptype in ("ml", "empirical") and not str((data or {}).get("sha256") or "").strip():
+            notes.append("control.yaml data.sha256 is empty — record the dataset's source, version and hash before PILOT runs (data provenance)")
+        total = (control.get("budgets") or {}).get("total_minutes") or 0
+        spent = sum(float(r.get("wall_seconds") or 0) for r in records) / 60
+        if not total:
+            notes.append("control.yaml budgets.total_minutes is 0 — set the proposal's total compute cap so spend can be tracked")
+        else:
+            notes.append(f"compute spent: {spent:.0f} of {total} min" + (" — OVER BUDGET: review kill criteria with the PI" if spent > total else ""))
+            if spent > total:
+                problems.append(f"total compute budget exhausted ({spent:.0f} of {total} min) — a PI decision, not a config edit")
 
     envelope = (control.get("gate2_envelope") or {}) if isinstance(control, dict) else {}
     signed = bool(envelope.get("pi_signed"))

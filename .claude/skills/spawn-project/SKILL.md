@@ -72,7 +72,7 @@ committed project repo at `<projects_root>/<slug>` — **outside the hub**, inde
    - Non-`ml` type: write the **smoke** in the type's shape (a tiny regression / one sim draw / a
      proof-checker no-op) so step 7's smoke + `check_project.py` pass. `ml` keeps the base toy.
 4. **Configure `control.yaml`** (the project's end-to-end run config): fill
-   budgets/seeds/loop values from the approved proposal. If a Gate 2 envelope was
+   budgets (including `total_minutes`), the `data:` provenance block, seeds and loop values from the approved proposal, and copy the proposal's frozen Analysis plan into PLAN.md. If a Gate 2 envelope was
    authorized, record it in `gate2_envelope` with `pi_signed: true` — control.yaml is the
    canonical machine-readable envelope. Provenance: PI approved directly at Gate 1 → leave
    `signed_via: null`; derived from a PI-signed `/autopilot` campaign brief (unattended

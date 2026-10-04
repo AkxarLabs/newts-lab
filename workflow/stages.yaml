@@ -27,7 +27,7 @@ states:
   - {id: scoping,         label: Scoping,           stage: scoping,      room: study,     station: scoping,     revivable: true}
   - {id: proposal,        label: Proposal,          stage: proposal,     room: study,     station: proposal,    revivable: true}
   - {id: active,          label: Experiments,       stage: experiments,  room: lab,       station: experiments, revivable: true}
-  - {id: analysis,        label: Analysis,          stage: analysis,     room: lab,       station: analysis,    results: true}
+  - {id: analysis,        label: Analysis,          stage: analysis,     room: bench,     station: bench,       results: true}
   - {id: writing,         label: Writing,           stage: writing,      room: writing,   station: drafting,    results: true}
   - {id: internal-review, label: Internal review,   stage: review,       room: writing,   station: review,      results: true}
   - {id: final,           label: Final,             stage: finalization, room: archive,   station: rest,        terminal: true, results: true, tone: ok}
@@ -51,11 +51,11 @@ back_edges:
 
 # the PI's gates. Fixed: a customisation can never add, remove or move one.
 gates:
-  - {n: 1, at: proposal,        before: active, title: "Gate 1 — approve the proposal",
-     means: "the plan, its budget and its kill criteria; optionally the Gate-2 envelope with it"}
-  - {n: 2, at: active,          scope: FULL,    title: "Gate 2 — approve FULL runs",
-     means: "the compute envelope for FULL-scale runs (per run, not a state change)"}
-  - {n: 3, at: internal-review, before: final,  title: "Gate 3 — finalize",
+  - {n: 1, at: proposal,        before: active, title: "Gate 1: approve the proposal",
+     means: "the hypothesis, the frozen evaluation and analysis plan, the budget and the kill criteria; optionally the Gate 2 run limits with it"}
+  - {n: 2, at: active,          scope: FULL,    title: "Gate 2: approve full runs",
+     means: "the limits for full-scale runs (per run, not a state change)"}
+  - {n: 3, at: internal-review, before: final,  title: "Gate 3: finalize the paper",
      means: "the reviewed paper is final: reproducibility pass, artifacts locked, knowledge written back"}
 
 # ── stages: what the PI sees as the steps of the workflow ────────────────────────────────────────
@@ -72,7 +72,8 @@ stages:
   - {id: review,       title: Internal review,   states: [internal-review], procedures: [review-paper, critique-paper], gate: 3}
   - {id: finalization, title: Finalization,      states: [final],           procedures: [finalize]}
 
-# the rooms on the dashboard's table = the Studies board's columns. A room stands on a plot round the PI's desk:
+# the rooms on the dashboard's table = the Studies board's columns. Data generation (the Lab) and its
+# interpretation (the Bench) are separate rooms on purpose: analysis reads run artifacts and writes none. A room stands on a plot round the PI's desk:
 # `place: [column, row]` and `facing: n|e|s|w` put it there (Compose → Rooms: drag it); without them it takes
 # the next free plot. `per_project: true` makes it one room PER LIVE PROJECT (each project its own lab). How a
 # room looks is dashboard/static/world3d/rooms/<id>.js, or the lab's own lab/rooms3d/<id>.json (Compose → a
@@ -81,7 +82,8 @@ stages:
 rooms:
   - {id: incubator, label: Ideas,   title: The Incubator,    states: [seed, triaged]}
   - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], gate: 1}
-  - {id: lab,       label: Lab,     title: The Lab,          states: [active, analysis], gate: 2, per_project: true}
+  - {id: lab,       label: Lab,     title: The Lab,          states: [active], gate: 2, per_project: true}
+  - {id: bench,     label: Analysis, title: The Bench,      states: [analysis]}
   - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review], gate: 3}
   - {id: archive,   label: Done,    title: The Archive,      states: [final]}
   - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed]}

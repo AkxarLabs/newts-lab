@@ -150,7 +150,7 @@ def test_gates_are_fixed(lab, wf):
 def test_ui_view_and_generated_default_are_current(wf):
     view = wf.ui_view()
     assert [s["id"] for s in view["states"]] == OLD_LIFECYCLE
-    assert {r["id"] for r in view["rooms"]} == {"incubator", "study", "lab", "writing", "archive", "margins"}
+    assert {r["id"] for r in view["rooms"]} == {"incubator", "study", "lab", "bench", "writing", "archive", "margins"}
     assert wf.render_docs(check_only=True) == [], "run `tools/workflow.py render-docs`"
 
 

@@ -64,8 +64,10 @@ Operates inside the project repo at `<projects_root>/<slug>` (path in the regist
 - **Debug cap:** max `experiment.max_debug_depth` (default 3) consecutive fix attempts on a failing experiment; then record the failure (with diagnosis) and move to the next planned item.
 - **Frozen things:** eval protocol, test set, seeds policy, budgets. If a result requires touching any of them, stop and flag the PI. Changing the seed/timeout/eval to make a number better — never.
 - **Kill criteria:** check PLAN.md's kill criteria after every PILOT. If triggered, stop the loop and report to the PI with the evidence — recommendation kill/park, their call (headless: run footer `needs_pi=kill_criteria` with the evidence path in `summary`).
-- **Multi-seed:** before any result is treated as a finding (analysis/paper), re-run the winning config at ≥ `seeds.multi_seed_n` (default 3) seeds via `scripts/sweep.py`, report mean ± spread.
-- **Plan drift:** new experiment ideas go into PLAN.md as new rows (with criteria) before they run.
+- **Multi-seed:** before any result is treated as a finding (analysis/paper), re-run the winning config at ≥ `seeds.multi_seed_n` (default 3) seeds via `scripts/sweep.py`, report mean ± spread. Seeds come from `seeds.list`; a repeat with new seeds after seeing a result is logged `rerun_of: exp-NNN` with a reason.
+- **The test split is read once** (project rule test-once): only the plan's **final evaluation** row evaluates on the held-out split, after selection on validation is finished, and every test read is a row in PLAN.md's "Test-split access log". A second read of the same configuration needs a written reason and makes its result exploratory.
+- **Plan drift:** new experiment ideas go into PLAN.md as new rows (with criteria) before they run. A row added after Gate 2 or after the first analysis is tagged `(post-hoc)` (project rule post-hoc-rows).
+- **Data provenance:** before the first PILOT, `control.yaml` `data:` names the dataset's source, version, hash, split seed and licence (`scripts/check_project.py` warns while it is empty).
 
 ## Parallelism (optional) — the parallel path
 

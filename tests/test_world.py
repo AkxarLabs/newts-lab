@@ -131,7 +131,7 @@ def test_every_run_stands_where_its_work_is():
       const s = Object.assign({json.dumps(SNAP)}, {{ workflow: WF }});
       const rooms = Object.fromEntries(M.roomList(s).map(r => [r.id, r]));
       return Object.fromEntries(s.runs.map(r => [r.run_id, M.placeOfRun(s, r, rooms)]));""")
-    assert got == {"r1": "lab:new", "r2": "lab:moe", "r3": WF_ROOM["lit-review"], "r4": "hub", "r5": "writing", "r6": "lab:ana"}
+    assert got == {"r1": "lab:new", "r2": "lab:moe", "r3": WF_ROOM["lit-review"], "r4": "hub", "r5": "writing", "r6": WF_ROOM["analysis"]}   # analysis has its own room: the Bench
 
 
 def test_world_scripts_load_before_the_app():

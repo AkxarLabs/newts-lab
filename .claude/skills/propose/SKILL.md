@@ -13,8 +13,8 @@ newts:
   does: Writes the full plan — hypothesis, staged experiments, budgets, kill criteria.
   stops: at Gate 1, for your signature
   outputs:
-  - 'studies/<slug>/proposal.md with the template''s sections: headline hypothesis, frozen eval, staged plan with
-    pre-written criteria, budgets, kill criteria, §5 Gate-2 envelope'
+  - 'studies/<slug>/proposal.md with the template''s sections: headline hypothesis, frozen eval and analysis plan,
+    staged plan with pre-written criteria and a final-evaluation row, budgets, kill criteria, §5 Gate-2 envelope'
 ---
 
 # Propose
@@ -23,7 +23,7 @@ newts:
 **First, load this procedure's brief:** `uv run --with pyyaml python tools/workflow.py brief propose --study <slug>` (skip it if a `NEWTS STAGE BRIEF /propose` block is already in your context). It carries the method — this lab's default `METHOD.md` beside this file, or the PI's replacement — and the PI's own instructions for this procedure. This file is the procedure's **contract**: its steps, guard calls, gates, stop points and records always bind, and win over the brief on any conflict.
 
 **Whatever the method, it must produce:**
-- studies/<slug>/proposal.md with the template's sections: headline hypothesis, frozen eval, staged plan with pre-written criteria, budgets, kill criteria, §5 Gate-2 envelope
+- studies/<slug>/proposal.md with the template's sections: headline hypothesis, frozen eval and analysis plan, staged plan with pre-written criteria and a final-evaluation row, budgets, kill criteria, §5 Gate-2 envelope
 <!-- /newts:contract -->
 
 Input: idea in state `scoping` with a completed `decisions.md` (from `/scope`). Output: `studies/<slug>/proposal.md` presented for **PI Gate 1**.
@@ -34,8 +34,9 @@ Input: idea in state `scoping` with a completed `decisions.md` (from `/scope`). 
 2. Fill `templates/idea/proposal.md`. Whatever the method, these sections are **required**, because later procedures and guards read them:
    - **Headline hypothesis**, consistent with `decisions.md`. `/spawn-project` copies it into PLAN.md and a LOOP_BRIEF, and it is the autonomy boundary: an `explore`-mode loop may reopen supporting decisions and expand the frontier under it, but abandoning it escalates to the PI.
    - **Frozen eval protocol**: primary metric, validation (selection) vs held-out test (reporting), defined now. The experiment loop will never read test.
-   - **The baseline** the comparison is against.
-   - **Staged experiment table** with a promotion/success criterion on every row, written now. FULL runs are PI-gated (Gate 2).
+   - **The baseline** the comparison is against, with its tuning budget (budget-matched, or why not).
+   - **Analysis plan** (frozen with the eval): the primary comparison, how uncertainty is reported and with how many replicates, exclusion rules, the decision rule (which result patterns mean supports / refutes / inconclusive, and the pre-agreed action for each) and the sanity controls with their expected ranges. `/analyze` labels anything outside it exploratory (project rule analysis-plan); `checks/audit_prereg.py` reads it.
+   - **Staged experiment table** with a promotion/success criterion on every row, written now, ending in one **final evaluation** row: the selected configuration on the held-out test split, read once (project rule test-once). FULL runs are PI-gated (Gate 2).
    - **Ablation plan**.
    - **Budgets** (compute + calendar) and **kill criteria**, concrete enough to apply mechanically.
 3. Self-review the proposal once, as the method describes.

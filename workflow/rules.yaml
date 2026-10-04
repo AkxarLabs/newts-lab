@@ -183,6 +183,35 @@ project_rules:       # every session inside a project repo (the project's AGENTS
       <run_id> --watch --log-interval <monitoring.log_interval_seconds> --poll <loop.monitor_poll_seconds>`
       (omit `<run_id>` for a sweep) — no log reading, no partial-curve reasoning; the watchdog enforces the
       budget. Pass `--log-interval` so a healthy sparse-logging run isn't flagged stalled.
+  - id: test-once
+    checks: [audit_prereg]
+    text: >-
+      **The test split is read once.** The held-out test split (or the TYPE card's analogue) is evaluated by
+      exactly one planned **final evaluation** row per headline configuration, launched only after selection
+      on validation is finished and the configuration is named in PLAN.md. Every test read is a row in
+      PLAN.md's "Test-split access log"; a second read of the same configuration is a *re-open* and needs
+      a written reason — the result it produces is exploratory, not confirmatory.
+  - id: analysis-plan
+    checks: [audit_prereg]
+    text: >-
+      **Analyses follow the frozen plan.** The proposal's "Analysis plan" (primary comparison, uncertainty
+      method, exclusion rules, decision rule) is frozen at Gate 1 with the eval protocol. An analysis the plan
+      did not name is **EXPLORATORY**: labelled so in the analysis note and carried into the paper with
+      `status: exploratory` in `claims.yaml` and the word in the claim's sentence. A confirmatory claim is
+      one the plan pre-specified and the final evaluation supports.
+  - id: post-hoc-rows
+    text: >-
+      **Rows added after results are post-hoc.** A PLAN.md experiment row added after Gate 2 or after the
+      first analysis entry is tagged `(post-hoc)` in its Question, still needs a pre-written criterion, and
+      its results are reported as exploratory. Re-running a configuration with new seeds after seeing its
+      result is logged as `rerun_of: exp-NNN` with a reason; seeds come from `seeds.list`, never chosen by
+      outcome. The paper's "All experiments run" appendix lists every row, kept or not, and the number of
+      configurations evaluated on validation to reach the headline result.
+  - id: data-provenance
+    text: >-
+      **Data provenance.** `control.yaml` `data:` names the dataset's source, version and hash, the
+      split-construction seed and the licence before any PILOT runs; the paper's data statement is written
+      from it. A dataset that changes mid-project is a new version with a new hash and a logged note.
 
 # ── read by code ─────────────────────────────────────────────────────────────────────────────────
 
@@ -212,6 +241,7 @@ gate3_audits:
   - {name: multiseed, run: [audit_multiseed.py, "{paper}"]}
   - {name: ablations, run: [audit_ablation_coverage.py, "{paper}"]}
   - {name: eval, run: [audit_eval_discipline.py, "{paper}"]}
+  - {name: prereg, run: [audit_prereg.py, "{paper}"]}
 
 # procedures whose whole job is changing PI-owned config WITH the PI (the signature guard lets them)
 config_procedures: [setup-lab, configure]
