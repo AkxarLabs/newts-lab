@@ -152,7 +152,7 @@
       <${NL.Toggle} on=${p.motion} onChange=${v => { NL.setPref('motion', v); NL.Scene && NL.Scene.setAmbient(v); }} label="Ambient motion" sub="drifting motes, swaying plants (off also when your system asks for reduced motion)" />
       <${NL.Toggle} on=${p.rail} onChange=${v => NL.setPref('rail', v)} label="Show the Today rail on Home" />
       <${NL.Toggle} on=${p.narrate} onChange=${v => NL.setPref('narrate', v)} label="Newt narrates" sub="short speech bubbles quoting what just happened" />
-      <${Cast} /></div>`;
+      <p class="muted small">Who plays the agents on Home: <a class="link" href="#/settings/agents">Agents → The cast</a>.</p></div>`;
   };
 
   /* who plays the agents in the world: one character for all, or one per tool so you can tell them apart */
@@ -270,8 +270,64 @@
     </div>`;
   };
 
+  /* ── Agents: everything about the agents in one place — which tools, which models, how they look — and where
+     what they DO is changed (Compose) ─────────────────────────────────────────────────────────────────── */
+  const EFFORT = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+  const effortOpts = xs => xs.map(e => ({ value: e, label: e || 'the model’s default' }));
+  const AgentModels = () => {
+    const [c, setC] = useState(null);
+    const [v, setV] = useState({});
+    const load = () => NL.get('/api/lab/config').then(x => { setC(x.config || {}); setV({ ...(x.config || {}) }); });
+    useEffect(() => { load(); }, []);
+    if (!c) return html`<${NL.Spinner} />`;
+    const keys = ['claude_model', 'claude_effort', 'codex_model', 'codex_effort', 'opencode_model', 'opencode_variant',
+      'tier_strong', 'tier_standard', 'tier_fast', 'reviewer_model', 'runner_model', 'overseer_model', 'critic_model',
+      'reviewer_effort', 'runner_effort', 'overseer_effort', 'critic_effort'];
+    const diff = changed(keys, v, c);
+    const set = (k, x) => setV(o => ({ ...o, [k]: x }));
+    const save = async () => { if ((await saveChanges('Save the agents’ models?', '/api/lab/config', diff, v, c)).ok) load(); };
+    const tiers = ['strong', 'standard', 'fast'];
+    const tierOpts = [...tiers.map(t => ({ value: t, label: `${t} (${v['tier_' + t] || 'inherit'})` })), { value: 'inherit', label: 'inherit — the main agent’s model' }];
+    const ROLES = [['reviewer', 'Paper reviewers', 'fresh-context reviewers, the meta-review'], ['runner', 'Experiment runners', 'run and log experiments'],
+      ['overseer', 'Overseers', 'check claims against the evidence'], ['critic', 'Critics & advocates', 'ideation critics, scoping advocates']];
+    const model = (k, ph) => html`<${NL.Input} mono value=${v[k] || ''} onInput=${x => set(k, x)} placeholder=${ph} />`;
+    return html`<div class="form">
+      <${NL.Section} title="Main agents — the model each tool runs">
+        <p class="muted small">A main agent is one run: a study's next step, a campaign pass, or what you ask Newt. Blank = the tool's own default.
+          (A model under Autonomy → “Default model”, if set, overrides these for every tool.)</p>
+        <div class="agent-models">
+          <b>Claude</b>${model('claude_model', 'e.g. sonnet, opus, claude-sonnet-5-5')}<${NL.Select} value=${v.claude_effort || ''} onChange=${x => set('claude_effort', x)} options=${effortOpts(EFFORT)} />
+          <b>Codex</b>${model('codex_model', 'e.g. gpt-6-luna')}<${NL.Select} value=${v.codex_effort || ''} onChange=${x => set('codex_effort', x)} options=${effortOpts(['', 'minimal', 'low', 'medium', 'high', 'xhigh'])} />
+          <b>opencode</b>${model('opencode_model', 'provider/model, e.g. opencode/…')}${model('opencode_variant', 'variant (reasoning effort)')}
+        </div></${NL.Section}>
+      <${NL.Section} title="Subagents — the specialists a main agent calls on">
+        <p class="muted small">Three tiers, each a model (or <span class="mono">inherit</span> = the main agent's own). Each kind of subagent uses a tier — or name a model directly.</p>
+        <div class="grid3">${tiers.map(t => html`<${NL.Field} label=${t[0].toUpperCase() + t.slice(1)} hint=${{ strong: 'judgement-heavy, low volume', standard: 'well-specified work', fast: 'high volume, retrieval' }[t]}>${model('tier_' + t, 'inherit')}</${NL.Field}>`)}</div>
+        <div class="agent-roles">${ROLES.map(([r, label, sub]) => html`<div class="agent-role"><div><b>${label}</b><small class="muted">${sub}</small></div>
+          <${NL.Select} value=${tiers.includes(v[r + '_model']) || v[r + '_model'] === 'inherit' || !v[r + '_model'] ? (v[r + '_model'] || 'standard') : '__model'} onChange=${x => set(r + '_model', x === '__model' ? '' : x)}
+            options=${[...tierOpts, { value: '__model', label: 'a specific model…' }]} />
+          ${!(tiers.includes(v[r + '_model']) || v[r + '_model'] === 'inherit' || !v[r + '_model']) ? model(r + '_model', 'model name') : html`<span></span>`}
+          <${NL.Select} value=${v[r + '_effort'] || ''} onChange=${x => set(r + '_effort', x)} options=${effortOpts(EFFORT)} /></div>`)}</div>
+      </${NL.Section}>
+      <div class="row end">${diff.length ? html`<${NL.Btn} onClick=${() => setV({ ...c })}>Reset</${NL.Btn}>` : null}<${NL.Btn} kind="primary" disabled=${!diff.length} onClick=${save}>Save…</${NL.Btn}></div>
+    </div>`;
+  };
+  const AgentsPage = () => html`<div class="agents-page">
+    <p class="lede">Everything about the agents in one place. They run on this machine, as you — and they can never sign a gate.</p>
+    <${NL.Section} title="Tools on this machine"><p class="muted small">The command-line agents the lab can start. At least one needs to be installed and signed in.</p><${NL.AgentsSignIn} /></${NL.Section}>
+    <${AgentModels} />
+    <${Cast} />
+    <${NL.Section} title="What they do">
+      <div class="agent-links">
+        <a class="agent-link" href="#/compose/procedures"><b>Procedures</b><small>what a main agent does at each step — add your own instructions, or rewrite the method</small></a>
+        <a class="agent-link" href="#/compose/roles"><b>Roles</b><small>the subagents: what each specialist is told, and new ones copied from an old</small></a>
+        <a class="agent-link" href="#/compose/rules"><b>Rules</b><small>what every agent always does</small></a>
+        <a class="agent-link" href="#/settings/autonomy"><b>Autonomy & limits</b><small>whether the dashboard may start agents, how many at once, how long each may run</small></a>
+      </div></${NL.Section}>
+  </div>`;
+
   const SECTIONS = [
-    { id: 'agents', label: 'Agents & sign-in', C: () => html`<p class="muted">The lab runs these command-line agents on this machine, as you. At least one needs to be installed and signed in.</p><${NL.AgentsSignIn} />` },
+    { id: 'agents', label: 'Agents', C: AgentsPage },
     { id: 'autonomy', label: 'Autonomy & limits', C: () => html`<${NL.LaunchSwitch} /><${ExecForm} />` },
     { id: 'lab', label: 'Lab', C: LabForm },
     { id: 'system', label: 'System & compute', C: System },

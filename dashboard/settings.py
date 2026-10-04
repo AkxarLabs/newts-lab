@@ -79,6 +79,18 @@ EXEC_CONFIG = {
     "linger_minutes": (_P + ["live", "linger_minutes"], _num(0)),
     "auto_spawn_on_gate1": (["dashboard", "auto_spawn_on_gate1"], _bool),
 }
+def _model(provider: bool = False):
+    rx = re.compile(r"^(?:[A-Za-z0-9][A-Za-z0-9._:-]{0,79}" + (r"(?:/[A-Za-z0-9][A-Za-z0-9._:-]{0,79})?" if provider else "") + r")?$")
+
+    def parse(v):
+        v = "" if v is None else str(v).strip()
+        if not rx.match(v):
+            raise ValueError("a model name like sonnet or claude-sonnet-5-5" + (" (provider/model for opencode)" if provider else "")
+                             + ", inherit, or blank")
+        return v
+    return parse
+
+
 LAB_CONFIG = {
     "name": (["lab", "name"], _text(80)),
     "projects_root": (["lab", "projects_root"], _text(300, r"^[^\n\"]+$")),
@@ -92,7 +104,18 @@ LAB_CONFIG = {
     "in_project_approval": (["ideation", "in_project_approval"], _enum("pi", "campaign_auto")),
     # "off" is stored as YAML false (a bare `off` would read back as false anyway)
     "keep_awake": (["lab", "keep_awake"], lambda v: False if _enum("auto", "off")("off" if v is False else v) == "off" else "auto"),
+    # ── the agents: which model each tool runs, and which model each kind of subagent gets ──
+    "claude_model": (["agents", "programmatic", "backends", "claude", "model"], _model()),
+    "claude_effort": (["agents", "programmatic", "backends", "claude", "effort"], _enum("", "low", "medium", "high", "xhigh", "max")),
+    "codex_model": (["agents", "programmatic", "backends", "codex", "model"], _model()),
+    "codex_effort": (["agents", "programmatic", "backends", "codex", "reasoning_effort"], _enum("", "minimal", "low", "medium", "high", "xhigh")),
+    "opencode_model": (["agents", "programmatic", "backends", "opencode", "model"], _model(provider=True)),
+    "opencode_variant": (["agents", "programmatic", "backends", "opencode", "variant"], _text(40, r"^[A-Za-z0-9._-]*$")),
+    **{f"tier_{t}": (["agents", "tiers", t], _model()) for t in ("strong", "standard", "fast")},
+    **{f"{r}_model": (["agents", f"{r}_model"], _model()) for r in ("reviewer", "runner", "overseer", "critic")},
+    **{f"{r}_effort": (["agents", f"{r}_effort"], _enum("", "low", "medium", "high", "xhigh", "max")) for r in ("reviewer", "runner", "overseer", "critic")},
 }
+AGENT_KEYS = {k for k in LAB_CONFIG if k.endswith(("_model", "_effort", "_variant")) or k.startswith("tier_")}
 
 
 def _parse(table: dict, changes) -> tuple[dict, str | None]:
@@ -120,7 +143,7 @@ def reads_back(text: str, updates: dict) -> str | None:
         node = doc
         for part in dotted:
             node = node.get(part) if isinstance(node, dict) else None
-        if node != v and not (isinstance(v, str) and str(node) == v):   # (a date reads back as a date)
+        if node != v and not (isinstance(v, str) and str(node) == v) and not (v == "" and node is None):   # (a date reads back as a date; blank as nothing)
             return f"refused: lab/config.yaml would not read back {'.'.join(dotted)} correctly"
     return None
 
@@ -137,7 +160,8 @@ def write_config(updates: dict, *, new_sections: bool = False) -> str | None:
         return "no lab/config.yaml"
     new = text.replace("\r\n", "\n")
     for dotted, v in updates.items():
-        new, ok = _stamp_or_insert(profiles, new, list(dotted), v)
+        # with new_sections, a section added by an earlier update in this same call is filled in, not added twice
+        new, ok = _stamp_or_insert(profiles, new, list(dotted), v, nested_from=1 if new_sections else 2)
         if not ok:
             if not new_sections:
                 return f"lab/config.yaml has no '{dotted[0]}' section to put {'.'.join(dotted)} in"
@@ -150,7 +174,7 @@ def write_config(updates: dict, *, new_sections: bool = False) -> str | None:
     return None
 
 
-def _stamp_or_insert(profiles, text: str, dotted: list, value) -> tuple[str, bool]:
+def _stamp_or_insert(profiles, text: str, dotted: list, value, nested_from: int = 2) -> tuple[str, bool]:
     """profiles.stamp, plus: a key missing from an OLDER lab/config.yaml is inserted at the end of its
     parent block (the parent must exist). Comments and every other byte are kept."""
     new, changed = profiles.stamp(text, dotted, value)
@@ -169,7 +193,7 @@ def _stamp_or_insert(profiles, text: str, dotted: list, value) -> tuple[str, boo
     for depth, key in enumerate(dotted[:-1]):
         i = profiles._find_key(lines, key, lo, hi, indent)
         if i < 0:
-            if depth < 2:          # never invent a top-level section here (write_config's new_sections does)
+            if depth < nested_from:   # never invent a top-level section here (write_config's new_sections does)
                 return text, False
             i = end_of_block()     # a nested block an older config lacks (e.g. programmatic.live)
             lines.insert(i, f"{' ' * indent}{key}:")
@@ -269,6 +293,10 @@ def lab_config_set(body: dict) -> tuple[dict, int]:
             return {"error": err}, 400
         notes.append(f"saved {len(updates)} setting(s)")
     parsed = {k: updates[tuple(LAB_CONFIG[k][0])] for k in changes}
+    if AGENT_KEYS & set(changes):        # the subagents' role files carry their model: render them again
+        r = subprocess.run([sys.executable, str(ctx.HUB / "tools" / "role_sync.py"), "render"], cwd=str(ctx.HUB),
+                           capture_output=True, text=True, timeout=60)
+        notes.append("role files updated" if r.returncode == 0 else f"role files NOT updated: {(r.stderr or r.stdout)[-300:]}")
     ctx.pi_log({"action": "lab.config", "changes": parsed, "budget_tier": tier})
     attention.recheck_executor()
     return {"ok": True, "changes": parsed, "note": "; ".join(notes) or "nothing changed"}, 200

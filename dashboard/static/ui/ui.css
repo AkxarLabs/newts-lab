@@ -709,3 +709,14 @@ label.keep.keep-vis { padding: 3px 8px; border: 1px solid var(--edge); border-ra
 /* an answer from the live state (no agent) */
 .qa-answer { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .qa-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; } .qa-list li { line-height: 1.45; }
+
+/* Settings → Agents */
+.agents-page { display: flex; flex-direction: column; gap: 6px; max-width: 880px; }
+.agent-models { display: grid; grid-template-columns: 90px minmax(0, 1fr) 200px; gap: 8px 12px; align-items: center; }
+.agent-roles { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.agent-role { display: grid; grid-template-columns: minmax(0, 1.2fr) 220px minmax(0, 1fr) 170px; gap: 10px; align-items: center; }
+.agent-role small { display: block; font-size: 12px; }
+.agent-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.agent-link { display: block; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--edge); text-decoration: none; color: var(--ink); }
+.agent-link:hover { border-color: var(--accent); } .agent-link small { display: block; color: var(--ink-soft); font-size: 12.5px; margin-top: 3px; }
+@media (max-width: 860px) { .agent-models, .agent-role, .agent-links { grid-template-columns: 1fr; } }

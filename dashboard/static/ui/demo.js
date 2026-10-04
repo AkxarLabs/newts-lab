@@ -89,6 +89,10 @@ NL.demoRead = (path, b) => {
   return f ? { ok: true, format: 'markdown', text: f(it), path: `(demo)/${b.rel}` } : { error: 'not in the demo' };
 };
 NL.demoGet = path => {
+  if (path.startsWith('/api/lab/config')) return { ok: true, config: { name: 'Demo lab', projects_root: '../projects', max_concurrent_runs: 4, oversight: 'standard',
+    loop_mode: 'execute', keep_awake: 'auto', claude_model: 'claude-sonnet-5-5', claude_effort: 'medium', codex_model: 'gpt-6-luna', codex_effort: 'low',
+    opencode_model: '', opencode_variant: '', tier_strong: 'opus', tier_standard: 'inherit', tier_fast: 'haiku', reviewer_model: 'strong', runner_model: 'standard',
+    overseer_model: 'standard', critic_model: 'standard', reviewer_effort: '', runner_effort: '', overseer_effort: '', critic_effort: '' }, setup: { completed: true } };
   if (!path.startsWith('/api/library')) return null;
   const groups = BASE_ITEMS.filter(i => i.state !== 'parked').map(i => {
     const order = ['seed', 'triaged', 'lit-review', 'scoping', 'proposal', 'active', 'analysis', 'writing', 'internal-review', 'final'], at = order.indexOf(i.state);

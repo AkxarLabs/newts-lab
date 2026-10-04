@@ -627,6 +627,7 @@
 
   /* ── roles ────────────────────────────────────────────────────────────────── */
   const RolesList = ({ d, k }) => html`<div class="cmp-page"><${ListHead} k=${k} />
+    <p class="muted small">Which model each kind of subagent runs is under <a class="link" href="#/settings/agents">Settings → Agents</a>.</p>
     <div class="cmp-rows">${d.roles.map(r => html`<a class="cmp-row" href=${href('role', r.name)}><${NL.RoleDot} role=${r.name} />
       <div class="cmp-row-main"><div class="row"><b>${r.label}</b><span class="mono muted small">${r.name}</span>${touched(d, `agent-roles/${r.name}.`, `lab/workflow/roles/${r.name}.`) ? html`<i class="cmp-dot"></i>` : null}</div><div class="muted small clip">${r.description}</div></div>
       <div class="cmp-row-side">${(d.custom.roles || {})[r.name] ? html`<span class="pill pill-state">+ instructions</span>` : null}${r.origin === 'yours' ? html`<${Origin} o="yours" like=${r.like} />` : null}</div></a>`)}</div></div>`;

@@ -419,3 +419,22 @@ def test_notifications_are_stored_outside_config_and_masked(m, hub, inbox):
 def test_read_side_slugs_never_step_out_of_a_folder(m):
     assert m.ctx.slug("..") == "" and m.ctx.slug("../x") == "" and m.ctx.slug(".hidden") == "" and m.ctx.slug("a..b") == ""
     assert m.ctx.slug("idea-1") == "idea-1" and m.ctx.slug("my idea!") == "myidea"
+
+
+def test_the_agents_models_are_set_from_settings(m, hub):
+    """Settings → Agents: each tool's model and effort, the subagent tiers and which tier each role uses — written
+    to lab/config.yaml (and the role files re-rendered); anything that isn't a model name is refused."""
+    out, code = m.settings.lab_config_set({"confirm": True, "changes": {
+        "claude_model": "claude-sonnet-5-5", "claude_effort": "low", "codex_model": "gpt-6-luna", "codex_effort": "minimal",
+        "opencode_model": "opencode/some-free-model", "tier_strong": "opus", "reviewer_model": "strong", "critic_effort": "high"}})
+    assert code == 200, out
+    assert "role files" in out["note"]                     # re-rendered (or why not), every time a model changes
+    cfg = m.ctx.labfiles.load_yaml(hub.lab / "config.yaml")
+    be = cfg["agents"]["programmatic"]["backends"]
+    assert (be["claude"]["model"], be["claude"]["effort"], be["codex"]["reasoning_effort"]) == ("claude-sonnet-5-5", "low", "minimal")
+    assert be["opencode"]["model"] == "opencode/some-free-model"
+    assert cfg["agents"]["tiers"]["strong"] == "opus" and cfg["agents"]["reviewer_model"] == "strong" and cfg["agents"]["critic_effort"] == "high"
+    for bad in ({"claude_model": "--dangerously-skip-permissions"}, {"claude_model": "sonnet; rm -rf ~"}, {"claude_effort": "turbo"},
+                {"codex_model": "a/b"}):
+        assert m.settings.lab_config_set({"confirm": True, "changes": bad})[1] == 400, bad
+    assert m.settings.lab_config_set({"confirm": True, "changes": {"claude_model": ""}})[1] == 200   # blank = the tool's default
