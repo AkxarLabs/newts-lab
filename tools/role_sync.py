@@ -16,9 +16,10 @@ A spawned project INSTANCE is resolved at spawn by `render_project(dir)` (called
 tools/spawn_project.py) — a snapshot of the hub tiers at that moment, so the project (and any headless
 agent working in it) runs its named-role subagents at the resolved tier, not the neutral `inherit`.
 
-Only Claude and Codex are rendered: their file schemas are known. opencode / Gemini CLI / Cursor are
-COMPATIBILITY-ONLY (documented in docs/autonomy.md) until a CLI smoke proves their role-file schema —
-the robust cross-backend path meanwhile is one headless process per unit of work via agent_runner.py.
+Claude, Codex and opencode are rendered (`.opencode/agents/<name>.md`: `mode: subagent`, the role's
+Claude tool list mapped onto opencode permissions, no model line — opencode models are provider/model
+strings the lab's tier ladder doesn't know, so its subagents inherit the session model). Gemini CLI /
+Cursor stay COMPATIBILITY-ONLY (docs/autonomy.md).
 
     uv run --with pyyaml python tools/role_sync.py render               # write/update hub + template
     uv run --with pyyaml python tools/role_sync.py check                # exit 1 if any is stale
@@ -39,19 +40,13 @@ import argparse
 import sys
 from pathlib import Path
 
-import yaml
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HUB = Path(__file__).resolve().parents[1]
-
-
-def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
+sys.path.insert(0, str(HUB / "tools"))
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 
 def _roles_dir() -> Path:
@@ -63,7 +58,7 @@ def _role_names() -> list[str]:
 
 
 def _cfg_agents() -> dict:
-    return (_load_yaml(HUB / "lab" / "config.yaml").get("agents") or {})
+    return (labfiles.load_yaml(HUB / "lab" / "config.yaml").get("agents") or {})
 
 
 def _norm(text: str) -> str:
@@ -87,12 +82,17 @@ def resolve_model(val: str, agents_cfg: dict) -> str:
 # role name -> (model_key, effort_key) in lab/config.yaml agents.*. The three NAMED roles also have
 # an agent-roles/<name>.yaml (rendered role files); `critic` is the INLINE ideation-critic / scoping-
 # advocate — no role file, resolved on demand by resolve_role() for a per-spawn Task model/effort.
-_ROLE_KEYS = {
-    "reviewer": ("reviewer_model", "reviewer_effort"),
-    "runner": ("runner_model", "runner_effort"),
-    "overseer": ("overseer_model", "overseer_effort"),
-    "critic": ("critic_model", "critic_effort"),
-}
+def role_keys() -> dict[str, tuple[str, str]]:
+    """Each role — by its name, and by its config key's short name (reviewer, runner, critic, …) — → its
+    agents.<x>_model / agents.<x>_effort keys, from the role's own `model_key` (agent-roles/<role>.yaml)."""
+    out = {}
+    for name in _role_names():
+        mk = str(_meta(name).get("model_key") or "")
+        if mk.endswith("_model"):
+            pair = (mk, mk[: -len("_model")] + "_effort")
+            out[name] = pair
+            out.setdefault(mk[: -len("_model")], pair)
+    return out
 
 
 def _model_for(meta: dict, agents_cfg: dict) -> str:
@@ -115,18 +115,45 @@ def resolve_role(role: str, agents_cfg: dict | None = None) -> tuple[str, str]:
     ladder, effort as a direct value. The token-free path skills use to spawn INLINE subagents
     (critics/advocates) with the right model/effort, instead of the agent re-deriving it from config."""
     cfg = _cfg_agents() if agents_cfg is None else agents_cfg
-    mkey, ekey = _ROLE_KEYS[role]
+    mkey, ekey = role_keys().get(role) or ("", "")      # a role with no model_key runs at the standard tier
+    if not mkey:
+        return resolve_model("standard", cfg), ""
     model = resolve_model(cfg.get(mkey), cfg)
     effort = cfg.get(ekey)
     return model, (str(effort).strip() if effort is not None else "")
 
 
+def _meta(name: str, _seen=()) -> dict:
+    """A role's yaml; `like: <role>` inherits that role's settings (it says its own name, label, description)."""
+    meta = labfiles.load_yaml(_roles_dir() / f"{name}.yaml")
+    base = meta.get("like")
+    if base and base not in _seen and (_roles_dir() / f"{base}.yaml").is_file():
+        parent = {k: v for k, v in _meta(base, (*_seen, name)).items() if k not in ("name", "label", "description", "like")}
+        meta = {**parent, **meta}
+    return meta
+
+
 def _spec(name: str) -> tuple[dict, str]:
-    meta = _load_yaml(_roles_dir() / f"{name}.yaml")
+    meta = _meta(name)
     body = _norm((_roles_dir() / f"{name}.md").read_text(encoding="utf-8"))
     if not body.endswith("\n"):
         body += "\n"
     return meta, body
+
+
+def _with_pi(name: str, body: str) -> str:
+    """The role body plus the PI's lab-wide instructions for this role (lab/workflow/roles/<role>.add.md,
+    edited in the dashboard's Compose page). Hub and spawned-project copies carry them; the shipped
+    template copies never do."""
+    try:
+        sys.path.insert(0, str(HUB / "tools"))
+        import workflow  # noqa: PLC0415
+        add = workflow.role_addon(name, HUB)
+    except Exception:  # noqa: BLE001 — no manifest / unreadable: the role as shipped
+        add = ""
+    if not add:
+        return body
+    return body.rstrip("\n") + "\n\n## The PI's instructions for this role\n\n" + _norm(add).rstrip("\n") + "\n"
 
 
 def _render_claude(meta: dict, body: str, agents_cfg: dict) -> str:
@@ -159,17 +186,33 @@ def _render_codex(meta: dict, body: str, agents_cfg: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_opencode(meta: dict, body: str, agents_cfg: dict) -> str:
+    """opencode agent file (1.18 schema: description, mode, permission{edit,bash,webfetch,task,...}).
+    A lab subagent never spawns subagents (hard rule), so `task` is always denied."""
+    import json as _json
+    tools = {t.strip() for t in str(meta.get("tools_claude") or "").split(",") if t.strip()}
+    perm = {"edit": "allow" if tools & {"Edit", "Write", "NotebookEdit"} else "deny",
+            "bash": "allow" if "Bash" in tools else "deny",
+            "webfetch": "allow" if "WebFetch" in tools else "deny",
+            "websearch": "allow" if "WebSearch" in tools else "deny",
+            "task": "deny"}
+    lines = ["---", f"description: {_json.dumps(str(meta['description']))}", "mode: subagent", "permission:"]
+    lines += [f"  {k}: {v}" for k, v in perm.items()]
+    return "\n".join(lines) + "\n---\n\n" + body
+
+
 # Per role: the two HUB files render from the LIVE config (a hub session's subagents honor the PI's
 # ladder); the two project-TEMPLATE files render NEUTRAL (empty config -> model: inherit / role-yaml
 # effort) so a PI's local tier choice can never leak into the committed, shipped template. A spawned
 # project INSTANCE is resolved at spawn by render_project(), never here.
 def _rel_targets(name: str) -> list[tuple[Path, str]]:
     return [(Path(".claude") / "agents" / f"{name}.md", "claude"),
-            (Path(".codex") / "agents" / f"{name}.toml", "codex")]
+            (Path(".codex") / "agents" / f"{name}.toml", "codex"),
+            (Path(".opencode") / "agents" / f"{name}.md", "opencode")]
 
 
 def _content(kind: str, meta: dict, body: str, agents_cfg: dict) -> str:
-    return _render_claude(meta, body, agents_cfg) if kind == "claude" else _render_codex(meta, body, agents_cfg)
+    return {"claude": _render_claude, "codex": _render_codex, "opencode": _render_opencode}[kind](meta, body, agents_cfg)
 
 
 def _plan() -> list[tuple[Path, str]]:
@@ -180,7 +223,7 @@ def _plan() -> list[tuple[Path, str]]:
     for name in _role_names():
         meta, body = _spec(name)
         for rel, kind in _rel_targets(name):
-            out.append((HUB / rel, _content(kind, meta, body, live)))                       # hub: resolved
+            out.append((HUB / rel, _content(kind, meta, _with_pi(name, body), live)))       # hub: resolved + PI
             out.append((HUB / "templates" / "project" / rel, _content(kind, meta, body, {})))  # template: neutral
     return out
 
@@ -200,13 +243,28 @@ def render_project(project_dir) -> int:
         meta, body = _spec(name)
         for rel, kind in _rel_targets(name):
             path = project_dir / rel
-            expected = _content(kind, meta, body, live)
+            expected = _content(kind, meta, _with_pi(name, body), live)
             current = _norm(path.read_text(encoding="utf-8")) if path.exists() else None
             if current != expected:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(expected, encoding="utf-8", newline="")
                 written += 1
     return written
+
+
+def project_stale(project_dir) -> list[Path]:
+    """Role files in a spawned project that `render_project` would (re)write — a read-only check."""
+    project_dir = Path(project_dir)
+    live = _cfg_agents()
+    stale = []
+    for name in _role_names():
+        meta, body = _spec(name)
+        for rel, kind in _rel_targets(name):
+            path = project_dir / rel
+            current = _norm(path.read_text(encoding="utf-8")) if path.exists() else None
+            if current != _content(kind, meta, _with_pi(name, body), live):
+                stale.append(path)
+    return stale
 
 
 def render() -> int:
@@ -247,7 +305,7 @@ def main() -> int:
     rp = sub.add_parser("render-project", help="resolve the live hub tiers into a project's role files")
     rp.add_argument("project_dir")
     rv = sub.add_parser("resolve", help="print a role's resolved model/effort (token-free spawn helper)")
-    rv.add_argument("role", choices=sorted(_ROLE_KEYS))
+    rv.add_argument("role", choices=sorted(role_keys()))
     a = ap.parse_args()
     if a.cmd == "render":
         return render()

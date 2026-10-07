@@ -1,0 +1,119 @@
+# The research workflow — the ONE definition of the lab's states, stages, gates and rooms.
+#
+# The PI's to shape: add a state, a stage or a room, change what a state offers, then run
+# `tools/workflow.py check`. Agents never edit it (the signature guard refuses). HOW a procedure is done is
+# the PI's too, in lab/workflow/ and studies/<slug>/workflow/ (the dashboard's Compose page), layered onto
+# each procedure by `tools/workflow.py brief`. Fixed by code: exactly three gates, and /finalize only ever
+# starting from a Gate 3 signature.
+#
+# The PROCEDURES are not listed here: each skill defines itself in its own SKILL.md frontmatter (`newts:` —
+# kind, level, mode, args, launchable, replaceable, title, does, outputs, …), so adding a procedure is
+# adding a skill folder. This file says which stage a procedure serves and what each state offers.
+#
+# Read through tools/workflow.py by: the guard (legal transitions), the executor (what a click may
+# launch), the signature guard, the campaign keeper, the dashboard (labels, board, rooms, next steps),
+# check_lab, and the generated docs. `uv run --with pyyaml python tools/workflow.py check` validates it.
+
+version: 1
+
+# ── registry states, in lifecycle order ──────────────────────────────────────────────────────────
+# stage: which stage (below) the state belongs to · room/station: where it stands in the dashboard's world
+# revivable: a parked/killed study may be revived into it · terminal: nothing more runs · results: the study
+# has results (a settled one owes a RECIPE write-back) · tone: its colour on a state pill (ok | muted | bad)
+states:
+  - {id: seed,            label: Seed,              stage: ideation,     room: incubator, station: seed,        revivable: true}
+  - {id: triaged,         label: Triaged,           stage: ideation,     room: incubator, station: triage,      revivable: true}
+  - {id: lit-review,      label: Literature review, stage: literature,   room: study,     station: stacks,      revivable: true}
+  - {id: scoping,         label: Scoping,           stage: scoping,      room: study,     station: scoping,     revivable: true}
+  - {id: proposal,        label: Proposal,          stage: proposal,     room: study,     station: proposal,    revivable: true}
+  - {id: active,          label: Experiments,       stage: experiments,  room: lab,       station: experiments, revivable: true}
+  - {id: analysis,        label: Analysis,          stage: analysis,     room: bench,     station: bench,       results: true}
+  - {id: writing,         label: Writing,           stage: writing,      room: writing,   station: drafting,    results: true}
+  - {id: internal-review, label: Internal review,   stage: review,       room: writing,   station: review,      results: true}
+  - {id: final,           label: Final,             stage: finalization, room: archive,   station: rest,        terminal: true, results: true, tone: ok}
+
+# reachable from ANY state (whichever procedure finds the evidence records it); terminal
+side_states:
+  - {id: parked, label: Parked, room: margins, station: parked, terminal: true, tone: muted}
+  - {id: killed, label: Killed, room: margins, station: killed, terminal: true, tone: bad}
+
+# where a revived study goes unless the PI picks another revivable state
+revive_to: triaged
+
+# documented back-edges (the paper-phase round trip); every other move is one step forward
+back_edges:
+  - [analysis, active]
+  - [writing, active]
+  - [internal-review, active]
+  - [writing, analysis]
+  - [internal-review, writing]
+  - [analysis, writing]
+
+# the PI's gates. Fixed: a customisation can never add, remove or move one.
+gates:
+  - {n: 1, at: proposal,        before: active, title: "Gate 1: approve the proposal",
+     means: "the hypothesis, the frozen evaluation and analysis plan, the budget and the kill criteria; optionally the Gate 2 run limits with it"}
+  - {n: 2, at: active,          scope: FULL,    title: "Gate 2: approve full runs",
+     means: "the limits for full-scale runs (per run, not a state change)"}
+  - {n: 3, at: internal-review, before: final,  title: "Gate 3: finalize the paper",
+     means: "the reviewed paper is final: reproducibility pass, artifacts locked, knowledge written back"}
+
+# ── stages: what the PI sees as the steps of the workflow ────────────────────────────────────────
+# procedures: the procedures that do this stage's work (first = primary) · substages: inside the stage
+stages:
+  - {id: ideation,     title: Ideas,             states: [seed, triaged],   procedures: [ideate]}
+  - {id: literature,   title: Literature review, states: [lit-review],      procedures: [lit-review, critique-paper]}
+  - {id: scoping,      title: Scoping,           states: [scoping],         procedures: [scope]}
+  - {id: proposal,     title: Proposal,          states: [proposal],        procedures: [propose, spawn-project], gate: 1}
+  - {id: experiments,  title: Experiments,       states: [active],          procedures: [experiment, improve, research-loop],
+     substages: [SMOKE, PILOT, FULL], gate: 2}
+  - {id: analysis,     title: Analysis,          states: [analysis],        procedures: [analyze]}
+  - {id: writing,      title: Writing,           states: [writing],         procedures: [write-paper, make-figures]}
+  - {id: review,       title: Internal review,   states: [internal-review], procedures: [review-paper, critique-paper], gate: 3}
+  - {id: finalization, title: Finalization,      states: [final],           procedures: [finalize]}
+
+# the rooms on the dashboard's table = the Studies board's columns. Data generation (the Lab) and its
+# interpretation (the Bench) are separate rooms on purpose: analysis reads run artifacts and writes none. A room stands on a plot round the PI's desk:
+# `place: [column, row]` and `facing: n|e|s|w` put it there (Compose → Rooms: drag it); without them it takes
+# the next free plot. `per_project: true` makes it one room PER LIVE PROJECT (each project its own lab). How a
+# room looks is dashboard/static/world3d/rooms/<id>.js, or the lab's own lab/rooms3d/<id>.json (Compose → a
+# room → Look: describe it and an agent designs it); a room with neither is drawn plain — adding a room is
+# adding a line here.
+rooms:
+  - {id: incubator, label: Ideas,   title: The Incubator,    states: [seed, triaged]}
+  - {id: study,     label: Study,   title: The Study,        states: [lit-review, scoping, proposal], gate: 1}
+  - {id: lab,       label: Lab,     title: The Lab,          states: [active], gate: 2, per_project: true}
+  - {id: bench,     label: Analysis, title: The Bench,      states: [analysis]}
+  - {id: writing,   label: Writing, title: The Writing Room, states: [writing, internal-review], gate: 3}
+  - {id: archive,   label: Done,    title: The Archive,      states: [final]}
+  - {id: margins,   label: Margins, title: The Margins,      states: [parked, killed]}
+
+# the one next step for a study in a state, when no run is live and no gate waits.
+# `proposal` depends on Gate 1: unsigned → propose (finish/present it), signed → spawn-project.
+next_for_state:
+  seed: advance                  # /advance on a seed = the /ideate reflect + triage phases for it
+  triaged: lit-review
+  lit-review: scope
+  scoping: propose
+  proposal: {unsigned: propose, signed: spawn-project}
+  active: experiment
+  analysis: analyze
+  writing: write-paper
+  internal-review: review-paper
+
+# what the study page's "Work on it…" offers per state (first = default)
+offer_for_state:
+  seed: [advance, lit-review, discuss]
+  triaged: [lit-review, advance, discuss]
+  lit-review: [lit-review, scope, advance]
+  scoping: [scope, propose, advance]
+  proposal: [propose, spawn-project, advance]
+  active: [experiment, improve, research-loop, analyze]
+  analysis: [analyze, experiment, make-figures, write-paper]
+  writing: [write-paper, make-figures, critique-paper]
+  internal-review: [review-paper, critique-paper, write-paper]
+
+# a target-driven project (/compete, control.yaml target.active) skips the paper layer
+tracks:
+  paper: [seed, triaged, lit-review, scoping, proposal, active, analysis, writing, internal-review, final]
+  target: [active, final]

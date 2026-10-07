@@ -1,41 +1,33 @@
-# Hub tools
+# tools/ — the harness
 
-Mechanical checks for lab state and paper claims. The hub deliberately has no Python
-environment of its own — invoke with uv's ephemeral env:
+The small amount of code that makes the lab's rules hold whatever an agent does, and connects the
+dashboard to coding agents. Everything a lab *defines* lives elsewhere: procedures in
+`.claude/skills/` (with their method helpers in each skill's own `tools/`), the workflow and the rules in
+`workflow/`, mechanical checks in `checks/`, roles in `agent-roles/`, templates in `templates/`. stdlib +
+pyyaml; run with uv's ephemeral env:
 
 ```bash
-uv run --with pyyaml python tools/guard.py spawn|full-run|frozen|state|evolve|... <slug>  # mechanical lifecycle guards
-uv run --with pyyaml python tools/check_lab.py            # registry/idea consistency lint
-uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--check-commits]
-uv run --with pyyaml python tools/show_config.py [<project-path> [exp-NNN.yaml]]  # 3-layer config + provenance
-uv run --with pyyaml python tools/run_slots.py acquire|touch|release|status       # cross-project compute slots
-uv run --with pyyaml python tools/s2.py search|bibtex|verify ...                  # literature API + citation audit
-uv run python tools/lab_bus.py emit|inbox|ack ...                                # event bus / PI directives (dashboard)
-uv run --with pyyaml python tools/agent_runner.py launch|list|kill ...           # optional headless programmatic agents
+uv run --with pyyaml python tools/guard.py <command|check> <slug> …   # the gates, transitions, and checks/ (--list)
+uv run --with pyyaml python tools/workflow.py check | brief <proc> | render-docs | propose …
+uv run --with pyyaml python tools/new.py skill|room|role|check|type|rule <name> --like <existing>   # add by copying
+uv run --with pyyaml python tools/check_lab.py                        # lab lint (registry, wiring, workflow)
+uv run --with pyyaml python tools/configure.py view|set|profile …     # owner-aware config edits
+uv run --with pyyaml python tools/show_config.py [<project> [exp.yaml]]  # 3-layer config with provenance
+uv run --with pyyaml python tools/run_slots.py acquire|touch|release|status
+uv run python tools/lab_bus.py emit|inbox|ack|escalate …             # the event bus + PI directives
+uv run --with pyyaml python tools/executor_cli.py enqueue|serve|list|answer|stop …   # headless runs
+uv run --with pyyaml python tools/upgrade_project.py --all [--check]  # bring older projects up to date
 ```
 
-- `guard.py` — the enforcement layer for the highest-risk transitions (Gate-1 recorded before
-  spawn, a signed Gate-2 envelope before a FULL run, frozen-set intact, legal lifecycle moves,
-  append-only ledgers, write-back/evolve done, decision/plan-trace integrity). Exit 0 = proceed ·
-  1 = blocked · 2 = warn. A guard never *grants* a gate, only confirms one is recorded.
-- `check_lab.py` — used by `/lab-status`: detects registry↔IDEA.md state drift, orphan
-  idea/project/paper dirs, and stale rows. Exit 1 = real inconsistency, fix immediately.
-- `audit_claims.py` — used by `/review-paper` Part A: verifies every number in a paper's
-  `claims.yaml` against the referenced run artifacts, and scans `main.tex` for unannotated
-  numerals. Exit 0 all verified · 2 MANUAL items need human verification · 1 any FAIL or
-  uncovered numeral (which blocks review).
-- `s2.py` — Semantic Scholar (+ OpenAlex fallback) for `/lit-review` searches, `/write-paper`
-  BibTeX, and `/review-paper` citation verification (`verify`: any nonzero exit blocks;
-  `search`: exit 3 = both backends down, empty ≠ absence).
-- `lab_bus.py` — the append-only event bus the optional dashboard reads (`emit` events,
-  `inbox` PI directives, `ack` them). Best-effort and never required; see `docs/dashboard.md`.
-  The same file ships into every project as `scripts/lab_bus.py` (auto-detects hub vs project).
-- `agent_runner.py` — optional, PI-owned, OFF by default: launches a headless top-level agent
-  (`claude` / `codex` / `opencode`) into a project repo for concurrent multi-project work; see
-  `docs/autonomy.md`.
-- **Write-back & finalization helpers** (run by the lifecycle skills, rarely by hand):
-  `process_writebacks.py` / `hub_writeback.py` (reconcile project→hub write-backs), `sync_figures.py`
-  + `lock_artifacts.py` (`/finalize` figure sync + cited-artifact locking), `trace_hook.py` (the
-  best-effort activity tracer wired in `.claude/settings.json`).
+| Group | Files | What they do |
+|---|---|---|
+| **Signatures and gates** | `markers.py`, `signature_guard.py`, `guard.py`, `gate3.py` | recognise the PI's marks; refuse a headless run that would forge one; check a gate is recorded before the irreversible step (`guard.py` also dispatches `checks/`) |
+| **The lab's definition** | `workflow.py`, `labfiles.py`, `new.py` | read `workflow/stages.yaml`, `workflow/rules.yaml` and the skills; the brief; the PI's instruction layers; the generated docs; the lab's files read one way; adding a component by copying one |
+| **Observability** | `lab_bus.py`, `trace_hook.py` | the append-only event bus and directive inbox; the per-agent action tracer (both ship into every project too) |
+| **Coordination** | `run_slots.py`, `hub_writeback.py`, `process_writebacks.py` | compute slots across projects; the project→hub write-back boundary |
+| **Agents** | `executor/`, `executor_cli.py`, `lab_profile.py`, `role_sync.py` | run procedures as live or headless sessions of claude / codex / opencode (`executor/` knows nothing about this lab; `lab_profile.py` is everything it needs to); render the roles for each CLI |
+| **Setup and config** | `spawn_project.py`, `new_lab.py`, `configure.py`, `profiles.py`, `show_config.py`, `check_lab.py`, `upgrade_project.py`, `system_probe.py`, `terminal.py` | stamp projects and labs; owner-aware config; lint; what this machine offers; a terminal for a CLI's sign-in |
 
-Project-level helpers (sweep/compare/status/check_project) live in each project's `scripts/`.
+Exit codes for the guard and checks: **0 = OK · 1 = BLOCKED · 2 = WARN**. A guard never grants a gate; it
+only confirms one is recorded. See `docs/tools.md` for each tool and `docs/extending.md` for adding to the
+lab.

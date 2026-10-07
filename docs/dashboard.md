@@ -1,318 +1,550 @@
-# The dashboard — Vivarium
+# The dashboard
 
-*Optional. Local-only. Delete the `dashboard/` folder and the lab is unchanged.*
+*Local-only. Nothing leaves your machine. Delete the `dashboard/` folder and the lab still works from a terminal.*
 
-Vivarium renders the lab as a hand-drawn, 2.5D **living world**: the whole lab is **one continuous
-scene**, and each lifecycle stage is a **room** of it. Every idea and project is a single **critter**
-living in the room that matches its state (an idea and the project it grows into are the *same*
-critter, not two); every working agent or subagent is its own colour-coded
-**sub-newt** doing visible work; and through it all roams **Newt** — the orchestrator, a larger
-creature that reacts to lab state and is your control handle (click it to command). It keeps you in
-the loop while agents iterate (hub lifecycle *and* every running external project, live) and lets
-you **drive** them.
+The dashboard is the lab's product surface. **Start it, pick or create a lab, and do everything from
+there:** set up the lab, connect an agent, start work, watch it, answer its questions, and sign the
+gates. The lab itself is drawn behind it as a living 3D tabletop.
 
 <figure markdown>
-![The Vivarium world — six lifecycle rooms in one continuous lab, each with its critters](assets/dashboard-world-dark.png){ .as-shot }
-<figcaption>The <strong>World</strong> view — the whole lab as one continuous scene. Six rooms (incubator → study → lab → writing → archive → margins), each holding the ideas, projects, and sub-newts currently in that lifecycle stage. Newt roams the bottom; the Key pill sits bottom-left.</figcaption>
+![Home — the lab as a living world, with the Today rail](assets/dashboard-home-dark.png){ .as-shot }
+<figcaption><strong>Home</strong>: the lab drawn as an open tabletop, its rooms round your desk. The <strong>Today</strong> rail on the right lists what needs you, what's running and what's next. <strong>Ask Newt</strong> sits underneath.</figcaption>
 </figure>
 
-The scene is drawn on a single **Canvas-2D** surface — vanilla JavaScript, no build, no
-dependencies, fully offline (see [Tech notes](#tech-notes)). The same renderer produces a still
-frame for `prefers-reduced-motion` and `?static`.
+## Start it
+
+Double-click **`Start Newts Lab.cmd`** (Windows) or **`start-newts.command`** (macOS), or run:
 
 ```bash
-uv run --with pyyaml python dashboard/serve.py            # http://127.0.0.1:8787
-uv run --with pyyaml python dashboard/serve.py --port 9000
+uv run --with pyyaml python newts.py
 ```
 
-Binds `127.0.0.1` only and reads the lab's files. It is the PI's control surface but stays
-honest about what it can do (see [Controls](#controls-what-newt-can-actually-do)).
+It starts the server for the lab in that folder, in the background, and opens your browser at
+`http://127.0.0.1:8787`. Closing the window stops nothing: queued runs, retries and campaigns keep going.
+Stop the server from **Settings → About & server**, or with `newts.py --stop`; `--foreground` keeps it
+in the window instead. If 8787 is taken it picks the next free port. If the dashboard is already
+running for that lab it just opens the browser. Options: `--hub <another lab>`, `--port`, `--no-browser`. The server binds
+`127.0.0.1` only. The only prerequisite is [uv](https://docs.astral.sh/uv/).
 
-!!! tip "Try it with no lab — demo mode (debugging)"
-    Demo is a synthetic, living lab (agents come and go, runs progress, gates wait) — entirely
-    client-side, touching no files. It's a debugging/showcase mode, so it's **off by default and not
-    exposed in the UI**: start the server with `--demo` (or `VIVARIUM_DEMO=1`), then open
-    `http://127.0.0.1:8787/?demo` (add `&lamp=day` for the light theme). Every screenshot on this
-    page is the demo. Click a room or a critter to zoom in.
+**On a remote machine.** Run `newts.py --background` there: it keeps running after you log out, and on a
+box with no desktop it prints the `ssh -L` line to use from your computer. Or skip that entirely and add
+the machine to your local dashboard (below). See [Machines & compute](compute.md).
 
-## What it shows — the views
+**Labs & machines.** Click the lab's name at the top left to reach **Labs & machines** (`#/labs`). It
+opens with **Across your labs**: every lab on this computer and every remote lab you've opened, each with
+what needs you, what's running, and its campaigns. Click an item to go straight to it in its lab. Remote
+labs you've opened stay connected in the background (untick *keep connected*, or Disconnect, to stop),
+and the top bar shows **+N** when your other labs need you. From there you can also:
 
-The living world (the rooms + the critters + Newt + the sub-newts) is the canvas under
-every view; the data views float over it as soft, paper-toned panels.
+- **Open** a recent lab, or any folder that contains `lab/config.yaml`.
+- **Create a new lab**: a name and a place. The dashboard copies this template's committed files,
+  empties the registry and knowledge base, points the new lab's projects at a sibling
+  `<name>-projects` folder, and makes the first git commit (`tools/new_lab.py`).
+- **Switch** labs live. Agents that are running keep running, and the old lab's queue keeps moving.
+- **Add a machine** you reach over SSH (your `~/.ssh/config` hosts are suggested) and open its labs.
+  - The dashboard starts that lab's own server there and tunnels to it. Everything then runs on that
+    machine while you use it from here, and the top bar says *on &lt;machine&gt;*.
+  - Password or MFA hosts connect through a terminal window you sign in to.
+  - You can also create a lab on the remote, or install uv there.
 
-| View | What it is |
-|---|---|
-| **World** (default) | the living scene itself — a dense, non-linear region of connected lab-rooms at varied heights. An overview centred on current activity (drag to pan); every idea and project is a critter standing in the room of its current state. In **the lab** room, each project is a *single* critter; its experiment sub-newts live *inside* it. Click a room to **cinematically zoom in** (a *back* breadcrumb appears); **click a project critter to enter its lab** — that project's sub-newts up close, its isolated space. Hub-side ensembles (critics, reviewers) appear as sub-newts in their own room. |
-| **Projects** | every project up close as a card, with **command** and read-only **tool** buttons (status / compare / config / inbox) per project. A card carries a **Gate-2 envelope burn-down chip** (`⛽ FULL 2/6 · 60/300m · exp 07-15` — booked vs. signed caps, coloured by status) when the project has an envelope, a **headless** chip when a launched agent is running, and **view paper** once its paper compiles; the detail drawer adds **open in editor**, the envelope chip, and a **Headless agents** section (backend · role · status · runtime) for any `agent_runner.py`-launched agent. |
-| **Library** | **every research document the lab writes, organized and beautifully rendered.** A left shelf: **The Lab** layer (pre-project **ideation** worksheets · **knowledge** · **notebook** · campaigns) above **one group per study** (IDEA → lit-review → decisions → proposal → sessions → critiques → paper + reviews) with the spawned **project repo's ledgers** (PLAN · EXPERIMENT_LOG · NOTES · TARGET · LOOP_BRIEF · analysis) resolved across the hub↔project boundary. The right pane renders Markdown with real typography, GFM tables, code blocks, **KaTeX math** (`$…$`/`$$…$$`), YAML front-matter as a chip strip, and doc-relative images inline — all offline (vendored `marked` + `DOMPurify` + KaTeX, `static/vendor/`). Filter box on top; every doc keeps its **open in editor ▸** link. **Every "read a document" action in the dashboard lands here** (gate bundles included); only raw run artifacts and tool output keep the bottom drawer. |
-| **Agents** | the roster of every working agent/subagent right now, grouped by role with live head-counts — the panel form of the sub-newts you see in the world. |
-| **Activity** | the live state that **needs you or is running**. A **"Since your last visit"** banner heads it (runs finished, gates opened, escalations, kills, write-backs since you were last here — dismissable), then a **hub-health strip** (notebook write-back age, one-click *check lab* / *show config*), then two columns: **Needs you** (each pending Gate 1/2/3 as a sealed letter; each opens a **composed review bundle** — see below; **Gate 1 & 2 carry a one-click Approve button**, confirm + logged; **Gate 3** shows the command only — finalization is always done in a session) and **In flight** (one row per running run: elapsed/budget bar, last metric, stalled flag). A badge on the tab counts what's waiting. |
-| **Ledger** | evidence: the commands & notes you’ve issued (with their `pending → seen → done` state and evidence pointer) and the full event log, as tables. A `done` with no evidence is flagged. |
+## First run: the setup wizard
 
-### Gate review bundles — decide a gate without leaving the dashboard
+A lab that hasn't been set up opens the wizard (`#/setup`). You can skip it and come back from
+Settings → About.
 
-A PI gate is the one place the lab *needs* you, so each gate's preview is a **composed bundle** that
-gathers everything the decision rests on into one read-only view, rendered in the **Library** reader
-(the `review … ▸` button on the Activity card, or the `read` link in the approve dialog):
+1. **Welcome.** What the lab is: the lab folder, a project repo per approved study, and the three
+   gates only you sign.
+2. **Agents.** One card per agent CLI (Claude Code, Codex, opencode), showing whether it is
+   installed, which version, and whether it is signed in.
+   - **Install…** opens a terminal window that runs the installer, so you watch it.
+   - **Sign in…** opens a terminal running the CLI's *own* login (`claude auth login`, `codex login`,
+     `opencode auth login`): a window on this computer, or an in-browser terminal when the lab is on a
+     remote machine or one without a desktop. Your credentials go to the CLI, never to the page. The
+     card updates by itself when you finish.
+3. **Autonomy.** Plain-language choices:
+   - starting agents from the dashboard (on or off);
+   - the default agent;
+   - the budget tier (low / medium / high);
+   - how many training runs this machine can run at once;
+   - oversight (standard or strict);
+   - a daily run limit.
 
-- **Gate 1** — the lit-review's **novelty verdict** + the proposal's **budget · kill criteria ·
-  success criteria** lifted to the top, then the full proposal.
-- **Gate 2** — an **envelope-capacity** readout (signed/expiry/`signed_via`; the `full_runs`/per-run/
-  total caps; completed + reserved FULL runs and minutes already booked; **remaining** runs/minutes —
-  the same accounting `guard.py full-run` enforces, so the PI sees before signing whether a request
-  even fits), then the raw `gate2_envelope`, the **completed PILOT runs** that justify scaling, then
-  `control.yaml`.
-- **Gate 3** — `claims.yaml` + the **meta-review verdict** (decision + Overall score) + every review
-  and author-response, found recursively under `paper/reviews/`. The compiled PDF opens in the paper
-  viewer; the claims map (below) opens beside it. (Gate 3 stays read-only — `/finalize` in a session.)
-
-Each section that maps to a real file keeps its **open in editor** link.
-
-### Claims ↔ artifact map — hard rule 1, made visible
-
-The **claims (N)** button (on a project card, the Gate-3 card, the paper viewer, or the palette)
-opens `studies/<slug>/paper/claims.yaml` as a checklist: every claimed number with its metric,
-location, and derivation, traced to the **run artifact(s)** it comes from. Each artifact is resolved
-on disk — **peek** opens its `metrics.json` in the doc viewer, **editor** jumps to it — and a
-**● linked / ⚠ missing** pill shows whether every cited artifact is present. This surfaces the
-lab's traceability guarantee (every number → a run) for a reviewer to see, not just trust. The pill
-is *linkage*, not a numeric audit — **run audit ▸** launches the mechanical
-`tools/audit_claims.py` (read-only; PASS / FAIL / MANUAL per claim) right there.
-
-### Reading the paper & jumping to code
-
-Two ways the dashboard hands you off to the real artifacts, without ever leaving its read-only,
-local-only posture:
-
-- **Paper viewer.** When a project's paper has compiled (`studies/<slug>/paper/main.pdf` — the
-  blocking `latexmk` gate in `/write-paper`), a **view paper** button opens it in a large overlay
-  rendered by your browser's native PDF viewer, with a strip of the paper's **figures** beneath it.
-  It **auto-refreshes**: when the agent recompiles, the snapshot's mtime changes and the open PDF
-  reloads itself — watch the paper redraw as the back-half work lands. **edit source ▸** opens
-  `main.tex` in your editor; **open PDF ▸** pops it into a new tab. The dashboard never *compiles* —
-  it only surfaces what the pipeline produced (compilation stays in `/write-paper`).
-- **Open in editor.** Because the dashboard binds localhost and is driven by you, every read-only
-  document view (a proposal, `control.yaml`, a run's `metrics.json`, the lab knowledge) carries an
-  **open in editor ▸** link on each file's header, and a project's detail drawer has an **open in
-  editor** button. They emit a `<scheme>://file/<abs-path>` URL that your editor's URL handler
-  catches. The scheme is `lab/config.yaml` → `dashboard.editor` (`vscode` default; `cursor`,
-  `vscodium`, `windsurf`, or `none` to turn the links off).
-
-A **"now happening" pulse strip** runs along the top-centre of the World — an at-a-glance summary
-of what is live right now: running loops, waiting gates, in-flight runs, and how many agents are
-working. It is the one line you can read without panning anywhere. The masthead's **compute-slot
-fireflies** (one lit mote per busy slot) name each slot's holder on hover (project · label · age)
-and turn a **stale** slot amber — one whose heartbeat lapsed past `compute.stale_slot_minutes`, so it
-reads as presumed-crashed rather than silently "in use" (reclaim is `run_slots.py`'s job, never the
-dashboard's).
-
-**Lamplight** is a simple **Light / Dark** toggle (the `🌙` button or Settings; default Dark — the
-scene is dark-first), shifting the world's ambient between a brighter daytime and a dim, lantern-lit
-dusk. If file-tailing stalls, the masthead clock turns red, so degraded data never reads as calm.
+   All of it is written to `lab/config.yaml`, and every change is logged.
+4. **Your research.** `/setup-lab` runs as a conversation: research areas and first directions,
+   compute, venue, and which models play which roles. Its questions appear as forms you answer in
+   place.
+5. **First step.** The on-ramps: *Explore a new direction* (`/ideate`), *Bring in what I have*
+   (`/adopt`), *Talk it through* (`/discuss`), *Compete on a target* (`/compete`), *Start a campaign*,
+   and *Make the lab yours* — a one-minute tour of the Workflow page (copy a procedure, change how it works,
+   publish it).
 
 <figure markdown>
-![The same lab world in the Light theme](assets/dashboard-world-light.png){ .as-shot }
-<figcaption>The same World in the <strong>Light</strong> theme — every room, corridor, and critter re-lit for daytime. Light/Dark is one toggle; the choice persists per browser.</figcaption>
+![The setup wizard — connect an agent](assets/dashboard-setup.png){ .as-shot }
+<figcaption>Step 2 of the wizard: one card per agent CLI. <em>Sign in…</em> opens the CLI's own login in a terminal window; the card turns green by itself.</figcaption>
 </figure>
 
-## The world — the rooms
+## Home
 
-The lab is one world — a dense region whose rooms sit at varied heights and join by tunnels
-(deliberately *not* a tidy left-to-right row), though they still follow the lifecycle order. Each
-stage is a **room** whose art signals what that stage *is*; an idea or project lives in the room
-matching its current registry state, and moves rooms as it advances.
+The world fills the screen. The workflow's rooms stand on a table round your desk, each study is a
+card on its room's shelf, and each run is a newt at its station, its subagents smaller newts beside it
+(see [The world](#the-world)).
 
-The world groups the lifecycle into **six rooms** (a presentation grouping over the registry
-states — it never changes the lifecycle itself; see `DASHBOARD.md` §4). Gates are the *doorways*
-between rooms:
+On the right, the **Today** rail (collapsible) has:
 
-| Room | Covers (lifecycle states) |
-|---|---|
-| **the incubator** | `seed`, `triaged` — ideas are born and sorted |
-| **the study** | `lit-review`, `scoping`, `proposal` — shape the idea before spending compute (**Gate 1** is the door out) |
-| **the lab** | `active`, `analysis` — the busiest room: experiments + their analysis (**Gate 2** inside). Each project is one critter; **click it to enter that project's own lab** and see all its workers |
-| **the writing room** | `writing`, `internal-review` — draft the paper and review it (**Gate 3** is the door out) |
-| **the archive** | `final` — finished, at rest; its knowledge feeds the next idea |
-| **the margins** | `parked` (dimmed) and `killed` (sunk, desaturated) — out of play |
+- **Start something**: the one button for starting work.
+- **Needs you**: gates to sign, questions from agents, permission requests, crashed runs,
+  escalations and silent subagents. Each row can be acted on in place: answer, sign, allow or deny,
+  resume.
+- **Running**: live and queued runs, with elapsed time against their budget and what each is doing
+  now.
+- **Up next**: each study's natural next step as a one-click button.
+- **New results to look at**: [artifacts](#artifacts-what-agents-made-for-you) agents published that you
+  haven't opened yet.
+- **Just finished**: the latest runs and their reports.
+- **Since you were last here**: what changed while you were away.
 
-Each idea/project critter's look reflects its situation: a live run makes its room and its critter
-active, a killed idea's critter sinks and greys out, a parked one rests dim.
+Underneath is **Ask Newt**, where you type anything (see [Ask Newt](#ask-newt-free-form)). The ✉
+button next to it leaves a *note* for the next agent instead, without starting anything.
+
+In the world itself:
+
+- Click a card to open its study. Click a gate arch for the study waiting on it.
+- Click a room to zoom in. A room map and **◂ back** appear top-left.
+- Click a newt to open its run sheet: what it is doing, who started it, its subagents, what it
+  handed back, and its full action timeline. **Follow** keeps the camera on it.
+- Click the desk for the inbox; click the big Newt to start something.
+- Drag to turn, wheel to zoom, hover for a tooltip. The **lenses** (top-left) re-tint the table:
+  Work, Cost, Waiting on you, Risk.
+- The **Key** (bottom-left) lists the roles with live counts. Click a role to highlight its agents.
+
+The same list as *Needs you* sits behind the 🔔 in the top bar. The tab title shows how many things
+are waiting, and **desktop notifications** (⚙ Settings → Notifications & sound) tell you when an agent asks
+something, a gate opens, or a run finishes or fails.
+
+**On your phone.** In the same place, give an [ntfy](https://ntfy.sh) topic and/or a webhook (Slack,
+Discord, Teams). The lab's scheduler sends each thing that blocks it once: a question, an approval, a
+gate, a stalled campaign. It works with the dashboard closed. Only the title and one line are sent,
+never files or transcripts. The addresses are kept in the git-ignored `lab/.env.local` and never given
+to agents; a topic name works like a password, so pick a long random one. Add the address your phone
+can reach the dashboard at (for example a Tailscale address) and each notification opens the item.
 
 <figure markdown>
-![Inside the lab room — a project's own workers at their stations](assets/dashboard-room-lab-dark.png){ .as-shot }
-<figcaption>Click a room (or a project critter) to <strong>zoom in</strong>. Here, inside <em>the lab</em>: stations for smoke/pilot/full, improve/debug, in-project ideation, quality-check, and analysis — with each running sub-newt standing at its task, labelled with what it's doing.</figcaption>
+![Home in the day theme](assets/dashboard-home-light.png){ .as-shot }
+<figcaption>The same Home by day. Theme follows your system, or pick one in Settings → Appearance.</figcaption>
 </figure>
 
-## Newt — the buddy that is also the controller
+## Starting work
 
-Newt is the lab's buddy and its **orchestrator**: a unique, procedurally-animated creature, larger
-than the sub-newts. It roams the world toward wherever the lab's attention is, and you **click it to
-command the lab** (the legend's *Orchestrator (Newt)* row is this same creature). Its body is an
-honest one-glance summary of the lab, driven by nine poses, by priority:
-**gate-waiting > fresh-failure > success > regenerating (a pivot) > running > writing > composing a
-letter > idle > asleep**. Newt drifts low and dim when the lab is cold, perks up while runs are
-live, blooms on a success, dims on a failure, turns toward the proposal/review rooms when a gate
-waits, and forms a letter when you’re composing a command.
+**Start something** opens one sheet. At the top is Ask Newt. Below it are the procedures, in plain
+words:
 
-On a re-plan or explore event (`replan` / `decision_revisit` / `frontier_expand` /
-`approach_ideate`) one of Newt's **fronds dissolves into motes and regrows** — explore-mode's
-discard-and-regrow, shown rather than told. Speech bubbles quote event fields **verbatim** — no
-number Newt can’t cite to an event.
-
-## The workers — a sub-newt per agent
-
-Underneath the idea/project critters, the world shows **the work itself**: every running
-agent or subagent is **its own sub-newt**, colour-coded by role. Six roles:
-
-| Role | Colour | Note |
+| Intent | Runs | Stops |
 |---|---|---|
-| **orchestrator** | gold | this *is* **Newt** — the larger creature that roams between rooms; the legend's orchestrator count is Newt, and you click Newt to command the lab |
-| **experiment-runner** | teal | |
-| **fresh-context-reviewer** | violet | |
-| **overseer** | slate-blue | |
-| **ideation-critic** | rose | |
-| **scoping-advocate** | amber | |
+| Explore a new direction | `/ideate <direction>` | when the best 1–3 ideas are filed as studies |
+| Bring in what I have | `/adopt` | once the idea / repo / draft is in the lifecycle |
+| Talk it through | `/discuss` (a conversation) | crosses no gate |
+| Work on a study | the procedures that fit its stage: `/lit-review`, `/scope`, `/propose`, `/experiment`, `/improve`, `/research-loop`, `/analyze`, `/make-figures`, `/write-paper`, `/critique-paper`, `/review-paper` | at the procedure's own stop point, or at a gate |
+| Advance a study one step | `/advance` | after one stage |
+| Plan a campaign | writes and signs a campaign brief, then `/autopilot` | at anything outside the brief's bounds |
+| Compete on a target | `/compete` (an interview) | at its own Gate 1 |
+| Check on the lab | `/lab-status` | with a recommendation |
 
-Each sub-newt lives in the room where its task is happening, so you can *see* a review
-ensemble fill the review panel or runners crowd the lab. Same-role workers are differentiated
-**deterministically** — hue, marking, and walk-phase are derived from the worker's id, so the same
-worker always looks the same. When a worker finishes its task it plays a **despawn animation**
-(it dissolves into motes). When a room gets crowded, the extra workers collapse into a single
-**"+N more"** cluster so the scene stays readable.
+Each intent says **what happens**, **where it runs** (in the lab, or inside the study's project
+repo) and **where it stops**. **Options** override, for that run only:
 
-A **legend** ("Who's working", bottom-left) is always visible: each role → its colour with a live
-head-count. Click a role to **highlight** every sub-newt of that role across the world.
+- the agent (claude · codex · opencode) and the model;
+- the effort level and the time limit;
+- what happens when it finishes: *stop and report*, *run its reported next step*, or *keep going
+  until a gate*;
+- **repeat every N minutes**, e.g. `/autopilot` every 30 minutes, which stops at a gate or a failure.
 
-**Click a sub-newt** to open an **inspector panel** showing that one worker's own clean
-action history — exactly what *that* agent did, in order, separated from everyone else's. This is
-backed by the per-worker logs described in [Traceability](#traceability-one-log-per-worker).
-
-## Controls — what Newt can actually do
-
-Click **Newt** — the orchestrator creature, who roams the world — or any other critter, to open
-the **command console** (the footer also carries a persistent Newt handle). One honest constraint shapes
-all of it: the dashboard is a local Python server — it can’t *run* an agent skill (that’s the
-Claude session). So it works in three tiers:
-
-1. **Structured commands** → the bus. Buttons like *Start loop ▸ execute/explore*, *Stop loop*,
-   *Set mode ▸ explore/execute* (switch a live loop without restarting it), *Run smoke*,
-   *Request a run*, *Analyze*, *Prioritize*, *Park*, *Kill* (and *Ideate* for the
-   hub) append a `kind:"command"` directive to the target’s `directives.jsonl` (the record carries
-   its `target`, so a command aimed at a not-yet-spawned idea is never misattributed). The running
-   agent picks it up at its **next checkpoint** (a loop cycle / session start — the console says
-   so) and executes it **in-protocol**, then acks `seen → done`(+evidence) / `blocked`. A
-   command is never gate approval and can’t change a frozen/PI-owned setting.
-2. **Read-only tools** → run now. The per-project buttons execute whitelisted, side-effect-free
-   tools (`check_lab`, `show_config`, `status`, `compare`, `inbox`, slot status) as subprocesses
-   and show the output in a drawer. Nothing that trains or writes.
-3. **PI gate approval** (Gate 1 & 2 only). Because the server is local and you are the PI, the
-   Gates view (or a critter’s console) can record your approval directly: Gate 1 signs the proposal
-   and leaves the agent a `gate1_approved` command to transition + spawn; Gate 2 flips
-   `gate2_envelope.pi_signed: true` (with `signed_via: dashboard:<ts>`) in `control.yaml`. Every
-   gate click needs an explicit confirm and is written to `lab/.bus/pi-actions.jsonl`.
-   **Gate 3 is never approvable here** — sending anything outside the lab is always done in a
-   session. That is the one hard line.
-
-You can also leave a **free-text note** from the same console when no button fits.
+The first time you start something, the dashboard asks once to turn on **starting agents from the
+dashboard** (the `agents.programmatic.enabled` switch). Runs are queued first and start as soon as a
+slot is free, within the concurrency caps and the daily limits set in Settings → Limits & permissions.
 
 <figure markdown>
-![The Activity screen — pending gates with one-click approve, and the in-flight run](assets/dashboard-activity-dark.png){ .as-shot }
-<figcaption>The <strong>Activity</strong> view is the control surface: <em>Needs you</em> (Gate 1 & 2 with a one-click <em>Approve</em>; Gate 3 shows only the command — it's never approvable here) beside <em>In flight</em> (the running experiment with its budget bar). Approvals are confirmed and written to the append-only audit.</figcaption>
+![Start something](assets/dashboard-start.png){ .as-shot }
+<figcaption><strong>Start something</strong>: Ask Newt on top, then every procedure in plain words. Picking a study lists what fits its stage.</figcaption>
 </figure>
+
+### Ask Newt (free-form)
+
+**A question the dashboard can already answer is answered at once, with no agent** — *"what needs me?"*,
+*"what's running?"*, *"what happened overnight?"*, *"how much have we spent today?"*, *"did anything fail?"*,
+*"which gates are waiting?"*, *"anything for me to look at?"*, *"how is moe doing?"*. The answer comes from the lab's
+live state (`ui/answers.js`), costs nothing, and offers **Ask an agent anyway** if it isn't what you meant. An agent
+session loads ~50k tokens of context before it does anything, so this keeps quick look-ups free. Anything that asks
+for work or judgement (run, write, compare, explain why…) goes to an agent as below.
+
+Type any instruction, e.g. *"compare the last three pilots of moe and tell me which knob mattered"*,
+in the bar under the world or at the top of Start something. A short confirmation shows:
+
+- where it runs: the whole lab, or a chosen study (inside its project repo if it has one);
+- the agent, the model and the time limit.
+
+It becomes an ordinary run (skill `ask`) with the lab's standing instructions and every hook,
+including the [signature guard](#signatures-only-you-sign). It can use any of the lab's procedures,
+and it can never sign a gate. Continue it by replying. Free-form runs don't chain; a next step they
+report shows as a button.
+
+## Runs are conversations
+
+Open any run (from Home, Runs, a study, or a notification) and it reads like a chat:
+
+- **The agent's messages**, rendered as Markdown.
+- **Its tool calls, folded into groups**, e.g. "ran 6 commands · edited 2 files". Click to expand.
+- **Subagents** appear inline when they start and when they hand back. A strip at the top lists each
+  one's role, what it is doing and its result.
+- **Questions become forms.** When a procedure needs you (the project type at `/spawn-project`, an
+  interview question), the run pauses on the question. Pick an option or type your own answer, and
+  the same session continues where it stopped.
+- **Permission requests** show *Allow once / Deny* inline, and in *Needs you*. A live run waits for
+  your decision (up to `live.permission_minutes`, then it's denied); a campaign's runs are denied at
+  once, and the denial is listed under *Needs you*.
+- **The report** comes at the end: a summary, whether it stopped at a gate or a kill criterion, and
+  its next command as a button (**Review and sign** when it stopped at a gate).
+
+At the bottom:
+
+- **Message** a running agent: it reads your message after its current step, in the same turn.
+  **Interrupt** stops the current step and leaves the session open for your next message.
+- **Reply** in your own words to a paused or finished run; it continues the same conversation.
+  A question answered while the run is live goes straight to the running agent. **Ask Newt** stays
+  open for a few minutes after it answers, so a follow-up goes straight in.
+- **Stop** ends it but leaves it resumable, and **Resume** continues it (claude `--resume`, codex
+  `exec resume`, opencode `-s`).
+- A queued run can be cancelled.
+- **What it wrote**: every file the run's own transcript says it wrote or edited (its Write, Edit and
+  patch actions), openable in place, Markdown rendered, images and PDFs shown. Only files that run's
+  transcript names can be opened.
+- Links to the raw transcript and the supervisor log.
+
+The **Runs** page lists every run, filterable by *waiting for you*, *running*, *queued*, *finished*
+and *failed*, with the slot usage and the agents at work right now.
+
+Runs belong to the executor, not to the page. Close the dashboard and they keep going; reopen it and
+they are all still there. The same engine has a CLI, `tools/executor_cli.py`.
+
+<figure markdown>
+![A run, as a conversation](assets/dashboard-run.png){ .as-shot }
+<figcaption>A run opens as a conversation: messages, folded tool calls, the report, and a reply box that continues the same session.</figcaption>
+</figure>
+
+## Artifacts: what agents made for you
+
+An agent shows you something by publishing it: a plan, a report, a figure, a table, a page. It runs
+
+```bash
+python tools/artifact.py publish --title "Pilot results" --file analysis/pilot.md [--note "…"]
+python tools/artifact.py publish --title "Which eval set?" --question "Freeze A or B?" --choices "A;B"
+```
+
+and it appears on the **Artifacts** page (`#/artifacts`; the nav shows how many you haven't seen) and in
+the Today rail under *New results to look at*. Each is rendered in place, by its file:
+
+- `.md`: rendered, with maths;
+- `.html`: in a sandboxed frame, and served with a CSP sandbox, so a page an agent wrote can never act as
+  the dashboard;
+- images (`.png`, `.jpg`, `.webp`, `.gif`, `.svg`), `.pdf`;
+- `.csv` / `.tsv` as a table; `.txt`, `.log`, `.json` as text;
+- or no file at all: a question alone, with its choices.
+
+An artifact with a question waits in *Needs you* until you answer: pick a choice, write a reply, or
+both. Your reply goes to the run that published it, as its next message (resuming it if it has
+stopped). If that run can't take a message any more, the reply becomes a note to the study (or the lab)
+that the next agent reads. Agents read replies with `tools/artifact.py replies`.
+
+Artifacts live in `lab/.bus/artifacts/<id>/`: `artifact.json` and a copy of the file. Only the
+dashboard writes `reply.json` and `seen`; the signature guard stops a run writing them. Publishing is
+how an agent asks for a look; it is never a gate signature.
+
+## Sound
+
+The speaker button in the top bar (and Settings → Notifications & sound → Sound) turns on two things, each off
+by default, each with its own volume and a button to hear a sample:
+
+- **Chimes** when an agent asks you something, a gate waits for you, a run finishes or fails, or a new
+  artifact arrives. They are rate-limited and silent while the tab is hidden.
+- **Music**: a soft ambient score generated live (D major pads, sparse felt-piano notes, a generated
+  reverb). It breathes with the lab: more agents running, slightly more notes.
+
+Everything is synthesised in the browser with Web Audio; nothing is downloaded. The settings are kept
+in the browser (`localStorage`, `nl-sound`).
+
+## Studies
+
+**Studies** is a pipeline board with one column per room: *Ideas · Study · Lab · Writing · Done ·
+Margins*. Each card shows its stage, a waiting gate, live runs, its agents and its FULL-run budget.
+A table view is one toggle away.
+
+A **study page** (`#/study/<slug>`) has:
+
+- **a lifecycle stepper** from seed to final. The gates are drawn as doors between steps: one glows
+  when it waits for you, and it opens once signed.
+- **one primary button** for the natural next step: *Review and approve Gate 1*, *Run experiments*,
+  *Answer its question*, and so on. **Work on it…** offers everything else that fits.
+- the tabs:
+  - **Overview**: the idea write-up (`IDEA.md`), where it stands now, its agents, any notes still
+    waiting for an agent, and recent events.
+  - **Documents**: every file of the study and its project repo, rendered.
+  - **Runs**: its conversations.
+  - **Experiments**: what is training now, with budget bars, a peek at each run's artifacts,
+    *project status*, *compare runs*, the effective config, and buttons to start experiments,
+    improve, the research loop and analysis.
+  - **Paper**: the compiled PDF (it reloads when the agent recompiles), its figures, and **Claims ↔
+    evidence**, where every claimed number is traced to the run artifact it comes from, with a
+    one-click claims audit.
+  - **Controls**: start or stop the research loop, switch it between execute and explore, run a
+    smoke test, request a run, the envelope editor, prioritize, park, kill or revive, and the
+    signatures.
+
+<figure markdown>
+![The Studies board](assets/dashboard-studies.png){ .as-shot }
+<figcaption>The <strong>Studies</strong> board — a column per room of the building.</figcaption>
+</figure>
+
+<figure markdown>
+![A study page](assets/dashboard-study.png){ .as-shot }
+<figcaption>A <strong>study page</strong>: the lifecycle stepper with its gates as doors, one next-step button, and the tabs.</figcaption>
+</figure>
+
+## Signatures: only you sign
+
+Every signature follows one pattern. A **gate sheet** puts the review bundle and the signing controls
+side by side, so reading never closes it. It says exactly what gets written, asks you to confirm,
+logs the signature to `lab/.bus/pi-actions.jsonl`, and lets you **withdraw** it.
+
+- **Gate 1: the proposal.** You approve the hypothesis, the frozen evaluation, the staged plan, the
+  budgets and the kill criteria. Tick *also approve the Gate-2 envelope (§5)* to let FULL runs within
+  it proceed once the project exists. Next comes *Create the project repo* (`/spawn-project`), or it
+  is queued automatically with `dashboard.auto_spawn_on_gate1: true`.
+- **Gate 2: the FULL-run envelope.** Edit the numbers (FULL runs, minutes per run, total minutes,
+  expiry) against a live capacity readout, then sign. The readout counts runs completed and reserved
+  in flight, which is the same accounting `guard.py full-run` enforces. Changing a signed envelope's
+  values withdraws the signature until you sign again.
+- **Gate 3: finalize.** A readiness checklist comes first: internal review is complete, the
+  meta-review recommends accepting, the paper compiles, and the claims are mapped. Beside it are the
+  claims, the meta-review and every review.
+  - Signing requires **typing the study's name**, and writes `studies/<slug>/paper/gate3-approval.md`
+    (`signed_via: dashboard:<time>`, with the paper's hash).
+  - It allows exactly **one `/finalize` run, started by you**, right away or later from the same
+    sheet. No chain, repeat, campaign or free-form run can start it.
+- **The loop brief.** Read the project's `LOOP_BRIEF.md`, choose *execute* or *explore*, and
+  authorize it. The research loop then runs unattended within it.
+- **A campaign.** *Plan a campaign* is a form: direction, how many ideas, how many at once, compute,
+  the FULL runs each project may use, wall-clock, loop mode and re-entry interval. Signing writes
+  `lab/campaigns/<date>-<slug>.md` and can start `/autopilot` on a repeat right away. Within its
+  bounds the campaign self-approves Gate 1 and derives each project's envelope; Gate 3 is never
+  delegated.
+- **Revive** brings a parked or killed idea back into Ideas. A reason is required and is recorded in
+  the registry and in `IDEA.md`.
+
+<figure markdown>
+![The Gate 3 sheet](assets/dashboard-gate3.png){ .as-shot }
+<figcaption>The <strong>Gate 3</strong> sheet: the readiness checklist and the signing controls beside the claims, the meta-review and every review. Signing needs the study's name typed.</figcaption>
+</figure>
+
+**The signature guard.** Every run started from the dashboard, whether a procedure or free-form,
+carries `tools/signature_guard.py`. It is a pre-tool hook wired into claude (the run's settings),
+codex (`-c hooks` flags) and opencode (a plugin), and it **denies** any agent write that would create
+or change a signature:
+
+- a Gate-1 marker, an envelope's `pi_signed` or `signed_via`, or a signed envelope's values;
+- `gate3-approval.md`;
+- a LOOP_BRIEF or campaign authorization;
+- a registry row moved to `final` without a signed Gate 3;
+- PI-owned config;
+- the PI-action log;
+- the shell escape hatches.
+
+Delegation under a PI-signed campaign brief still works, because those signatures name the brief.
+A denial surfaces under *Needs you*. That guarantee is what makes free-form runs and a dashboard
+Gate 3 safe to offer.
+
+## Library, History, Settings
+
+- **Library.** Every document the lab writes, organized and rendered offline, with tables, code,
+  KaTeX math and inline images:
+  - the lab layer: ideation worksheets, knowledge, notebook, campaigns;
+  - one shelf per study: idea → lit review → decisions → proposal → sessions → critiques → paper and
+    reviews;
+  - each study's project-repo ledgers.
+
+  Two PI documents are edited in place: `lab/SYSTEM.md` (describe this machine for the agents) and
+  the open questions `/ideate` reads first.
+- **History.** Every event in the lab, and every command and note you sent with its `pending → seen
+  → done` state and evidence (a `done` with no evidence is flagged).
+- **Settings**, by section:
+
+  | Section | What it holds |
+  |---|---|
+  | Agents & sign-in | the CLI cards from the wizard |
+  | Limits & permissions | the launching switch; default agent and model; what claude may do without asking; time limits; concurrency caps; daily limits; the *keep going* cap; talk to agents while they run (live sessions) and how long they wait for your answer, your allow/deny, or your next message; create the project when Gate 1 is signed |
+  | Lab | name, where projects go, training runs at once, projects per campaign, oversight, venue, page limit, budget tier; anything else goes to an agent via `/configure` |
+  | Research keys | Semantic Scholar, OpenAlex and others, kept in the git-ignored `lab/.env.local` and handed to runs; never shown again |
+  | Appearance | theme day / night / system, density, motion, narration; *The cast*: who plays the agents in the world |
+  | Notifications | desktop notifications; sound (chimes, music); on your phone (ntfy topic, webhook, the dashboard's address), with *Send a test* |
+  | System & compute | what the lab's machine offers (CPUs, memory, GPUs, disk, schedulers, SLURM partitions), where training runs (here / SLURM / another scheduler, with `compute.scheduler` prefilled from what was detected), SYSTEM.md |
+  | About & server | the lab, a terminal in the lab folder, the setup wizard, **stop the server** |
+
+The **command palette** (<kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd>) jumps to any study, run, page
+or action. <kbd>Esc</kbd> closes the top layer.
+
+## What still happens outside the dashboard
+
+- Editing code and experiment configs, and committing or pushing git: use your editor (every
+  document has *open in editor ↗*, via `dashboard.editor`).
+- A target-driven `/compete` project's Gate 3 (selecting its final output) and anything that
+  actually leaves the lab (arXiv, a submission) stay yours, in a session.
+- The CLI's own sign-in happens in the terminal window the dashboard opens for it.
+
+## The world
+
+The lab is an open tabletop drawn by code (`dashboard/static/world3d/`, rendered with three.js). Your
+desk is the plaza in the middle; the workflow's rooms stand on plots round it, with streets between.
+Rooms have no roofs: everything is visible from above.
+
+| Room | Covers |
+|---|---|
+| **the incubator** | `seed`, `triaged` |
+| **the study** | `lit-review`, `scoping`, `proposal` (**Gate 1** at its door) |
+| **the lab** | `active`, `analysis` (**Gate 2**). One lab per live project, titled by its study |
+| **the writing room** | `writing`, `internal-review` (**Gate 3** at its door) |
+| **the archive** | `final` |
+| **the margins** | `parked` and `killed` |
+
+- **Runs are newts** at the station of the procedure they run, each in a family colour of its own;
+  their subagents are smaller newts in the same colours. A run waiting for you walks to your desk with
+  a "?"; a stalled one dozes.
+- **Studies are cards** on their room's shelf. When a study moves on, a newt carries its card to the
+  next room. Gates are arches at a room's street door, with a lamp.
+- While `/spawn-project` runs, the new project's lab stands as scaffolding and rises when ready; more
+  project labs cluster as a lab district.
+- Agents are newts by default; Settings → Appearance → *The cast* can make them a scientist, a frog,
+  an owl, a fox or a robot, one per tool or one for everyone.
+- Your other labs (Labs & machines) stand as small tables past the back edge, with what waits on you
+  there; click one to go to it.
+- Day and night themes follow the lamp. Without WebGL the dashboard works the same, minus the world.
+
+Rooms, their places on the table and their looks are yours to change (Workflow → Rooms; see
+[Extending](extending.md)). How the world works is in [The world's design](world-design.md).
 
 ## How it stays honest (the bus)
 
-<figure markdown>
-![The Ledger — commands and the append-only event log](assets/dashboard-ledger-dark.png){ .as-shot }
-<figcaption>The <strong>Ledger</strong> makes the dashboard auditable: every command you've issued (with its <code>pending → seen → done</code> state and evidence pointer) and the full, append-only event log. A <code>done</code> with no evidence is flagged — nothing on screen is unbacked.</figcaption>
-</figure>
+Everything shown is backed by a real file. The signal layer is **the bus**: append-only JSONL, the
+same philosophy as the rest of the lab.
 
-Everything shown is backed by a real file. The signal layer is **the bus** — append-only JSONL,
-the same philosophy as the rest of the lab:
+- **Mechanical events** fire from code, so the scene is truthful even if an agent forgets to narrate:
+  `scripts/run.py` and `sweep.py` emit `run_started`, `run_finished` and `sweep_*`, and
+  `tools/run_slots.py` emits slot events.
+- **Agent events.** At registry changes, gate stops, loop cycles, pivots, kills and write-backs, the
+  agent emits `lab_bus.py emit <kind>`.
+- **Commands, notes, acks and PI actions** flow through the same files. The dashboard appends. For a
+  signature it edits exactly the line it is told to, and verifies the file still parses to what it
+  meant.
 
-- **Mechanical events** (reliable regardless of agent discipline): `scripts/run.py` and
-  `sweep.py` emit `run_started`/`run_finished`/`sweep_*`; `tools/run_slots.py` emits slot events.
-  These fire from code, so the scene is truthful even if an agent forgets to narrate.
-- **Agent events**: at registry changes, gate stops, loop cycles, pivots, kills, and write-backs
-  the agent emits via `lab_bus.py emit <kind>`. Live metric ticks aren’t duplicated — the
-  dashboard tails each run’s `metrics.jsonl` directly.
-- **Commands, directives, acks, and PI gate actions** flow through the same files; the dashboard
-  only ever *appends* (and, for a Gate-2 sign, edits the one `pi_signed` line it’s told to).
+The event kinds are listed in `tools/lab_bus.py`. The main ones:
 
-Event kinds: `session_start/end`, `state_change`, `gate_waiting`, `gate_resolved`,
-`run_started/finished`, `sweep_started/finished`, `slot_acquired/released/denied/reclaimed`,
-`cycle`, `review_verdict`, `paper_compiled`, `kill`, `writeback`, `directive_seen/done/blocked`,
-`frontier_expand` (explore loop proposed new lines), `decision_revisit` (reopened a design
-decision), `replan` (a pivot landed), `approach_ideate` (in-project method-ideation proposed
-candidate approaches), `escalation` (a project loop asking the hub/PI for attention mid-run —
-a headline reopen, a block on a frozen setting, or FULL work outside the envelope; requests
-attention, never grants a gate — it carries a stable id), `escalation_resolved` (an agent handled
-an escalation; `lab_bus.py emit escalation_resolved --data ref=<id>` — the dashboard then stops
-counting it as "needs you", so a handled escalation clears instead of nagging forever),
-`score_read` (a target-driven `/compete` project read an
-external score under its PI-signed envelope — `scripts/report_score.py`), `agent_launched` /
-`agent_finished` (a headless top-level agent was spawned into / finished in a project by
-`tools/agent_runner.py` — its full transcript is in `<project>/.bus/agents/<id>.stream.jsonl`),
-`note`. The bus lives in gitignored `lab/.bus/` (hub) and
-`<project>/.bus/` (each project); a project spawned before the bus existed still shows
-runs/registry/liveness — events only enrich.
+- lifecycle: `state_change`, `gate_waiting`, `gate_resolved`, `gate_revoked`;
+- experiments: `run_started` / `run_finished`, `sweep_*`, the slot events;
+- process: `cycle`, `review_verdict`, `paper_compiled`, `kill`, `writeback`, `replan`,
+  `frontier_expand`, `decision_revisit`, `approach_ideate`;
+- escalations: `escalation` / `escalation_resolved`;
+- agent runs: `agent_launched`, `agent_waiting`, `agent_resumed`, `agent_finished`, `run_report`.
 
-## Traceability — one log per worker
+The bus lives in the git-ignored `lab/.bus/` (hub) and `<project>/.bus/` (each project).
 
-The sub-newts and their per-worker inspector histories are backed by a **lab feature that is
-independent of the dashboard**: even if you delete `dashboard/`, these logs still get written.
+## Workflow (Compose)
 
-Claude Code **hooks** (`.claude/settings.json` → `tools/trace_hook.py`, and the same hook shipped
-in the project template) log every agent's and subagent's tool actions to **per-worker logs** —
-one file per worker:
+**Workflow** (top nav; the code calls it Compose) is everything the lab is made of, all of it editable: the pipeline of stages and the
+building of rooms as a map, then procedures (their definition, method, your instructions, their files),
+roles, rooms, rules, checks and project types. Adding anything starts from a copy of the closest thing.
+Every edit goes into a **draft**; **Review & publish** shows the diff and whether the lab still reads
+consistently, and a publish can be undone. A short tour walks through it. Agents' suggested changes arrive
+in Needs you and under Workflow → Agents' suggestions, with a diff, for you to accept or decline. A study's
+page has an **Instructions** tab for that study alone. See [Customising the lab](customising.md).
 
-- `lab/.bus/workers/<worker_id>.jsonl` in the hub, and
-- `<project>/.bus/workers/<worker_id>.jsonl` in each project.
+## Traceability: one log per worker
 
-One file per worker means each agent's trace is clean and separated from every other's — which is
-exactly what the worker inspector renders. `dashboard/sources.py` aggregates these files into
-`snapshot().workers[]`, and the dashboard draws one sub-newt plus one inspectable history per
-worker. To bound growth, the hook prunes worker logs untouched for over 48 hours once per session.
+Claude Code hooks (`.claude/settings.json` → `tools/trace_hook.py`), the Codex hooks and the opencode
+plugin log every agent's and subagent's activity to **one file per worker**:
+`lab/.bus/workers/<id>.jsonl` in the hub and `<project>/.bus/workers/<id>.jsonl` in each project.
+What gets logged:
 
-Two properties keep this safe and lightweight:
+- each subagent's birth;
+- each tool call, as it starts and as it ends;
+- each spawn, with its description;
+- what each subagent handed back.
 
-- It is **best-effort and never blocks a tool call** — a failed or slow hook never holds up the
-  agent. The logs are local and disposable (gitignored).
-- The **harness writes them, not the subagents.** The hook fires from Claude Code, so the
-  parent-only-ledgers rule (subagent rule 3) is untouched — subagents still write nothing to the
-  shared ledgers; the trace is the harness observing them, not them reporting.
+`dashboard/sources.py` rebuilds the run → session → subagent tree from these logs. The logs are
+written by the harness, not by the subagents. They are best-effort and never block a tool call.
+This works with or without the dashboard.
+
+Every line of a headless run carries its run id, so a session is joined to its run even before the CLI
+reports a session id. A subagent's own subagents nest under the one that spawned them, and a worker
+inside a long tool call (a training run, a scheduler queue wait) stays on the roster. The run sheet shows
+the subagent tree, each with a link to its own trace, and a lineage strip: who started the run (you, a
+chain, a repeat, a campaign pass) and what it started.
+
+| How the agent started | Traced by | Shown |
+|---|---|---|
+| A run from the dashboard (claude) | the run's own hook settings, with an absolute interpreter; the repo's hooks stand down | Runs, run sheet, world, Today |
+| A run from the dashboard (codex) | `-c hooks.*` session flags | same |
+| A run from the dashboard (opencode) | the tracer plugin | same |
+| A campaign pass and the steps it dispatched | same as their backend | same, plus the campaign card and the lineage strip |
+| A backend that fires no hooks | the supervisor's fallback log, named by the run | joined to its run |
+| Your own session in a terminal or an editor (claude, opencode) | the repo's hooks (`python`, else `python3`) | Runs → *Sessions started outside the dashboard*, the world while it works, the agent sheet |
+| Your own codex session | `.codex/hooks.json`, once you trust the repo and review its hooks in `/hooks` | same |
+| Subagents at any depth | the same hooks (`SubagentStart`/`SubagentStop`, spawn lines) | nested under their parent |
 
 ## Tech notes
 
-`dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (+ pyyaml) serving a no-build single-page
-scene. Endpoints: `GET /api/state` (a snapshot rebuilt from files on every request — the lab’s
-files are the database), `GET /api/events` (Server-Sent Events, ~1.5 s poll — Windows-honest, no
-native watcher), `POST /api/directive` and `POST /api/command` (append to the bus), `POST /api/tool`
-(run a whitelisted read-only tool — including `audit_claims`, the mechanical claims audit),
-`POST /api/read` (a gate review bundle / doc view) and `POST /api/claims` (the structured claims ↔
-artifact map), `POST /api/gate` (record a confirmed Gate 1/2 approval; Gate 3 refused), the
-**Library** trio — `GET /api/library` (the document tree), `POST /api/libdoc` (one document's text;
-fixed root per scope + containment + an extension whitelist — never a free path), `GET /api/libfile`
-(an image a document references, same containment) — and three read-only binary views —
-`GET /api/paper?idea=<slug>` (the compiled PDF), `GET /api/figs?idea=<slug>`
-(its figure filenames), `GET /api/figure?idea=<slug>&name=<file>` (one figure; the name is reduced to
-a basename and re-confirmed under the figures dir — no traversal).
-The first HTML response is seeded with the snapshot inline for an instant cold load (the seed is
-`</`-escaped so no lab string — an event detail, a title, a directive — can break out of the inline
-`<script>`). Because the dashboard can sign Gate 1/2, **every state-changing POST *and* every
-data-bearing GET** (`/api/*` and the seeded index) is refused unless it carries a localhost
-`Host`/`Origin` — a same-origin check that turns away a DNS-rebound page the PI happens to visit
-(static assets stay open). Snapshots are cached for ~1 s behind a lock, so N concurrent SSE clients
-share one file read instead of N. `dashboard/sources.py` holds the tolerant tailers (a bad line is
-skipped, a non-UTF-8 byte is replaced not raised, a moved project is reported unreachable — never a
-crash) and aggregates the per-worker logs into `workers[]`.
+- **Server.** `dashboard/serve.py` is a stdlib `ThreadingHTTPServer` (plus pyyaml) with one route table;
+  each area of the product is one module beside it, sharing `ctx.py` (which lab is shown):
+  - reading: `sources.py` (the snapshot), `workers.py` (runs and traced agents), `attention.py` (what
+    needs you), `review.py` (what you read before signing), `library.py`;
+  - acting: `runops.py` (runs), `gates.py` (signatures), `campaign.py`, `bus.py` (directives,
+    commands), `compose.py` (the lab's definition: draft, check, publish, undo), `instructions.py` (a study's
+    instructions, agents' proposals), `settings.py`, `keys.py`, `system.py`;
+  - around the lab: `ticker.py` (the scheduler thread), `labtools.py`, `labs.py`, `machines.py`,
+    `fleet.py`, `term.py`.
 
-The frontend (`static/index.html`, `terrarium.css`, `app.js`) is **vanilla JavaScript — no build,
-fully offline**. The world renders entirely on a single **Canvas-2D** surface; there is no WebGL.
-The only third-party code is the Library reader's **pinned, vendored** renderers (`static/vendor/`:
-marked, DOMPurify, KaTeX + woff2 fonts — provenance and licenses in `static/vendor/README.md`);
-everything still works with zero network. It honors `prefers-reduced-motion` and `?static` by drawing
-a single **still frame** of the same scene instead of animating, so the dashboard always works
-offline with zero assets to fetch. Two handy deep links: `?open=<idea|hub>` opens the command
-console straight to that target, and `?read=<scope>:<slug>:<rel>` opens a document in the Library
-reader (e.g. `?read=lab::knowledge/FINDINGS.md`, `?read=study:my-idea:proposal.md`).
+  The lab's files are the database:
+  - `GET /api/state` is a snapshot rebuilt from files, cached for about 1 s.
+  - `GET /api/events` is Server-Sent Events, polled every 1.5 s.
+  - Each run has `GET /api/run`, `/api/run/tail` and `/api/run/log`.
+  - Writes are JSON POSTs. Each one is validated, needs an explicit `confirm` where it widens
+    authority, and is logged.
+- **Protection.**
+  - The server binds 127.0.0.1 only, and on Windows it binds the port exclusively, so two servers
+    can't silently share it.
+  - Host and Origin checks defeat DNS rebinding. `Origin: null` is refused.
+  - A per-server **`SameSite=Strict`, `HttpOnly` session cookie** is set with the page and required on
+    every `/api` call, so another site, a `file://` page or a sandboxed frame can't drive the lab.
+  - POSTs must be `application/json`.
+  - The inline snapshot seed is `</`-escaped.
+- **Front end.** `static/ui/*.js` (Preact 10 + htm, vendored UMD builds, no build step) and
+  `static/ui/ui.css`.
+  - Colours are tokens on `:root`, one set for day and one for night.
+  - Type: Newsreader for the few big statements (page titles, the lede under them, quotes in italic),
+    Instrument Sans for structure and every word of UI, IBM Plex Mono for labels, data and timestamps.
+    The fonts are bundled (`static/vendor/fonts/`, SIL Open Font License), so the dashboard stays
+    offline.
+  - Hash routes: `#/`, `#/studies`, `#/study/<slug>/<tab>`, `#/runs`, `#/run/<id>`,
+    `#/library/<scope>/<slug>/<file>`, `#/compose/<kind>/<name>`, `#/settings/<section>`, `#/history`,
+    `#/labs`, `#/setup`.
+  - Old deep links (`?open=<slug>`, `?read=<scope>:<slug>:<rel>`) still work.
+- **The world.** `static/world3d/`: `world.js` is the live world, `scene.js` the one `VivScene` wrapper
+  round it (and a quiet stand-in when the browser has no WebGL), `model.js` the pure logic of which
+  rooms stand where and who goes in which, `layout.js` the plots, `kit.js`, `components.js` and
+  `newt.js` / `characters.js` the pieces and the cast, `rooms/*.js` the built-in looks and
+  `looks/lab.<type>.json` the starter Lab looks per project type. The lab's own looks are data in
+  `lab/rooms3d/`.
+- **Artifacts and sound.** `artifacts.py` (the routes `GET /api/artifacts`, `/api/artifact`,
+  `/api/artifact/file`, `POST /api/artifact/reply`, `/api/artifact/seen`) over `tools/artifact.py`;
+  `static/ui/artifacts.js` is the page and a run's *What it wrote* (`GET /api/run/files`, `/api/run/file`,
+  `/api/run/rawfile`); `static/ui/sound.js` is `NL.Sound`. See [The world's design](world-design.md).
+- **Vendored libraries** (offline, with licences in `static/vendor/`): three.js, Preact, htm, marked,
+  DOMPurify and KaTeX.
+- **Demo mode**, for debugging: start with `--demo` and open `/?demo`. It is a synthetic living lab,
+  and nothing is written.

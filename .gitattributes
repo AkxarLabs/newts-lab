@@ -10,3 +10,6 @@
 *.ico  binary
 *.woff binary
 *.woff2 binary
+*.sh text eol=lf
+*.command text eol=lf
+*.cmd text eol=crlf

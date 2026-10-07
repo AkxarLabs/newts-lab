@@ -15,6 +15,7 @@ Exposed:
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -24,11 +25,19 @@ import pytest
 # tests/ lives directly under the repo root.
 REPO = Path(__file__).resolve().parents[1]
 
+# a supervisor that exits with work left starts its own scheduler when none is running (the dashboard
+# was closed) — never inside the test suite, where each test drives the scheduler itself
+os.environ.setdefault("NEWTS_NO_AUTOTICKER", "1")
+# the suite runs under `uv run --with …` (a throwaway env) but lives shorter than it: keep this interpreter
+# for the processes it starts instead of building the durable ~/.newts/py one
+os.environ.setdefault("NEWTS_KEEP_PYTHON", "1")
+
 
 def load(name: str):
     """Load a tool module fresh from the repo, by short name or relative path.
 
-    ``load("audit_claims")``  -> REPO/tools/audit_claims.py
+    ``load("guard")``  -> REPO/tools/guard.py — a short name is looked up in tools/, then checks/, then
+                          the skills' own tools (.claude/skills/*/tools/)
     ``load("dashboard/sources")`` -> REPO/dashboard/sources.py
     Each call produces an independent module object so a test's global overrides never leak.
     """
@@ -37,7 +46,9 @@ def load(name: str):
         path = REPO / rel
         mod_name = f"_hubtest_{Path(rel).stem}_{abs(hash(rel))}"
     else:
-        path = REPO / "tools" / f"{name}.py"
+        hits = [REPO / "tools" / f"{name}.py", REPO / "checks" / f"{name}.py",
+                *sorted((REPO / ".claude" / "skills").glob(f"*/tools/{name}.py"))]
+        path = next((h for h in hits if h.is_file()), hits[0])
         mod_name = f"_hubtest_{name}_{abs(hash(name))}"
     spec = importlib.util.spec_from_file_location(mod_name, path)
     module = importlib.util.module_from_spec(spec)
@@ -150,3 +161,26 @@ def hub(tmp_path) -> FakeHub:
     h = FakeHub(root)
     h.projects_root.mkdir(parents=True, exist_ok=True)
     return h
+
+
+@pytest.fixture
+def inbox():
+    """A local HTTP server that records every POST (stands in for ntfy / a webhook)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    got = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+            got.append({"path": self.path, "headers": dict(self.headers), "body": body})
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}", got
+    srv.shutdown()

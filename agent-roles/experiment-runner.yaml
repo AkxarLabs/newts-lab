@@ -1,4 +1,5 @@
 name: experiment-runner
+label: Experiment runner                 # how the dashboard names it
 description: "Runs one experiment variant inside an assigned git worktree of a project repo. Spawned by /improve and /research-loop for parallel iteration."
 model_key: runner_model            # lab/config.yaml agents.runner_model sets the Claude model
 tools_claude: "Read, Write, Edit, Glob, Grep, Bash"

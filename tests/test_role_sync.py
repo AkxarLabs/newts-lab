@@ -239,3 +239,25 @@ def test_real_repo_preserves_role_constraints():
     for name in ("fresh-context-reviewer", "experiment-runner", "overseer"):
         assert tomllib.loads((m.HUB / ".codex" / "agents" / f"{name}.toml")
                              .read_text(encoding="utf-8"))["name"] == name
+
+
+def test_a_new_role_is_two_files(monkeypatch, tmp_path):
+    """agent-roles/<role>.yaml + .md is the whole definition: it renders for all three CLIs, the workflow
+    lists it (Compose, PI add-ons, proposals), and its model key resolves — no code edit."""
+    root = tmp_path / "hub"
+    roles = root / "agent-roles"
+    roles.mkdir(parents=True)
+    (roles / "data-wrangler.yaml").write_text(
+        'name: data-wrangler\nlabel: Data wrangler\ndescription: "Cleans one dataset."\n'
+        'model_key: wrangler_model\ntools_claude: "Read, Edit"\ncodex:\n  sandbox_mode: workspace-write\n', encoding="utf-8")
+    (roles / "data-wrangler.md").write_text("You clean exactly one dataset.\n", encoding="utf-8")
+    (root / "lab").mkdir()
+    (root / "lab" / "config.yaml").write_text("agents:\n  tiers: {standard: sonnet}\n  wrangler_model: standard\n", encoding="utf-8")
+    m = _fresh(monkeypatch, root)
+    m.render()
+    for f in (".claude/agents/data-wrangler.md", ".codex/agents/data-wrangler.toml", ".opencode/agents/data-wrangler.md"):
+        assert (root / f).is_file(), f
+    assert m.role_keys()["data-wrangler"] == ("wrangler_model", "wrangler_effort")
+    assert m.resolve_role("data-wrangler")[0] == "sonnet"
+    wf = load("workflow")
+    assert wf.roles(root) == ["data-wrangler"] and wf.role_labels(root)["data-wrangler"] == "Data wrangler"

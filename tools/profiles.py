@@ -27,6 +27,8 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — import the sibling renderer
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
+import workflow  # noqa: E402 — the lab's rules (workflow/rules.yaml): the rigor floors
 import role_sync  # noqa: E402 — canonical model:/effort: sync (replaces the old private regex path)
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -45,20 +47,11 @@ PROFILE_KEYS = [
     "loop.explore_max_expansion_rounds", "loop.explore_max_new_lines_per_round",
     "discuss.max_research_minutes", "oversight.level",
     "agents.tiers.strong", "agents.tiers.standard", "agents.tiers.fast",
-    "agents.reviewer_model", "agents.runner_model", "agents.overseer_model",
-    "agents.reviewer_effort", "agents.runner_effort", "agents.overseer_effort",
     "agents.programmatic.backend", "agents.programmatic.max_concurrent",
-]
+] + sorted({f"agents.{k}" for pair in role_sync.role_keys().values() for k in pair})   # every role's model + effort
 
 
 # ── yaml + dict helpers ───────────────────────────────────────────────────────
-
-def _load_yaml(p: Path) -> dict:
-    try:
-        return yaml.safe_load(p.read_text(encoding="utf-8-sig")) or {}
-    except Exception:
-        return {}
-
 
 def _flatten(d: dict, prefix: tuple = ()) -> dict:
     """Leaf dotted-tuple -> value, e.g. {('agents','reviewer_model'): 'opus'}."""
@@ -143,21 +136,9 @@ def stamp(text: str, dotted: list, value) -> tuple:
 
 def rigor_violations(flat: dict) -> list:
     """Reasons a profile must be refused — it would lower an integrity floor. Empty list = OK."""
-    out = []
-    for dotted, value in flat.items():
-        key = ".".join(dotted)
-        if key == "experiment.multi_seed_n":
-            try:
-                if int(value) < 3:
-                    out.append(f"experiment.multi_seed_n={value} < 3 (paper-grade seed floor)")
-            except (TypeError, ValueError):
-                out.append(f"experiment.multi_seed_n={value!r} is not an integer")
-        elif key == "oversight.level" and str(value).lower() == "off":
-            out.append("oversight.level=off disables the confabulation circuit-breaker")
-        elif key == "eval_frozen" and value is False:
-            out.append("eval_frozen=false — a profile may never unfreeze the eval")
-        elif key.startswith("gate2_envelope"):
-            out.append(f"{key} — a profile may not touch the Gate-2 envelope (PI-signed)")
+    dotted = {".".join(k): v for k, v in flat.items()}
+    out = workflow.rigor_violations(dotted, HUB)       # the floors: workflow/rules.yaml rigor_floors
+    out += [f"{k} — a profile may not touch the Gate-2 envelope (PI-signed)" for k in dotted if k.startswith("gate2_envelope")]
     return out
 
 
@@ -176,7 +157,7 @@ def _load_profile(name: str) -> dict:
     if not p.exists():
         print(f"no profile '{name}' at {p}", file=sys.stderr)
         raise SystemExit(2)
-    return _load_yaml(p)
+    return labfiles.load_yaml(p)
 
 
 # ── commands ──────────────────────────────────────────────────────────────────
@@ -202,7 +183,7 @@ def cmd_show(args) -> int:
 
 def cmd_diff(args) -> int:
     flat = _flatten(_load_profile(args.name))
-    cur = _flatten(_load_yaml(LAB / "config.yaml"))
+    cur = _flatten(labfiles.load_yaml(LAB / "config.yaml"))
     print(f"## diff: lab/config.yaml -> profile '{args.name}'\n")
     changes = 0
     for dotted, value in flat.items():
@@ -258,7 +239,7 @@ def cmd_apply(args) -> int:
 
 
 def cmd_save(args) -> int:
-    cur = _flatten(_load_yaml(LAB / "config.yaml"))
+    cur = _flatten(labfiles.load_yaml(LAB / "config.yaml"))
     out: dict = {}
     for key in PROFILE_KEYS:
         dotted = tuple(key.split("."))

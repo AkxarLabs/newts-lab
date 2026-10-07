@@ -35,5 +35,8 @@
 
 ## Positioning & implications for the proposal
 
-<!-- Baselines we must compare against, metrics the field expects, datasets/benchmarks used by
-     closest work, pitfalls reported by others. -->
+<!-- /propose reads these into the proposal's baselines, decision rule and sanity controls. -->
+- **Baselines the field expects** (with their reported numbers and the eval protocol behind each):
+- **Reported effect sizes and spreads** in the closest work (what a convincing delta looks like here):
+- **Metrics and datasets/benchmarks** the closest work uses:
+- **Known pitfalls** on these benchmarks (leakage, duplicated test items, metric quirks):

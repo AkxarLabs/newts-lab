@@ -12,7 +12,7 @@ Attach on top of a methodology type — usually `empirical` (applied micro/econo
 - **Data sources** (cite the access command + env-var key *names*, never values): FRED
   (macro/financial series), IPUMS (census/CPS microdata), BLS, BEA, World Bank / IMF, OECD,
   Compustat/CRSP (licensed — check access), Penn World Table. Semantic Scholar / OpenAlex (via
-  `tools/s2.py`) cover econ literature for `/lit-review`.
+  `.claude/skills/lit-review/tools/s2.py`) cover econ literature for `/lit-review`.
 - **Conventions (what rigor looks like here):**
   - **Identification first** — name the source of variation and the threats (selection, reverse
     causality, confounds); the design (RCT/DiD/IV/RDD/event-study) is the contribution as much as

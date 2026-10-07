@@ -1,13 +1,18 @@
 # Tools
 
-Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's ephemeral env (nothing to install); project helpers ship inside every spawned project.
+Mechanical helpers — small, stdlib+pyyaml-only scripts. Hub tools run via uv's ephemeral env (nothing to install); project helpers ship inside every spawned project. A helper that belongs to one method lives with its skill (`.claude/skills/<name>/tools/`), and the lab's mechanical rules are `checks/`.
 
-## Hub tools (`tools/`)
+## Checks (`checks/`)
+
+The lab's mechanical rules, one file each — see `checks/README.md`. The guard checks (`append-only`,
+`writeback`, `evolve`, `decisions`, `plan-trace`) run through `tools/guard.py <check>`; the paper audits
+below are scripts of their own. A lab adds a check by dropping a file here (and naming it in
+`workflow/rules.yaml`), or removes one it doesn't use.
 
 ### `audit_claims.py` — verify a paper's numbers against artifacts
 
 ```bash
-uv run --with pyyaml python tools/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3] [--check-commits]
+uv run --with pyyaml python checks/audit_claims.py studies/<slug>/paper [--rel-tol 1e-3] [--check-commits]
 ```
 
 For every claim in the paper's `claims.yaml`, each number must be found in the referenced run artifacts (resolved via `lab.projects_root`):
@@ -26,9 +31,9 @@ For every claim in the paper's `claims.yaml`, each number must be found in the r
 ### `audit_multiseed.py` · `audit_ablation_coverage.py` · `audit_eval_discipline.py` — paper integrity
 
 ```bash
-uv run --with pyyaml python tools/audit_multiseed.py         studies/<slug>/paper
-uv run --with pyyaml python tools/audit_ablation_coverage.py studies/<slug>/paper
-uv run --with pyyaml python tools/audit_eval_discipline.py   studies/<slug>/paper
+uv run --with pyyaml python checks/audit_multiseed.py         studies/<slug>/paper
+uv run --with pyyaml python checks/audit_ablation_coverage.py studies/<slug>/paper
+uv run --with pyyaml python checks/audit_eval_discipline.py   studies/<slug>/paper
 ```
 
 Three focused audits that mechanize the hard rules `audit_claims.py` doesn't cover — each exits **0 clean · 2 needs-human-review · 1 violation**:
@@ -38,6 +43,8 @@ Three focused audits that mechanize the hard rules `audit_claims.py` doesn't cov
 - **eval discipline** (hard rule 5): the frozen `§4` protocol must define both a validation and a held-out test set, and no `headline` claim may declare `split: validation` (reporting a selection-time metric). Theory/simulation types relax to MANUAL (the TYPE card defines the analogue).
 
 New optional `claims.yaml` fields these read: `headline: true` (marks a load-bearing claim), `split: test|validation` (which set it's reported on), `multi_seed_waiver: <rationale>`. Wired **WARN** in `/write-paper` (surface gaps while drafting) and **blocking** in `/review-paper` Part A + `/finalize`.
+
+## Hub tools (`tools/`)
 
 ### `check_lab.py` — lab state lint
 
@@ -57,14 +64,14 @@ uv run --with pyyaml python tools/run_slots.py status
 
 Within a project, the experiment loop controls its own runs; the hub-level risk is two projects (or a loop plus an interactive session) launching training on the same GPU. One slot = one training campaign (a run **or** a sweep — the sweep manages its own internal parallelism); the cap is `compute.max_concurrent_runs`. Slots are files under `lab/.slots/` (atomic create, stale-reclaimed after `compute.stale_slot_minutes`). Hard rule 13: acquire before any PILOT/FULL campaign, release when the ledger entry is written; SMOKE is exempt; subagents never manage slots — the parent does. **`scripts/run.py`/`sweep.py` now acquire/release a slot automatically** for direct PILOT/FULL runs (a sweep holds one campaign slot its children inherit via `AUTOSCIENTIST_SLOT_HELD`), so the ledger can't be bypassed by calling the runner directly; the manual commands remain for status checks and hand-run campaigns.
 
-### `s2.py` — literature search, BibTeX, citation verification, cite-from-lit-review lint
+### `s2.py` (in `.claude/skills/lit-review/tools/`) — literature search, BibTeX, citation verification, cite-from-lit-review lint
 
 ```bash
-uv run --with pyyaml python tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
-uv run --with pyyaml python tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
-uv run --with pyyaml python tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
-uv run --with pyyaml python tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
-uv run --with pyyaml python tools/s2.py citecheck studies/<slug>/paper
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py search "small LM distillation" [--limit 10] [--year 2023:] [--bulk]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex arXiv:2504.08066 [--append studies/<slug>/paper/references.bib]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py bibtex DOI:10.48550/arXiv.2504.08066   # the agentic websearch→DOI fallback
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py verify studies/<slug>/paper/references.bib [--threshold 0.85]
+uv run --with pyyaml python .claude/skills/lit-review/tools/s2.py citecheck studies/<slug>/paper
 ```
 
 Semantic Scholar Graph API with OpenAlex fallback. `search` gives `/lit-review` replayable, logged queries (title/year/venue/citations/TLDR per hit); it exits **3** when *both* backends are unreachable, so an empty result is never mistaken for "no prior work".
@@ -97,9 +104,10 @@ Named, *partial* bundles of `lab/config.yaml` overrides (built-ins in `lab/profi
 
 ```bash
 uv run --with pyyaml python tools/guard.py <spawn|full-run|release-full-run|frozen|state|append-only|writeback|evolve|decisions|plan-trace|finalization> <slug> [args]
+uv run --with pyyaml python tools/guard.py --list     # the built-in commands and every check in checks/
 ```
 
-The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked), `finalization` (**Gate 3, never delegated** — blocks unless the state is right (`internal-review`, or `active`+`target.active` for target-driven), a Gate-3 marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`) or `--pi-approved` is passed, **and** `AUTOSCIENTIST_NO_GATE3` is unset — `agent_runner.py` sets that env on every launched agent, so a headless agent can never finalize). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
+The lock on the door behind the prose: the highest-risk rules turned into checks called at the risky transitions. The gates and transitions are built in; `append-only`, `writeback`, `evolve`, `decisions` and `plan-trace` are checks in `checks/`, found by the guard — `spawn` (Gate 1 recorded before `/spawn-project`), `full-run` (a signed, unexpired Gate-2 envelope before any FULL run; with `--config/--planned-runs/--planned-minutes` it also **accounts** the request against prior FULL rows + active reservations vs the envelope's per-run/total/count caps, and `--reserve` books capacity so a concurrent sweep can't double-spend it), `release-full-run <slug> <id>` (releases such a reservation once its runs have landed), `frozen` (`eval_frozen` + PI-owned blocks intact), `state from→to` (a legal lifecycle transition), `append-only` (ledgers only appended), `writeback` (rule 11 done), `evolve` (rule 11's three triggered write-back operators fired where the state demands — BLOCK on a `killed` row with no CORRECTION in FAILURES.md/NOTES, WARN on a results-stage row with no RECIPE in FINDINGS.md/NOTES), `decisions` (settled non-headline decisions carry a machine-checkable Revisit predicate; `--strict` blocks on a missing one), `plan-trace` (every non-baseline PLAN.md row traces to a `D-NNN`/`(expand Rn)` origin; a `Headline-change: yes` row bypassing `/propose` is blocked), `finalization` (**Gate 3** — never an agent's; a campaign's delegated record counts only while `tools/gate3.py` says that campaign still delegates it — blocks unless the state is right (`internal-review`, or `active`+`target.active` for target-driven), a Gate-3 marker is recorded (a `gate 3 approved` line in the meta-review / a target's `final_run_id`) or `--pi-approved` is passed, **and** `AUTOSCIENTIST_NO_GATE3` is unset — the executor sets that env on every launched agent, so a headless agent can never finalize). Exit **0 = proceed · 1 = blocked · 2 = warn**. A guard never *grants* a gate — it only confirms one is already recorded, or refuses an unsafe move. **The project runners enforce this too:** `scripts/run.py`/`sweep.py` call `full-run` (Gate 2) and `run_slots.py acquire` (hard rule 13) before any FULL / PILOT+FULL run, so neither can be bypassed by invoking the runner directly (SMOKE is exempt).
 
 ### `configure.py` — owner-aware config view/set/profile
 
@@ -127,21 +135,107 @@ uv run --with pyyaml python tools/role_sync.py render   # write/update generated
 uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exit 1 if any is stale
 ```
 
-One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates have no role file, so `/ideate` and `/scope` apply `agents.critic_model` (tier-resolved) as their per-spawn Task model on Claude Code and run them at the session model on other backends (subagent rule 7). **Only Claude and Codex are rendered** (known schemas); opencode / Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or `agent_runner.py` (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
+One canonical source per subagent role in `agent-roles/` (`<name>.yaml` metadata + `<name>.md` verbatim body) renders to backend-native files: `.claude/agents/<name>.md` (Claude Task subagents, `model:` resolved from `lab/config.yaml` `agents.*` — the same source `/configure` and `profiles.py` sync) and `.codex/agents/<name>.toml` (Codex GA subagents, hub + the copy in `templates/project/`). The three roles — `fresh-context-reviewer`, `experiment-runner`, `overseer` — render here; ideation critics / scoping advocates have no role file, so `/ideate` and `/scope` apply `agents.critic_model` (tier-resolved) as their per-spawn Task model on Claude Code and run them at the session model on other backends (subagent rule 7). opencode gets `.opencode/agents/<name>.md` too (`mode: subagent`; the role's Claude tool list mapped onto opencode permissions, `task: deny`; no model line — its subagents inherit the session model). Gemini CLI / Cursor are compatibility-only until a CLI smoke proves their role-file schema — use the sequential approximation or the executor (one headless process per unit of work) meanwhile. `check` is a drift guard for CI; edit the source in `agent-roles/`, never the generated files.
 
-### `agent_runner.py` — launch + capture headless top-level agents
+### `executor_cli.py` — headless procedure runs (the dashboard's engine)
 
 ```bash
-uv run --with pyyaml python tools/agent_runner.py <launch|list|kill|reconcile> --project <slug> [--prompt-file <f>]
-uv run --with pyyaml python tools/agent_runner.py launch-many --projects p1,p2,p3 --prompt-file <f> [--campaign <brief>]
-uv run --with pyyaml python tools/agent_runner.py kill-campaign --campaign <manifest|id>
+uv run --with pyyaml python tools/executor_cli.py enqueue --skill <name> [--target <slug>] [--args "..."] \
+    [--backend claude|codex|opencode] [--chain off|next|loop] [--repeat-minutes N] [--wait]
+uv run --with pyyaml python tools/executor_cli.py serve | tick | list | show <run> | attention | health | skills
+uv run --with pyyaml python tools/executor_cli.py answer <run> --pick "<question>=<label>" | --text "..."
+uv run --with pyyaml python tools/executor_cli.py reply <run> --text "..." | resume | stop | cancel <run>
 ```
 
-The optional "one session per project" path (PI-owned, **OFF by default** — `agents.programmatic.enabled`): launches an independent headless session (`claude -p`, or the optional `codex exec` / `opencode run`) into a project repo, depth-capped, every gate inherited (Gate 3 never delegated; the launched agent stops at `internal-review`). Persists the full transcript + a manifest + `agent_launched`/`agent_finished` events under `<project>/.bus/agents/`; a watchdog kills the tree on `max_minutes` breach; `kill`/`reconcile` are the PI's live stop + crash-recovery. **`launch-many`** is the `/autopilot` multi-project path: one such session per project up to `min(autopilot.max_concurrent_projects, agents.programmatic.max_concurrent)` concurrently — the tool owns the concurrency (no shell backgrounding), isolates per-project failures, and writes a campaign manifest at `lab/.bus/campaign-agents/<id>.json` (per-project status, agent ids, escalations); `kill-campaign` stops the whole fleet. See [Autonomy & modes](autonomy.md).
+Runs a **whitelisted** lab procedure (`skills` lists them; `/finalize` is never one) as a headless
+agent session in a detached supervisor (`tools/executor/`): queued → started by the scheduler under
+the caps → live transcript + manifest + `lab/.bus/runs.jsonl` ledger → paused on a PI question and
+resumed on the answer (same session) → completed with a `run_report` footer (`next`, `needs_pi`,
+`summary`). PI-owned, off by default (`agents.programmatic.enabled`); every gate still binds; Gate 3 is
+never delegated. The dashboard's *Run a procedure* is this same engine. See [Autonomy](autonomy.md#headless-runs-the-executor).
 
-> The remaining helpers are contextual and documented where they're used: `lab_bus.py` (the event bus) and `trace_hook.py` in [Dashboard](dashboard.md); `hub_writeback.py` / `process_writebacks.py` (project→hub write-back) and `lock_artifacts.py` / `sync_figures.py` (finalization) in [Projects](projects.md).
+### `signature_guard.py` — only the PI signs (a hook, not a command)
 
-## Project helpers (`scripts/` in every project)
+A PreToolUse hook the executor installs in every headless run: claude's per-run settings, codex
+`-c hooks` flags, and an opencode plugin via `OPENCODE_CONFIG_DIR`. It reads one hook payload on
+stdin and exits **2** (the reason on stderr) when a tool call would create or change a PI signature:
+
+- a Gate-1 marker;
+- an envelope's `pi_signed` / `signed_via`, or a signed envelope's values;
+- `gate3-approval.md`;
+- a LOOP_BRIEF or campaign authorization;
+- a registry row moved to `final` without a signed Gate 3;
+- PI-owned config;
+- `pi-actions.jsonl`;
+- an artifact's `reply.json` or `seen` (only the dashboard writes them);
+- the shell escape hatches.
+
+It compares before vs after, and honours delegation by a PI-signed campaign brief. Denials are
+logged to the run's `permissions.jsonl`. See [Autonomy → Headless runs](autonomy.md#headless-runs-the-executor).
+
+### `artifact.py` — show the PI something
+
+```bash
+uv run --with pyyaml python tools/artifact.py publish --title "Pilot results" --file analysis/pilot.md [--study <slug>] [--note "…"]
+uv run --with pyyaml python tools/artifact.py publish --title "Which eval set?" --question "Freeze A or B?" --choices "A;B"
+uv run --with pyyaml python tools/artifact.py replies [--id <artifact>] [--run <run_id>]
+uv run --with pyyaml python tools/artifact.py list [--study <slug>]
+```
+
+Publishes something an agent made for the PI to look at to the dashboard's **Artifacts** page: `.md`
+(rendered), `.html` (sandboxed), an image, a `.pdf`, a `.csv`/`.tsv` table or text; or, with no file, a
+question alone. A `--question` (with `--choices`, `;`-separated) waits in *Needs you*. The PI's reply
+goes to the publishing run as its next message, or, if that run has gone, to the study as a note;
+`replies` prints what the PI answered (JSON lines). Stored in `lab/.bus/artifacts/<id>/`; the run, its
+procedure and its study come from `$NEWTS_RUN_ID` / `$NEWTS_RUN_SKILL` / `$NEWTS_RUN_SUBJECT`.
+Publishing asks for a look; it is never a gate signature. See [The dashboard → Artifacts](dashboard.md#artifacts-what-agents-made-for-you).
+
+### `new_lab.py` — create a new lab from this template
+
+```bash
+uv run --with pyyaml python tools/new_lab.py <dest> [--name "My lab"] [--projects-root ../my-lab-projects]
+```
+
+What the dashboard's *Create a new lab* runs:
+
+- copies the template's committed files (`git archive HEAD`);
+- empties the registry, the knowledge base, the notebook and `studies/`;
+- sets `lab.name` and `lab.projects_root`;
+- runs `git init` and makes the first commit.
+
+### `terminal.py` — a terminal window for a CLI's own sign-in or install
+
+```bash
+uv run --with pyyaml python tools/terminal.py login claude     # opens a window running `claude auth login`
+uv run --with pyyaml python tools/terminal.py install codex
+```
+
+It opens a visible console (Windows Command Prompt, macOS Terminal, or a Linux terminal emulator)
+running a **fixed** command per backend. The dashboard asks for a purpose, never a command line.
+Credentials are typed into the CLI's own login and never pass through the lab.
+
+### `newts.py` (repo root) — start the dashboard
+
+```bash
+uv run --with pyyaml python newts.py [--hub <lab>] [--port N] [--no-browser]
+```
+
+It starts `dashboard/serve.py` for the lab and opens the browser. On a machine you reached over SSH
+(or with no display) it prints the `ssh -N -L …` line to use from your own computer instead.
+`--background` detaches it, so it outlives your SSH session; `--status` and `--stop` manage it, and
+`--json` makes the output machine-readable. If the dashboard is already running
+for that lab it just opens the browser, and if 8787 is busy it picks the next free port. The
+double-click launchers (`Start Newts Lab.cmd`, `start-newts.command`, `start-newts.sh`) run it.
+
+### `system_probe.py` — what this machine offers
+
+```bash
+uv run --with pyyaml python tools/system_probe.py [--hub <lab>]
+```
+
+It prints JSON: CPUs, memory, GPUs, disk, schedulers (SLURM with its partitions and accounts, PBS, LSF),
+environment modules and tools, plus a suggested `compute.scheduler`. The dashboard's Settings → This machine &
+compute runs it on the lab's machine. See [Machines & compute](compute.md).
 
 ### `run.py` — the single entry point, with a real watchdog
 
@@ -201,3 +295,15 @@ The project-side analogue of `check_lab.py`: required files present, no unfilled
 ## Design note
 
 There is deliberately **no orchestrator binary and no pip package**. The tools are boring on purpose: each one reads files a human can read, prints markdown a human can paste, and exits with a code a script can branch on. The agent's judgment plus these deterministic checks is the architecture.
+
+## `upgrade_project.py` — bring spawned projects up to date
+
+A project is a snapshot of `templates/project/` at spawn, so later improvements to agent tracing never reach it on
+their own. This copies only the template-owned plumbing — `scripts/trace_hook.py`, `scripts/lab_bus.py`, the
+`hooks` block of `.claude/settings.json` (permissions untouched), `.codex/hooks.json`, the opencode tracer plugin
+and the role files — never research content. Idempotent; it does not commit.
+
+```bash
+uv run --with pyyaml python tools/upgrade_project.py --all --check   # report stale files (exit 1 if any)
+uv run --with pyyaml python tools/upgrade_project.py --all           # or: <slug> [<slug>…]
+```

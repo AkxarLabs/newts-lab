@@ -1,0 +1,270 @@
+# The lab's rules — ONE definition, PI-owned (agents never edit it; the signature guard refuses).
+#
+# `tools/workflow.py render-docs` writes these lists into the agent manuals: hard_rules and subagent_rules
+# into AGENTS.md, project_rules into the project template's AGENTS.md (every project session also reads
+# the hub's hard rules). Add a rule by adding an entry, then run render-docs; append rather than insert,
+# because skills cite hard rules by number. `checks:` names the mechanical checks that enforce a rule
+# (tools/guard.py <check> for the built-in ones, checks/<name>.py for the rest; `tools/guard.py --list`).
+#
+# The tables after the rules are read by code: what a headless run may never write, which config keys only
+# the PI changes, and the floors no profile or edit may lower.
+
+version: 1
+
+hard_rules:          # every agent, every session (AGENTS.md "Hard rules", numbered in this order)
+  - id: traceability
+    checks: [audit_claims]
+    text: >-
+      **Traceability.** Every quantitative claim in any analysis, notebook entry, or paper must trace to a run
+      artifact (`runs/<run_id>/metrics.json` or equivalent) via an explicit pointer. Papers maintain this
+      mapping in `studies/<slug>/paper/claims.yaml`. If you cannot point to the artifact, you cannot state the
+      number.
+  - id: no-fabrication
+    text: >-
+      **No fabrication, no embellishment.** If an experiment failed, the record says it failed. Negative and
+      null results are recorded with the same care as positive ones — they are knowledge.
+  - id: staged-scale
+    text: >-
+      **Staged scale.** Every experiment plan runs SMOKE (minutes, tiny data, verifies the pipeline) → PILOT
+      (small but informative) → FULL. Promotion requires the prior stage's success criteria, written in
+      advance, to be met.
+  - id: fixed-budgets
+    text: >-
+      **Fixed budgets.** Time/compute budgets are set in the proposal. Never raise a timeout, shrink an eval,
+      or change a seed to make a result look better. If a budget is genuinely wrong, flag it to the PI; don't
+      silently change it.
+  - id: selection-discipline
+    checks: [audit_eval_discipline]
+    text: >-
+      **Selection discipline.** Tune and select on validation; report on a held-out test set that the search
+      loop never reads. The longer you iterate, the more validation overfits — this rule gets *more* important
+      late in a project, not less.
+  - id: seeds
+    checks: [audit_multiseed]
+    text: >-
+      **Seeds and determinism.** Seed is a config field, logged in every run record. Headline results get
+      multi-seed confirmation (`experiment.multi_seed_n` seeds, default 3 — use `scripts/sweep.py`) before
+      being written into a paper.
+  - id: append-only-ledgers
+    checks: [append-only]
+    text: >-
+      **Append-only ledgers.** `EXPERIMENT_LOG.md` and `runs/registry.jsonl` are append-only. Never rewrite
+      history; add corrections as new entries.
+  - id: git-is-memory
+    text: >-
+      **Git is memory.** In project repos: one commit per experiment attempt, message = experiment id +
+      one-line outcome. Keep changes if the metric and the ledger justify them; revert cleanly if not. Read
+      `git log` and the ledger before trying something — it may already have been tried.
+  - id: debug-policy
+    text: >-
+      **Debug policy.** Max `experiment.max_debug_depth` consecutive debug attempts (default 3) on a failing
+      experiment, then record the failure in the ledger and move to the next planned experiment. Don't tunnel.
+  - id: extensibility
+    text: >-
+      **Extensibility.** New experiments are new config files and/or new modules behind interfaces — never
+      in-place edits to baseline code paths. Anyone (human or agent) must be able to re-run any past
+      experiment from its config after any later change. If a change must alter shared code, it must keep old
+      configs runnable.
+  - id: knowledge-write-back
+    checks: [writeback, evolve]
+    text: >-
+      **Knowledge write-back.** At the end of every working session: append a dated entry to `lab/notebook/`,
+      and promote any durable insight to `lab/knowledge/` (FINDINGS for confirmed results, FAILURES for things
+      that didn't work and why, OPEN-QUESTIONS for new threads). Inside a project, **also distill the durable
+      *within-project* lesson** — an environment gotcha + its fix, an approach tried-and-abandoned (and why),
+      or a settled result — into the project's `NOTES.md`, the append-only "don't repeat this *here*" index
+      read at project orientation (the hub copy is the cross-project transferable lesson; the NOTES.md copy
+      stops the next session re-learning it locally). An insight that lives only in a chat transcript is lost.
+      The write-back is **three triggered operators**, not a single dump — fire whichever the moment earns:
+      **CORRECTION** (a kill or budget-exhaust → the failed direction + its diagnosed reason → `FAILURES.md` +
+      NOTES "Tried & abandoned", so the next project never retries it), **RECIPE** (a settled success → the
+      reusable keeper/execution recipe → `FINDINGS.md` + NOTES "What worked / settled here"), **DIRECTION** (a
+      result that opens a promising new thread → `OPEN-QUESTIONS.md`, the file `/ideate` reads first). A
+      CORRECTION is mandatory on a kill and a RECIPE on a results-stage exit — `guard.py evolve <slug>` checks
+      both (BLOCK on a kill with no correction; WARN on a results-stage exit with no recipe). Distinct from
+      these three triggered operators, `lab/knowledge/REFERENCES.md` is an **always-on reading index** —
+      papers worth remembering, logged one row each during `/ideate` and `/lit-review` research scans (it has
+      no kill/result gate and `guard.py` does not check it); it makes literature compound across ideas the way
+      the operators make results compound.
+  - id: sandboxing
+    text: >-
+      **Sandboxing.** Experiment code executes inside the project repo and writes only inside it. Never modify
+      the hub's procedures/templates from inside an experiment loop, and never edit the harness/budget to make
+      a run pass.
+  - id: compute-slots
+    text: >-
+      **Compute slots (cross-project).** Before launching any PILOT/FULL training campaign (one run or one
+      sweep), acquire a slot: `uv run --with pyyaml python tools/run_slots.py acquire <project> <label>`;
+      `touch <slot-id>` it on the monitoring cadence so a long-but-live campaign isn't reclaimed; release it
+      when the campaign's ledger entry is written. The cap is `compute.max_concurrent_runs`. Denied → wait or
+      do CPU-light work; never delete another project's slot (stale reclaim is the tool's job). SMOKE runs are
+      exempt.
+
+subagent_rules:      # every subagent, and every parent that spawns one (AGENTS.md "Subagent rules")
+  - id: fresh-context
+    text: >-
+      **Fresh-context invariant:** review subagents receive file paths + lens definitions only — never your
+      summary or opinion of the paper. Their independence is their value.
+  - id: worktree-confinement
+    text: >-
+      **Worktree confinement:** experiment subagents operate only inside their assigned git worktree; one
+      variant per subagent.
+  - id: parent-only-ledgers
+    text: >-
+      **Shared ledgers are parent-only:** `EXPERIMENT_LOG.md`, the main `runs/registry.jsonl`,
+      `lab/REGISTRY.md`, and the notebook are written ONLY by the parent session. Subagents return result
+      packets; the parent merges through the journal, not git merges.
+  - id: parallel-cap
+    text: >-
+      Max `experiment.max_parallel_subagents` concurrent **experiment (worktree) subagents** (default 3);
+      review/critic ensembles are sized by their own config keys (`critique.ensemble_*`,
+      `ideation.critics_per_idea`, `scoping.options_per_decision`).
+  - id: inherit-rules
+    text: >-
+      Subagents inherit every hard rule — frozen budgets/evals especially.
+  - id: no-job-spawning
+    text: >-
+      **No job spawning by subagents:** an experiment subagent runs exactly the campaign it was assigned (one
+      run.py invocation at a time, a sweep only if assigned one) — it never launches additional sweeps,
+      background jobs, agents, or scheduled work. Only the parent session creates work.
+  - id: subagent-models
+    text: >-
+      Subagent models come from `agents.*` in `lab/config.yaml` — a per-role key names a **tier**
+      (`strong`/`standard`/`fast`, resolved through `agents.tiers`) or a model directly, applied via the
+      `model:`/`effort:` frontmatter of each `.claude/agents/<role>.md` (`inherit` = session model);
+      `/configure` and `/setup-lab` re-render those fields when an `agents.*` key changes. Inline
+      critics/advocates (`/ideate`, `/scope`) are tiered by `agents.critic_model`: on **Claude Code** the
+      spawning skill passes the tier-resolved model as each critic/advocate's per-spawn Task `model` (skipped
+      when it resolves to `inherit`); backends without a per-spawn model override run them at the session
+      model.
+  - id: oversight
+    text: >-
+      **Oversight:** at the checkpoints set by `oversight.level`, an `overseer` subagent verifies
+      statements/critiques against their evidence (paths only) before they propagate — at `standard`:
+      author-response verdicts, analysis interpretations, `/autopilot` Gate-1 self-approvals, explore-mode
+      **decision reopens** (the `Revisit if:` trigger-fired claim, and any `Headline: yes` reopen's bounds
+      check under a campaign), the `/review-paper` phantom-experiment sweep, and any meta-review fatal-flaw
+      **refutation** that would unlock accept; at `strict`, additionally: grading each meta-review fatal flaw
+      (`critique-taste`) and loop progress claims. An overseer rejection is acted on, not argued with
+      in-context.
+
+project_rules:       # every session inside a project repo (the project's AGENTS.md "The rules")
+  - id: new-yaml
+    text: >-
+      **A new experiment is a NEW yaml** in `configs/experiments/` — experiment configs are immutable once
+      run. New behavior goes behind a config switch; baseline code paths stay runnable forever.
+  - id: stages
+    text: >-
+      **Stages:** SMOKE (pipeline check) → PILOT (decisive small run) → FULL (per the autonomy bounds above).
+      Budgets are enforced by the run watchdog — never raise a budget, seed, or eval setting to make a result
+      look better; flag the PI instead.
+  - id: record-every-attempt
+    text: >-
+      **Record every attempt** in `EXPERIMENT_LOG.md` (format at the top of that file, including failures),
+      then ONE git commit: `exp-NNN: <one-line outcome>`.
+  - id: multi-seed
+    text: >-
+      **Multi-seed before claiming:** a result is a finding only at ≥ `seeds.multi_seed_n` seeds (use
+      sweep.py), reported mean ± spread.
+  - id: debug-cap
+    text: >-
+      **Debug cap:** `experiment.max_debug_depth` (default 3) consecutive fix attempts, then record the
+      failure and move on.
+  - id: never-touch
+    text: >-
+      **Never touch:** the eval protocol, test split, `runs/registry.jsonl` history, `SYSTEM.md`, or anything
+      in the hub repo except the write-back below.
+  - id: figures-are-scripts
+    text: >-
+      **Figures are scripts** in `scripts/figures/`, reading only `runs/` artifacts.
+  - id: zero-token-monitoring
+    text: >-
+      **Zero-token monitoring:** while a run is in flight, the only check is `uv run python scripts/status.py
+      <run_id> --watch --log-interval <monitoring.log_interval_seconds> --poll <loop.monitor_poll_seconds>`
+      (omit `<run_id>` for a sweep) — no log reading, no partial-curve reasoning; the watchdog enforces the
+      budget. Pass `--log-interval` so a healthy sparse-logging run isn't flagged stalled.
+  - id: test-once
+    checks: [audit_prereg]
+    text: >-
+      **The test split is read once.** The held-out test split (or the TYPE card's analogue) is evaluated by
+      exactly one planned **final evaluation** row per headline configuration, launched only after selection
+      on validation is finished and the configuration is named in PLAN.md. Every test read is a row in
+      PLAN.md's "Test-split access log"; a second read of the same configuration is a *re-open* and needs
+      a written reason — the result it produces is exploratory, not confirmatory.
+  - id: analysis-plan
+    checks: [audit_prereg]
+    text: >-
+      **Analyses follow the frozen plan.** The proposal's "Analysis plan" (primary comparison, uncertainty
+      method, exclusion rules, decision rule) is frozen at Gate 1 with the eval protocol. An analysis the plan
+      did not name is **EXPLORATORY**: labelled so in the analysis note and carried into the paper with
+      `status: exploratory` in `claims.yaml` and the word in the claim's sentence. A confirmatory claim is
+      one the plan pre-specified and the final evaluation supports.
+  - id: post-hoc-rows
+    text: >-
+      **Rows added after results are post-hoc.** A PLAN.md experiment row added after Gate 2 or after the
+      first analysis entry is tagged `(post-hoc)` in its Question, still needs a pre-written criterion, and
+      its results are reported as exploratory. Re-running a configuration with new seeds after seeing its
+      result is logged as `rerun_of: exp-NNN` with a reason; seeds come from `seeds.list`, never chosen by
+      outcome. The paper's "All experiments run" appendix lists every row, kept or not, and the number of
+      configurations evaluated on validation to reach the headline result.
+  - id: data-provenance
+    text: >-
+      **Data provenance.** `control.yaml` `data:` names the dataset's source, version and hash, the
+      split-construction seed and the licence before any PILOT runs; the paper's data statement is written
+      from it. A dataset that changes mid-project is a new version with a new hash and a logged note.
+
+# ── read by code ─────────────────────────────────────────────────────────────────────────────────
+
+# lab/config.yaml (and a project's control.yaml) keys only the PI changes — in the dashboard's Settings or
+# by asking for them in /configure. An entry covers that key and everything under it; `*` is a wildcard.
+pi_owned_config:
+  - lab
+  - compute
+  - agents
+  - oversight.level
+  - critique
+  - writing.page_limit
+  - writing.venue
+  - budgets
+  - gate2_envelope
+  - eval_frozen
+  - loop.mode
+  - loop.explore_*
+  - ideation.in_project
+  - ideation.in_project_approval
+  - autopilot.max_concurrent_projects
+
+# the paper audits (checks/<script>) a campaign's keeper re-runs before it may record a delegated Gate 3 —
+# all must exit 0. `{paper}` is the study's paper/ folder. Add a check here to make it part of Gate 3.
+gate3_audits:
+  - {name: claims, run: [audit_claims.py, "{paper}", --scan-novelty]}
+  - {name: multiseed, run: [audit_multiseed.py, "{paper}"]}
+  - {name: ablations, run: [audit_ablation_coverage.py, "{paper}"]}
+  - {name: eval, run: [audit_eval_discipline.py, "{paper}"]}
+  - {name: prereg, run: [audit_prereg.py, "{paper}"]}
+
+# procedures whose whole job is changing PI-owned config WITH the PI (the signature guard lets them)
+config_procedures: [setup-lab, configure]
+
+# the floors a budget profile (or /configure) can never lower
+rigor_floors:
+  experiment.multi_seed_n: {min: 3, why: paper-grade seed floor}
+  oversight.level: {never: "off", why: the confabulation circuit-breaker}
+  eval_frozen: {never: false, why: a profile may never unfreeze the eval}
+
+# paths (hub-relative regexes) a headless run may never write: the lab's procedures and rules, roles, the
+# workflow, the PI's instructions — an agent that wants them different files a proposal instead
+protected_paths:
+  - '^AGENTS\.md$'
+  - '^AGENT-GUIDE\.md$'
+  - '^CLAUDE\.md$'
+  - '^\.claude/(skills|agents)/'
+  - '^\.(codex|opencode)/agents/'
+  - '^agent-roles/'
+  - '^workflow/'
+  - '^checks/'
+  - '^templates/'
+  - '^lab/workflow/'
+  - '^lab/templates/'
+  - '^lab/rooms3d/'
+  - '^studies/[^/]+/workflow/'

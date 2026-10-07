@@ -6,6 +6,8 @@
     python tools/lab_bus.py ack <id> seen|done|blocked [--note "..."] [--evidence PATH]
     python tools/lab_bus.py escalate --detail "..." [--idea X] [--severity S]
                                        # a project asks the hub/PI for attention mid-run
+    python tools/lab_bus.py emit run_report --data next="/cmd ..." --data needs_pi=none|gate1|...
+                                       --data summary="..."   # a headless run's footer (run id from $NEWTS_RUN_ID)
 
 One JSONL file per source, gitignored runtime state (like the slot ledger). This same
 file is shipped into every spawned project as scripts/lab_bus.py and auto-detects whether
@@ -55,6 +57,14 @@ KINDS = {
     "frontier_expand", "decision_revisit", "replan", "approach_ideate",
     "escalation", "escalation_resolved", "score_read", "agent_launched", "agent_finished",
     "directive_seen", "directive_done", "directive_blocked", "note",
+    # headless runs under the executor (tools/executor): a run paused on a PI question, resumed
+    # after the answer, and the run's machine-readable footer {next, needs_pi, summary}
+    "agent_waiting", "agent_resumed", "run_report",
+    # the workflow's PI-owned instructions: an agent's suggested change (tools/workflow.py propose) and
+    # the PI's decision; a campaign cycle asking the keeper to start a procedure (never finalize)
+    "instruction_proposal", "instruction_resolved", "campaign_dispatch",
+    # something an agent made for the PI to look at (tools/artifact.py), and the PI's reply to it
+    "artifact", "artifact_reply",
 }
 
 
@@ -129,7 +139,10 @@ def cmd_emit(args) -> int:
     for item in args.data or []:
         k, _, v = item.partition("=")
         data[k.strip()] = v
-    emit(args.kind, idea=args.idea, run_id=args.run_id, stage=args.stage,
+    run_id = args.run_id
+    if args.kind == "run_report" and not run_id:
+        run_id = os.environ.get("NEWTS_RUN_ID")   # a headless run knows its own id — never misattribute
+    emit(args.kind, idea=args.idea, run_id=run_id, stage=args.stage,
          status=args.status, detail=args.detail, data=data or None)
     return 0
 

@@ -50,13 +50,14 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | Key | Default | Owner | Effect |
 |---|---|---|---|
 | `lab.projects_root` | `../newts-lab-projects` | PI | where `/spawn-project` creates project repos (relative to hub) |
+| `lab.keep_awake` | `auto` | PI | hold the computer awake while agents work or a campaign runs; `off` never (Settings → Research defaults) |
 | `lab.stale_days` | 14 | PI | registry rows untouched longer than this get flagged by `check_lab.py` |
 | `critique.ensemble_external` | 3 | PI | reviewer lenses for external-paper triage |
 | `critique.ensemble_own_draft` | 5 | PI | reviewer lenses for our own drafts |
 | `critique.score_anchor_human_mean` | 5.4 | PI | calibration anchor `/critique-paper` substitutes into every reviewer prompt |
 | `critique.accept_bar` | 7 | PI | median Overall at/above this (+ zero unrefuted fatal flaws) = accept |
 | `critique.max_review_cycles` | 3 | PI | revision cycles before escalating to the PI |
-| `critique.claim_rel_tol` | 0.001 | PI | relative tolerance `tools/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) — a rigor knob, mechanically PI-owned via the `critique.` prefix |
+| `critique.claim_rel_tol` | 0.001 | PI | relative tolerance `checks/audit_claims.py` uses to match a paper number to its run artifact (looser of this · printed precision) — a rigor knob, mechanically PI-owned via the `critique.` prefix |
 | `experiment.max_debug_depth` | 3 | agent-readable | consecutive debug attempts before record-and-move-on |
 | `experiment.num_drafts` | 3 | agent-readable | distinct solution lines `/improve` maintains |
 | `experiment.max_parallel_subagents` | 3 | agent-readable | concurrent worktree subagents (project may override) |
@@ -68,6 +69,11 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `loop.explore_max_new_lines_per_round` | 3 | PI | explore-mode only: max new PLAN.md lines per `expand` round (each needs a pre-written criterion) |
 | `compute.max_concurrent_runs` | 1 | PI | training campaigns allowed at once **across all projects** (slot ledger: `tools/run_slots.py`) |
 | `compute.stale_slot_minutes` | 360 | PI | slots older than this are presumed crashed and reclaimed |
+| `compute.scheduler.kind` | local | PI | how PILOT/FULL training runs execute: `local`, `slurm` (run.py submits and waits), or `custom` (described by commands). See [Machines & compute](compute.md) |
+| `compute.scheduler.stages` | [PILOT, FULL] | PI | stages sent to the scheduler (SMOKE always runs where it's launched) |
+| `compute.scheduler.slurm.*` | — | PI | `partition`, `account`, `qos`, `gpus_per_run`/`gres`, `cpus_per_task`, `mem`, `constraint`, `time_grace_minutes`, `extra_args`, `setup` (shell lines run first in each job) |
+| `compute.scheduler.custom.*` | — | PI | `submit` (`{script}`), `state` / `cancel` (`{job}`), `header`, `setup`, for PBS, LSF or site wrappers |
+| `compute.scheduler.poll_seconds` · `max_queue_hours` | 30 · 48 | PI | how often a waiting run checks its job; when to give up on a job that never started |
 | `dashboard.port` | 8787 | agent-readable | default port for the optional [Vivarium dashboard](dashboard.md) (`dashboard/serve.py`) — a cosmetic local-only knob (no `dashboard.` prefix in `configure.py`) |
 | `dashboard.editor` | `vscode` | agent-readable | editor for the dashboard's "open in editor" deep-links: `vscode` \| `cursor` \| `vscodium` \| `windsurf` \| `none` (local-only `<scheme>://file/<abs>`) |
 | `agents.tiers.{strong,standard,fast}` | inherit | PI | the model **ladder** — each tier names a model: an alias (`sonnet` \| `opus` \| `haiku` \| `fable`), a full pinned id (e.g. `claude-haiku-4-5-20251001`), or `inherit` (the session model). The per-role keys below resolve through this at render time; all three ship `inherit` → **zero behavior change until you set a ladder** |
@@ -93,8 +99,8 @@ uv run --with pyyaml python tools/profiles.py save my-preset  # snapshot current
 | `scoping.max_open_questions` | 3 | agent-readable | decisions allowed to remain OPEN (pilot-settled) at `/propose` time |
 | `writing.venue` | `neurips` | PI | paper format `/write-paper` builds from. `neurips` \| `icml` \| `iclr` \| `aclarr` \| `aaai` \| `generic`; picks `templates/paper/venues/<venue>/main.tex` + fetches that venue's style file (URLs/limits in that dir's `README.md`). Project `control.yaml` may override per-project |
 | `writing.max_reflection_rounds` | 3 | agent-readable | verifier-gated revision rounds in `/write-paper` (gains plateau ~3) |
-| `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `tools/s2.py verify` |
-| `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
+| `writing.citation_match_threshold` | 0.85 | agent-readable | title-similarity gate for `.claude/skills/lit-review/tools/s2.py verify` |
+| `writing.cite_grounding_threshold` | 0.7 | agent-readable | title-word overlap for `.claude/skills/lit-review/tools/s2.py citecheck` to call a `\cite` "grounded" in lit-review.md |
 | `writing.page_limit` | 9 | PI | target main-text pages; over-length trimmed gradually. Set to the venue limit (neurips/iclr 9 · icml/aclarr 8 · aaai 7) |
 
 ### Which tier for which task
@@ -107,7 +113,7 @@ The rule of thumb is **volume × judgment**: high-volume, retrieval-shaped work 
 | experiment variants (`/improve`, `/experiment`, `/research-loop`) | `agents.runner_model` | `standard` |
 | overseer verification checks | `agents.overseer_model` | `standard` (`strong` under `oversight.level: strict`) |
 | ideation critics / scoping advocates (`/ideate`, `/scope`) | `agents.critic_model` | `standard` |
-| headless project agents (`tools/agent_runner.py`) | `agents.programmatic.backends.*` | task-dependent; pin full ids |
+| headless agents (the executor) | `agents.programmatic.backends.*` | task-dependent; pin full ids |
 | the orchestrating session itself (generation, analysis, drafting, `/discuss`) | — none; it runs at YOUR session model | your seat IS the expensive tier |
 
 Example (Anthropic ladder): `tiers: {strong: opus, standard: sonnet, fast: haiku}` with the session on fable/opus. Aliases drift to newer models over time; pin a full id (e.g. `claude-haiku-4-5-20251001`) when reproducibility across months matters — same rule as `agents.programmatic.backends.claude.model`.
@@ -125,7 +131,7 @@ A spawned project ships **real** role files — `<project>/.claude/agents/<role>
 
 ### Headless launch backends — `agents.programmatic.*` (optional, PI-owned, OFF by default)
 
-The "one headless session per project" launcher (`tools/agent_runner.py`; see [Autonomy](autonomy.md)). Stays off until the PI enables it. The per-backend comments in `lab/config.yaml` are the full reference — this is the map.
+The executor's headless sessions (the dashboard, `tools/executor_cli.py`; see [Autonomy](autonomy.md)). Stays off until the PI enables it. The per-backend comments in `lab/config.yaml` are the full reference — this is the map.
 
 | Key | Default | Owner | Effect |
 |---|---|---|---|
@@ -134,8 +140,18 @@ The "one headless session per project" launcher (`tools/agent_runner.py`; see [A
 | `agents.programmatic.model` | inherit | PI | global model override across backends; `inherit` = each backend uses its own `backends.<x>.model` default |
 | `agents.programmatic.permission_mode` | auto | PI | claude `--permission-mode` (`auto` = broad in-repo approval that still blocks dangerous ops, paired with the project `.claude/settings.json` allowlist; `dontAsk` stricter, `bypassPermissions` wider). A blocked op is denied → the agent escalates via the bus |
 | `agents.programmatic.max_minutes` · `max_concurrent` · `max_depth` · `max_transcript_mb` | 240 · 3 · 1 · 200 | PI | per-agent wall-clock cap (watchdog) · per-project concurrency · launch-recursion cap (1 = no nesting) · stored-transcript cap (MB) |
-| `agents.programmatic.backends.<backend>.*` | — | PI | per-backend model/effort + safety knobs: claude `{model, effort, permission_mode}` · codex `{model, reasoning_effort, sandbox, approval, network_access}` · opencode `{model, variant, permission, agent, skip_permissions}` · all `{extra_args}`. The safety flags are *refused* in `extra_args` and must go through these dedicated keys |
+| `agents.programmatic.backends.<backend>.*` | — | PI | per-backend model/effort + safety knobs: claude `{model, effort, permission_mode}` · codex `{model, reasoning_effort, sandbox, approval, network_access, trace_hooks}` · opencode `{model, variant, permission, agent, skip_permissions}` · all `{extra_args, command}`. The safety flags are *refused* in `extra_args` and must go through these dedicated keys. codex `approval` (default `on-request`): a live session (`codex app-server`) sends each approval to the dashboard; `never` = a sandbox-blocked op fails back to the model without asking; one-shot `codex exec` can't ask, so anything but `never` rejects such ops. codex `trace_hooks` (default true): headless runs pass the subagent tracer as `-c hooks.*` flags + `--dangerously-bypass-hook-trust` |
 | `autopilot.max_concurrent_projects` | 1 | PI | how many projects an `/autopilot` campaign drives at once. `1` = one project end-to-end (sequential). `>1` turns autopilot into a coordinator that launches one headless session per project — and **requires** `agents.programmatic.enabled: true` |
+| `agents.programmatic.max_concurrent_total` | 3 | PI | lab-wide ceiling on live headless runs (the executor) |
+| `agents.programmatic.hub_max_concurrent` | 1 | PI | hub-level runs at once — 1 keeps two sessions from racing `lab/REGISTRY.md` |
+| `agents.programmatic.daily_max_runs` · `daily_max_minutes` | 0 · 0 | PI | usage brake: run attempts / agent-minutes per day (0 = no cap) |
+| `agents.programmatic.chain_max_steps` | 6 | PI | a *keep going until a gate* run chains at most this many steps (it always stops at a gate) |
+| `agents.programmatic.live` | on | PI | runs are live sessions: questions, permission prompts and your messages reach the running agent. `false` = one-shot runs only. `live.park_minutes` (60): an unanswered question ends the process (your answer resumes it) · `live.permission_minutes` (30): an undecided permission request is denied · `live.campaign_question_minutes` (30): a campaign run takes the recommended option of an unanswered question and marks it assumed · `live.linger_minutes` (10): Ask Newt stays open for your next message. All of these are also in Settings → Agents |
+| `agents.programmatic.backends.<b>.command` | "" | PI | the CLI to run (blank = PATH, then the usual install dirs — e.g. `~/.local/bin/claude.exe`) |
+| `agents.programmatic.backends.<b>.prompt_via` | stdin | PI | how the prompt reaches the CLI: `stdin` (no Windows command-line limit) or `argv` |
+| `dashboard.executor` | true | PI | run the executor's scheduler inside the dashboard (launching still needs `programmatic.enabled`) |
+| `dashboard.auto_spawn_on_gate1` | false | PI | signing Gate 1 in the dashboard also queues `/spawn-project` (off = a one-click button) |
+| `dashboard.tail_max_kb` | 64 | agent | live-transcript chunk per poll in the run view |
 
 ## Layer 2 — `<project>/control.yaml` (per-project, end-to-end)
 
@@ -207,3 +223,10 @@ Two lightweight reproducibility guards, deliberately in place of a heavyweight c
 3. **Any time**: `/configure` (or hand-edit) adjusts agent-owned values; PI-owned values need you.
 4. **Every run**: experiment yaml → base → control resolve into one artifact-dumped config; the watchdog enforces the resulting budget.
 5. **Loops**: `/research-loop` reads `gate2_envelope` + `loop.*` from control.yaml; the LOOP_BRIEF carries your signature and points here for numbers.
+
+## The workflow and your instructions
+
+The stages are defined in `workflow/stages.yaml` and each procedure in its skill folder; your own
+instructions per procedure, stage and role live in `lab/workflow/` (lab-wide) and `studies/<slug>/workflow/`
+(one study). The dashboard's Compose page edits all of it, as a draft you publish. See
+[Customising the lab](customising.md).

@@ -1,0 +1,536 @@
+"""The campaign keeper: keeps a PI-signed campaign going until it is done, whatever happens to single runs.
+
+A campaign (lab/campaigns/<name>.md, signed by the PI) is carried by repeated `/autopilot continue <brief>`
+**cycles**. Each cycle is one portfolio pass: it reads the state of every idea, decides the next step for
+each, and DISPATCHES that step (`lab_bus.py emit campaign_dispatch --data skill=… --data target=…`) instead
+of running it inline. The keeper — this module, called from `scheduler.tick()` under the tick lock, i.e.
+executor code, never an agent — does the rest:
+
+  * starts the next cycle after each one ends, depending on HOW it ended (not only on a clean finish):
+      completed → after `repeat_minutes` · usage limit → when the limit lifts · timeout → right away ·
+      transient error → backoff 2/5/15/30/60 min · sign-in problem → pause and ask the PI ·
+      stopped by the PI → pause
+  * validates every dispatch (a launchable procedure, never finalize or another campaign; a study that
+    belongs to this campaign and isn't waiting for the PI; no duplicate; the brief's parallelism) and
+    enqueues it as a normal executor run (parent = the cycle), so it is capped, traced, retried and shown
+  * retries a dispatched run that hit a timeout / usage limit / transient error (up to 3 times)
+  * marks a study as waiting when its run reports `needs_pi` — only that study waits; the campaign goes on
+  * after each pass, lets the lab profile act (tools/lab_profile.py after_cycle): for Newts' Lab, recording
+    Gate 3 — only if the brief delegates it — once a paper passed review AND the keeper's own run of the
+    paper audits is clean, then launching /finalize (tools/gate3.py). Membership (the Campaign Log), the
+    brief's parallelism and when a waiting study is resolved are the profile's too.
+  * stops on the deadline, the agent-minutes budget, the spend cap (the summed usage.cost_usd of its cycles
+    and dispatched runs — on reaching it the campaign's other runs are stopped at once), the cycle cap, the PI's Stop, a cycle reporting
+    `campaign=done`, or N failures in a row (→ "stalled", which asks the PI) — ending with one final
+    report cycle (the morning report)
+
+State: lab/.bus/campaigns/<name>.json — written only here and by the dashboard (the PI's pause/stop/
+revoke/hold), both under the scheduler lock; the signature guard denies agents.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+from .lab import HUB_TARGET, Lab, pos_float, pos_int, profile, read_jsonl
+from .manifest import ACTIVE, TERMINAL, all_runs, now, parse_ts, read_manifest, run_dir, transition
+from .procs import is_locked
+from .spec import RunSpec, SpecError, registry
+from . import pause
+
+BACKOFF_MIN = [2, 5, 15, 30, 60]
+LIVE = ACTIVE | {"queued", "waiting_input"}
+
+
+def _session_up(path, m: dict) -> bool:
+    """A live session is still open for this run (its supervisor holds the run's lock)."""
+    return m.get("transport") == "live" and is_locked(run_dir(Path(path).parent, m["run_id"]) / "lock")
+RETRYABLE = {"timeout", "usage_limit", "transient"}
+MAX_CHILD_RETRIES = 3
+_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(epoch))
+
+
+def state_dir(lab: Lab) -> Path:
+    return lab.lab / ".bus" / "campaigns"
+
+
+def state_path(lab: Lab, name: str) -> Path:
+    if not _NAME_RE.match(name or ""):
+        raise ValueError(f"bad campaign name {name!r}")
+    return state_dir(lab) / f"{name}.json"
+
+
+def load(lab: Lab, name: str) -> dict | None:
+    try:
+        return json.loads(state_path(lab, name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def save(lab: Lab, st: dict) -> None:
+    p = state_path(lab, st["name"])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(st, indent=1), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def all_states(lab: Lab) -> list[dict]:
+    d = state_dir(lab)
+    out = []
+    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+        try:
+            out.append(json.loads(f.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def create(lab: Lab, brief_rel: str, *, hours: float = 12, agent_minutes: float = 0, cycle_minutes: float = 90,
+           repeat_minutes: float = 20, max_cycles: int = 0, gate3_auto: bool = False, backend: str | None = None,
+           model: str | None = None, child_minutes: float | None = None, max_failures: int = 4,
+           spend_usd: float = 0) -> dict:
+    """Start keeping a signed campaign (the dashboard calls this right after the PI signs the brief)."""
+    name = Path(brief_rel).stem
+    if load(lab, name):
+        raise ValueError(f"campaign {name} is already being kept")
+    t = time.time()
+    st = {"schema": 1, "name": name, "file": brief_rel, "status": "active", "created": now(),
+          "deadline": _iso(t + hours * 3600) if hours else None,
+          "budget": {"agent_minutes": pos_float(agent_minutes, 0.0), "max_cycles": pos_int(max_cycles, 0, 0),
+                     "spend_usd": max(0.0, pos_float(spend_usd, 0.0))},
+          "cycle_minutes": pos_float(cycle_minutes, 90.0) or 90.0, "repeat_minutes": pos_float(repeat_minutes, 20.0),
+          "child_minutes": pos_float(child_minutes, 0.0) or None, "max_failures": pos_int(max_failures, 4, 1),
+          "backend": backend, "model": model, "gate3_auto": bool(gate3_auto),
+          "cycles": [], "consecutive_failures": 0, "timeouts_in_a_row": 0, "next_cycle_at": None,
+          "used_minutes": 0.0, "spent_usd": 0.0, "studies": {}, "dispatch_log": [], "seen_dispatch": [], "questions": [],
+          "gate3_log": [], "events": [{"ts": now(), "what": "started"}]}
+    save(lab, st)
+    return st
+
+
+def _event(st: dict, what: str) -> None:
+    st.setdefault("events", []).append({"ts": now(), "what": what})
+    st["events"] = st["events"][-60:]
+
+
+# ── the PI's controls (the dashboard, under the scheduler lock) ──────────────────────────────────
+def control(lab: Lab, name: str, action: str, study: str | None = None, text: str | None = None,
+            index: int | None = None) -> dict:
+    """pause | resume | stop | revoke_gate3 | hold | unhold (hold/unhold take a study) | answer (a
+    question a pass left on the card: `index` into its questions, `text` = the answer — the next pass
+    gets it)."""
+    from .manifest import scheduler_lock   # noqa: PLC0415
+    from .runs import stop as stop_run       # noqa: PLC0415
+    with scheduler_lock(lab):
+        st = load(lab, name)
+        if not st:
+            raise ValueError(f"no campaign {name}")
+        st["paused_by_lab"] = False   # the PI's own control wins over the lab pause's bookkeeping
+        if action == "pause":
+            st["status"] = "paused"
+            _event(st, "paused by the PI")
+        elif action == "resume":
+            if st["status"] in ("done", "stopped"):
+                raise ValueError(f"the campaign is {st['status']}")
+            st.update(status="active", consecutive_failures=0, paused_reason=None, next_cycle_at=None)
+            _event(st, "resumed by the PI")
+        elif action == "stop":
+            st["status"] = "stopping"
+            _event(st, "stopped by the PI")
+        elif action == "revoke_gate3":
+            st["gate3_auto"] = False
+            _event(st, "Gate-3 delegation revoked by the PI")
+        elif action == "answer":
+            qs = st.get("questions") or []
+            if index is None or not 0 <= int(index) < len(qs) or not (text or "").strip():
+                raise ValueError("which question, and what's the answer?")
+            qs[int(index)].update(answer=str(text).strip()[:2000], answered_at=now(), delivered=False)
+            _event(st, "the PI answered a question — the next pass gets it")
+        elif action in ("hold", "unhold"):
+            if not study or not _NAME_RE.match(study):
+                raise ValueError("which study?")
+            st.setdefault("studies", {}).setdefault(study, {})["hold"] = action == "hold"
+            _event(st, f"{study}: {'held from' if action == 'hold' else 'released for'} auto-finalizing")
+        else:
+            raise ValueError(f"unknown action {action!r}")
+        save(lab, st)
+    if action == "stop":   # outside the lock: stopping takes it itself
+        for _t, _w, _p, m in all_runs(lab):
+            if m.get("campaign") == name and m.get("status") in LIVE:
+                try:
+                    stop_run(lab, m["run_id"], by="campaign-stop")
+                except (SpecError, OSError):
+                    pass
+    if action == "revoke_gate3":
+        for _t, _w, _p, m in all_runs(lab):
+            if m.get("campaign") == name and m.get("gate3_signed") and m.get("status") in LIVE:
+                try:
+                    stop_run(lab, m["run_id"], by="gate3-revoked")
+                except (SpecError, OSError):
+                    pass
+    return load(lab, name) or {}
+
+
+# ── the keeper ───────────────────────────────────────────────────────────────────────────────────
+def keep(lab: Lab, enqueue=None) -> dict:
+    """One pass over every kept campaign. Runs inside tick() (which holds the scheduler lock)."""
+    if enqueue is None:
+        from .runs import enqueue   # noqa: PLC0415 — runs imports spec/manifest only
+    out = {"cycles": [], "dispatched": [], "retried": [], "gate3": []}
+    if pause.is_paused(lab):   # the whole lab is paused: no pass, no dispatch, no retry
+        return out
+    states = all_states(lab)
+    if not states:
+        return out
+    runs = all_runs(lab)
+    for st in states:
+        if st.get("status") not in ("active", "finishing", "stopping"):
+            continue
+        try:
+            _keep_one(lab, st, runs, out, enqueue)
+        except Exception as e:  # noqa: BLE001 — one bad campaign never stops the others or the tick
+            st["last_error"] = f"{type(e).__name__}: {e}"[:400]
+        save(lab, st)
+    return out
+
+
+def _wall_min(m: dict) -> float:
+    secs = sum(pos_float(a.get("wall_seconds"), 0.0) for a in (m.get("attempts") or []))
+    if m.get("status") in ACTIVE:
+        a = (m.get("attempts") or [{}])[-1]
+        if a.get("wall_seconds") is None:
+            secs += max(0.0, time.time() - (parse_ts(a.get("started")) or time.time()))
+    return secs / 60
+
+
+def _cost(m: dict) -> float:
+    """What one run spent, in USD, as its backend reported it (estimated from token use)."""
+    return max(0.0, pos_float((m.get("usage") or {}).get("cost_usd"), 0.0))
+
+
+def _over_spend(st: dict) -> bool:
+    cap = pos_float((st.get("budget") or {}).get("spend_usd"), 0.0)
+    return bool(cap) and pos_float(st.get("spent_usd"), 0.0) >= cap
+
+
+def _halt(lab: Lab, st: dict, mine: list) -> list[str]:
+    """Stop the campaign's runs now (we hold the scheduler lock, so not runs.stop): a queued one is
+    cancelled, a working one gets the stop marker its supervisor obeys (resumable, like the PI's Stop)."""
+    halted = []
+    for _t, _w, path, m in mine:
+        st_ = m.get("status")
+        if st_ not in LIVE or m.get("campaign_final"):
+            continue
+        if st_ == "queued" or (st_ == "waiting_input" and not _session_up(path, m)):
+            fresh = read_manifest(path) or m
+            if fresh.get("status") == st_:
+                transition(lab, path, fresh, "killed", by="campaign", reason="the campaign's spend cap is reached",
+                           finished=now(), pending_question=None)
+        else:
+            rd = run_dir(Path(path).parent, m["run_id"])
+            rd.mkdir(parents=True, exist_ok=True)
+            (rd / "stop").write_text(now(), encoding="utf-8")
+        halted.append(m["run_id"])
+    return halted
+
+
+def _brief(lab: Lab, st: dict) -> str:
+    try:
+        return (lab.hub / st["file"]).read_text(encoding="utf-8-sig")
+    except OSError:
+        return ""
+
+
+def _row_sig(lab: Lab, slug: str) -> str:
+    r = lab.row(slug) or {}
+    return f"{r.get('state')}|{r.get('next')}"
+
+
+def _update_waits(lab: Lab, st: dict, mine: list) -> None:
+    studies = st.setdefault("studies", {})
+    for _t, _w, _p, m in mine:
+        subj, rep = m.get("subject"), m.get("report") or {}
+        if m.get("status") not in TERMINAL or not subj or not rep.get("needs_pi"):
+            continue
+        s = studies.setdefault(subj, {})
+        if s.get("waiting_run") == m["run_id"] or s.get("cleared_run") == m["run_id"]:
+            continue
+        s.update(waiting=rep["needs_pi"], waiting_run=m["run_id"], waiting_since=_row_sig(lab, subj),
+                 waiting_ts=m.get("finished"))
+        _event(st, f"{subj} waits for the PI ({rep['needs_pi']})")
+    for slug, s in studies.items():
+        if not s.get("waiting"):
+            continue
+        if _row_sig(lab, slug) != s.get("waiting_since") or profile.wait_resolved(lab, slug, s["waiting"]):
+            s["cleared_run"] = s.get("waiting_run")
+            s.update(waiting=None, waiting_run=None)
+            _event(st, f"{slug} no longer waits — the campaign picks it up again")
+
+
+def _requeue(lab: Lab, path: Path, m: dict, not_before: float, why: str, extra_minutes: float) -> None:
+    used = _wall_min(m)
+    transition(lab, path, m, "queued", by="campaign", reason=why, resume={"mode": "continue"},
+               post_processed=False, not_before=_iso(not_before),
+               campaign_retries=int(m.get("campaign_retries") or 0) + 1,
+               max_minutes=round(used + extra_minutes, 1))
+
+
+def _retry_children(lab: Lab, st: dict, children: list, out: dict) -> None:
+    prog = lab.prog()
+    for _t, _w, path, m in children:
+        if m.get("status") not in ("failed", "timeout") or m.get("campaign_retry_done"):
+            continue
+        kind = "timeout" if m.get("status") == "timeout" else (m.get("failure_kind") or "logic")
+        n = int(m.get("campaign_retries") or 0)
+        if kind not in RETRYABLE or n >= MAX_CHILD_RETRIES or not m.get("session_id"):
+            continue
+        fin = parse_ts(m.get("finished")) or time.time()
+        if kind == "usage_limit":
+            nb = (pos_float(m.get("limit_reset"), 0.0) or fin + 30 * 60) + 120
+        elif kind == "transient":
+            nb = fin + BACKOFF_MIN[min(n, len(BACKOFF_MIN) - 1)] * 60
+        else:
+            nb = fin + 30
+        fresh = read_manifest(path) or m
+        if fresh.get("status") != m.get("status"):
+            continue
+        minutes = st.get("child_minutes") or pos_float(prog.get("max_minutes"), 240.0) or 240.0
+        _requeue(lab, path, fresh, nb, f"campaign retry {n + 1}/{MAX_CHILD_RETRIES} after {kind}", minutes)
+        out["retried"].append(m["run_id"])
+        _event(st, f"retrying {m.get('skill')} {m.get('subject') or ''} after {kind}".strip())
+
+
+def _dispatch(lab: Lab, st: dict, cycles: list, children: list, brief: str, out: dict, enqueue) -> None:
+    cycle_ids = {m["run_id"] for *_x, m in cycles}
+    if not cycle_ids:
+        return
+    seen = set(st.get("seen_dispatch") or [])
+    events = [e for e in read_jsonl(lab.lab / ".bus" / "events.jsonl", tail=6000)
+              if e.get("kind") == "campaign_dispatch" and e.get("run_id") in cycle_ids]
+    live = [m for *_x, m in children if m.get("status") in LIVE]
+    cap = profile.campaign_parallel(brief)
+    for e in events:
+        key = f"{e.get('ts')}|{e.get('run_id')}|{json.dumps(e.get('data') or {}, sort_keys=True)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        d = e.get("data") or {}
+        skill = str(d.get("skill") or "").strip().lstrip("/")
+        target = str(d.get("target") or HUB_TARGET).strip() or HUB_TARGET
+        args = str(d.get("args") or "").strip()
+        rec = {"ts": now(), "cycle": e.get("run_id"), "skill": skill, "target": target}
+        why = None
+        s = (st.get("studies") or {}).get(target) or {}
+        reg = registry(lab.hub)
+        if skill in profile.not_dispatchable(lab.hub) or skill not in reg:
+            why = f"/{skill} can't be dispatched by a campaign"
+        elif reg[skill].get("mode") != "headless":
+            why = f"/{skill} is interactive"
+        elif target != HUB_TARGET and not s.get("member"):
+            why = f"{target} is not in this campaign (add it to the Campaign Log first)"
+        elif _over_spend(st):
+            why = "the campaign's spend cap is reached"
+        elif s.get("waiting"):
+            why = f"{target} is waiting for the PI ({s['waiting']})"
+        elif any(m.get("skill") == skill and (m.get("target") or HUB_TARGET) == target for m in live):
+            why = "already queued or running"
+        elif len({(m.get("target") or HUB_TARGET) for m in live} | {target}) > cap:
+            why = f"the brief allows {cap} idea(s) in flight"
+        if why is None:
+            spec = RunSpec(skill=skill, target=target, args=args, backend=st.get("backend"), model=st.get("model"),
+                           max_minutes=st.get("child_minutes"), parent=e.get("run_id"), campaign=st["name"],
+                           created_by="campaign")
+            try:
+                child = enqueue(lab, spec)
+                rec["run_id"] = child["run_id"]
+                live.append(child)
+                out["dispatched"].append(child["run_id"])
+            except SpecError as ex:
+                why = str(ex)
+        rec["result"] = "started" if why is None else f"refused: {why}"
+        st.setdefault("dispatch_log", []).append(rec)
+        st["dispatch_log"] = st["dispatch_log"][-80:]
+    st["seen_dispatch"] = list(seen)[-600:]
+
+
+def _account(lab: Lab, st: dict, last: dict) -> None:
+    """Fold the outcome of a finished cycle into the counters (once per cycle)."""
+    if st.get("accounted") == last["run_id"]:
+        return
+    st["accounted"] = last["run_id"]
+    status, fin = last.get("status"), parse_ts(last.get("finished")) or time.time()
+    kind = "timeout" if status == "timeout" else (last.get("failure_kind") or "logic")
+    rep = last.get("report") or {}
+    rec = {"run_id": last["run_id"], "n": last.get("campaign_cycle"), "status": status, "kind": None,
+           "finished": last.get("finished"), "summary": (rep.get("summary") or "")[:300],
+           "campaign": rep.get("campaign")}
+    rm = st.get("repeat_minutes") or 20
+    if status == "completed":
+        st["consecutive_failures"] = 0
+        st["timeouts_in_a_row"] = 0
+        nb = fin + rm * 60
+        if (rep.get("campaign") or "") == "done" and st["status"] == "active":
+            st["status"] = "finishing"
+            _event(st, "the campaign reports it is done")
+    elif status == "killed":
+        if ("campaign moved on" in str(last.get("reason") or "") or st["status"] == "stopping"
+                or last["run_id"] in (st.get("lab_pause_stopped") or [])):   # the lab pause stopped it: go on
+            nb = fin
+        else:
+            st["status"], st["paused_reason"] = "paused", "a cycle was stopped by the PI"
+            nb = None
+    elif kind == "timeout":
+        st["timeouts_in_a_row"] = int(st.get("timeouts_in_a_row") or 0) + 1
+        if st["timeouts_in_a_row"] >= 3:
+            st["consecutive_failures"] = int(st.get("consecutive_failures") or 0) + 1
+            st["timeouts_in_a_row"] = 0
+        nb = fin + 60
+    elif kind == "usage_limit":
+        nb = (pos_float(last.get("limit_reset"), 0.0) or fin + 30 * 60) + 120
+        _event(st, f"usage limit — the next cycle waits until {_iso(nb)[11:16]}")
+    elif kind in ("auth", "cli_missing"):
+        st["status"] = "paused"
+        st["paused_reason"] = str(last.get("reason") or "the agent CLI needs you (sign in / install)")
+        nb = None
+    elif kind == "transient":
+        n = int(st.get("consecutive_failures") or 0)
+        st["consecutive_failures"] = n + 1
+        nb = fin + BACKOFF_MIN[min(n, len(BACKOFF_MIN) - 1)] * 60
+    else:
+        st["consecutive_failures"] = int(st.get("consecutive_failures") or 0) + 1
+        nb = fin + 5 * 60
+    rec["kind"] = None if status == "completed" else kind
+    st.setdefault("cycles", []).append(rec)
+    st["cycles"] = st["cycles"][-200:]
+    st["next_cycle_at"] = _iso(nb) if nb else None
+    if st["status"] == "paused":
+        _event(st, f"paused: {st.get('paused_reason')}")
+
+
+def _stop_reason(st: dict) -> str | None:
+    if st.get("deadline") and time.time() >= (parse_ts(st["deadline"]) or 0):
+        return "the wall-clock deadline passed"
+    b = st.get("budget") or {}
+    if _over_spend(st):
+        return f"the spend cap is reached (≈ ${pos_float(st.get('spent_usd'), 0.0):.2f} of ${pos_float(b.get('spend_usd'), 0.0):.2f})"
+    if b.get("agent_minutes") and st.get("used_minutes", 0) >= b["agent_minutes"]:
+        return f"the agent-time budget is used ({st['used_minutes']:.0f}/{b['agent_minutes']:.0f} min)"
+    if b.get("max_cycles") and len(st.get("cycles") or []) >= b["max_cycles"]:
+        return f"the cycle cap ({b['max_cycles']}) is reached"
+    return None
+
+
+def _keep_one(lab: Lab, st: dict, runs: list, out: dict, enqueue) -> None:
+    name = st["name"]
+    mine = [x for x in runs if x[3].get("campaign") == name]
+    driver = profile.campaign_driver(lab.hub)
+    cycles = sorted([x for x in mine if x[3].get("skill") == driver],
+                    key=lambda x: (int(x[3].get("campaign_cycle") or 0), x[3].get("created") or ""))
+    children = [x for x in mine if x[3].get("skill") != driver]
+    st["used_minutes"] = round(sum(_wall_min(m) for *_x, m in mine), 1)
+    st["spent_usd"] = round(sum(_cost(m) for *_x, m in mine), 4)
+    if _over_spend(st) and st["status"] in ("active", "finishing"):
+        # a hard cap: stop what is running now (the final report pass still runs, as for any stop)
+        st["status"] = "stopping"
+        _event(st, f"stopping: {_stop_reason(st)}")
+        halted = _halt(lab, st, mine)
+        if halted:
+            _event(st, f"stopped {len(halted)} run(s) at the spend cap")
+    brief = _brief(lab, st)
+    profile.campaign_members(lab, st, brief)
+    _update_waits(lab, st, mine)
+    _dispatch(lab, st, cycles, children, brief, out, enqueue)
+    if st["status"] == "active":
+        _retry_children(lab, st, children, out)
+        profile.after_cycle(lab, st, children, out, enqueue, sys.modules[__name__])
+    # the cycle itself
+    live = [m for *_x, m in cycles if m.get("status") in LIVE]
+    if live:
+        c = live[0]
+        if (c.get("status") == "waiting_input" and time.time() - (parse_ts(c.get("status_ts")) or time.time()) > 300
+                and not _session_up(next(p for *_y, p, m in cycles if m is c), c)):
+            # (a live session still asking is left to its own deadline: it takes the recommended answer)
+            q = ((c.get("pending_question") or {}).get("input") or {}).get("questions") or []
+            text = q[0].get("question") if q and isinstance(q[0], dict) else "a question"
+            st.setdefault("questions", []).append({"ts": now(), "run_id": c["run_id"], "question": text})
+            st["questions"] = st["questions"][-30:]
+            fresh = read_manifest(next(p for *_y, p, m in cycles if m is c)) or c
+            if fresh.get("status") == "waiting_input":
+                transition(lab, next(p for *_y, p, m in cycles if m is c), fresh, "killed", by="campaign",
+                           reason="campaign moved on (its question is on the campaign card)", finished=now(),
+                           pending_question=None)
+            _event(st, "a cycle asked a question — recorded on the campaign card; the campaign moves on")
+        return
+    last = cycles[-1][3] if cycles else None
+    if last is not None and last.get("status") in TERMINAL:
+        _account(lab, st, last)
+        if last.get("campaign_final") and last["run_id"] not in (st.get("lab_pause_stopped") or []):
+            st["status"] = "done" if st["status"] in ("finishing", "stopping", "active") else st["status"]
+            _event(st, "finished — the final report is written")
+            return
+    if st["status"] == "paused":
+        return
+    if int(st.get("consecutive_failures") or 0) >= int(st.get("max_failures") or 4):
+        st["status"], st["paused_reason"] = "stalled", f"{st['consecutive_failures']} cycles in a row failed"
+        _event(st, f"stalled: {st['paused_reason']}")
+        return
+    reason = _stop_reason(st)
+    final = st["status"] in ("finishing", "stopping") or reason is not None
+    if reason and st["status"] == "active":
+        st["status"] = "finishing"
+        _event(st, f"wrapping up: {reason}")
+    nb = parse_ts(st.get("next_cycle_at")) or 0
+    if final:
+        nb = min(nb, time.time())   # the report cycle goes right away
+    n = len(cycles) + 1
+    answers = [q for q in st.get("questions") or [] if q.get("answer") and not q.get("delivered")]
+    spec = RunSpec(skill=profile.campaign_driver(lab.hub), target=HUB_TARGET, args=st["file"], backend=st.get("backend"),
+                   model=st.get("model"), max_minutes=st.get("cycle_minutes"), campaign=name,
+                   parent=last["run_id"] if last else None, created_by="campaign",
+                   extra={"campaign_cycle": n, "campaign_final": final, "not_before": _iso(max(nb, time.time())),
+                          "pi_answers": [{"question": q.get("question"), "answer": q["answer"]} for q in answers]})
+    try:
+        child = enqueue(lab, spec)
+    except SpecError as e:
+        st["last_error"] = str(e)[:400]
+        return
+    st["last_error"] = None
+    for q in answers:
+        q["delivered"] = True
+    out["cycles"].append(child["run_id"])
+    _event(st, f"cycle {n}{' (final report)' if final else ''} queued")
+
+
+def summary(lab: Lab) -> list[dict]:
+    """What the dashboard shows per campaign (cheap: no audits, no enqueues)."""
+    out = []
+    states = all_states(lab)
+    spent: dict[str, float] = {}
+    if states:   # what each campaign's runs spent so far (fresh: a paused campaign isn't being kept)
+        for *_x, m in all_runs(lab):
+            if m.get("campaign"):
+                spent[m["campaign"]] = spent.get(m["campaign"], 0.0) + _cost(m)
+    for st in states:
+        studies = st.get("studies") or {}
+        out.append({k: st.get(k) for k in ("name", "file", "status", "created", "deadline", "budget", "used_minutes",
+                                             "cycle_minutes", "repeat_minutes", "gate3_auto", "consecutive_failures",
+                                             "max_failures", "next_cycle_at", "paused_reason", "last_error",
+                                             "paused_by_lab")}
+                   | {"spent_usd": round(spent.get(st.get("name"), 0.0), 4),
+                      "spend_cap_usd": pos_float((st.get("budget") or {}).get("spend_usd"), 0.0) or None,
+                      "cycles": len(st.get("cycles") or []), "last_cycles": (st.get("cycles") or [])[-5:],
+                      "studies": {k: {x: v.get(x) for x in ("member", "waiting", "hold", "gate3_done")}
+                                  for k, v in studies.items()},
+                      "dispatch_log": (st.get("dispatch_log") or [])[-12:], "questions": [{**q, "index": i} for i, q in enumerate(st.get("questions") or [])][-5:],
+                      "gate3_log": (st.get("gate3_log") or [])[-6:], "events": (st.get("events") or [])[-12:]})
+    return out

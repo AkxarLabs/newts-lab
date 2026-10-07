@@ -36,10 +36,19 @@ budgets:                        # PI-owned after Gate 1 — enforced by the run.
   smoke_max_minutes: 10         # applied per-stage when an experiment yaml doesn't set
   pilot_max_minutes: 60         # budget.max_minutes itself
   full_max_minutes: 240
+  total_minutes: 0              # the proposal's total compute cap, in minutes (0 = not set; check_project
+                                # warns). scripts/check_project.py reports spent / total from the registry.
   total_note: ""                # free-text total compute cap from the proposal (informational)
 
+data:                           # provenance of the data every run reads (project rule: data provenance).
+  source: ""                    # where it comes from (URL, DOI, internal path)
+  version: ""                   # the release / snapshot date
+  sha256: ""                    # hash of the dataset archive or manifest, filled before any PILOT run
+  split_seed: null              # the seed that built the train / validation / test split
+  license: ""                   # what the licence allows (the paper's data statement is written from here)
+
 seeds:
-  list: [0, 1, 2]               # default seeds for sweeps
+  list: [0, 1, 2]               # default seeds for sweeps; a sweep never picks seeds by outcome
   multi_seed_n: 3               # seeds required before a number is paper-grade
 
 parallelism:

@@ -1,4 +1,5 @@
 name: fresh-context-reviewer
+label: Reviewer                 # how the dashboard names it
 description: "Reviews a paper it has never seen written — adversarial, single-lens, fresh context. Spawned by /critique-paper; one instance per lens."
 model_key: reviewer_model          # lab/config.yaml agents.reviewer_model sets the Claude model
 tools_claude: "Read, Glob, Grep, WebFetch, WebSearch, Write"

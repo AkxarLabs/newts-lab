@@ -21,6 +21,10 @@ and follow it step by step.
 3. `SYSTEM.md` — **if present**: the PI's description of the machine/cluster you are
    working on (hardware, data locations, scheduling rules, forbidden actions). Its
    constraints bind exactly like control.yaml. PI-owned: read and obey, never edit.
+   If the hub's `compute.scheduler` sends runs to a job scheduler (SLURM or a site-described one),
+   `scripts/run.py` submits and waits for you — never call `sbatch`/`qsub` yourself.
+   `TYPE.md` says what an experiment is here; `DOMAIN.md`, **if present**, gives the field's venues,
+   data sources and conventions (a domain profile chosen at spawn).
 4. `NOTES.md` — **read it in full** (it's short by design): the *distilled* memory of this
    project — environment gotchas + their fixes, approaches already tried and abandoned (don't
    re-try blindly), and what's settled here. It is the index over `EXPERIMENT_LOG.md` that
@@ -110,7 +114,7 @@ subordinate to gates and hard rules; a directive is never gate approval. A direc
 **structured command** (`kind:"command"` + `action`, e.g. `start_loop`/`set_mode`/`run_smoke`/
 `request_run`/`park`/`kill`) the dashboard issued — execute it through the normal procedure,
 within the protocol, then ack. A `gate2_envelope.pi_signed: true` with `signed_via: dashboard:*`
-in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is never dashboard-signed.
+in `control.yaml` is the PI signing directly (valid Gate-2 record); Gate 3 is the PI's (signed in the dashboard), or recorded by the executor's campaign keeper when the PI's signed campaign brief delegates it — never by an agent.
 
 **A blocked tool call is a signal, not a wall.** Routine engine commands (`uv run …`, file edits)
 run without prompting — for a Claude agent via the `.claude/settings.json` `permissions.allow`
@@ -122,6 +126,15 @@ op (a destructive git command, a network fetch, a write outside the workspace): 
 with a directive — then continue other planned work meanwhile. Never route around it by editing
 `.claude/settings.json`, `control.yaml`, the sandbox, the harness, or the budget (hard rule 12); a
 block you can't justify is a finding, not an obstacle to remove.
+
+## Showing the PI something (artifacts)
+
+To ask the PI to look at a plan, results, a figure or a page you made, publish it to the lab's dashboard:
+`python "$NEWTS_HUB/tools/artifact.py" publish --title "…" --file <path>` (outside a dashboard run, the hub is
+`hub_path` in `control.yaml`). `--question "…" --choices "A;B"` asks for a decision; the answer comes back to your
+run — don't stop and wait for it; if your run ends first it becomes a note for the next agent. One artifact per
+milestone (a plan before real compute, a result that changes the next step, a paper figure) — never logs or progress
+updates. Never a substitute for a gate or a Gate-2 envelope.
 
 ## Subagents (you decide when)
 
@@ -138,10 +151,9 @@ parallelism is a throughput tool, not a requirement. Invariants regardless:
 
 **Claude Code** runs these as native parallel Task subagents. **Codex** has GA Subagents and this
 project ships the generated `.codex/agents/*.toml` role files + `.codex/config.toml`, so it can spawn
-them too. **opencode** has a subagent mechanism (Task tool / `@mention` in `opencode run`) but no
-rendered lab role file yet — it's **compatibility-only**; for heterogeneous variants the robust,
-backend-agnostic path on any backend is one headless process per variant via the hub's
-`tools/agent_runner.py`. An agent that genuinely lacks (or
+them too. **opencode** ships the rendered `.opencode/agents/*.md` role files and spawns them with its
+Task tool. On any backend, one headless run per variant (started from the dashboard, or dispatched by
+a campaign) is the robust alternative. An agent that genuinely lacks (or
 hasn't wired) a mechanism runs variants **sequentially** in this checkout — one at a time, same
 journal discipline (one config, one ledger entry, one commit per attempt); skip the worktree machinery
 rather than half-following it. Same outcome and discipline on every agent — only the parallelism differs.
@@ -167,25 +179,23 @@ gets them as native `.claude/skills/` slash commands. Either way the `SKILL.md` 
 
 ## The rules (these keep the project extensible — follow exactly)
 
-1. **A new experiment is a NEW yaml** in `configs/experiments/` — experiment configs
-   are immutable once run. New behavior goes behind a config switch; baseline code
-   paths stay runnable forever.
-2. **Stages:** SMOKE (pipeline check) → PILOT (decisive small run) → FULL (per the
-   autonomy bounds above). Budgets are enforced by the run watchdog — never raise a
-   budget, seed, or eval setting to make a result look better; flag the PI instead.
-3. **Record every attempt** in `EXPERIMENT_LOG.md` (format at the top of that file,
-   including failures), then ONE git commit: `exp-NNN: <one-line outcome>`.
-4. **Multi-seed before claiming:** a result is a finding only at ≥ `seeds.multi_seed_n`
-   seeds (use sweep.py), reported mean ± spread.
+The hub's hard rules (`{{hub_path}}/AGENTS.md` → "Hard rules", generated from `workflow/rules.yaml`) bind
+every session here too — read them at orientation. These are the project-specific ones:
+
+<!-- newts:project-rules (generated by tools/workflow.py render-docs from workflow/) -->
+1. **A new experiment is a NEW yaml** in `configs/experiments/` — experiment configs are immutable once run. New behavior goes behind a config switch; baseline code paths stay runnable forever.
+2. **Stages:** SMOKE (pipeline check) → PILOT (decisive small run) → FULL (per the autonomy bounds above). Budgets are enforced by the run watchdog — never raise a budget, seed, or eval setting to make a result look better; flag the PI instead.
+3. **Record every attempt** in `EXPERIMENT_LOG.md` (format at the top of that file, including failures), then ONE git commit: `exp-NNN: <one-line outcome>`.
+4. **Multi-seed before claiming:** a result is a finding only at ≥ `seeds.multi_seed_n` seeds (use sweep.py), reported mean ± spread.
 5. **Debug cap:** `experiment.max_debug_depth` (default 3) consecutive fix attempts, then record the failure and move on.
-6. **Never touch:** the eval protocol, test split, `runs/registry.jsonl` history,
-   `SYSTEM.md`, or anything in the hub repo except the write-back below.
+6. **Never touch:** the eval protocol, test split, `runs/registry.jsonl` history, `SYSTEM.md`, or anything in the hub repo except the write-back below.
 7. **Figures are scripts** in `scripts/figures/`, reading only `runs/` artifacts.
-8. **Zero-token monitoring:** while a run is in flight, the only check is
-   `uv run python scripts/status.py <run_id> --watch --log-interval
-   <monitoring.log_interval_seconds> --poll <loop.monitor_poll_seconds>` (omit `<run_id>`
-   for a sweep) — no log reading, no partial-curve reasoning; the watchdog enforces the
-   budget. Pass `--log-interval` so a healthy sparse-logging run isn't flagged stalled.
+8. **Zero-token monitoring:** while a run is in flight, the only check is `uv run python scripts/status.py <run_id> --watch --log-interval <monitoring.log_interval_seconds> --poll <loop.monitor_poll_seconds>` (omit `<run_id>` for a sweep) — no log reading, no partial-curve reasoning; the watchdog enforces the budget. Pass `--log-interval` so a healthy sparse-logging run isn't flagged stalled.
+9. **The test split is read once.** The held-out test split (or the TYPE card's analogue) is evaluated by exactly one planned **final evaluation** row per headline configuration, launched only after selection on validation is finished and the configuration is named in PLAN.md. Every test read is a row in PLAN.md's "Test-split access log"; a second read of the same configuration is a *re-open* and needs a written reason — the result it produces is exploratory, not confirmatory.
+10. **Analyses follow the frozen plan.** The proposal's "Analysis plan" (primary comparison, uncertainty method, exclusion rules, decision rule) is frozen at Gate 1 with the eval protocol. An analysis the plan did not name is **EXPLORATORY**: labelled so in the analysis note and carried into the paper with `status: exploratory` in `claims.yaml` and the word in the claim's sentence. A confirmatory claim is one the plan pre-specified and the final evaluation supports.
+11. **Rows added after results are post-hoc.** A PLAN.md experiment row added after Gate 2 or after the first analysis entry is tagged `(post-hoc)` in its Question, still needs a pre-written criterion, and its results are reported as exploratory. Re-running a configuration with new seeds after seeing its result is logged as `rerun_of: exp-NNN` with a reason; seeds come from `seeds.list`, never chosen by outcome. The paper's "All experiments run" appendix lists every row, kept or not, and the number of configurations evaluated on validation to reach the headline result.
+12. **Data provenance.** `control.yaml` `data:` names the dataset's source, version and hash, the split-construction seed and the licence before any PILOT runs; the paper's data statement is written from it. A dataset that changes mid-project is a new version with a new hash and a logged note.
+<!-- /newts:project-rules -->
 
 ## Session end (write-back)
 

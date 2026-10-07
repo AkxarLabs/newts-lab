@@ -24,6 +24,19 @@
 
 ### Baselines
 <!-- Including the strongest fair baseline from the lit review, not just the convenient one. -->
+- **Baseline tuning budget:** <!-- the same tuning budget, seeds and eval as the method; "budget-matched" or why not -->
+
+### Analysis plan (FROZEN once approved)
+<!-- Decided now, before any result exists. Anything not named here is exploratory and is labelled so in
+     the analysis note and the paper (claims.yaml status: exploratory). -->
+- **Primary comparison:** <!-- method vs which baseline, on which metric, on which split -->
+- **Uncertainty:** <!-- how spread is reported (CI over seeds, bootstrap, paired difference) and how many
+     replicates; 3 seeds is the floor, the number comes from the pilot's variance -->
+- **Exclusion rules:** <!-- which runs are excluded from the comparison and why, decided now -->
+- **Decision rule:** <!-- which result patterns mean supports / refutes / inconclusive, and the pre-agreed
+     action for each (write up, kill or park, more seeds) -->
+- **Sanity controls:** <!-- a shuffled-label or random-feature control, a train/test leakage check, the
+     metric on a trivial baseline; each with its expected range -->
 
 ### Planned experiments (staged)
 
@@ -33,13 +46,15 @@
 | exp-002 | baseline reproduces expected range | PILOT | | within X of published/expected value |
 | exp-003 | core hypothesis, small scale | PILOT | | effect ≥ Y over baseline |
 | exp-004 | core hypothesis, target scale | FULL (PI Gate 2) | | |
+| exp-005 | final evaluation: the selected config on the held-out test split, read once | FULL (PI Gate 2) | | reported with the plan's uncertainty; no selection after this |
 
 ### Planned ablations
 <!-- Every component of the method gets a removal test. Stacked, un-ablated changes are banned. -->
 
 ## 5. Budget
 
-- **Compute:** <!-- GPU-hours / wall-clock cap per stage; total cap. -->
+- **Compute:** <!-- GPU-hours / wall-clock cap per stage; total cap in minutes (control.yaml budgets.total_minutes). -->
+- **Data:** <!-- source, version, hash, split seed, licence (control.yaml data:); a dataset change is a new version. -->
 - **Time:** <!-- calendar budget before mandatory go/kill review. -->
 - These budgets are frozen; changing them requires PI approval, not an edit.
 

@@ -9,8 +9,8 @@ from conftest import load
 
 def _mod(hub, monkeypatch):
     m = load("dashboard/sources")
-    monkeypatch.setattr(m, "HUB", hub.root)
-    monkeypatch.setattr(m, "LAB", hub.lab)
+    monkeypatch.setattr(m.ctx, "HUB", hub.root)
+    monkeypatch.setattr(m.ctx, "LAB", hub.lab)
     return m
 
 
@@ -96,7 +96,7 @@ def test_workers_marks_done(hub, monkeypatch):
          "kind": "read"},
         {"ts": "2026-06-19T10:02:00", "event": "stop"},
     ])
-    workers = m._workers(bus, None)
+    workers = m.workers.scan(bus, None)
     assert len(workers) == 1
     w = workers[0]
     assert w["role"] == "experiment-runner"
@@ -113,7 +113,7 @@ def test_workers_marks_working(hub, monkeypatch):
         {"ts": "2026-06-19T10:01:00", "event": "action", "tool": "Edit", "summary": "Edit: y",
          "kind": "edit"},
     ])
-    workers = m._workers(bus, None)
+    workers = m.workers.scan(bus, None)
     assert workers[0]["status"] == "working"
 
 
@@ -191,7 +191,7 @@ def test_read_text_tolerates_non_utf8_bytes(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
     f = hub.lab / "dirty.txt"
     f.write_bytes(b"ok \xff\xfe not utf8\n")   # invalid UTF-8 — read_text(utf-8-sig) would raise
-    assert "not utf8" in m._read_text(f)         # errors='replace' → no UnicodeDecodeError
+    assert "not utf8" in m.labfiles.read_text(f)        # errors='replace' → no UnicodeDecodeError
 
 
 def test_snapshot_survives_non_utf8_event_line(hub, monkeypatch):
@@ -206,15 +206,6 @@ def test_snapshot_survives_non_utf8_event_line(hub, monkeypatch):
 
 
 # ── M1: gate detection is word-bounded (no phantom gates from "investigate"/"delegate") ──
-
-def test_gate_of_word_bounded(hub, monkeypatch):
-    m = _mod(hub, monkeypatch)
-    assert m._gate_of("awaiting PI Gate 1") == 1
-    assert m._gate_of("sign the Gate-2 envelope") == 2
-    assert m._gate_of("investigate 3 baselines") is None    # not a gate
-    assert m._gate_of("delegate 2 sweeps to runners") is None
-    assert m._gate_of("mitigate the risk") is None
-
 
 def test_gates_waiting_matches_parsed_gate_items(hub, monkeypatch):
     m = _mod(hub, monkeypatch)
@@ -325,12 +316,12 @@ def test_snapshot_includes_escalations_and_notebook(hub, monkeypatch):
 # ── hardening from the adversarial verification pass ──────────────────────────
 
 def test_load_yaml_non_mapping_returns_empty_dict(hub, monkeypatch):
-    # a valid-YAML but non-mapping file must not make _load_yaml(...).get(...) raise AttributeError
+    # a valid-YAML but non-mapping file must not make load_yaml(...).get(...) raise AttributeError
     m = _mod(hub, monkeypatch)
     for content in ("42\n", "- a\n- b\n", "just a bare string\n"):
         f = hub.lab / "x.yaml"
         f.write_text(content, encoding="utf-8")
-        assert m._load_yaml(f) == {}
+        assert m.labfiles.load_yaml(f) == {}
 
 
 def test_snapshot_survives_non_mapping_control_yaml(hub, monkeypatch):
@@ -346,7 +337,6 @@ def test_snapshot_survives_non_mapping_control_yaml(hub, monkeypatch):
 def test_notebook_age_from_dated_filename_not_mtime(hub, monkeypatch):
     # age comes from the ISO-dated filename (git-stable), not st_mtime which git ops reset
     import os
-    import time
     m = _mod(hub, monkeypatch)
     old = hub.lab / "notebook" / "2020-01-01-ancient.md"
     old.write_text("# old\n", encoding="utf-8")
@@ -361,3 +351,166 @@ def test_notebook_status_picks_latest_dated_and_ignores_readme(hub, monkeypatch)
     for name in ("2026-06-01-a.md", "2026-07-02-b.md", "README.md"):
         (hub.lab / "notebook" / name).write_text("x\n", encoding="utf-8")
     assert m._notebook_status()["latest"] == "2026-07-02-b.md"
+
+
+# ── gate detection: registry-text is the signal; on-disk signature is the 'signed, waiting' state ─
+
+def test_registry_text_gate_detected(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="proposal", next="awaiting PI Gate 1")
+    it = m.snapshot()["items"][0]
+    assert it["gate"] == 1 and it["gate_signed"] is False
+
+
+def test_no_phantom_gate_from_plain_next_action(hub, monkeypatch):
+    # a plain slash-command / next-action with no gate word yields no gate (no phantom Approve card)
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="active", next="run pilot exp-003")
+    hub.add_registry_row("two", state="active", next="/spawn-project")
+    items = {it["id"]: it for it in m.snapshot()["items"]}
+    assert items["demo"]["gate"] is None and items["two"]["gate"] is None
+
+
+def test_gate1_signed_state_and_badge_exclusion(hub, monkeypatch):
+    # once the dashboard marker is on the proposal, the card flips to 'signed — waiting for the
+    # agent' and the badge stops counting it (the PI already acted; the wait is the agent's).
+    # Detection still rides on the registry text, which stays 'Gate 1' until the agent transitions.
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("demo", state="proposal", next="awaiting PI Gate 1")
+    prop = hub.root / "studies" / "demo" / "proposal.md"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    prop.write_text("# P\n", encoding="utf-8")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate_signed"] is False and snap["gates_waiting"] == 1
+    prop.write_text(f"# P\n\n<!-- {m.GATE1_MARK} 2026-07-04 -->\n", encoding="utf-8")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate_signed"] is True and snap["gates_waiting"] == 0
+
+
+def test_gate2_signed_state_from_control_yaml(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.make_project("demo", gate2={"pi_signed": True, "signed_via": "dashboard:x",
+                                    "expires": None, "full_runs": 2,
+                                    "per_run_max_minutes": 30, "total_max_minutes": 60})
+    hub.add_registry_row("demo", state="active", project="../projects/demo", next="awaiting Gate 2 envelope")
+    it = m.snapshot()["items"][0]
+    assert it["gate"] == 2 and it["gate_signed"] is True
+
+
+def test_gate2_expired_signed_envelope_is_not_signed_state(hub, monkeypatch):
+    # an EXPIRED but pi_signed envelope must NOT read as 'signed — waiting for the agent' — the
+    # PI has to re-authorize (guard.py full-run + approve_gate both refuse it), so it stays an
+    # actionable gate the badge counts.
+    m = _mod(hub, monkeypatch)
+    hub.make_project("demo", gate2={"pi_signed": True, "signed_via": "dashboard:x",
+                                    "expires": "2026-01-01", "full_runs": 2,
+                                    "per_run_max_minutes": 30, "total_max_minutes": 60})
+    hub.add_registry_row("demo", state="active", project="../projects/demo", next="awaiting Gate 2 envelope")
+    snap = m.snapshot()
+    assert snap["items"][0]["gate"] == 2 and snap["items"][0]["gate_signed"] is False
+    assert snap["gates_waiting"] == 1
+
+
+# ── subagent visibility: tree, liveness, results, attribution, run join ──────────
+
+def _wlog(bus, wid, lines):
+    import time as _t
+    wdir = bus / "workers"
+    wdir.mkdir(parents=True, exist_ok=True)
+    ts = _t.strftime("%Y-%m-%dT%H:%M:%S")
+    (wdir / f"{wid}.jsonl").write_text(
+        "\n".join(json.dumps({"ts": ts, "worker_id": wid, **ln}) for ln in lines) + "\n", encoding="utf-8")
+
+
+def test_worker_tree_links_spawn_to_child_with_label_and_result(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "SESS", [
+        {"role": "orchestrator", "event": "start", "session_id": "SESS"},
+        {"role": "orchestrator", "event": "spawn", "session_id": "SESS", "tool_use_id": "tuA",
+         "spawns": "ideation-critic", "summary": "Agent: ideation-critic: Novelty skeptic: sparse attn"},
+        {"role": "orchestrator", "event": "return", "session_id": "SESS", "tool_use_id": "tuA",
+         "result": "verdict: bruised — closest work is X"},
+    ])
+    _wlog(bus, "agent-1", [
+        {"role": "ideation-critic", "event": "start", "session_id": "SESS"},
+        {"role": "ideation-critic", "event": "action", "session_id": "SESS", "tool": "WebSearch", "summary": "q"},
+    ])
+    ws = {w["worker_id"]: w for w in m.workers.link_workers(m.workers.scan(bus, None))}
+    child, parent = ws["agent-1"], ws["SESS"]
+    assert child["is_subagent"] and child["parent"] == "SESS" and parent["children"] == ["agent-1"]
+    assert child["label"] == "Novelty skeptic: sparse attn" and child["spawn_id"] == "tuA"
+    assert child["result"].startswith("verdict: bruised")          # from the parent's return line
+    assert parent["n_actions"] == 1                                 # the Post(Agent) 'return' isn't double-counted
+
+
+def test_worker_inside_long_tool_stays_working(hub, monkeypatch):
+    import os
+    import time as _t
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "agent-2", [
+        {"role": "experiment-runner", "event": "start", "session_id": "S"},
+        {"role": "experiment-runner", "event": "begin", "session_id": "S", "tool": "Bash",
+         "summary": "Bash: uv run scripts/run.py", "kind": "run"},
+    ])
+    old = _t.time() - 1500                                          # 25 min into a PILOT run
+    os.utime(bus / "workers" / "agent-2.jsonl", (old, old))
+    w = m.workers.scan(bus, None)[0]
+    assert w["status"] == "working" and w["in_tool"]["tool"] == "Bash"   # not idle, not dropped
+
+
+def test_done_worker_lingers_with_result_and_resume_reopens(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    bus = hub.lab / ".bus"
+    _wlog(bus, "agent-3", [{"role": "overseer", "event": "start", "session_id": "S"},
+                           {"role": "overseer", "event": "stop", "session_id": "S", "result": "SUPPORTED"}])
+    w = m.workers.scan(bus, None)[0]
+    assert w["status"] == "done" and w["result"] == "SUPPORTED"
+    _wlog(bus, "S", [{"event": "start", "session_id": "S"}, {"event": "stop", "session_id": "S"},
+                     {"event": "start", "session_id": "S", "source": "resume"}])
+    w = next(x for x in m.workers.scan(bus, None) if x["worker_id"] == "S")
+    assert w["status"] != "done"                                    # a resumed session is live again
+
+
+def test_hub_worker_promoted_to_project_from_worktree(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    proj = hub.make_project("demo")
+    hub.add_registry_row("demo", state="active", project=str(proj))
+    _wlog(hub.lab / ".bus", "agent-4", [
+        {"role": "experiment-runner", "event": "action", "session_id": "S", "project": "demo",
+         "variant": "exp-004", "summary": "Bash: uv run x"}])
+    snap = m.snapshot()
+    w = next(x for x in snap["workers"] if x["worker_id"] == "agent-4")
+    assert w["project"] == "demo" and w["variant"] == "exp-004"
+    assert next(it for it in snap["items"] if it["id"] == "demo")["n_workers"] == 1
+
+
+def test_snapshot_joins_headless_run_to_its_session_worker(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    adir = hub.lab / ".bus" / "agents"
+    adir.mkdir(parents=True)
+    (adir / "hub-propose-x-1.json").write_text(json.dumps({
+        "schema": 2, "run_id": "hub-propose-x-1", "agent_id": "hub-propose-x-1", "status": "running",
+        "session_id": "SID9", "command": "/propose x", "level": "hub", "target": "x", "backend": "claude",
+        "started": "2026-01-01T00:00:00", "attempts": [{"started": "2026-01-01T00:00:00"}]}), encoding="utf-8")
+    _wlog(hub.lab / ".bus", "SID9", [{"event": "start", "session_id": "SID9"}])
+    snap = m.snapshot()
+    assert snap["runs"][0]["run_id"] == "hub-propose-x-1" and snap["hub_agents"]
+    w = next(x for x in snap["workers"] if x["worker_id"] == "SID9")
+    assert w["run_id"] == "hub-propose-x-1" and w["label"] == "/propose x"
+    for key in ("runs", "attention", "executor", "skills"):
+        assert key in snap
+    assert snap["executor"]["available"] is True and "propose" in snap["skills"]
+
+
+def test_attention_includes_gates_and_escalations(hub, monkeypatch):
+    m = _mod(hub, monkeypatch)
+    hub.add_registry_row("idea-g", state="proposal", next="Gate 1: approve the proposal")
+    (hub.lab / ".bus").mkdir(parents=True, exist_ok=True)
+    (hub.lab / ".bus" / "events.jsonl").write_text(json.dumps(
+        {"ts": "2026-01-01T00:00:00", "source": "hub", "kind": "escalation", "detail": "need FULL run",
+         "data": {"id": "e-1"}}) + "\n", encoding="utf-8")
+    kinds = {it["kind"]: it for it in m.snapshot()["attention"]}
+    assert kinds["gate"]["sev"] == "block" and kinds["gate"]["detail"]["gate"] == 1
+    assert kinds["escalation"]["detail"]["id"] == "e-1"

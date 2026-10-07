@@ -25,10 +25,10 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/ — reuse the role_sync resolver
 import role_sync  # noqa: E402 — render_project resolves the hub tiers into the new project's role files
+import labfiles  # noqa: E402 — the lab's files, read one way (tools/labfiles.py)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -36,21 +36,12 @@ if hasattr(sys.stdout, "reconfigure"):
 HUB = Path(__file__).resolve().parents[1]
 
 # Runtime cruft that must never travel into a fresh project (it's regenerated / gitignored there).
-_EXCLUDE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", ".bus", ".guard"}
+_EXCLUDE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", ".bus", ".guard", "node_modules"}
 _PLACEHOLDERS = ("{{slug}}", "{{title}}", "{{date}}", "{{hub_path}}")  # ONLY these four — leave {{c}} etc.
 
 
-def _load_yaml(path: Path) -> dict:
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
-    except Exception:  # noqa: BLE001
-        return {}
-
-
 def _projects_root(hub: Path) -> Path:
-    root = ((_load_yaml(hub / "lab" / "config.yaml").get("lab") or {}).get("projects_root")) \
-        or "../newts-lab-projects"
-    return (hub / root).resolve()
+    return labfiles.projects_root(hub)
 
 
 def _copy_file(src: Path, dst: Path, subs: dict) -> None:
@@ -109,23 +100,26 @@ def scaffold(dest: Path, *, hub: Path, slug: str, title: str, date: str,
     subs = {"{{slug}}": slug, "{{title}}": title, "{{date}}": date,
             "{{hub_path}}": str(hub).replace("\\", "/")}
     files = _copy_tree(hub / "templates" / "project", dest, subs)
+    own = hub / "lab" / "templates" / "project"            # the PI's own versions of template files win
+    if own.is_dir():
+        _copy_tree(own, dest, subs)
     # SYSTEM.md — the lab machine card, if the PI wrote one.
     sysmd = hub / "lab" / "SYSTEM.md"
     if sysmd.exists():
         _copy_file(sysmd, dest / "SYSTEM.md", subs)
     # project-TYPE card + control.yaml project_type.
-    card = hub / "templates" / "project-types" / project_type / "TYPE.md"
+    card = labfiles.template(hub, f"project-types/{project_type}/TYPE.md")
     if card.exists():
         _copy_file(card, dest / "TYPE.md", subs)
     _set_control_type(dest / "control.yaml", project_type)
     # optional domain profile.
     if domain:
-        prof = hub / "templates" / "domain-profiles" / f"{domain}.md"
-        if prof.exists():
+        prof = labfiles.domain_profiles(hub).get(domain)
+        if prof and prof.exists():
             _copy_file(prof, dest / "DOMAIN.md", subs)
     # optional overlay (target-driven = templates/compete/, copied ON TOP).
     if overlay:
-        odir = hub / "templates" / overlay
+        odir = labfiles.template(hub, overlay)
         if odir.exists():
             _copy_tree(odir, dest, subs)
     # Resolve the hub's model TIERS into this project's role files (mechanically — no agent tokens):
@@ -218,8 +212,9 @@ def main() -> int:
     ap.add_argument("--slug", required=True)
     ap.add_argument("--title", required=True)
     ap.add_argument("--project-type", default="ml", dest="project_type",
-                    choices=["ml", "empirical", "simulation", "theory", "target-driven"])
-    ap.add_argument("--domain", default=None, help="a domain profile (e.g. econ) → DOMAIN.md")
+                    choices=sorted(labfiles.project_types(HUB)))
+    ap.add_argument("--domain", default=None, choices=sorted(labfiles.domain_profiles(HUB)),
+                    help="a domain profile (templates/domain-profiles/<name>.md) → DOMAIN.md")
     ap.add_argument("--overlay", default=None, help="an overlay dir under templates/ (e.g. compete)")
     ap.add_argument("--date", default=None)
     ap.add_argument("--run-smoke", action="store_true", dest="run_smoke",

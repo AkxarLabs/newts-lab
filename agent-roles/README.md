@@ -15,7 +15,12 @@ Each role is two files:
 
 - `.claude/agents/<name>.md` — Claude Code Task subagents (`model:` resolved from config).
 - `.codex/agents/<name>.toml` — Codex GA subagents (hub).
-- `templates/project/.codex/agents/<name>.toml` — the copy spawned projects ship.
+- `.opencode/agents/<name>.md` — opencode subagents (hub).
+- `templates/project/…` — the neutral copies spawned projects ship (resolved at spawn).
+
+The PI's own instructions for a role (dashboard → Compose → Roles, stored in
+`lab/workflow/roles/<name>.add.md`) are appended to the hub's and spawned projects' rendered copies,
+never to the shipped template copies.
 
 ```bash
 uv run --with pyyaml python tools/role_sync.py render   # write/update the generated files
@@ -24,17 +29,17 @@ uv run --with pyyaml python tools/role_sync.py check    # CI drift guard — exi
 
 ## Backends
 
-**Claude and Codex are rendered** (their role-file schemas are known and stable). **opencode,
-Gemini CLI, and Cursor are compatibility-only** — their role-file schemas are unverified in this
-repo, so until a CLI smoke proves them, use the sequential approximation or one headless process
-per unit of work via `tools/agent_runner.py` (see `docs/autonomy.md`). Adding a backend = adding a
-render target in `role_sync.py`, not editing the generated files.
+**Claude Code, Codex and opencode are rendered.** Gemini CLI and Cursor are compatibility-only: their
+role-file schemas are unverified here, so use the sequential approximation, or one headless run per
+unit of work from the dashboard. Adding a backend means adding a render target in `role_sync.py`, not
+editing the generated files.
 
 ## Roles
 
-The three roles rendered here — `fresh-context-reviewer`, `experiment-runner`, `overseer` — are the
-lab's named, isolated subagents. Ideation critics and scoping advocates have **no role file** (they
-are inline general-purpose subagents), so `agents.critic_model` cannot bind them a `.claude/agents/`
-file; instead `/ideate` and `/scope` apply it on Claude Code as each critic/advocate's **per-spawn
-Task `model`** (tier-resolved via `agents.tiers`), and other backends run them at the session model
-(subagent rule 7). Materializing them as named role files here would be a future PI choice.
+Five roles are rendered here — `fresh-context-reviewer`, `experiment-runner`, `overseer`,
+`ideation-critic`, and `scoping-advocate` — the lab's named, isolated subagents. The last two share
+`agents.critic_model`/`critic_effort` (their `model_key` is `critic_model`), so the per-role binding
+is unchanged; being named roles means every critic and advocate appears in the hooks' traces — and
+the dashboard's agent tree — by role, with its verdict as its result, instead of as an anonymous
+`general-purpose` agent. `tools/role_sync.py resolve critic` still prints the resolved model/effort
+for backends without role files (subagent rule 7).

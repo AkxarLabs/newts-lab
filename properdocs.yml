@@ -35,6 +35,7 @@ nav:
   - Home: index.md
   - Getting started: getting-started.md
   - The workflow: workflow.md
+  - Customising the lab: customising.md
   - Autonomy & modes: autonomy.md
   - Skills reference: skills.md
   - Collaborative sessions (/discuss): discuss.md
@@ -44,4 +45,7 @@ nav:
   - Target-driven (/compete): compete.md
   - Tools: tools.md
   - Dashboard: dashboard.md
+  - Machines & compute: compute.md
+  - The world: world-design.md
+  - Extending the lab: extending.md
   - Design rationale: DESIGN.md

@@ -56,7 +56,7 @@ def main() -> int:
             except Exception:
                 continue
 
-    dead, orphan = [], []
+    dead, orphan, adrift = [], [], []
     if runs.exists():
         for d in sorted(runs.iterdir()):
             meta = d / "meta.json"
@@ -65,6 +65,13 @@ def main() -> int:
             try:
                 m = json.loads(meta.read_text(encoding="utf-8"))
             except Exception:
+                continue
+            if m.get("status") == "queued":
+                # waiting in a job scheduler: fine while its submitter (run.py) keeps its heartbeat fresh
+                hb = d / "submitter.heartbeat"
+                hb_age = now - (hb.stat().st_mtime if hb.exists() else meta.stat().st_mtime)
+                if hb_age > max(4 * poll, 600):
+                    adrift.append((m.get("run_id", d.name), ((m.get("scheduler") or {}).get("job")), round(hb_age)))
                 continue
             if m.get("status") != "running":
                 continue
@@ -87,12 +94,16 @@ def main() -> int:
     lock_age = (now - loop_lock.stat().st_mtime) if loop_lock.exists() else None
     stale_lock = lock_age is not None and lock_age > max(2 * poll, 1800)
 
-    found = bool(dead or orphan or stale_lock)
+    found = bool(dead or orphan or stale_lock or adrift)
     print(f"## Reconcile — {ROOT.name}\n")
     if dead:
         print("**Dead/stalled runs** (status=running, metrics stale — the run process is gone):")
         for rid, age in dead:
             print(f"- {rid} (stale {age}s) — finalize its ledger entry or delete the dir; do not double-count it")
+    if adrift:
+        print("**Queued runs whose submitter is gone** (the scheduler job may still run and finish on its own):")
+        for rid, job, age in adrift:
+            print(f"- {rid} (job {job or '?'}, submitter silent {age}s) — check the queue; cancel the job or re-attach")
     if orphan:
         print("**Orphan runs** (started, never wrote a registry line):")
         for rid in orphan:
