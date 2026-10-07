@@ -12,7 +12,7 @@ uv run --with pyyaml python tools/new.py type  survey     --like empirical
 uv run --with pyyaml python tools/new.py rule  no-tabs    --text "**No tabs.** Indent with spaces." [--check no-tabs]
 ```
 
-The dashboard does all of it in **Compose**: **New …** on any list, or **Make a copy** on any item, into a draft you review
+The dashboard does all of it in **Workflow**: **New …** on any list, or **Make a copy** on any item, into a draft you review
 and publish ([Customising](customising.md)). A copied skill
 or role says `like: <the original>` and inherits its *definition* (a skill's level, mode, arguments,
 outputs, …; a role's tools, model and sandbox), overriding only what it lists. Its *contract and
@@ -27,11 +27,11 @@ Every moving part is a small, named registry; the table is the map.
 
 | To add or change | Where it lives | Checked by |
 |---|---|---|
-| Anything below, from the dashboard | Compose (a draft, checked, then published) | [Customising](customising.md) |
-| How a stage is done | Compose → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
+| Anything below, from the dashboard | Workflow (a draft, checked, then published) | [Customising](customising.md) |
+| How a stage is done | Workflow → a procedure → Method / Your instructions → `lab/workflow/`, `studies/<slug>/workflow/` | [Customising](customising.md) |
 | A procedure | a folder `.claude/skills/<name>/` (its frontmatter defines it) | `tools/workflow.py check` (also in `check_lab`) |
 | A stage, a state, a room | `workflow/stages.yaml` (a room's `place` and `facing` on the table too) | `tools/workflow.py check` |
-| How a room looks in 3D | `lab/rooms3d/<room>.json`, or `lab.<type>.json` for one project type's lab (data: Compose → a room → Look → *Design it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/`, the starter Lab looks `world3d/looks/` | Compose (it checks every room file) |
+| How a room looks in 3D | `lab/rooms3d/<room>.json`, or `lab.<type>.json` for one project type's lab (data: Workflow → a room → Look → *Design it*, or by hand); furniture any lab can use is `world3d/components.js`, the built-in rooms `world3d/rooms/`, the starter Lab looks `world3d/looks/` | Workflow (it checks every room file) |
 | A subagent role | `agent-roles/<role>.yaml` + `.md` | `tools/role_sync.py check` |
 | A rule (prose or mechanical) | `workflow/rules.yaml` (+ a check in `checks/`) | `tools/workflow.py check`, `tools/guard.py --list` |
 | A kind of project | a folder `templates/project-types/<type>/` with its `TYPE.md` | [Project types](project-types.md) |
@@ -91,14 +91,14 @@ legal transitions from the states and back edges. Keep the three gates: `check` 
 exactly Gates 1, 2 and 3.
 
 **A room** is one line under `rooms:` — its title and the states that stand in it. Optionally its
-`place: [column, row]` on the table and `facing: n|e|s|w` for its door (Compose → Rooms: drag it on the
+`place: [column, row]` on the table and `facing: n|e|s|w` for its door (Workflow → Rooms: drag it on the
 table, turn its door); without them it takes the next free plot round your desk:
 
 ```yaml
   - {id: data, label: Data, title: The Data Room, states: [data-prep]}
 ```
 
-`per_project: true` makes it one room per live project, titled by its study (the Lab has it; Compose → the
+`per_project: true` makes it one room per live project, titled by its study (the Lab has it; Workflow → the
 room → About → *One per live project*). Without the flag, a room is per-project when most of its
 procedures are project-level.
 
@@ -107,7 +107,7 @@ A room with no look is drawn plain (a floor, low walls, a desk per procedure). T
 colours, furniture from `world3d/components.js` placed by name, a station per procedure, and any new
 furniture as boxes, cylinders, cones and spheres — never code. Each project's lab takes the look for its
 type, `lab.<type>`: starter looks for every shipped type ship in `dashboard/static/world3d/looks/`, and the
-lab's own `lab/rooms3d/lab.<type>.json` wins over them. You design a look by describing it: Compose → the
+lab's own `lab/rooms3d/lab.<type>.json` wins over them. You design a look by describing it: Workflow → the
 room → Look → *Design it* launches `/design-room`, which writes a design you preview and then *Use this
 design* (a draft; publish it). For a per-project room, *Look for: every project / <type>* picks which look
 you are designing (`/design-room lab.ml "…"`; `tools/workflow.py room lab.ml` prints its brief). `tools/new.py room <id> --like <room>` copies the like's own JSON look if it has one; otherwise the new
@@ -134,7 +134,7 @@ can't be removed; every other check can be.
 Add `agent-roles/<role>.yaml` (its `label`, description, `tools_claude`, a `model_key` naming its
 `agents.<x>_model` config key, codex settings) and `agent-roles/<role>.md` (its instructions). Then run
 `uv run --with pyyaml python tools/role_sync.py render`. The role is rendered for Claude Code
-(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`), listed in Compose
+(`.claude/agents/`), Codex (`.codex/agents/`) and opencode (`.opencode/agents/`), listed in Workflow
 (where the PI can add instructions to it), and `role_sync.py resolve <role>` gives its model and
 effort. Set its model in `lab/config.yaml` (`agents.<x>_model: standard`). Then a skill spawns it.
 

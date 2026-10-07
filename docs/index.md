@@ -11,8 +11,8 @@
 It is a *template*, not a framework: procedures are Markdown skills the agent executes with judgment, state is plain files and git, and nothing here assumes a research domain. The design distills what worked across the autonomous-research literature — Sakana's AI Scientist, Karpathy's autoresearch, Google's co-scientist, Kosmos, Meta's AIRA — and hard-codes defenses against their documented failure modes. The full reasoning lives in [Design rationale](DESIGN.md).
 
 <figure markdown>
-![The dashboard — the whole lab as a living world, with the Today rail](assets/dashboard-home-dark.png){ .as-shot }
-<figcaption>Local-only and offline: <a href="dashboard/">the dashboard</a> is the whole product — start it with one double-click, set the lab up, start work, answer the agents and sign the gates. The lab is drawn behind it as a living world, a room per lifecycle stage.</figcaption>
+![The dashboard: the lab as a 3D tabletop, with the Today panel](assets/dashboard-home-dark.png){ .as-shot }
+<figcaption>Local-only and offline: <a href="dashboard/">the dashboard</a> is the whole product. Start it with one double-click, set the lab up, start work, answer the agents and approve the gates. The lab is drawn behind it as a 3D tabletop, a room per stage.</figcaption>
 </figure>
 
 ## The shape of the lab
@@ -39,14 +39,14 @@ Everything between gates runs autonomously. Everything at a gate stops for you.
 
 | Gate | When | What you approve |
 |---|---|---|
-| **1 — Proposal** | before any compute is spent | hypothesis, baselines, staged plan, budgets, kill criteria — optionally a Gate 2 envelope |
-| **2 — Full scale** | before any FULL-stage run | the expensive runs (or pre-authorize an envelope for unattended loops) |
+| **1 — Proposal** | before any compute is spent | hypothesis, baselines, frozen evaluation and analysis plan, staged plan, budgets, kill criteria, optionally the Gate 2 limits |
+| **2 — Full scale** | before any full-scale run | the expensive runs, or approve their limits ahead for unattended loops |
 | **3 — Finalization** | before anything leaves the lab | the paper, after it survives the internal review ensemble |
 
 ## Load-bearing principles
 
 1. **Every reported number traces to a run artifact** — enforced mechanically by `checks/audit_claims.py`, not by promise.
-2. **Staged scale** — smoke → pilot → full; most ideas die cheaply at pilot.
+2. **Staged scale** — smoke test, trial runs, then full runs; most ideas die cheaply at the trial runs.
 3. **Git is memory** — one commit per experiment attempt; append-only ledgers; nothing lives only in a chat transcript.
 4. **Frozen things stay frozen** — eval protocol, test sets, seeds, budgets. The watchdog enforces budgets in code.
 5. **Fresh eyes review** — papers are critiqued by reviewer subagents that never saw them written, calibrated against the human scoring mean.

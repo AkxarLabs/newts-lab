@@ -188,7 +188,7 @@ question alone. A `--question` (with `--choices`, `;`-separated) waits in *Needs
 goes to the publishing run as its next message, or, if that run has gone, to the study as a note;
 `replies` prints what the PI answered (JSON lines). Stored in `lab/.bus/artifacts/<id>/`; the run, its
 procedure and its study come from `$NEWTS_RUN_ID` / `$NEWTS_RUN_SKILL` / `$NEWTS_RUN_SUBJECT`.
-Publishing asks for a look; it is never a gate signature. See [The dashboard → Artifacts](dashboard.md#artifacts-what-agents-made-for-you).
+Publishing asks for a look; it is never a gate signature. See [The dashboard → Results](dashboard.md#results).
 
 ### `new_lab.py` — create a new lab from this template
 

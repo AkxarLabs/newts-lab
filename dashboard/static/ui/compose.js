@@ -97,7 +97,7 @@
   const guardTab = set => v => { if (leaveOk()) set(v); };
 
   const KINDS = [
-    { id: 'stages', item: 'stage', label: 'Stages', one: 'stage', n: d => d.stages.length, blurb: 'The steps a study moves through, and where you sign the gates.',
+    { id: 'stages', item: 'stage', label: 'Stages', one: 'stage', n: d => d.stages.length, blurb: 'The steps a study moves through, and where you approve the gates.',
       dirty: d => touched(d, 'workflow/stages.yaml', 'lab/workflow/stage.') },
     { id: 'procedures', item: 'procedure', label: 'Procedures', one: 'procedure', n: d => Object.keys(d.procedures).length, blurb: 'What agents do at each step. Each is a skill folder: a contract that always binds, and a method you can rewrite.',
       dirty: d => touched(d, '.claude/skills/') || changes(d).some(c => c.path.startsWith('lab/workflow/') && !/^lab\/workflow\/(stage\.|roles\/)/.test(c.path)) },

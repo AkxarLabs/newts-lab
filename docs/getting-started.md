@@ -12,8 +12,8 @@
    - answer the `/setup-lab` interview right in the page;
    - pick an on-ramp.
 
-After that you work from the dashboard: **Start something** (or just ask Newt), watch the runs as
-conversations, answer the agents when they ask, and sign the gates when they wait for you. The rest
+After that you work from the dashboard: **Start something** (or just type a question), watch the runs as
+conversations, answer the agents when they ask, and approve the gates when they wait for you. The rest
 of this page is the same lab from a terminal. See [The dashboard](dashboard.md) for the full tour.
 
 !!! tip "On a server, a GPU box or a cluster"
@@ -81,7 +81,7 @@ Then pick your on-ramp — there is one for every starting point and autonomy ap
 | Nothing yet — explore a direction | `/ideate <direction>` — walk the lifecycle with gates |
 | An idea, a known literature, or an existing codebase | `/adopt` — scaffold the right files and enter mid-lifecycle (optionally `/discuss direction` first to sharpen it; `/adopt` reads its session doc) |
 | One stage at a time, verifying between stages | `/advance <slug>` — runs exactly the next stage, then stops for you |
-| Hands-off: sign once, read drafts in the morning | `/autopilot` — authorize a campaign and go to sleep |
+| Hands-off: approve once, read drafts in the morning | `/autopilot` — approve a campaign and go to sleep |
 
 See [Autonomy & modes](autonomy.md) for how the modes differ and how the unattended
 ones compose with Claude Code's built-in `/loop` scheduler.
@@ -97,14 +97,15 @@ You'll be stopped at the gates and otherwise left to read the notebook.
 
 The [dashboard](dashboard.md) is the lab's product surface; you don't need the terminal at all:
 
-- **Home**: the living world with what needs you, what's running and what's next.
+- **Home**: the 3D lab with what needs you, what is running and what is next.
 - **Studies**: a pipeline board, and a page per study.
-- **Runs**: every agent session as a conversation.
+- **Runs**: every agent as a conversation.
+- **Results**: what agents made for you.
 - **Library**: every document.
-- **Signatures**: the three gates, envelopes, loop briefs and campaigns.
+- **Workflow** and **Settings**: change how the lab works, and its limits.
 
-It runs the same agent CLIs as you, with your login, and every run carries the signature guard, so
-agents can never sign for you.
+It runs the same agent CLIs as you, with your login, and every run carries a guard, so
+agents can never approve a gate for you.
 
 ```bash
 uv run --with pyyaml python newts.py        # http://127.0.0.1:8787 (opens your browser)
@@ -136,7 +137,7 @@ uv run --with properdocs --with mkdocs-material properdocs build    # static sit
 | When | What happens |
 |---|---|
 | Monday | `/ideate` from `lab/knowledge/OPEN-QUESTIONS.md` (skim `REFERENCES.md` for prior reading); pick one; `/lit-review` overnight |
-| Tuesday | Read the proposal, approve Gate 1 with a small Gate 2 envelope |
-| Tue–Thu | `/spawn-project`, pilots via `/experiment`, then `/research-loop` overnight under the envelope |
+| Tuesday | Read the proposal, approve Gate 1 with a small Gate 2 limit |
+| Tue–Thu | `/spawn-project`, pilots via `/experiment`, then `/research-loop` overnight within those limits |
 | Friday | Read the PI morning report, `/analyze`, decide: ablate further or start `/write-paper` |
 | Next week | `/review-paper` cycles until the ensemble accepts; Gate 3; `/finalize` writes the knowledge back |

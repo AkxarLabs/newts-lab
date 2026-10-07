@@ -20,10 +20,10 @@ The repo is domain-agnostic by design: nothing here assumes a particular researc
 
 From then on everything happens in the dashboard:
 
-- start work, or ask Newt anything;
+- start work, or ask a question;
 - watch every agent and subagent;
 - answer their questions;
-- sign the three gates;
+- approve the three gates;
 - read every document and paper;
 - create or switch labs.
 
@@ -80,7 +80,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | Command | What it does |
 |---|---|
 | `/setup-lab` | First-run interview → writes `lab/config.yaml`, verifies env, seeds directions |
-| `/autopilot` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a signed brief |
+| `/autopilot` | Unattended end-to-end campaign: ideas → reviewed paper drafts under a brief you approve |
 | `/advance` | Stage-gated mode: run exactly the next lifecycle stage, then stop for PI verification |
 | `/adopt` | Enter the lifecycle anywhere — scaffold prerequisites for an existing idea, design, or code repo |
 | `/compete` | Spin off a **target-driven** project for a fixed target (benchmark/leaderboard/KPI) — iterate toward the metric, no paper pipeline |
@@ -95,7 +95,7 @@ The workflow is encoded as Claude Code skills in `.claude/skills/`:
 | `/configure` | View the effective 3-layer config with provenance; edit lab or project values |
 | `/experiment` | Run the experiment loop: smoke → pilot → full, ledger + git as memory |
 | `/improve` | Operator-driven iteration (draft/debug/improve/crossover) with parallel worktree subagents |
-| `/research-loop` | Unattended autonomous loop under a PI-signed `LOOP_BRIEF.md` — never-stop-within-budget, zero-token monitoring |
+| `/research-loop` | Unattended autonomous loop under a `LOOP_BRIEF.md` you approve — never-stop-within-budget, zero-token monitoring |
 | `/analyze` | Analyze results, decide ablations/follow-ups, write findings |
 | `/make-figures` | Figures/tables mechanically from run artifacts (shared figure library) + multimodal self-review |
 | `/write-paper` | Evidence-first LaTeX drafting; placeholder-resolved verified citations; claims re-audited every revision round |
@@ -125,7 +125,7 @@ newts-lab/
 ├── studies/<slug>/      # one research effort: IDEA.md, lit-review.md, proposal.md, critiques/
 │   └── paper/           #   LaTeX paper + claims.yaml (appears at the writing stage)
 ├── templates/           # project/, project-types/ (ml/empirical/simulation/theory/…), domain-profiles/, paper/ (+ venues/), idea/, review/, loop/, compete/
-├── tools/               # guard.py (lifecycle guards), signature_guard.py (only the PI signs), executor/ + executor_cli.py (headless runs), new_lab.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
+├── tools/               # guard.py (lifecycle guards), signature_guard.py (only the PI approves), executor/ + executor_cli.py (headless runs), new_lab.py, audit_claims, check_lab, lab_bus, run_slots, write-backs, … (see docs/tools.md)
 ├── dashboard/           # the dashboard — the lab's product surface (start it with newts.py); delete it and the lab works from a terminal
 └── (projects live at ../newts-lab-projects/<slug> — see lab/config.yaml lab.projects_root)
 ```
@@ -136,8 +136,8 @@ Same procedures, same gates, different pace — pick per session ([full guide](d
 
 - **Manual** — invoke each procedure yourself (`/ideate` → `/lit-review` → …).
 - **Stage-gated** — `/advance`: one lifecycle stage per command, verified by you between stages.
-- **Project loop** — `/research-loop <slug>`: unattended experiments under a signed brief. Two modes (set in the brief's `Mode:`): `execute` (run the approved plan, then stop) or `explore` (autonomous in-project re-planning — expand the frontier and reopen non-headline design decisions within the envelope; see [autonomy](docs/autonomy.md)).
-- **Full autopilot** — `/autopilot`: sign one campaign brief, wake up to reviewed drafts (wrap with the built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`).
+- **Project loop** — `/research-loop <slug>`: unattended experiments under a brief you approve. Two modes (set in the brief's `Mode:`): `execute` (run the approved plan, then stop) or `explore` (autonomous in-project re-planning — expand the frontier and reopen non-headline design decisions within the envelope; see [autonomy](docs/autonomy.md)).
+- **Full autopilot** — `/autopilot`: approve one campaign brief, wake up to reviewed drafts (wrap with the built-in scheduler: `/loop 30m /autopilot continue <campaign-file>`).
 
 Already have an idea, a design, or a codebase? `/adopt` enters the lifecycle mid-stream.
 Have a fixed target (a benchmark, a leaderboard, a KPI)? `/compete` spins off a
@@ -153,14 +153,19 @@ uv run --with properdocs --with mkdocs-material properdocs serve   # these docs 
 Docs start at [docs/index.md](docs/index.md): [Getting started](docs/getting-started.md) ·
 [Configuration](docs/configuration.md) · [Projects](docs/projects.md) · [The dashboard](docs/dashboard.md).
 
-The dashboard draws the lab as a living world behind the product:
+![The dashboard: the lab as a 3D tabletop](docs/assets/dashboard-home-dark.png)
 
-- **Home**: what needs you, what's running, and Ask Newt.
+The dashboard draws the lab as a 3D tabletop, a room per stage of the research:
+
+- **Home**: what needs you, what is running, and a bar for questions and instructions.
 - **Studies**: a pipeline board, and a page per study with its next step.
-- **Runs**: every agent session as a conversation you can answer and continue.
+- **Runs**: every agent as a conversation you can answer and continue.
+- **Results**: what agents made for you.
 - **Library**: every document, rendered.
-- **Signatures**: all three gates, the FULL-run envelope, loop briefs and campaigns. A signature
-  guard in every run makes sure only you sign.
+- **Workflow**: see and change how the lab works.
+- **Settings**: all customisation in one panel, with a light/dark toggle in the top bar.
+
+You approve the three gates there. A guard in every agent run makes sure only you can.
 
 It is local-only and optional: delete `dashboard/` and the lab works from a terminal. The same run
 engine has a CLI, `tools/executor_cli.py`.
