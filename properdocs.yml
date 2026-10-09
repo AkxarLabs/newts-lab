@@ -45,6 +45,7 @@ nav:
   - Target-driven (/compete): compete.md
   - Tools: tools.md
   - Dashboard: dashboard.md
+  - Dashboard internals: internals.md
   - Machines & compute: compute.md
   - The world: world-design.md
   - Extending the lab: extending.md

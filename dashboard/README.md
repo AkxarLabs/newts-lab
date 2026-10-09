@@ -2,17 +2,15 @@
 
 A local-only, no-build dashboard: start it, pick or create a lab, and do everything from there.
 
-- **Set up**: connect an agent and sign in through its own login, choose the autonomy, and run the
+- **Set up**: connect an agent and sign in through its own login, choose the limits, and run the
   `/setup-lab` interview.
-- **Work**: start any procedure or a free-form instruction ("Ask Newt"), and watch each run as a
-  conversation.
-- **Decide**: answer the agents' questions, and sign the three gates, envelopes, loop briefs and
-  campaigns. Only you can sign: a signature guard in every run makes sure of it.
+- **Work**: start any procedure or type an instruction, and watch each run as a conversation.
+- **Decide**: answer the agents' questions and approve the three gates, loop briefs and campaigns.
+  Only you can: a guard in every run makes sure of it.
 
-The lab is drawn behind it as a living 3D tabletop: the workflow's rooms round your desk (a lab per
-live project), a card per study, a newt per run and a smaller one per subagent, and Newt, your
-assistant, at the desk. Delete this folder and the lab
-still works from a terminal.
+The lab is drawn behind it as a 3D tabletop: a room per stage of the research round your desk, a card
+per study, a newt per run and a smaller one per subagent. Delete this folder and the lab still works
+from a terminal.
 
 ```bash
 uv run --with pyyaml python newts.py                                   # starts it + opens the browser (http://127.0.0.1:8787)
@@ -20,7 +18,7 @@ uv run --with pyyaml python dashboard/serve.py --hub ../other-lab     # the serv
 ```
 
 Runs go through `tools/executor/`, each in a detached supervisor that outlives this server. See
-`docs/dashboard.md` for the full tour.
+`docs/dashboard.md` for the tour and `docs/internals.md` for how it works.
 
 **See it alive without a session — demo mode (debugging).** Demo is a synthetic, living lab —
 studies/projects in every room, agents that spawn, despawn, and stroll around — for development and

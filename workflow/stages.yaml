@@ -74,7 +74,7 @@ stages:
 
 # the rooms on the dashboard's table = the Studies board's columns. Data generation (the Lab) and its
 # interpretation (the Bench) are separate rooms on purpose: analysis reads run artifacts and writes none. A room stands on a plot round the PI's desk:
-# `place: [column, row]` and `facing: n|e|s|w` put it there (Compose → Rooms: drag it); without them it takes
+# `place: [column, row]` and `facing: n|e|s|w` put it there (Workflow → Rooms: drag it); without them it takes
 # the next free plot. `per_project: true` makes it one room PER LIVE PROJECT (each project its own lab). How a
 # room looks is dashboard/static/world3d/rooms/<id>.js, or the lab's own lab/rooms3d/<id>.json (Compose → a
 # room → Look: describe it and an agent designs it); a room with neither is drawn plain — adding a room is

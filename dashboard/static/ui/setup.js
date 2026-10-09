@@ -15,11 +15,11 @@
     const li = s.lab_info || {};
     return html`<div class="wz-body">
       <h2>Welcome to ${li.name || 'your lab'}</h2>
-      <p class="lede">Newts' Lab runs research with AI agents: they generate ideas, review literature, write proposals, run experiments and draft papers. You steer, and you sign the three gates.</p>
+      <p class="lede">Newts' Lab runs research with AI agents: they generate ideas, review literature, write proposals, run experiments and draft papers. You steer, and you approve the three gates.</p>
       <div class="concepts">
         <div class="concept"><span class="concept-ico">🏛</span><b>The lab</b><small>This folder — <span class="mono" title=${li.path || ''}>${(li.path || '').split(/[\/]/).filter(Boolean).slice(-1)[0] || ''}</span>. Ideas, studies, papers and the lab's knowledge live here.</small></div>
         <div class="concept"><span class="concept-ico">🛠</span><b>Projects</b><small>An approved study gets its own code repository next to the lab, where experiments run.</small></div>
-        <div class="concept"><span class="concept-ico">✉</span><b>Three gates</b><small>Gate 1 approves a proposal · Gate 2 authorizes full-scale runs · Gate 3 finalizes a paper. Only you sign them.</small></div>
+        <div class="concept"><span class="concept-ico">✉</span><b>Three gates</b><small>Gate 1 approves a proposal · Gate 2 approves full-scale runs · Gate 3 finalizes a paper. Only you can approve them.</small></div>
       </div>
       <div class="row end"><${NL.Btn} kind="primary" onClick=${next}>Set it up</${NL.Btn}></div></div>`;
   };

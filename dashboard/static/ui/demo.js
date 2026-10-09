@@ -89,6 +89,12 @@ NL.demoRead = (path, b) => {
   return f ? { ok: true, format: 'markdown', text: f(it), path: `(demo)/${b.rel}` } : { error: 'not in the demo' };
 };
 NL.demoGet = path => {
+  if (path.startsWith('/api/gate3/readiness')) return { ok: true, can_sign: true, signed: false, checks: [
+    { id: 'review', ok: true, blocking: true, label: 'Internal review accepted the paper', detail: 'meta-review: accept' },
+    { id: 'pdf', ok: true, blocking: true, label: 'The PDF is built', detail: 'paper/main.pdf' },
+    { id: 'claims', ok: true, blocking: true, label: 'Every claim links to a run', detail: '14 of 14' },
+    { id: 'audits', ok: true, blocking: true, label: 'The paper audits pass', detail: 'claims, seeds, ablations, evaluation, pre-registration' },
+    { id: 'esc', ok: true, blocking: false, label: 'No open escalations', detail: '' }] };
   if (path.startsWith('/api/campaign/preflight')) return { ok: true, ready: true, checks: [
     { id: 'launch', ok: true, label: 'The dashboard may start agents', detail: 'on' },
     { id: 'backend', ok: true, label: 'Claude is signed in', detail: 'demo' },

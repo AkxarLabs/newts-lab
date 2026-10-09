@@ -45,14 +45,14 @@
   // a skill appears here by giving its SKILL.md frontmatter a `start:` block (icon, order, label, …)
   const BUILT_IN = [{ id: 'study', icon: '◫', title: 'Work on a study', study: true, order: 4 },
     { id: 'campaign', icon: '⟳', title: 'Plan a campaign', campaign: true, order: 6,
-      onramp: 'Sign a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.',
+      onramp: 'Approve a direction, a time limit and a budget once; the lab carries ideas all the way to reviewed papers by itself, restarting through timeouts and usage limits, and only stops for what is outside your bounds.',
       onrampTitle: 'Start a campaign' }];
   // a one-line "what it does" under each tile — so near neighbours (one step vs pick a step) read apart
   const INTENT_WORDS = {
     study: { title: 'Work on a study', desc: 'pick what to do on it, or give it notes' },
     advance: { title: 'Advance a study one step', desc: 'run its next step, then stop' },
     configure: { desc: 'an agent walks you through any setting, incl. ones not in Settings' },
-    campaign: { desc: 'carry several ideas while you’re away, within signed bounds' } };
+    campaign: { desc: 'carry several ideas while you’re away, within limits you set' } };
   NL.intents = () => Object.entries(NL.PROC).filter(([, p]) => p.start && p.launchable !== false).map(([name, p]) => {
     const st = p.start, args = p.args || '';
     return { id: name, icon: st.icon || '▸', title: st.title || p.title || name, skill: name, order: st.order ?? 50,
@@ -95,8 +95,8 @@
       if (r) onClose();
     };
     // a campaign approves Gate 1 (within bounds) and derives Gate 2 — the header must not promise otherwise
-    const sub = it && it.campaign ? 'Agents run on this machine, as you. A campaign may approve Gates 1–2 within the bounds you sign; everything else waits for you.'
-      : 'Agents run on this machine, as you. Every gate still waits for your signature.';
+    const sub = it && it.campaign ? 'Agents run on this machine, as you. A campaign may approve Gates 1 and 2 within the limits you set; everything else waits for you.'
+      : 'Agents run on this machine, as you. Every gate still waits for your approval.';
     return html`<${NL.Sheet} title="Start something" sub=${sub} onClose=${onClose} wide>
       <div class="asknewt-big">
         <label class="field-label">Ask a question or give an instruction</label>
@@ -167,7 +167,7 @@
       <div class="dialog-actions"><${NL.Btn} onClick=${onClose}>Cancel</${NL.Btn}><${NL.Btn} kind="primary" disabled=${!t.trim()} onClick=${go}>${ok || 'Pin the note'}</${NL.Btn}></div></div>`;
   };
 
-  /* ── Plan a campaign (writes + signs lab/campaigns/<date>-<slug>.md) ───── */
+  /* ── Plan a campaign (writes and approves lab/campaigns/<date>-<slug>.md) ───── */
   /* what a walk-away start needs, checked live (GET /api/campaign/preflight) */
   NL.Preflight = ({ onReady }) => {
     const [p, setP] = useState(null);
@@ -198,13 +198,13 @@
     const G1_BOUNDS = 'Agents approve a proposal only if all of these hold: it is within the limits above, has kill criteria and a frozen evaluation, was judged novel, and passed scoping. Its full-run limits come from the same numbers. Anything else waits for you. Leave this unticked and every proposal waits for you.';
     const sign = async (launch) => {
       if (!f.direction.trim()) return NL.toast('Describe the direction first', 'warn');
-      const body = html`<div><p>Your signature lets the lab work on its own <b>within these bounds</b>: ${f.gate1
+      const body = html`<div><p>Your approval lets the lab work on its own <b>within these bounds</b>: ${f.gate1
           ? html`agents approve proposals that fit them (Gate 1) and derive each project's FULL-run envelope (Gate 2) from them.`
           : html`<b>every proposal waits for your Gate 1</b>; once you approve one, its FULL-run envelope (Gate 2) comes from these bounds.`} Anything outside the bounds waits for you, and the rest of the campaign carries on.</p>
         <p>${f.gate3 ? html`<b>Papers may finalize without you.</b> Once a paper passes internal review, the lab itself re-runs the paper audits and, if they are clean, records Gate 3 and runs /finalize. Nothing is sent outside the lab. You can revoke this, or hold a study, from the campaign card.` : html`Papers stop at <b>internal review</b> for your Gate 3.`}</p>
         <p>${spendCap ? html`It stops when its runs have spent <b>$${spendCap.toFixed(2)}</b> (estimated from token use), and writes its final report.`
           : html`<b>No spending cap — it can spend until its hours or agent-hours run out.</b>`}</p>
-        <p class="muted">It runs in ${labName} on ${machine} until ${NL.when(until)}${+agentHours ? ` or ${+agentHours} agent-hours, whichever comes first` : ''}, restarting after timeouts, usage limits and network errors. ${launch ? '' : 'Signing only records the brief; you start it later. '}Stop or pause it any time from the campaign card on Home or Studies.</p></div>`;
+        <p class="muted">It runs in ${labName} on ${machine} until ${NL.when(until)}${+agentHours ? ` or ${+agentHours} agent-hours, whichever comes first` : ''}, restarting after timeouts, usage limits and network errors. ${launch ? '' : 'Approving only records the brief; you start it later. '}Stop or pause it any time from the campaign card on Home or Studies.</p></div>`;
       const ok = await NL.confirm({ title: 'Approve this campaign?', ok: launch ? 'Approve and start' : 'Approve', body,
         typed: f.gate3 ? 'finalize' : undefined });
       if (!ok) return;
@@ -215,7 +215,7 @@
     };
     return html`<div class="intent-detail">
       <div class="camp-where small">Runs in <b>${labName}</b> on <b>${machine}</b>. To run elsewhere, switch labs first (<a class="link" href="#/labs" onClick=${() => NL.closeTop && NL.closeTop()}>Labs & machines</a>).</div>
-      <div class="explain"><div><b>A campaign</b> carries several ideas from ideation to reviewed papers while you're away — within bounds you sign here. The lab keeps it going by itself in <b>passes</b>: each pass, the lab checks every idea and starts its next step.</div></div>
+      <div class="explain"><div><b>A campaign</b> carries several ideas from ideation to reviewed papers while you're away — within limits you set here. The lab keeps it going by itself in <b>passes</b>: each pass, the lab checks every idea and starts its next step.</div></div>
       <${NL.Field} label="Research direction"><${NL.Textarea} rows="2" value=${f.direction} onInput=${v => set('direction', v)} placeholder="what the campaign explores" /></${NL.Field}>
       <div class="grid3">
         <${NL.Field} label="Ideas to carry"><${NL.Input} type="number" min="1" value=${f.ideas} onInput=${v => set('ideas', v)} /></${NL.Field}>

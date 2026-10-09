@@ -3,12 +3,12 @@
 Everything that says how this lab works is yours to change: the stages a study moves through and where
 each happens, the procedures agents run at each step, the subagent roles, the rooms on the table, the
 rules, the checks that enforce them, and the kinds of project. It is all defined in files (`workflow/`,
-`.claude/skills/`, `agent-roles/`, `checks/`, `templates/`, `lab/`), and the dashboard's **Compose** page
+`.claude/skills/`, `agent-roles/`, `checks/`, `templates/`, `lab/`), and the dashboard's **Workflow** page
 shows every one of them and edits every one of them.
 
-## Compose
+## Workflow
 
-**Compose** (top nav) opens on a map of the lab: the **pipeline** (the stages left to right, their states
+**Workflow** (top nav) opens on a map of the lab: the **pipeline** (the stages left to right, their states
 and procedures, the gates between them) and **the table** (the rooms on their plots round your desk, and
 the states that stand in each). Every card opens into an editor. The side list has the rest: stages, procedures,
 roles, rooms, rules, checks and project types, plus agents' suggestions and what you have published.
@@ -31,9 +31,9 @@ Each editor gives you a form for what a form makes easy and the files for everyt
     procedure the room holds. The design comes back as a suggestion you see turning in 3D before you take
     it into your draft; ask again with a sharper description if it isn't right.
   - A room's look is **data**, never code (`lab/rooms3d/<room>.json`: its size and colours, furniture by
-    name and where it stands, new furniture as a list of simple shapes). Compose checks it, and the
+    name and where it stands, new furniture as a list of simple shapes). Workflow checks it, and the
     preview builds it in a sandbox, so nothing an agent designs ever runs in your dashboard.
-- **The table**: Compose → Rooms shows the rooms on plots round your desk. Drag a room to another plot,
+- **The table**: Workflow → Rooms shows the rooms on plots round your desk. Drag a room to another plot,
   turn its door with the arrow; a room you don't place takes the next free plot, in workflow order. Each
   room's place is `place: [column, row]` and `facing: n|e|s|w` on its line in `workflow/stages.yaml`.
 - **A role**: its name, what it is for, your instructions for it (added for every agent CLI), its files.
@@ -49,10 +49,10 @@ everything; you change what makes yours different. (The same, from a terminal:
 
 ### A draft, then publish
 
-Nothing you change in Compose reaches the lab or a run until you publish it:
+Nothing you change in Workflow reaches the lab or a run until you publish it:
 
 1. The first edit starts a **draft**: a private copy of the lab's definition (`lab/.bus/compose/`). Every
-   later edit changes the draft only. A bar on every Compose page says so, and how many files changed.
+   later edit changes the draft only. A bar on every Workflow page says so, and how many files changed.
 2. **Review & publish** shows each changed file with its diff, and whether the lab still reads
    consistently: no stage names a procedure that is gone, every state has a room, no study is left in a
    state that no longer exists, and nothing locked was touched. Problems must be fixed first.
@@ -68,7 +68,7 @@ overwrite it.
 
 ### The one-minute tour
 
-The setup wizard's last step, Home's first screen and the Compose page all offer a short tour: copy a
+The setup wizard's last step, Home's first screen and the Workflow page all offer a short tour: copy a
 procedure, change how it works, publish it. That is the whole idea, and every other part of the lab works
 the same way.
 
@@ -80,7 +80,7 @@ study, not the lab's design) and are added on top of the lab's.
 
 ## What stays fixed (on purpose)
 
-A few things no customisation changes, because the lab's guarantees rest on them. Compose shows them with a
+A few things no customisation changes, because the lab's guarantees rest on them. Workflow shows them with a
 lock and refuses a draft that changes them:
 
 - **the three gates**: where each is signed and what it opens (you can rename, add and move stages
@@ -124,7 +124,7 @@ agent thinks something should change, for example in `/finalize`'s retrospective
 uv run --with pyyaml python tools/workflow.py propose --proc lit-review --mode add --file draft.md --why "…"
 ```
 
-The proposal appears in **Needs you** and in Compose under **Agents' suggestions**, with a diff. **Accept** writes it;
+The proposal appears in **Needs you** and in Workflow under **Agents' suggestions**, with a diff. **Accept** writes it;
 **Decline** drops it.
 
 ## The files
@@ -139,7 +139,7 @@ The dashboard writes these for you, but they are plain Markdown and PI-owned:
 | `lab/workflow/roles/<role>.add.md` | instructions added to a subagent role |
 | `studies/<slug>/workflow/…` | the same, for one study |
 | `lab/rooms3d/<room>.json` | a room's 3D look, as data |
-| `lab/.bus/designs/<room>/` | an agent's design for a room, waiting for you in Compose |
+| `lab/.bus/designs/<room>/` | an agent's design for a room, waiting for you in Workflow |
 | `lab/.bus/compose/` | your draft, while one is open, and what each publish replaced (for undo) |
 
 `uv run --with pyyaml python tools/workflow.py brief <procedure> [--study <slug>]` prints what an agent

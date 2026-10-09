@@ -1,7 +1,7 @@
 # Autonomy & modes
 
 The lab runs at whatever level of autonomy you choose — from "I invoke every
-procedure myself" to "one signature, read the drafts in the morning". Same
+procedure myself" to "one approval, read the drafts in the morning". Same
 procedures, same gates, same integrity machinery in every mode; the modes differ
 only in **who decides when the next step starts**.
 
@@ -11,8 +11,8 @@ only in **who decides when the next step starts**.
 |---|---|---|---|
 | **Manual** | invoke each procedure | `/ideate`, `/lit-review`, … `/finalize` | every step is yours |
 | **Stage-gated** | verify between stages | `/advance [slug]` | after *every* lifecycle stage |
-| **Project loop** | sign a brief per project | `/research-loop <slug>` · `/improve <slug>` | experiments run unattended; analysis and writing wait for you |
-| **Full autopilot** | sign one campaign brief | `/autopilot` | only the three PI gates (Gate 1 delegated within bounds; Gate 3 never) |
+| **Project loop** | approve a brief per project | `/research-loop <slug>` · `/improve <slug>` | experiments run unattended; analysis and writing wait for you |
+| **Full autopilot** | approve one campaign brief | `/autopilot` | only the three PI gates (Gate 1 delegated within bounds; Gate 3 never) |
 
 And you can **enter the lifecycle anywhere**: `/adopt` scaffolds the prerequisites
 for an idea, a settled design, or an existing code/results repo you already have, so
@@ -68,7 +68,7 @@ fall back to** a successor hub `/ideate`) —
 whose surviving approaches re-enter `/propose` (a mini-proposal that crosses Gate 1) or spawn a
 successor idea, never entering experiments on a bare PI note. A pivot is never silent: it lands in
 `decisions.md`, PLAN.md's Re-planning log, and the event bus (so the dashboard shows it live).
-Default is `execute`, so nothing changes until you sign a brief that says `explore`.
+Default is `execute`, so nothing changes until you approve a brief that says `explore`.
 
 **Enabling `explore` (what to flip, and who may).** Two independent switches, both PI-owned:
 
@@ -94,7 +94,7 @@ claude
 ```
 
 Ten minutes of questions (direction, how many ideas, total budget, what proposal
-shapes you pre-approve), one signature on a **campaign brief**, and the lab runs the
+shapes you pre-approve), one approval of a **campaign brief**, and the lab runs the
 full pipeline unattended: ideation → lit review → scoping → proposal → project →
 experiments → analysis → figures → paper → internal review — for several ideas as a
 portfolio, advancing one idea's reading/writing while another's training run is in

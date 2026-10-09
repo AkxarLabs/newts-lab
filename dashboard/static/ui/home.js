@@ -97,7 +97,7 @@
 
   const OnRamps = () => html`<div class="onramps">
     <p class="lede">The lab is quiet. Where do you want to start?</p>
-    ${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.campaign ? 'Ideas carried to papers on their own, within bounds you sign' : i.does]).map(([id, ico, t, sub]) =>
+    ${NL.intents().filter(i => i.onramp).map(i => [i.id, i.icon, i.onrampTitle || i.title, i.campaign ? 'Ideas carried to papers on their own, within limits you set' : i.does]).map(([id, ico, t, sub]) =>
       html`<button type="button" class="onramp" onClick=${() => NL.openStart({ intent: id })}><span class="intent-ico">${ico}</span><span><b>${t}</b><small>${sub}</small></span></button>`)}
     <button type="button" class="onramp" onClick=${() => NL.composeTour()}><span class="intent-ico"><${NL.Icon} name="layers" /></span><span><b>Make the lab yours</b><small>A one-minute tour of Compose — how this lab works, and how to change it</small></span></button></div>`;
 

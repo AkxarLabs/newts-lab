@@ -24,15 +24,15 @@ there.
 - **The plaza** at `[0, 0]` is your desk. The big Newt (your assistant) stands there with an inbox; its
   envelopes are the items needing you.
 - **Plots** sit on a grid round the plaza, with streets between them. Each room stands on one plot
-  (`Lab3D.plan`, `world3d/layout.js`). Compose's layout editor uses the same plan, so both always agree.
-- In `workflow/stages.yaml` a room line can carry `place: [column, row]` and `facing: n|e|s|w` (Compose →
+  (`Lab3D.plan`, `world3d/layout.js`). Workflow's layout editor uses the same plan, so both always agree.
+- In `workflow/stages.yaml` a room line can carry `place: [column, row]` and `facing: n|e|s|w` (Workflow →
   Rooms: drag it on the table; turn its door). Without them a room takes the next free plot going round
   the plaza, rooms holding the lifecycle first, door toward your desk.
 
 ```yaml
 rooms:
   - {id: data, label: Data, title: The Data Room, states: [data-prep]}
-  - {id: lab,  label: Lab,  title: The Lab, states: [active, analysis], gate: 2, per_project: true, place: [1, 0], facing: w}
+  - {id: lab,  label: Lab,  title: The Lab, states: [active], gate: 2, per_project: true, place: [1, 0], facing: w}
 ```
 
 ## Rooms and project labs
@@ -42,7 +42,7 @@ is drawn **plain**: a floor, low walls and a desk per procedure.
 
 `per_project: true` (the Lab has it) makes a room one room **per live project**, titled by its study,
 with the kicker "Lab". Without the flag, a room is treated as per-project when most of its procedures are
-project-level. Compose → a room → About has a "One per live project" toggle.
+project-level. Workflow → a room → About has a "One per live project" toggle.
 
 - While `/spawn-project` runs for a study, its new lab stands as scaffolding ("being built") and rises out
   of the table when ready.
@@ -141,7 +141,7 @@ All under `dashboard/static/world3d/`; three.js is vendored at `dashboard/static
 | `looks/lab.<type>.json` | starter Lab looks per project type, as data (a README there says what each shows) |
 | `world.js` | `Lab3D.createWorld`: the live world |
 | `scene.js` | `VivScene`: one stable API over the world, and a quiet stand-in without WebGL |
-| `sandbox-room.html` | a sandboxed room preview, used by Compose |
+| `sandbox-room.html` | a sandboxed room preview, used by Workflow |
 | `newt.html` | "The cast": every character side by side (`?pose=idle\|work\|walk\|wait\|carry\|sleep\|fail\|mix`, `?theme=night`, `?grid` for every pose) |
 
 The server inserts one `<script>` per built-in room file at the `<!-- newts:rooms3d -->` marker in
@@ -187,11 +187,11 @@ signature guard.
 1. **Add the room.** `tools/new.py room <id> --like <room>` adds the line on the next free plot and copies
    the lab's own JSON look for the like if there is one (`lab/rooms3d/<like>.json` → `<id>.json`).
    Built-in looks are code, so otherwise the room is drawn plain until designed; `--plain` never copies.
-   Or add the line in Compose → Rooms.
-2. **Design its look by describing it.** Compose → the room → Look → "Design it" launches the
+   Or add the line in Workflow → Rooms.
+2. **Design its look by describing it.** Workflow → the room → Look → "Design it" launches the
    `/design-room` skill: a coding agent writes `lab/.bus/designs/<room>/room.json` and `notes.md`
    (`tools/workflow.py room <id>` prints the room brief it works from). You preview it in a sandboxed
-   frame and click "Use this design"; it goes to the Compose draft, then Publish. For a per-project room,
+   frame and click "Use this design"; it goes to the Workflow draft, then Publish. For a per-project room,
    the Look tab has a "Look for: every project / <type>" switch: a design for one type is saved as
    `lab.<type>` (`/design-room lab.ml "…"`; `tools/workflow.py room lab.ml` briefs it).
 3. **Run the tests** (`pytest tests/test_world.py`).
